@@ -1,0 +1,17 @@
+.DS_Store
+.env
+.env.local
+dist/
+node_modules/
+coverage/
+tmp/
+*.log
+*.pid
+*.test
+*.out
+bin/
+data/
+uploads/
+reports/
+.idea/
+.vscode/

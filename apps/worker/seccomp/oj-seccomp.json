@@ -1,0 +1,44 @@
+{
+  "defaultAction": "SCMP_ACT_ALLOW",
+  "architectures": [
+    "SCMP_ARCH_X86_64",
+    "SCMP_ARCH_AARCH64"
+  ],
+  "syscalls": [
+    {
+      "names": [
+        "socket",
+        "socketpair",
+        "connect",
+        "accept",
+        "accept4",
+        "bind",
+        "listen",
+        "setsockopt",
+        "getsockopt",
+        "sendto",
+        "recvfrom",
+        "sendmsg",
+        "recvmsg",
+        "ptrace",
+        "mount",
+        "umount",
+        "umount2",
+        "swapon",
+        "swapoff",
+        "reboot",
+        "kexec_load",
+        "delete_module",
+        "init_module",
+        "finit_module",
+        "bpf",
+        "perf_event_open",
+        "keyctl",
+        "add_key",
+        "request_key",
+        "unshare"
+      ],
+      "action": "SCMP_ACT_ERRNO"
+    }
+  ]
+}

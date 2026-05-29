@@ -1,0 +1,5 @@
+-- The API seeds equivalent data automatically when SEED_DATA=true.
+-- Default credentials:
+-- admin@school.local / password
+-- teacher@school.local / password
+-- student@school.local / password

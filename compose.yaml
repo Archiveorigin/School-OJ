@@ -1,0 +1,108 @@
+name: school-oj
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_DB: oj
+      POSTGRES_USER: oj
+      POSTGRES_PASSWORD: ojpass
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U oj -d oj"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+
+  redis:
+    image: redis:7-alpine
+    command: ["redis-server", "--appendonly", "yes"]
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis-data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+
+  minio:
+    image: minio/minio:latest
+    command: ["server", "/data", "--console-address", ":9001"]
+    environment:
+      MINIO_ROOT_USER: minioadmin
+      MINIO_ROOT_PASSWORD: minioadmin
+    ports:
+      - "9000:9000"
+      - "9001:9001"
+    volumes:
+      - minio-data:/data
+  api:
+    build:
+      context: ./apps/api
+    environment:
+      APP_ADDR: ":8080"
+      DATABASE_URL: "host=postgres user=oj password=ojpass dbname=oj port=5432 sslmode=disable TimeZone=Asia/Shanghai"
+      REDIS_ADDR: "redis:6379"
+      MINIO_ENDPOINT: "minio:9000"
+      MINIO_ACCESS_KEY: "minioadmin"
+      MINIO_SECRET_KEY: "minioadmin"
+      MINIO_BUCKET: "oj-artifacts"
+      JWT_SECRET: "change-me-in-production"
+      AUTO_MIGRATE: "true"
+      SEED_DATA: "true"
+      JPLAG_WORK_DIR: "/tmp/jplag"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      minio:
+        condition: service_started
+    ports:
+      - "8080:8080"
+    healthcheck:
+      test: ["CMD", "/usr/local/bin/api-healthcheck"]
+      interval: 10s
+      timeout: 3s
+      retries: 20
+
+  worker:
+    build:
+      context: ./apps/worker
+    environment:
+      DATABASE_URL: "host=postgres user=oj password=ojpass dbname=oj port=5432 sslmode=disable TimeZone=Asia/Shanghai"
+      REDIS_ADDR: "redis:6379"
+      MINIO_ENDPOINT: "minio:9000"
+      MINIO_ACCESS_KEY: "minioadmin"
+      MINIO_SECRET_KEY: "minioadmin"
+      MINIO_BUCKET: "oj-artifacts"
+      SANDBOX_WORK_ROOT: "${OJ_WORK_ROOT:-/tmp/school-oj-worker}"
+      DOCKER_SANDBOX_SECCOMP: "${OJ_WORK_ROOT:-/tmp/school-oj-worker}/seccomp/oj-seccomp.json"
+      SANDBOX_CPU: "1.0"
+      SANDBOX_MEMORY_MB: "256"
+      SANDBOX_PIDS: "128"
+    depends_on:
+      api:
+        condition: service_healthy
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+      - ${OJ_WORK_ROOT:-/tmp/school-oj-worker}:${OJ_WORK_ROOT:-/tmp/school-oj-worker}
+
+  web:
+    build:
+      context: ./apps/web
+    depends_on:
+      api:
+        condition: service_healthy
+    ports:
+      - "3000:80"
+
+volumes:
+  postgres-data:
+  redis-data:
+  minio-data:

@@ -1,0 +1,44 @@
+package db
+
+import (
+	"context"
+	"fmt"
+	"time"
+
+	"school-oj/apps/worker/internal/config"
+
+	"gorm.io/driver/postgres"
+	"gorm.io/gorm"
+	"gorm.io/gorm/logger"
+)
+
+func Connect(ctx context.Context, cfg config.Config) (*gorm.DB, error) {
+	var lastErr error
+	for i := 0; i < 30; i++ {
+		gdb, err := gorm.Open(postgres.Open(cfg.DatabaseURL), &gorm.Config{
+			Logger: logger.Default.LogMode(logger.Warn),
+		})
+		if err == nil {
+			sqlDB, err := gdb.DB()
+			if err != nil {
+				return nil, err
+			}
+			sqlDB.SetMaxOpenConns(10)
+			sqlDB.SetMaxIdleConns(5)
+			sqlDB.SetConnMaxLifetime(30 * time.Minute)
+			if pingErr := sqlDB.PingContext(ctx); pingErr == nil {
+				return gdb, nil
+			} else {
+				lastErr = pingErr
+			}
+		} else {
+			lastErr = err
+		}
+		select {
+		case <-ctx.Done():
+			return nil, ctx.Err()
+		case <-time.After(time.Second):
+		}
+	}
+	return nil, fmt.Errorf("connect database: %w", lastErr)
+}
