@@ -56,7 +56,7 @@ func Auth(db *gorm.DB, secret string) gin.HandlerFunc {
 			return
 		}
 		var user models.User
-		if err := db.First(&user, claims.UserID).Error; err != nil {
+		if err := db.Where("account_deleted = false").First(&user, claims.UserID).Error; err != nil {
 			c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{"error": "user not found"})
 			return
 		}

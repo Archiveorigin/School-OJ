@@ -9,6 +9,9 @@ import Leaderboard from '../views/Leaderboard.vue'
 import Login from '../views/Login.vue'
 import Plagiarism from '../views/Plagiarism.vue'
 import Problems from '../views/Problems.vue'
+import Profile from '../views/Profile.vue'
+import Register from '../views/Register.vue'
+import ForgotPassword from '../views/ForgotPassword.vue'
 import Submissions from '../views/Submissions.vue'
 import Users from '../views/Users.vue'
 
@@ -16,7 +19,10 @@ const router = createRouter({
   history: createWebHistory(),
   routes: [
     { path: '/login', component: Login },
+    { path: '/register', component: Register },
+    { path: '/forgot-password', component: ForgotPassword },
     { path: '/', component: Dashboard },
+    { path: '/profile', component: Profile },
     { path: '/courses', component: Courses },
     { path: '/problems', component: Problems },
     { path: '/assignments', component: Assignments },
@@ -29,15 +35,17 @@ const router = createRouter({
   ]
 })
 
+const publicPaths = ['/login', '/register', '/forgot-password']
+
 router.beforeEach(async (to) => {
   const auth = useAuthStore()
   if (auth.isAuthed && !auth.hydrated) {
     await auth.hydrate()
   }
-  if (to.path !== '/login' && !auth.isAuthed) {
+  if (!publicPaths.includes(to.path) && !auth.isAuthed) {
     return '/login'
   }
-  if (to.path === '/login' && auth.isAuthed) {
+  if (publicPaths.includes(to.path) && auth.isAuthed) {
     return '/'
   }
   const roles = to.meta.roles as string[] | undefined

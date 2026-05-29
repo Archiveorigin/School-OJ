@@ -8,6 +8,7 @@ import (
 	"io"
 	"net/http"
 	"strconv"
+	"strings"
 	"time"
 
 	"school-oj/apps/api/internal/config"
@@ -47,9 +48,18 @@ func (s Server) Router() *gin.Engine {
 	r.GET("/healthz", s.health)
 	api := r.Group("/api")
 	api.POST("/auth/login", s.login)
+	api.POST("/auth/send-code", s.sendEmailCode)
+	api.POST("/auth/register", s.register)
+	api.POST("/auth/password-reset", s.resetPassword)
 	auth := api.Group("")
 	auth.Use(middleware.Auth(s.DB, s.Cfg.JWTSecret))
 	auth.GET("/me", s.me)
+	auth.GET("/profile", s.getProfile)
+	auth.PUT("/profile", s.updateProfile)
+	auth.POST("/profile/email-code", s.sendProfileEmailCode)
+	auth.POST("/profile/email", s.rebindEmail)
+	auth.DELETE("/profile", s.deleteProfile)
+	auth.POST("/feedback", s.createFeedback)
 	auth.GET("/courses", s.listCourses)
 	auth.POST("/courses", middleware.RequireRoles(models.RoleAdmin, models.RoleTeacher), s.createCourse)
 	auth.POST("/courses/:id/classes", middleware.RequireRoles(models.RoleAdmin, models.RoleTeacher), s.createClass)
@@ -97,15 +107,19 @@ func (s Server) login(c *gin.Context) {
 	if !bind(c, &req) {
 		return
 	}
+	req.Email = strings.ToLower(strings.TrimSpace(req.Email))
 	var user models.User
-	if err := s.DB.Where("email = ?", req.Email).First(&user).Error; err != nil {
-		c.JSON(http.StatusUnauthorized, gin.H{"error": "invalid credentials"})
+	if err := s.DB.Where("email = ? AND account_deleted = false", req.Email).First(&user).Error; err != nil {
+		failed := s.recordFailedLogin(req.Email)
+		c.JSON(http.StatusUnauthorized, gin.H{"error": "invalid credentials", "failed_attempts": failed, "password_reset_available": failed >= 3})
 		return
 	}
 	if err := bcrypt.CompareHashAndPassword([]byte(user.PasswordHash), []byte(req.Password)); err != nil {
-		c.JSON(http.StatusUnauthorized, gin.H{"error": "invalid credentials"})
+		failed := s.recordFailedLogin(req.Email)
+		c.JSON(http.StatusUnauthorized, gin.H{"error": "invalid credentials", "failed_attempts": failed, "password_reset_available": failed >= 3})
 		return
 	}
+	s.clearFailedLogin(req.Email)
 	token, err := middleware.SignToken(s.Cfg.JWTSecret, user)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
@@ -115,6 +129,25 @@ func (s Server) login(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{"token": token, "user": user})
 }
 
+func (s Server) recordFailedLogin(email string) int {
+	email = strings.ToLower(strings.TrimSpace(email))
+	now := time.Now()
+	var item models.LoginAttempt
+	if err := s.DB.Where("email = ?", email).First(&item).Error; err != nil {
+		item = models.LoginAttempt{Email: email, FailedCount: 1, LastFailedAt: &now}
+		_ = s.DB.Create(&item).Error
+		return 1
+	}
+	item.FailedCount++
+	item.LastFailedAt = &now
+	_ = s.DB.Save(&item).Error
+	return item.FailedCount
+}
+
+func (s Server) clearFailedLogin(email string) {
+	_ = s.DB.Where("email = ?", strings.ToLower(strings.TrimSpace(email))).Delete(&models.LoginAttempt{}).Error
+}
+
 func (s Server) me(c *gin.Context) {
 	user, _ := middleware.CurrentUser(c)
 	c.JSON(http.StatusOK, user)
@@ -122,7 +155,7 @@ func (s Server) me(c *gin.Context) {
 
 func (s Server) listUsers(c *gin.Context) {
 	var users []models.User
-	s.DB.Order("id asc").Find(&users)
+	s.DB.Where("account_deleted = false").Order("id asc").Find(&users)
 	c.JSON(http.StatusOK, users)
 }
 
@@ -141,8 +174,11 @@ func (s Server) createUser(c *gin.Context) {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "role must be one of student, teacher, admin"})
 		return
 	}
+	req.Email = strings.ToLower(strings.TrimSpace(req.Email))
+	req.Name = strings.TrimSpace(req.Name)
+	req.StudentNo = strings.TrimSpace(req.StudentNo)
 	hash, _ := bcrypt.GenerateFromPassword([]byte(req.Password), bcrypt.DefaultCost)
-	user := models.User{Email: req.Email, Name: req.Name, Role: req.Role, StudentNo: req.StudentNo, PasswordHash: string(hash)}
+	user := models.User{Email: req.Email, Name: req.Name, Role: req.Role, StudentNo: req.StudentNo, PasswordHash: string(hash), EmailVerified: true}
 	if err := s.DB.Create(&user).Error; err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 		return

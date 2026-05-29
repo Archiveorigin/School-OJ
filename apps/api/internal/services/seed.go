@@ -48,8 +48,8 @@ func Seed(ctx context.Context, db *gorm.DB, client *minio.Client, cfg config.Con
 		return nil
 	}
 	admin := user("admin@school.local", "系统管理员", models.RoleAdmin, "")
-	teacher := user("teacher@school.local", "示例教师", models.RoleTeacher, "")
-	student := user("student@school.local", "示例学生", models.RoleStudent, "S20260001")
+	teacher := user("teacher@school.local", "任课教师", models.RoleTeacher, "")
+	student := user("student@school.local", "学生账号", models.RoleStudent, "S20260001")
 	if err := db.Create(&admin).Error; err != nil {
 		return err
 	}
@@ -60,7 +60,7 @@ func Seed(ctx context.Context, db *gorm.DB, client *minio.Client, cfg config.Con
 		return err
 	}
 
-	course := models.Course{Code: "CS101-2026", Name: "程序设计基础", Term: "2026 春", TeacherID: teacher.ID, Description: "学校 OJ 示例课程"}
+	course := models.Course{Code: "CS101-2026", Name: "程序设计基础", Term: "2026 春", TeacherID: teacher.ID, Description: "课程编程练习与自动评测"}
 	if err := db.Create(&course).Error; err != nil {
 		return err
 	}
@@ -111,7 +111,7 @@ func Seed(ctx context.Context, db *gorm.DB, client *minio.Client, cfg config.Con
 	}
 	_ = db.Create(&models.AssignmentProblem{AssignmentID: assignment.ID, ProblemID: problem.ID, Score: 100}).Error
 	examEnd := now.Add(2 * time.Hour)
-	exam := models.Exam{CourseID: course.ID, Title: "期中模拟考试", Description: "自动判题考试流程示例", StartsAt: &now, EndsAt: &examEnd}
+	exam := models.Exam{CourseID: course.ID, Title: "期中考试", Description: "自动判题考试流程", StartsAt: &now, EndsAt: &examEnd}
 	if err := db.Create(&exam).Error; err != nil {
 		return err
 	}
@@ -121,7 +121,7 @@ func Seed(ctx context.Context, db *gorm.DB, client *minio.Client, cfg config.Con
 
 func user(email, name string, role models.Role, studentNo string) models.User {
 	hash, _ := bcrypt.GenerateFromPassword([]byte("password"), bcrypt.DefaultCost)
-	return models.User{Email: email, Name: name, Role: role, StudentNo: studentNo, PasswordHash: string(hash)}
+	return models.User{Email: email, Name: name, Role: role, StudentNo: studentNo, PasswordHash: string(hash), EmailVerified: true}
 }
 
 func samplePackage() ([]byte, error) {

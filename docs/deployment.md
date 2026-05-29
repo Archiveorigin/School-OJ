@@ -18,12 +18,9 @@ Open:
 - Web: http://localhost:3000
 - API health: http://localhost:8080/healthz
 - MinIO console: http://localhost:9001
+- Mailpit mailbox: http://localhost:8025
 
-Default users:
-
-- `admin@school.local` / `password`
-- `teacher@school.local` / `password`
-- `student@school.local` / `password`
+Local startup creates admin, teacher, and student seed users for operator verification. Replace the initial credentials or disable `SEED_DATA` before production use.
 
 Kubernetes:
 

@@ -15,14 +15,17 @@ const (
 )
 
 type User struct {
-	ID           uint      `json:"id" gorm:"primaryKey"`
-	Email        string    `json:"email" gorm:"uniqueIndex;size:255;not null"`
-	Name         string    `json:"name" gorm:"size:120;not null"`
-	Role         Role      `json:"role" gorm:"type:varchar(32);index;not null"`
-	PasswordHash string    `json:"-" gorm:"not null"`
-	StudentNo    string    `json:"student_no" gorm:"size:64;index"`
-	CreatedAt    time.Time `json:"created_at"`
-	UpdatedAt    time.Time `json:"updated_at"`
+	ID             uint      `json:"id" gorm:"primaryKey"`
+	Email          string    `json:"email" gorm:"uniqueIndex;size:255;not null"`
+	Name           string    `json:"name" gorm:"size:120;not null"`
+	Role           Role      `json:"role" gorm:"type:varchar(32);index;not null"`
+	PasswordHash   string    `json:"-" gorm:"not null"`
+	StudentNo      string    `json:"student_no" gorm:"size:64;index"`
+	AvatarURL      string    `json:"avatar_url" gorm:"type:text"`
+	EmailVerified  bool      `json:"email_verified" gorm:"not null;default:false"`
+	AccountDeleted bool      `json:"account_deleted" gorm:"not null;default:false;index"`
+	CreatedAt      time.Time `json:"created_at"`
+	UpdatedAt      time.Time `json:"updated_at"`
 }
 
 type Course struct {
@@ -181,7 +184,7 @@ type PlagiarismJob struct {
 
 type AuditLog struct {
 	ID           uint              `json:"id" gorm:"primaryKey"`
-	ActorUserID *uint             `json:"actor_user_id" gorm:"index"`
+	ActorUserID  *uint             `json:"actor_user_id" gorm:"index"`
 	Action       string            `json:"action" gorm:"size:160;index;not null"`
 	ResourceType string            `json:"resource_type" gorm:"size:80;index"`
 	ResourceID   string            `json:"resource_id" gorm:"size:120;index"`
@@ -189,6 +192,36 @@ type AuditLog struct {
 	UserAgent    string            `json:"user_agent" gorm:"size:512"`
 	Meta         datatypes.JSONMap `json:"meta" gorm:"type:jsonb"`
 	CreatedAt    time.Time         `json:"created_at"`
+}
+
+type EmailVerification struct {
+	ID        uint      `json:"id" gorm:"primaryKey"`
+	Email     string    `json:"email" gorm:"size:255;index;not null"`
+	Purpose   string    `json:"purpose" gorm:"size:32;index;not null"`
+	CodeHash  string    `json:"-" gorm:"not null"`
+	Attempts  int       `json:"attempts" gorm:"not null;default:0"`
+	Consumed  bool      `json:"consumed" gorm:"not null;default:false;index"`
+	ExpiresAt time.Time `json:"expires_at" gorm:"index;not null"`
+	CreatedAt time.Time `json:"created_at"`
+	UpdatedAt time.Time `json:"updated_at"`
+}
+
+type LoginAttempt struct {
+	ID           uint       `json:"id" gorm:"primaryKey"`
+	Email        string     `json:"email" gorm:"uniqueIndex;size:255;not null"`
+	FailedCount  int        `json:"failed_count" gorm:"not null;default:0"`
+	LastFailedAt *time.Time `json:"last_failed_at"`
+	UpdatedAt    time.Time  `json:"updated_at"`
+}
+
+type Feedback struct {
+	ID        uint      `json:"id" gorm:"primaryKey"`
+	UserID    uint      `json:"user_id" gorm:"index;not null"`
+	Email     string    `json:"email" gorm:"size:255"`
+	Message   string    `json:"message" gorm:"type:text;not null"`
+	Status    string    `json:"status" gorm:"size:32;index;not null;default:'open'"`
+	CreatedAt time.Time `json:"created_at"`
+	UpdatedAt time.Time `json:"updated_at"`
 }
 
 func AllModels() []any {
@@ -207,5 +240,8 @@ func AllModels() []any {
 		&SubmissionResult{},
 		&PlagiarismJob{},
 		&AuditLog{},
+		&EmailVerification{},
+		&LoginAttempt{},
+		&Feedback{},
 	}
 }

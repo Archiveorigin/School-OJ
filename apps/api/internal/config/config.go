@@ -18,6 +18,12 @@ type Config struct {
 	MinIOBucket    string
 	MinIOUseSSL    bool
 	JWTSecret      string
+	SMTPHost       string
+	SMTPPort       int
+	SMTPUsername   string
+	SMTPPassword   string
+	MailFrom       string
+	MailFromName   string
 	AutoMigrate    bool
 	SeedData       bool
 	JPlagJarPath   string
@@ -38,6 +44,12 @@ func Load() Config {
 		MinIOBucket:    env("MINIO_BUCKET", "oj-artifacts"),
 		MinIOUseSSL:    envBool("MINIO_USE_SSL", false),
 		JWTSecret:      env("JWT_SECRET", "dev-secret"),
+		SMTPHost:       env("SMTP_HOST", ""),
+		SMTPPort:       envInt("SMTP_PORT", 1025),
+		SMTPUsername:   env("SMTP_USERNAME", ""),
+		SMTPPassword:   env("SMTP_PASSWORD", ""),
+		MailFrom:       env("MAIL_FROM", "no-reply@huanghailuoj.local"),
+		MailFromName:   env("MAIL_FROM_NAME", "黄海在线"),
 		AutoMigrate:    envBool("AUTO_MIGRATE", true),
 		SeedData:       envBool("SEED_DATA", true),
 		JPlagJarPath:   env("JPLAG_JAR_PATH", ""),

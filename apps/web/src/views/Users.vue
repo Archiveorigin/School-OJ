@@ -59,7 +59,7 @@ const form = reactive({
   name: '',
   role: 'student',
   student_no: '',
-  password: 'password'
+  password: ''
 })
 
 async function load() {
@@ -98,7 +98,7 @@ function reset() {
   form.name = ''
   form.role = 'student'
   form.student_no = ''
-  form.password = 'password'
+  form.password = ''
 }
 
 function errorText(err: any) {

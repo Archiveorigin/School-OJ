@@ -1,4 +1,4 @@
-# School OJ Monorepo
+# 黄海在线题测平台 Monorepo
 
 学校可部署 OJ 系统，固定目录：
 
@@ -7,7 +7,7 @@
 - `apps/web`: Vue3 + Vite + TypeScript + Element Plus + Monaco
 - `deploy/compose`: Docker Compose 部署副本
 - `deploy/k8s`: Kubernetes 参考清单
-- `scripts`: 运维与示例脚本
+- `scripts`: 运维脚本
 - `docs`: 架构、题目包、安全、部署文档
 
 ## 快速启动
@@ -28,12 +28,9 @@ docker compose restart worker
 - Web: http://localhost:3000
 - API: http://localhost:8080/healthz
 - MinIO: http://localhost:9001
+- Mailpit 邮件捕获: http://localhost:8025
 
-默认账号密码：
-
-- `admin@school.local` / `password`
-- `teacher@school.local` / `password`
-- `student@school.local` / `password`
+本地启动会创建管理员、教师、学生种子账号用于功能验证；生产环境请替换初始凭据或关闭 `SEED_DATA`。
 
 ## 功能范围
 
@@ -45,6 +42,8 @@ docker compose restart worker
 - SSE 实时提交状态
 - JPlag 查重任务，支持 `JPLAG_JAR_PATH`，未配置时生成可测试的 fallback 报告
 - 审计日志
+- 用户 Profile、头像、邮箱换绑、反馈、账号注销
+- 注册与邮箱找回密码，验证码邮件发件人为“黄海在线”
 - Redis Streams judge-worker
 - Docker 沙箱：禁网、只读根、tmpfs、非 root、`cap_drop=ALL`、`no-new-privileges`、seccomp、pids/cpu/memory/time/output limit
 
@@ -76,7 +75,7 @@ make test
 
 普通题目可以直接在 Web 页面创建：进入「题库」，点击「上传题目包」，切换到「表单创建题目」，填写题面、限制和测试点即可。系统会自动生成 `problem.yaml` 和 ZIP 包并存入 MinIO。
 
-生成示例 ZIP：
+生成题目 ZIP：
 
 ```bash
 ./scripts/create_problem_zip.sh /tmp/a-plus-b.zip

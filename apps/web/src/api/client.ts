@@ -29,6 +29,11 @@ export interface User {
   name: string
   role: Role
   student_no?: string
+  avatar_url?: string
+  email_verified?: boolean
+  account_deleted?: boolean
+  created_at?: string
+  updated_at?: string
 }
 
 export interface Problem {

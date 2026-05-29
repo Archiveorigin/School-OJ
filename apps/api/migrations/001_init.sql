@@ -5,6 +5,9 @@ CREATE TABLE IF NOT EXISTS users (
   role VARCHAR(32) NOT NULL CHECK (role IN ('student','teacher','admin')),
   password_hash TEXT NOT NULL,
   student_no VARCHAR(64),
+  avatar_url TEXT,
+  email_verified BOOLEAN NOT NULL DEFAULT false,
+  account_deleted BOOLEAN NOT NULL DEFAULT false,
   created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
   updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
 );
@@ -160,6 +163,39 @@ CREATE TABLE IF NOT EXISTS audit_logs (
   created_at TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 
+CREATE TABLE IF NOT EXISTS email_verifications (
+  id BIGSERIAL PRIMARY KEY,
+  email VARCHAR(255) NOT NULL,
+  purpose VARCHAR(32) NOT NULL,
+  code_hash TEXT NOT NULL,
+  attempts INT NOT NULL DEFAULT 0,
+  consumed BOOLEAN NOT NULL DEFAULT false,
+  expires_at TIMESTAMPTZ NOT NULL,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+  updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+
+CREATE TABLE IF NOT EXISTS login_attempts (
+  id BIGSERIAL PRIMARY KEY,
+  email VARCHAR(255) NOT NULL UNIQUE,
+  failed_count INT NOT NULL DEFAULT 0,
+  last_failed_at TIMESTAMPTZ,
+  updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+
+CREATE TABLE IF NOT EXISTS feedbacks (
+  id BIGSERIAL PRIMARY KEY,
+  user_id BIGINT NOT NULL REFERENCES users(id),
+  email VARCHAR(255),
+  message TEXT NOT NULL,
+  status VARCHAR(32) NOT NULL DEFAULT 'open',
+  created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+  updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+
+CREATE INDEX IF NOT EXISTS idx_users_account_deleted ON users(account_deleted);
 CREATE INDEX IF NOT EXISTS idx_submissions_status ON submissions(status);
 CREATE INDEX IF NOT EXISTS idx_submissions_problem_user ON submissions(problem_id, user_id);
 CREATE INDEX IF NOT EXISTS idx_audit_logs_action ON audit_logs(action);
+CREATE INDEX IF NOT EXISTS idx_email_verifications_lookup ON email_verifications(email, purpose, consumed, expires_at);
+CREATE INDEX IF NOT EXISTS idx_feedbacks_status ON feedbacks(status);

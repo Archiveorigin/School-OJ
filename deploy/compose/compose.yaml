@@ -42,6 +42,11 @@ services:
     volumes:
       - minio-data:/data
 
+  mailpit:
+    image: axllent/mailpit:latest
+    ports:
+      - "8025:8025"
+
   api:
     build:
       context: ../../apps/api
@@ -54,6 +59,10 @@ services:
       MINIO_SECRET_KEY: "minioadmin"
       MINIO_BUCKET: "oj-artifacts"
       JWT_SECRET: "change-me-in-production"
+      SMTP_HOST: "mailpit"
+      SMTP_PORT: "1025"
+      MAIL_FROM: "no-reply@huanghailuoj.local"
+      MAIL_FROM_NAME: "黄海在线"
       AUTO_MIGRATE: "true"
       SEED_DATA: "true"
       JPLAG_WORK_DIR: "/tmp/jplag"
@@ -63,6 +72,8 @@ services:
       redis:
         condition: service_healthy
       minio:
+        condition: service_started
+      mailpit:
         condition: service_started
     ports:
       - "8080:8080"
