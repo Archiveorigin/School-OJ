@@ -63,7 +63,11 @@ const form = reactive({
 })
 
 async function load() {
-  users.value = (await client.get('/users')).data
+  try {
+    users.value = (await client.get('/users')).data
+  } catch (err: any) {
+    ElMessage.error(errorText(err))
+  }
 }
 
 async function create() {
@@ -83,7 +87,7 @@ async function submit() {
     reset()
     await load()
   } catch (err: any) {
-    ElMessage.error(err.response?.data?.error || err.message)
+    ElMessage.error(errorText(err))
   } finally {
     saving.value = false
   }
@@ -95,6 +99,13 @@ function reset() {
   form.role = 'student'
   form.student_no = ''
   form.password = 'password'
+}
+
+function errorText(err: any) {
+  if (err.response?.status === 403) {
+    return '当前 token 不是管理员权限，请退出后使用管理员账号重新登录'
+  }
+  return err.response?.data?.error || err.message
 }
 
 onMounted(load)

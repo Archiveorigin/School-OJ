@@ -23,18 +23,25 @@ const router = createRouter({
     { path: '/exams', component: Exams },
     { path: '/submissions', component: Submissions },
     { path: '/leaderboard', component: Leaderboard },
-    { path: '/plagiarism', component: Plagiarism },
-    { path: '/audit-logs', component: AuditLogs },
-    { path: '/users', component: Users }
+    { path: '/plagiarism', component: Plagiarism, meta: { roles: ['admin', 'teacher'] } },
+    { path: '/audit-logs', component: AuditLogs, meta: { roles: ['admin'] } },
+    { path: '/users', component: Users, meta: { roles: ['admin'] } }
   ]
 })
 
-router.beforeEach((to) => {
+router.beforeEach(async (to) => {
   const auth = useAuthStore()
+  if (auth.isAuthed && !auth.hydrated) {
+    await auth.hydrate()
+  }
   if (to.path !== '/login' && !auth.isAuthed) {
     return '/login'
   }
   if (to.path === '/login' && auth.isAuthed) {
+    return '/'
+  }
+  const roles = to.meta.roles as string[] | undefined
+  if (roles && (!auth.user || !roles.includes(auth.user.role))) {
     return '/'
   }
 })
