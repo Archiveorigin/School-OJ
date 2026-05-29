@@ -3,7 +3,7 @@
     <div class="page-header">
       <h2>作业</h2>
       <div class="toolbar">
-        <el-button v-if="canManage" type="primary" @click="create">新建作业</el-button>
+        <el-button v-if="canManage" type="primary" @click="openDialog">新建作业</el-button>
         <el-button @click="load">刷新</el-button>
       </div>
     </div>
@@ -15,33 +15,120 @@
         <el-table-column prop="due_at" label="截止时间" />
       </el-table>
     </div>
+    <el-dialog v-model="dialogVisible" title="新建作业" width="640px">
+      <el-form :model="form" label-width="90px">
+        <el-form-item label="课程">
+          <el-select v-model="form.course_id" style="width: 100%">
+            <el-option
+              v-for="course in courses"
+              :key="course.id"
+              :label="`${course.code} ${course.name}`"
+              :value="course.id"
+            />
+          </el-select>
+        </el-form-item>
+        <el-form-item label="标题">
+          <el-input v-model="form.title" placeholder="第一次作业" />
+        </el-form-item>
+        <el-form-item label="描述">
+          <el-input v-model="form.description" type="textarea" :rows="3" />
+        </el-form-item>
+        <el-form-item label="开始时间">
+          <el-date-picker v-model="form.starts_at" type="datetime" style="width: 100%" />
+        </el-form-item>
+        <el-form-item label="截止时间">
+          <el-date-picker v-model="form.due_at" type="datetime" style="width: 100%" />
+        </el-form-item>
+        <el-form-item label="题目">
+          <el-select v-model="form.problem_ids" multiple style="width: 100%">
+            <el-option
+              v-for="problem in problems"
+              :key="problem.id"
+              :label="`${problem.id}. ${problem.title}`"
+              :value="problem.id"
+            />
+          </el-select>
+        </el-form-item>
+      </el-form>
+      <template #footer>
+        <el-button @click="dialogVisible = false">取消</el-button>
+        <el-button type="primary" :loading="saving" @click="submit">创建</el-button>
+      </template>
+    </el-dialog>
   </section>
 </template>
 
 <script setup lang="ts">
-import { ElMessage, ElMessageBox } from 'element-plus'
-import { computed, onMounted, ref } from 'vue'
+import { ElMessage } from 'element-plus'
+import { computed, onMounted, reactive, ref } from 'vue'
 import { client } from '../api/client'
 import { useAuthStore } from '../stores/auth'
 
 const auth = useAuthStore()
 const canManage = computed(() => auth.role !== 'student')
 const items = ref<any[]>([])
+const courses = ref<any[]>([])
+const problems = ref<any[]>([])
+const dialogVisible = ref(false)
+const saving = ref(false)
+const form = reactive<any>({
+  course_id: undefined,
+  title: '',
+  description: '',
+  starts_at: null,
+  due_at: null,
+  problem_ids: []
+})
 
 async function load() {
-  items.value = (await client.get('/assignments')).data
+  const [assignmentsRes, coursesRes, problemsRes] = await Promise.all([
+    client.get('/assignments'),
+    client.get('/courses'),
+    client.get('/problems')
+  ])
+  items.value = assignmentsRes.data
+  courses.value = coursesRes.data
+  problems.value = problemsRes.data
 }
 
-async function create() {
-  const courseID = Number((await ElMessageBox.prompt('课程 ID', '新建作业')).value)
-  const title = (await ElMessageBox.prompt('标题', '新建作业')).value
-  const problemIDs = ((await ElMessageBox.prompt('题目 ID，逗号分隔', '新建作业')).value || '')
-    .split(',')
-    .map((v) => Number(v.trim()))
-    .filter(Boolean)
-  await client.post('/assignments', { course_id: courseID, title, problem_ids: problemIDs })
-  ElMessage.success('已创建')
-  load()
+function openDialog() {
+  form.course_id = courses.value[0]?.id
+  dialogVisible.value = true
+}
+
+async function submit() {
+  if (!form.course_id || !form.title || form.problem_ids.length === 0) {
+    ElMessage.error('请选择课程、填写标题并选择题目')
+    return
+  }
+  saving.value = true
+  try {
+    await client.post('/assignments', {
+      course_id: form.course_id,
+      title: form.title,
+      description: form.description,
+      starts_at: form.starts_at,
+      due_at: form.due_at,
+      problem_ids: form.problem_ids
+    })
+    ElMessage.success('作业已创建')
+    dialogVisible.value = false
+    reset()
+    await load()
+  } catch (err: any) {
+    ElMessage.error(err.response?.data?.error || err.message)
+  } finally {
+    saving.value = false
+  }
+}
+
+function reset() {
+  form.course_id = undefined
+  form.title = ''
+  form.description = ''
+  form.starts_at = null
+  form.due_at = null
+  form.problem_ids = []
 }
 
 onMounted(load)

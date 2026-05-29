@@ -16,27 +16,85 @@
         <el-table-column prop="student_no" label="学号" width="140" />
       </el-table>
     </div>
+    <el-dialog v-model="dialogVisible" title="新建用户" width="520px">
+      <el-form :model="form" label-width="90px">
+        <el-form-item label="邮箱">
+          <el-input v-model="form.email" placeholder="student@example.edu" />
+        </el-form-item>
+        <el-form-item label="姓名">
+          <el-input v-model="form.name" placeholder="张三" />
+        </el-form-item>
+        <el-form-item label="角色">
+          <el-select v-model="form.role" style="width: 100%">
+            <el-option label="学生" value="student" />
+            <el-option label="教师" value="teacher" />
+            <el-option label="管理员" value="admin" />
+          </el-select>
+        </el-form-item>
+        <el-form-item label="学号">
+          <el-input v-model="form.student_no" placeholder="学生账号可填写" />
+        </el-form-item>
+        <el-form-item label="初始密码">
+          <el-input v-model="form.password" type="password" show-password />
+        </el-form-item>
+      </el-form>
+      <template #footer>
+        <el-button @click="dialogVisible = false">取消</el-button>
+        <el-button type="primary" :loading="saving" @click="submit">创建</el-button>
+      </template>
+    </el-dialog>
   </section>
 </template>
 
 <script setup lang="ts">
-import { ElMessage, ElMessageBox } from 'element-plus'
-import { onMounted, ref } from 'vue'
+import { ElMessage } from 'element-plus'
+import { onMounted, reactive, ref } from 'vue'
 import { client, type User } from '../api/client'
 
 const users = ref<User[]>([])
+const dialogVisible = ref(false)
+const saving = ref(false)
+const form = reactive({
+  email: '',
+  name: '',
+  role: 'student',
+  student_no: '',
+  password: 'password'
+})
 
 async function load() {
   users.value = (await client.get('/users')).data
 }
 
 async function create() {
-  const email = (await ElMessageBox.prompt('邮箱', '新建用户')).value
-  const name = (await ElMessageBox.prompt('姓名', '新建用户')).value
-  const role = (await ElMessageBox.prompt('角色 student/teacher/admin', '新建用户')).value
-  await client.post('/users', { email, name, role, password: 'password' })
-  ElMessage.success('已创建，默认密码 password')
-  load()
+  dialogVisible.value = true
+}
+
+async function submit() {
+  if (!form.email || !form.name || !form.password) {
+    ElMessage.error('请填写邮箱、姓名和密码')
+    return
+  }
+  saving.value = true
+  try {
+    await client.post('/users', { ...form })
+    ElMessage.success('用户已创建')
+    dialogVisible.value = false
+    reset()
+    await load()
+  } catch (err: any) {
+    ElMessage.error(err.response?.data?.error || err.message)
+  } finally {
+    saving.value = false
+  }
+}
+
+function reset() {
+  form.email = ''
+  form.name = ''
+  form.role = 'student'
+  form.student_no = ''
+  form.password = 'password'
 }
 
 onMounted(load)

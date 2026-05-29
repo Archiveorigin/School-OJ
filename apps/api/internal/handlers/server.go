@@ -137,6 +137,10 @@ func (s Server) createUser(c *gin.Context) {
 	if !bind(c, &req) {
 		return
 	}
+	if !validRole(req.Role) {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "role must be one of student, teacher, admin"})
+		return
+	}
 	hash, _ := bcrypt.GenerateFromPassword([]byte(req.Password), bcrypt.DefaultCost)
 	user := models.User{Email: req.Email, Name: req.Name, Role: req.Role, StudentNo: req.StudentNo, PasswordHash: string(hash)}
 	if err := s.DB.Create(&user).Error; err != nil {
@@ -586,6 +590,15 @@ func idParam(c *gin.Context, name string) (uint, bool) {
 func validLanguage(language string) bool {
 	switch language {
 	case "c", "cpp", "python", "java":
+		return true
+	default:
+		return false
+	}
+}
+
+func validRole(role models.Role) bool {
+	switch role {
+	case models.RoleStudent, models.RoleTeacher, models.RoleAdmin:
 		return true
 	default:
 		return false
