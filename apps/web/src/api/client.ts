@@ -7,8 +7,14 @@ export const client = axios.create({
   timeout: 30000
 })
 
+let activeToken = localStorage.getItem('school-oj-token') || ''
+
+export function setActiveToken(token: string) {
+  activeToken = token
+}
+
 client.interceptors.request.use((config) => {
-  const token = localStorage.getItem('school-oj-token')
+  const token = activeToken || localStorage.getItem('school-oj-token')
   if (token) {
     config.headers.Authorization = `Bearer ${token}`
   }

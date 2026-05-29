@@ -103,7 +103,7 @@ function reset() {
 
 function errorText(err: any) {
   if (err.response?.status === 403) {
-    return '当前 token 不是管理员权限，请退出后使用管理员账号重新登录'
+    return '当前请求没有管理员权限，请退出后使用管理员账号重新登录'
   }
   return err.response?.data?.error || err.message
 }
