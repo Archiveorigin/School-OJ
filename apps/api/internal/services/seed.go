@@ -45,7 +45,7 @@ func Seed(ctx context.Context, db *gorm.DB, client *minio.Client, cfg config.Con
 		return err
 	}
 	if count > 0 {
-		return nil
+		return backfillClassScope(db)
 	}
 	admin := user("admin@school.local", "系统管理员", models.RoleAdmin, "")
 	teacher := user("teacher@school.local", "任课教师", models.RoleTeacher, "")
@@ -117,7 +117,54 @@ func Seed(ctx context.Context, db *gorm.DB, client *minio.Client, cfg config.Con
 		return err
 	}
 	_ = db.Create(&models.ExamProblem{ExamID: exam.ID, ProblemID: problem.ID, Score: 100}).Error
-	return nil
+	return backfillClassScope(db)
+}
+
+func backfillClassScope(db *gorm.DB) error {
+	if err := db.Exec(`
+		update assignments
+		set class_id = classes.id
+		from classes
+		where assignments.class_id is null
+		  and classes.id = (
+			select min(c.id)
+			from classes c
+			where c.course_id = assignments.course_id
+		  )
+	`).Error; err != nil {
+		return err
+	}
+	if err := db.Exec(`
+		update exams
+		set class_id = classes.id
+		from classes
+		where exams.class_id is null
+		  and classes.id = (
+			select min(c.id)
+			from classes c
+			where c.course_id = exams.course_id
+		  )
+	`).Error; err != nil {
+		return err
+	}
+	if err := db.Exec(`
+		insert into class_problems (class_id, problem_id, created_at)
+		select distinct assignments.class_id, assignment_problems.problem_id, now()
+		from assignments
+		join assignment_problems on assignment_problems.assignment_id = assignments.id
+		where assignments.class_id is not null
+		on conflict do nothing
+	`).Error; err != nil {
+		return err
+	}
+	return db.Exec(`
+		insert into class_problems (class_id, problem_id, created_at)
+		select distinct exams.class_id, exam_problems.problem_id, now()
+		from exams
+		join exam_problems on exam_problems.exam_id = exams.id
+		where exams.class_id is not null
+		on conflict do nothing
+	`).Error
 }
 
 func user(email, name string, role models.Role, studentNo string) models.User {
