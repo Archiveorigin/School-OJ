@@ -25,21 +25,37 @@
           <span class="topbar-mark"></span>
           <span>{{ pageTitle }}</span>
         </div>
-        <el-dropdown trigger="click" @command="handleCommand">
-          <button class="avatar-button" type="button">
-            <img v-if="auth.user?.avatar_url" :src="auth.user.avatar_url" alt="" />
-            <span v-else>{{ initials }}</span>
-          </button>
-          <template #dropdown>
-            <el-dropdown-menu>
-              <el-dropdown-item command="profile">Profile</el-dropdown-item>
-              <el-dropdown-item command="theme">
-                {{ auth.theme === 'dark' ? '切换明亮模式' : '切换暗黑模式' }}
-              </el-dropdown-item>
-              <el-dropdown-item divided command="logout">退出登录</el-dropdown-item>
-            </el-dropdown-menu>
-          </template>
-        </el-dropdown>
+        <div class="topbar-actions">
+          <el-select
+            v-if="auth.isAuthed && classroom.classes.length"
+            :model-value="classroom.activeClassId"
+            class="class-switch"
+            filterable
+            @change="setClass"
+          >
+            <el-option
+              v-for="item in classroom.classes"
+              :key="item.class_id"
+              :label="`${item.course_code} / ${item.class_name}`"
+              :value="item.class_id"
+            />
+          </el-select>
+          <el-dropdown trigger="click" @command="handleCommand">
+            <button class="avatar-button" type="button">
+              <img v-if="auth.user?.avatar_url" :src="auth.user.avatar_url" alt="" />
+              <span v-else>{{ initials }}</span>
+            </button>
+            <template #dropdown>
+              <el-dropdown-menu>
+                <el-dropdown-item command="profile">Profile</el-dropdown-item>
+                <el-dropdown-item command="theme">
+                  {{ auth.theme === 'dark' ? '切换明亮模式' : '切换暗黑模式' }}
+                </el-dropdown-item>
+                <el-dropdown-item divided command="logout">退出登录</el-dropdown-item>
+              </el-dropdown-menu>
+            </template>
+          </el-dropdown>
+        </div>
       </el-header>
       <el-main>
         <router-view />
@@ -49,11 +65,13 @@
 </template>
 
 <script setup lang="ts">
-import { computed } from 'vue'
+import { computed, onMounted, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { useAuthStore } from './stores/auth'
+import { useClassroomStore } from './stores/classroom'
 
 const auth = useAuthStore()
+const classroom = useClassroomStore()
 const router = useRouter()
 const route = useRoute()
 
@@ -78,7 +96,12 @@ const pageTitle = computed(() => {
 
 function logout() {
   auth.logout()
+  classroom.clear()
   router.push('/login')
+}
+
+function setClass(value: number) {
+  classroom.setActive(value)
 }
 
 function handleCommand(command: string) {
@@ -94,6 +117,18 @@ function handleCommand(command: string) {
     logout()
   }
 }
+
+onMounted(() => {
+  if (auth.isAuthed) classroom.load()
+})
+
+watch(
+  () => auth.isAuthed,
+  (authed) => {
+    if (authed) classroom.load()
+    else classroom.clear()
+  }
+)
 </script>
 
 <style scoped>
@@ -152,6 +187,16 @@ function handleCommand(command: string) {
   gap: 10px;
   color: var(--text);
   font-weight: 700;
+}
+
+.topbar-actions {
+  display: inline-flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.class-switch {
+  width: 240px;
 }
 
 .topbar-mark {

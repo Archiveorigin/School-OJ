@@ -34,6 +34,15 @@ type Server struct {
 	Cfg   config.Config
 }
 
+type leaderboardRow struct {
+	UserID         uint       `json:"user_id"`
+	Name           string     `json:"name"`
+	Solved         int        `json:"solved"`
+	Score          int        `json:"score"`
+	LastSubmission *time.Time `json:"last_submission"`
+	Rank           int        `json:"rank"`
+}
+
 func (s Server) Router() *gin.Engine {
 	r := gin.New()
 	r.Use(gin.Logger(), gin.Recovery())
@@ -65,6 +74,8 @@ func (s Server) Router() *gin.Engine {
 	auth.POST("/courses/:id/classes", middleware.RequireRoles(models.RoleAdmin, models.RoleTeacher), s.createClass)
 	auth.POST("/courses/:id/members", middleware.RequireRoles(models.RoleAdmin, models.RoleTeacher), s.addCourseMember)
 	auth.GET("/classes", s.listClasses)
+	auth.GET("/me/classes", s.myClasses)
+	auth.POST("/classes/:id/join", middleware.RequireRoles(models.RoleStudent), s.joinClass)
 	auth.GET("/problems", s.listProblems)
 	auth.POST("/problems", middleware.RequireRoles(models.RoleAdmin, models.RoleTeacher), s.createProblem)
 	auth.POST("/problems/upload", middleware.RequireRoles(models.RoleAdmin, models.RoleTeacher), s.uploadProblem)
@@ -188,8 +199,17 @@ func (s Server) createUser(c *gin.Context) {
 }
 
 func (s Server) listCourses(c *gin.Context) {
+	user, _ := middleware.CurrentUser(c)
 	var courses []models.Course
-	s.DB.Order("id desc").Find(&courses)
+	q := s.DB.Order("id desc")
+	switch user.Role {
+	case models.RoleAdmin:
+	case models.RoleTeacher:
+		q = q.Where("teacher_id = ? OR id IN (?)", user.ID, s.DB.Model(&models.CourseMembership{}).Select("course_id").Where("user_id = ? AND role IN ?", user.ID, []models.Role{models.RoleTeacher, models.RoleAdmin}))
+	default:
+		q = q.Where("id IN (?)", s.DB.Model(&models.CourseMembership{}).Select("course_id").Where("user_id = ?", user.ID))
+	}
+	q.Find(&courses)
 	c.JSON(http.StatusOK, courses)
 }
 
@@ -202,6 +222,9 @@ func (s Server) createCourse(c *gin.Context) {
 	if req.TeacherID == 0 {
 		req.TeacherID = user.ID
 	}
+	if user.Role == models.RoleTeacher {
+		req.TeacherID = user.ID
+	}
 	if err := s.DB.Create(&req).Error; err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 		return
@@ -212,8 +235,13 @@ func (s Server) createCourse(c *gin.Context) {
 }
 
 func (s Server) createClass(c *gin.Context) {
+	user, _ := middleware.CurrentUser(c)
 	courseID, ok := idParam(c, "id")
 	if !ok {
+		return
+	}
+	if !s.canManageCourse(user, courseID) {
+		c.JSON(http.StatusForbidden, gin.H{"error": "forbidden"})
 		return
 	}
 	var req struct {
@@ -227,13 +255,19 @@ func (s Server) createClass(c *gin.Context) {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 		return
 	}
+	_ = s.DB.Where("class_id = ? AND user_id = ?", class.ID, user.ID).FirstOrCreate(&models.ClassMembership{ClassID: class.ID, UserID: user.ID}).Error
 	services.Audit(c, s.DB, "class.create", "class", class.ID, datatypes.JSONMap{"course_id": courseID})
 	c.JSON(http.StatusCreated, class)
 }
 
 func (s Server) addCourseMember(c *gin.Context) {
+	user, _ := middleware.CurrentUser(c)
 	courseID, ok := idParam(c, "id")
 	if !ok {
+		return
+	}
+	if !s.canManageCourse(user, courseID) {
+		c.JSON(http.StatusForbidden, gin.H{"error": "forbidden"})
 		return
 	}
 	var req struct {
@@ -250,6 +284,11 @@ func (s Server) addCourseMember(c *gin.Context) {
 		return
 	}
 	if req.ClassID != nil {
+		var class models.Class
+		if err := s.DB.First(&class, *req.ClassID).Error; err != nil || class.CourseID != courseID {
+			c.JSON(http.StatusBadRequest, gin.H{"error": "class not found in course"})
+			return
+		}
 		_ = s.DB.Where("class_id = ? AND user_id = ?", *req.ClassID, req.UserID).FirstOrCreate(&models.ClassMembership{ClassID: *req.ClassID, UserID: req.UserID}).Error
 	}
 	services.Audit(c, s.DB, "course.member.add", "course", courseID, datatypes.JSONMap{"user_id": req.UserID})
@@ -257,23 +296,142 @@ func (s Server) addCourseMember(c *gin.Context) {
 }
 
 func (s Server) listClasses(c *gin.Context) {
+	user, _ := middleware.CurrentUser(c)
 	var classes []models.Class
 	q := s.DB.Order("id desc")
 	if courseID := c.Query("course_id"); courseID != "" {
 		q = q.Where("course_id = ?", courseID)
 	}
+	switch user.Role {
+	case models.RoleAdmin:
+	case models.RoleTeacher:
+		q = q.Where("course_id IN (?) OR course_id IN (?)",
+			s.DB.Model(&models.Course{}).Select("id").Where("teacher_id = ?", user.ID),
+			s.DB.Model(&models.CourseMembership{}).Select("course_id").Where("user_id = ? AND role IN ?", user.ID, []models.Role{models.RoleTeacher, models.RoleAdmin}),
+		)
+	default:
+		q = q.Where("id IN (?)", s.DB.Model(&models.ClassMembership{}).Select("class_id").Where("user_id = ?", user.ID))
+	}
 	q.Find(&classes)
 	c.JSON(http.StatusOK, classes)
 }
 
+func (s Server) myClasses(c *gin.Context) {
+	user, _ := middleware.CurrentUser(c)
+	type classView struct {
+		ID         uint   `json:"id"`
+		ClassID    uint   `json:"class_id"`
+		ClassName  string `json:"class_name"`
+		CourseID   uint   `json:"course_id"`
+		CourseCode string `json:"course_code"`
+		CourseName string `json:"course_name"`
+		Term       string `json:"term"`
+	}
+	var rows []classView
+	q := s.DB.Table("classes").
+		Select("classes.id as id, classes.id as class_id, classes.name as class_name, courses.id as course_id, courses.code as course_code, courses.name as course_name, courses.term as term").
+		Joins("join courses on courses.id = classes.course_id").
+		Order("courses.id desc, classes.id desc")
+	switch user.Role {
+	case models.RoleAdmin:
+	case models.RoleTeacher:
+		q = q.Where("courses.teacher_id = ? OR courses.id IN (?)", user.ID, s.DB.Model(&models.CourseMembership{}).Select("course_id").Where("user_id = ? AND role IN ?", user.ID, []models.Role{models.RoleTeacher, models.RoleAdmin}))
+	default:
+		q = q.Joins("join class_memberships on class_memberships.class_id = classes.id").Where("class_memberships.user_id = ?", user.ID)
+	}
+	q.Scan(&rows)
+	c.JSON(http.StatusOK, rows)
+}
+
+func (s Server) joinClass(c *gin.Context) {
+	user, _ := middleware.CurrentUser(c)
+	classID, ok := idParam(c, "id")
+	if !ok {
+		return
+	}
+	var class models.Class
+	if err := s.DB.First(&class, classID).Error; err != nil {
+		c.JSON(http.StatusNotFound, gin.H{"error": "class not found"})
+		return
+	}
+	if err := s.DB.Where("class_id = ? AND user_id = ?", classID, user.ID).FirstOrCreate(&models.ClassMembership{ClassID: classID, UserID: user.ID}).Error; err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+	_ = s.DB.Where("course_id = ? AND user_id = ?", class.CourseID, user.ID).FirstOrCreate(&models.CourseMembership{CourseID: class.CourseID, UserID: user.ID, Role: models.RoleStudent}).Error
+	services.Audit(c, s.DB, "class.join", "class", classID, nil)
+	c.JSON(http.StatusCreated, gin.H{"joined": true, "class_id": classID})
+}
+
 func (s Server) listProblems(c *gin.Context) {
+	user, _ := middleware.CurrentUser(c)
 	var problems []models.Problem
-	s.DB.Order("id desc").Find(&problems)
-	c.JSON(http.StatusOK, problems)
+	q := s.DB.Model(&models.Problem{}).Order("problems.id desc")
+	if classID, ok := queryUint(c, "class_id"); ok {
+		if !s.canAccessClass(user, classID) {
+			c.JSON(http.StatusForbidden, gin.H{"error": "forbidden"})
+			return
+		}
+		q = q.Joins("join class_problems on class_problems.problem_id = problems.id").Where("class_problems.class_id = ?", classID)
+	} else if user.Role == models.RoleStudent {
+		classIDs := s.visibleClassIDs(user)
+		if len(classIDs) == 0 {
+			c.JSON(http.StatusOK, []models.Problem{})
+			return
+		}
+		q = q.Joins("join class_problems on class_problems.problem_id = problems.id").Where("class_problems.class_id IN ?", classIDs).Group("problems.id")
+	} else if user.Role == models.RoleTeacher {
+		classIDs := s.visibleClassIDs(user)
+		if len(classIDs) > 0 {
+			q = q.Where("owner_id = ? OR problems.id IN (?)", user.ID, s.DB.Model(&models.ClassProblem{}).Select("problem_id").Where("class_id IN ?", classIDs))
+		} else {
+			q = q.Where("owner_id = ?", user.ID)
+		}
+	}
+	q.Find(&problems)
+	if user.Role != models.RoleStudent {
+		c.JSON(http.StatusOK, problems)
+		return
+	}
+	progress := map[uint]models.ProblemProgress{}
+	var rows []models.ProblemProgress
+	if len(problems) > 0 {
+		ids := make([]uint, 0, len(problems))
+		for _, item := range problems {
+			ids = append(ids, item.ID)
+		}
+		s.DB.Where("user_id = ? AND problem_id IN ?", user.ID, ids).Find(&rows)
+		for _, item := range rows {
+			progress[item.ProblemID] = item
+		}
+	}
+	type problemView struct {
+		models.Problem
+		ProgressStatus string `json:"progress_status"`
+		Points         int    `json:"points"`
+		PointsAwarded  bool   `json:"points_awarded"`
+	}
+	views := make([]problemView, 0, len(problems))
+	for _, item := range problems {
+		status := string(models.ProgressUnattempted)
+		points := 0
+		awarded := false
+		if row, ok := progress[item.ID]; ok {
+			status = string(row.Status)
+			points = row.Points
+			awarded = row.PointsAwarded
+		}
+		views = append(views, problemView{Problem: item, ProgressStatus: status, Points: points, PointsAwarded: awarded})
+	}
+	c.JSON(http.StatusOK, views)
 }
 
 func (s Server) uploadProblem(c *gin.Context) {
 	user, _ := middleware.CurrentUser(c)
+	classIDs, ok := s.parseProblemClassIDs(c, user)
+	if !ok {
+		return
+	}
 	file, err := c.FormFile("package")
 	if err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "package file is required"})
@@ -295,7 +453,7 @@ func (s Server) uploadProblem(c *gin.Context) {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 		return
 	}
-	problem, ok := s.saveProblemPackage(c, user, body, pkg, "problem.upload")
+	problem, ok := s.saveProblemPackage(c, user, body, pkg, classIDs, "problem.upload")
 	if !ok {
 		return
 	}
@@ -308,19 +466,22 @@ func (s Server) createProblem(c *gin.Context) {
 	if !bind(c, &req) {
 		return
 	}
+	if !s.validateClassIDs(c, user, req.ClassIDs) {
+		return
+	}
 	body, pkg, err := services.BuildProblemPackage(req)
 	if err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 		return
 	}
-	problem, ok := s.saveProblemPackage(c, user, body, pkg, "problem.create")
+	problem, ok := s.saveProblemPackage(c, user, body, pkg, req.ClassIDs, "problem.create")
 	if !ok {
 		return
 	}
 	c.JSON(http.StatusCreated, problem)
 }
 
-func (s Server) saveProblemPackage(c *gin.Context, user models.User, body []byte, pkg services.ParsedProblemPackage, action string) (models.Problem, bool) {
+func (s Server) saveProblemPackage(c *gin.Context, user models.User, body []byte, pkg services.ParsedProblemPackage, classIDs []uint, action string) (models.Problem, bool) {
 	object := fmt.Sprintf("problems/%s/%d.zip", pkg.Manifest.Slug, time.Now().UnixNano())
 	if _, err := s.MinIO.PutObject(c.Request.Context(), s.Cfg.MinIOBucket, object, bytes.NewReader(body), int64(len(body)), minio.PutObjectOptions{ContentType: "application/zip"}); err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
@@ -345,11 +506,15 @@ func (s Server) saveProblemPackage(c *gin.Context, user models.User, body []byte
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 		return models.Problem{}, false
 	}
+	for _, classID := range classIDs {
+		_ = s.DB.Where("class_id = ? AND problem_id = ?", classID, problem.ID).FirstOrCreate(&models.ClassProblem{ClassID: classID, ProblemID: problem.ID}).Error
+	}
 	services.Audit(c, s.DB, action, "problem", problem.ID, datatypes.JSONMap{"slug": problem.Slug})
 	return problem, true
 }
 
 func (s Server) getProblem(c *gin.Context) {
+	user, _ := middleware.CurrentUser(c)
 	id, ok := idParam(c, "id")
 	if !ok {
 		return
@@ -359,22 +524,48 @@ func (s Server) getProblem(c *gin.Context) {
 		c.JSON(http.StatusNotFound, gin.H{"error": "problem not found"})
 		return
 	}
+	if user.Role == models.RoleStudent && !s.canStudentAccessProblem(user.ID, problem.ID) {
+		c.JSON(http.StatusForbidden, gin.H{"error": "forbidden"})
+		return
+	}
 	c.JSON(http.StatusOK, problem)
 }
 
 func (s Server) listAssignments(c *gin.Context) {
+	user, _ := middleware.CurrentUser(c)
 	var items []models.Assignment
 	q := s.DB.Preload("Problems").Order("id desc")
+	if classID, ok := queryUint(c, "class_id"); ok {
+		if !s.canAccessClass(user, classID) {
+			c.JSON(http.StatusForbidden, gin.H{"error": "forbidden"})
+			return
+		}
+		q = q.Where("class_id = ?", classID)
+	}
 	if courseID := c.Query("course_id"); courseID != "" {
 		q = q.Where("course_id = ?", courseID)
+	}
+	if c.Query("class_id") == "" && c.Query("course_id") == "" {
+		switch user.Role {
+		case models.RoleAdmin:
+		case models.RoleTeacher:
+			q = q.Where("course_id IN (?) OR course_id IN (?)",
+				s.DB.Model(&models.Course{}).Select("id").Where("teacher_id = ?", user.ID),
+				s.DB.Model(&models.CourseMembership{}).Select("course_id").Where("user_id = ? AND role IN ?", user.ID, []models.Role{models.RoleTeacher, models.RoleAdmin}),
+			)
+		default:
+			q = q.Where("class_id IN (?)", s.DB.Model(&models.ClassMembership{}).Select("class_id").Where("user_id = ?", user.ID))
+		}
 	}
 	q.Find(&items)
 	c.JSON(http.StatusOK, items)
 }
 
 func (s Server) createAssignment(c *gin.Context) {
+	user, _ := middleware.CurrentUser(c)
 	var req struct {
-		CourseID    uint       `json:"course_id" binding:"required"`
+		CourseID    uint       `json:"course_id"`
+		ClassID     *uint      `json:"class_id"`
 		Title       string     `json:"title" binding:"required"`
 		Description string     `json:"description"`
 		StartsAt    *time.Time `json:"starts_at"`
@@ -384,7 +575,23 @@ func (s Server) createAssignment(c *gin.Context) {
 	if !bind(c, &req) {
 		return
 	}
-	item := models.Assignment{CourseID: req.CourseID, Title: req.Title, Description: req.Description, StartsAt: req.StartsAt, DueAt: req.DueAt}
+	if req.ClassID != nil {
+		var class models.Class
+		if err := s.DB.First(&class, *req.ClassID).Error; err != nil {
+			c.JSON(http.StatusBadRequest, gin.H{"error": "class not found"})
+			return
+		}
+		req.CourseID = class.CourseID
+		if !s.canManageClass(user, *req.ClassID) {
+			c.JSON(http.StatusForbidden, gin.H{"error": "forbidden"})
+			return
+		}
+	}
+	if req.CourseID == 0 || !s.canManageCourse(user, req.CourseID) {
+		c.JSON(http.StatusForbidden, gin.H{"error": "forbidden"})
+		return
+	}
+	item := models.Assignment{CourseID: req.CourseID, ClassID: req.ClassID, Title: req.Title, Description: req.Description, StartsAt: req.StartsAt, DueAt: req.DueAt}
 	if err := s.DB.Create(&item).Error; err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 		return
@@ -397,18 +604,40 @@ func (s Server) createAssignment(c *gin.Context) {
 }
 
 func (s Server) listExams(c *gin.Context) {
+	user, _ := middleware.CurrentUser(c)
 	var items []models.Exam
 	q := s.DB.Preload("Problems").Order("id desc")
+	if classID, ok := queryUint(c, "class_id"); ok {
+		if !s.canAccessClass(user, classID) {
+			c.JSON(http.StatusForbidden, gin.H{"error": "forbidden"})
+			return
+		}
+		q = q.Where("class_id = ?", classID)
+	}
 	if courseID := c.Query("course_id"); courseID != "" {
 		q = q.Where("course_id = ?", courseID)
+	}
+	if c.Query("class_id") == "" && c.Query("course_id") == "" {
+		switch user.Role {
+		case models.RoleAdmin:
+		case models.RoleTeacher:
+			q = q.Where("course_id IN (?) OR course_id IN (?)",
+				s.DB.Model(&models.Course{}).Select("id").Where("teacher_id = ?", user.ID),
+				s.DB.Model(&models.CourseMembership{}).Select("course_id").Where("user_id = ? AND role IN ?", user.ID, []models.Role{models.RoleTeacher, models.RoleAdmin}),
+			)
+		default:
+			q = q.Where("class_id IN (?)", s.DB.Model(&models.ClassMembership{}).Select("class_id").Where("user_id = ?", user.ID))
+		}
 	}
 	q.Find(&items)
 	c.JSON(http.StatusOK, items)
 }
 
 func (s Server) createExam(c *gin.Context) {
+	user, _ := middleware.CurrentUser(c)
 	var req struct {
-		CourseID    uint       `json:"course_id" binding:"required"`
+		CourseID    uint       `json:"course_id"`
+		ClassID     *uint      `json:"class_id"`
 		Title       string     `json:"title" binding:"required"`
 		Description string     `json:"description"`
 		StartsAt    *time.Time `json:"starts_at"`
@@ -418,7 +647,23 @@ func (s Server) createExam(c *gin.Context) {
 	if !bind(c, &req) {
 		return
 	}
-	item := models.Exam{CourseID: req.CourseID, Title: req.Title, Description: req.Description, StartsAt: req.StartsAt, EndsAt: req.EndsAt}
+	if req.ClassID != nil {
+		var class models.Class
+		if err := s.DB.First(&class, *req.ClassID).Error; err != nil {
+			c.JSON(http.StatusBadRequest, gin.H{"error": "class not found"})
+			return
+		}
+		req.CourseID = class.CourseID
+		if !s.canManageClass(user, *req.ClassID) {
+			c.JSON(http.StatusForbidden, gin.H{"error": "forbidden"})
+			return
+		}
+	}
+	if req.CourseID == 0 || !s.canManageCourse(user, req.CourseID) {
+		c.JSON(http.StatusForbidden, gin.H{"error": "forbidden"})
+		return
+	}
+	item := models.Exam{CourseID: req.CourseID, ClassID: req.ClassID, Title: req.Title, Description: req.Description, StartsAt: req.StartsAt, EndsAt: req.EndsAt}
 	if err := s.DB.Create(&item).Error; err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 		return
@@ -444,6 +689,10 @@ func (s Server) createSubmission(c *gin.Context) {
 	}
 	if !validLanguage(req.Language) {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "language must be one of c, cpp, python, java"})
+		return
+	}
+	if user.Role == models.RoleStudent && !s.canStudentAccessProblem(user.ID, req.ProblemID) {
+		c.JSON(http.StatusForbidden, gin.H{"error": "problem is not available in your classes"})
 		return
 	}
 	sub := models.Submission{
@@ -544,28 +793,68 @@ func (s Server) submissionEvents(c *gin.Context) {
 }
 
 func (s Server) leaderboard(c *gin.Context) {
-	type row struct {
-		UserID         uint      `json:"user_id"`
-		Name           string    `json:"name"`
-		Solved         int       `json:"solved"`
-		Score          int       `json:"score"`
-		LastSubmission time.Time `json:"last_submission"`
+	user, _ := middleware.CurrentUser(c)
+	type group struct {
+		ClassID    uint             `json:"class_id"`
+		ClassName  string           `json:"class_name"`
+		CourseID   uint             `json:"course_id"`
+		CourseCode string           `json:"course_code"`
+		CourseName string           `json:"course_name"`
+		Rows       []leaderboardRow `json:"rows"`
 	}
-	var rows []row
-	q := s.DB.Table("submissions").
-		Select("users.id as user_id, users.name as name, count(distinct submissions.problem_id) as solved, coalesce(sum(submissions.score),0) as score, max(submissions.updated_at) as last_submission").
-		Joins("join users on users.id = submissions.user_id").
-		Where("submissions.status = ?", models.StatusAccepted).
+	if classID, ok := queryUint(c, "class_id"); ok {
+		if !s.canAccessClass(user, classID) {
+			c.JSON(http.StatusForbidden, gin.H{"error": "forbidden"})
+			return
+		}
+		rows := s.classLeaderboardRows(classID)
+		c.JSON(http.StatusOK, rows)
+		return
+	}
+	classIDs := s.visibleClassIDs(user)
+	groups := make([]group, 0, len(classIDs))
+	for _, classID := range classIDs {
+		var info struct {
+			ClassID    uint
+			ClassName  string
+			CourseID   uint
+			CourseCode string
+			CourseName string
+		}
+		if err := s.DB.Table("classes").
+			Select("classes.id as class_id, classes.name as class_name, courses.id as course_id, courses.code as course_code, courses.name as course_name").
+			Joins("join courses on courses.id = classes.course_id").
+			Where("classes.id = ?", classID).
+			Scan(&info).Error; err != nil || info.ClassID == 0 {
+			continue
+		}
+		groups = append(groups, group{
+			ClassID:    info.ClassID,
+			ClassName:  info.ClassName,
+			CourseID:   info.CourseID,
+			CourseCode: info.CourseCode,
+			CourseName: info.CourseName,
+			Rows:       s.classLeaderboardRows(classID),
+		})
+	}
+	c.JSON(http.StatusOK, groups)
+}
+
+func (s Server) classLeaderboardRows(classID uint) []leaderboardRow {
+	var rows []leaderboardRow
+	s.DB.Table("class_memberships").
+		Select("users.id as user_id, users.name as name, count(distinct case when problem_progresses.status = ? then problem_progresses.problem_id end) as solved, coalesce(sum(case when problem_progresses.status = ? then problem_progresses.points else 0 end), 0) as score, max(problem_progresses.last_submitted) as last_submission", models.ProgressAccepted, models.ProgressAccepted).
+		Joins("join users on users.id = class_memberships.user_id and users.role = ?", models.RoleStudent).
+		Joins("left join class_problems on class_problems.class_id = class_memberships.class_id").
+		Joins("left join problem_progresses on problem_progresses.user_id = users.id and problem_progresses.problem_id = class_problems.problem_id").
+		Where("class_memberships.class_id = ? AND users.account_deleted = false", classID).
 		Group("users.id, users.name").
-		Order("solved desc, score desc, last_submission asc")
-	if assignmentID := c.Query("assignment_id"); assignmentID != "" {
-		q = q.Where("submissions.assignment_id = ?", assignmentID)
+		Order("score desc, solved desc, last_submission asc nulls last, users.id asc").
+		Scan(&rows)
+	for i := range rows {
+		rows[i].Rank = i + 1
 	}
-	if examID := c.Query("exam_id"); examID != "" {
-		q = q.Where("submissions.exam_id = ?", examID)
-	}
-	q.Scan(&rows)
-	c.JSON(http.StatusOK, rows)
+	return rows
 }
 
 func (s Server) createPlagiarismJob(c *gin.Context) {
@@ -613,6 +902,18 @@ func bind(c *gin.Context, dest any) bool {
 	return true
 }
 
+func queryUint(c *gin.Context, name string) (uint, bool) {
+	raw := strings.TrimSpace(c.Query(name))
+	if raw == "" {
+		return 0, false
+	}
+	id, err := strconv.ParseUint(raw, 10, 64)
+	if err != nil || id == 0 {
+		return 0, false
+	}
+	return uint(id), true
+}
+
 func idParam(c *gin.Context, name string) (uint, bool) {
 	raw := c.Param(name)
 	id, err := strconv.ParseUint(raw, 10, 64)
@@ -621,6 +922,117 @@ func idParam(c *gin.Context, name string) (uint, bool) {
 		return 0, false
 	}
 	return uint(id), true
+}
+
+func (s Server) canManageCourse(user models.User, courseID uint) bool {
+	if user.Role == models.RoleAdmin {
+		return true
+	}
+	if user.Role != models.RoleTeacher {
+		return false
+	}
+	var count int64
+	s.DB.Model(&models.Course{}).Where("id = ? AND teacher_id = ?", courseID, user.ID).Count(&count)
+	if count > 0 {
+		return true
+	}
+	s.DB.Model(&models.CourseMembership{}).Where("course_id = ? AND user_id = ? AND role IN ?", courseID, user.ID, []models.Role{models.RoleTeacher, models.RoleAdmin}).Count(&count)
+	return count > 0
+}
+
+func (s Server) canAccessClass(user models.User, classID uint) bool {
+	if user.Role == models.RoleAdmin {
+		return true
+	}
+	if user.Role == models.RoleTeacher {
+		return s.canManageClass(user, classID)
+	}
+	var count int64
+	s.DB.Model(&models.ClassMembership{}).Where("class_id = ? AND user_id = ?", classID, user.ID).Count(&count)
+	return count > 0
+}
+
+func (s Server) canManageClass(user models.User, classID uint) bool {
+	if user.Role == models.RoleAdmin {
+		return true
+	}
+	var class models.Class
+	if err := s.DB.First(&class, classID).Error; err != nil {
+		return false
+	}
+	return s.canManageCourse(user, class.CourseID)
+}
+
+func (s Server) visibleClassIDs(user models.User) []uint {
+	var ids []uint
+	switch user.Role {
+	case models.RoleAdmin:
+		s.DB.Model(&models.Class{}).Order("id desc").Pluck("id", &ids)
+	case models.RoleTeacher:
+		s.DB.Model(&models.Class{}).
+			Where("course_id IN (?) OR course_id IN (?)",
+				s.DB.Model(&models.Course{}).Select("id").Where("teacher_id = ?", user.ID),
+				s.DB.Model(&models.CourseMembership{}).Select("course_id").Where("user_id = ? AND role IN ?", user.ID, []models.Role{models.RoleTeacher, models.RoleAdmin}),
+			).
+			Order("id desc").Pluck("id", &ids)
+	default:
+		s.DB.Model(&models.ClassMembership{}).Where("user_id = ?", user.ID).Order("class_id desc").Pluck("class_id", &ids)
+	}
+	return ids
+}
+
+func (s Server) canStudentAccessProblem(userID uint, problemID uint) bool {
+	var count int64
+	s.DB.Table("class_memberships").
+		Joins("join class_problems on class_problems.class_id = class_memberships.class_id").
+		Where("class_memberships.user_id = ? AND class_problems.problem_id = ?", userID, problemID).
+		Count(&count)
+	return count > 0
+}
+
+func (s Server) validateClassIDs(c *gin.Context, user models.User, classIDs []uint) bool {
+	seen := map[uint]bool{}
+	for _, classID := range classIDs {
+		if classID == 0 || seen[classID] {
+			continue
+		}
+		seen[classID] = true
+		if !s.canManageClass(user, classID) {
+			c.JSON(http.StatusForbidden, gin.H{"error": "cannot publish to class"})
+			return false
+		}
+	}
+	return true
+}
+
+func (s Server) parseProblemClassIDs(c *gin.Context, user models.User) ([]uint, bool) {
+	raw := append([]string{}, c.PostFormArray("class_ids")...)
+	if single := c.PostForm("class_ids"); single != "" {
+		raw = append(raw, strings.Split(single, ",")...)
+	}
+	var ids []uint
+	seen := map[uint]bool{}
+	for _, item := range raw {
+		item = strings.TrimSpace(item)
+		if item == "" {
+			continue
+		}
+		id, err := strconv.ParseUint(item, 10, 64)
+		if err != nil || id == 0 {
+			c.JSON(http.StatusBadRequest, gin.H{"error": "invalid class_ids"})
+			return nil, false
+		}
+		classID := uint(id)
+		if seen[classID] {
+			continue
+		}
+		seen[classID] = true
+		ids = append(ids, classID)
+	}
+	if !s.validateClassIDs(c, user, ids) {
+		return nil, false
+	}
+	return ids, true
 }
 
 func validLanguage(language string) bool {

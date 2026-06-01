@@ -31,11 +31,13 @@ docker compose restart worker
 - Mailpit 邮件捕获: http://localhost:8025
 
 本地启动会创建管理员、教师、学生种子账号用于功能验证；生产环境请替换初始凭据或关闭 `SEED_DATA`。
+本地验证码邮件不会投递到真实邮箱，而是进入 Mailpit：打开 http://localhost:8025 查看。生产部署需把 `SMTP_HOST`、`SMTP_PORT`、`SMTP_USERNAME`、`SMTP_PASSWORD`、`MAIL_FROM` 配置为学校或云邮件服务。
 
 ## 功能范围
 
 - 学生/教师/管理员 RBAC
 - 课程、班级、成员关系
+- 学生可加入多个班级，题库、作业、考试、排行榜按当前班级切换
 - 题库与 ZIP 题目包，`problem.yaml` 校验
 - C、C++、Python、Java 判题
 - 作业、考试、排行榜

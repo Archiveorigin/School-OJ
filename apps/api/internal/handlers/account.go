@@ -175,8 +175,18 @@ func (s Server) getProfile(c *gin.Context) {
 	}
 	var byStatus []statusRow
 	s.DB.Table("submissions").Select("status, count(*) as count").Where("user_id = ?", user.ID).Group("status").Scan(&byStatus)
-	var activity []activityRow
-	s.DB.Raw("select to_char(created_at::date, 'YYYY-MM-DD') as date, count(*) as count from submissions where user_id = ? and created_at >= ? group by created_at::date order by date asc", user.ID, time.Now().AddDate(0, 0, -364)).Scan(&activity)
+	var activityRows []activityRow
+	s.DB.Raw("select to_char(created_at::date, 'YYYY-MM-DD') as date, count(*) as count from submissions where user_id = ? and created_at >= ? group by created_at::date order by date asc", user.ID, time.Now().AddDate(0, 0, -364)).Scan(&activityRows)
+	counts := map[string]int{}
+	for _, item := range activityRows {
+		counts[item.Date] = item.Count
+	}
+	activity := make([]activityRow, 0, 365)
+	today := time.Now()
+	for i := 364; i >= 0; i-- {
+		key := today.AddDate(0, 0, -i).Format("2006-01-02")
+		activity = append(activity, activityRow{Date: key, Count: counts[key]})
+	}
 	var recent []models.Submission
 	s.DB.Where("user_id = ?", user.ID).Order("id desc").Limit(10).Find(&recent)
 	var solved int64

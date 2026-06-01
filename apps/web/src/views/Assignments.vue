@@ -11,6 +11,7 @@
       <el-table :data="items">
         <el-table-column prop="id" label="ID" width="80" />
         <el-table-column prop="course_id" label="课程" width="100" />
+        <el-table-column prop="class_id" label="班级" width="100" />
         <el-table-column prop="title" label="标题" />
         <el-table-column prop="due_at" label="截止时间" />
       </el-table>
@@ -18,12 +19,22 @@
     <el-dialog v-model="dialogVisible" title="新建作业" width="640px">
       <el-form :model="form" label-width="90px">
         <el-form-item label="课程">
-          <el-select v-model="form.course_id" style="width: 100%">
+          <el-select v-model="form.course_id" style="width: 100%" disabled>
             <el-option
               v-for="course in courses"
               :key="course.id"
               :label="`${course.code} ${course.name}`"
               :value="course.id"
+            />
+          </el-select>
+        </el-form-item>
+        <el-form-item label="班级">
+          <el-select v-model="form.class_id" style="width: 100%" @change="syncCourseFromClass">
+            <el-option
+              v-for="item in classroom.classes"
+              :key="item.class_id"
+              :label="`${item.course_code} / ${item.class_name}`"
+              :value="item.class_id"
             />
           </el-select>
         </el-form-item>
@@ -60,11 +71,13 @@
 
 <script setup lang="ts">
 import { ElMessage } from 'element-plus'
-import { computed, onMounted, reactive, ref } from 'vue'
+import { computed, onMounted, reactive, ref, watch } from 'vue'
 import { client } from '../api/client'
 import { useAuthStore } from '../stores/auth'
+import { useClassroomStore } from '../stores/classroom'
 
 const auth = useAuthStore()
+const classroom = useClassroomStore()
 const canManage = computed(() => auth.role !== 'student')
 const items = ref<any[]>([])
 const courses = ref<any[]>([])
@@ -73,6 +86,7 @@ const dialogVisible = ref(false)
 const saving = ref(false)
 const form = reactive<any>({
   course_id: undefined,
+  class_id: undefined,
   title: '',
   description: '',
   starts_at: null,
@@ -81,10 +95,11 @@ const form = reactive<any>({
 })
 
 async function load() {
+  const params = classroom.activeClassId ? { class_id: classroom.activeClassId } : {}
   const [assignmentsRes, coursesRes, problemsRes] = await Promise.all([
-    client.get('/assignments'),
+    client.get('/assignments', { params }),
     client.get('/courses'),
-    client.get('/problems')
+    client.get('/problems', { params })
   ])
   items.value = assignmentsRes.data
   courses.value = coursesRes.data
@@ -92,19 +107,26 @@ async function load() {
 }
 
 function openDialog() {
-  form.course_id = courses.value[0]?.id
+  form.class_id = classroom.activeClassId || classroom.classes[0]?.class_id
+  syncCourseFromClass()
   dialogVisible.value = true
 }
 
+function syncCourseFromClass() {
+  const item = classroom.classes.find((entry) => entry.class_id === form.class_id)
+  form.course_id = item?.course_id
+}
+
 async function submit() {
-  if (!form.course_id || !form.title || form.problem_ids.length === 0) {
-    ElMessage.error('请选择课程、填写标题并选择题目')
+  if (!form.class_id || !form.course_id || !form.title || form.problem_ids.length === 0) {
+    ElMessage.error('请选择班级、填写标题并选择题目')
     return
   }
   saving.value = true
   try {
     await client.post('/assignments', {
       course_id: form.course_id,
+      class_id: form.class_id,
       title: form.title,
       description: form.description,
       starts_at: form.starts_at,
@@ -124,6 +146,7 @@ async function submit() {
 
 function reset() {
   form.course_id = undefined
+  form.class_id = undefined
   form.title = ''
   form.description = ''
   form.starts_at = null
@@ -131,5 +154,10 @@ function reset() {
   form.problem_ids = []
 }
 
-onMounted(load)
+watch(() => classroom.activeClassId, load)
+
+onMounted(async () => {
+  await classroom.load()
+  await load()
+})
 </script>

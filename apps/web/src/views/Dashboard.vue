@@ -1,7 +1,10 @@
 <template>
   <section class="page">
     <div class="page-header">
-      <h2>概览</h2>
+      <div>
+        <h2>{{ roleTitle }}</h2>
+        <p class="muted">{{ activeClassText }}</p>
+      </div>
       <el-button @click="load">刷新</el-button>
     </div>
     <el-row :gutter="16">
@@ -9,6 +12,35 @@
         <div class="panel stat">
           <strong>{{ item.value }}</strong>
           <span class="muted">{{ item.label }}</span>
+        </div>
+      </el-col>
+    </el-row>
+    <el-row :gutter="16" class="dashboard-row">
+      <el-col :span="10">
+        <div class="panel fortune">
+          <div class="section-title">
+            <h3>今日运势</h3>
+            <span>{{ fortune.badge }}</span>
+          </div>
+          <strong>{{ fortune.title }}</strong>
+          <p>{{ fortune.tip }}</p>
+          <div class="fortune-tags">
+            <el-tag type="success">宜 {{ fortune.good }}</el-tag>
+            <el-tag type="info">幸运语言 {{ fortune.lang }}</el-tag>
+          </div>
+        </div>
+      </el-col>
+      <el-col :span="14">
+        <div class="panel">
+          <div class="section-title">
+            <h3>{{ rolePanelTitle }}</h3>
+          </div>
+          <div class="quick-grid">
+            <div v-for="item in roleCards" :key="item.label" class="quick-card">
+              <strong>{{ item.value }}</strong>
+              <span>{{ item.label }}</span>
+            </div>
+          </div>
         </div>
       </el-col>
     </el-row>
@@ -28,32 +60,78 @@
 </template>
 
 <script setup lang="ts">
-import { computed, onMounted, ref } from 'vue'
+import { computed, onMounted, ref, watch } from 'vue'
 import { client, type Submission } from '../api/client'
 import StatusBadge from '../components/StatusBadge.vue'
+import { useAuthStore } from '../stores/auth'
+import { useClassroomStore } from '../stores/classroom'
 
 const courses = ref<any[]>([])
 const problems = ref<any[]>([])
 const submissions = ref<Submission[]>([])
+const assignments = ref<any[]>([])
+const exams = ref<any[]>([])
+const auth = useAuthStore()
+const classroom = useClassroomStore()
 const stats = computed(() => [
-  { label: '课程', value: courses.value.length },
-  { label: '题目', value: problems.value.length },
-  { label: '提交', value: submissions.value.length },
-  { label: 'AC', value: submissions.value.filter((s) => s.status === 'accepted').length }
+  { label: auth.role === 'student' ? '已加入课程' : '课程', value: courses.value.length },
+  { label: '当前班级题目', value: problems.value.length },
+  { label: '近期提交', value: submissions.value.length },
+  { label: '已通过', value: submissions.value.filter((s) => s.status === 'accepted').length }
 ])
+const roleTitle = computed(() => {
+  if (auth.role === 'admin') return '管理员概览'
+  if (auth.role === 'teacher') return '教学工作台'
+  return '学习工作台'
+})
+const activeClassText = computed(() => {
+  const item = classroom.activeClass
+  return item ? `${item.course_code} / ${item.class_name}` : '尚未选择班级'
+})
+const rolePanelTitle = computed(() => {
+  if (auth.role === 'admin') return '系统运行'
+  if (auth.role === 'teacher') return '教学安排'
+  return '我的学习'
+})
+const roleCards = computed(() => [
+  { label: auth.role === 'student' ? '我的班级' : '可管理班级', value: classroom.classes.length },
+  { label: '作业', value: assignments.value.length },
+  { label: '考试', value: exams.value.length }
+])
+const fortune = computed(() => {
+  const seed = `${new Date().toISOString().slice(0, 10)}-${auth.user?.id || 0}`
+  const sum = Array.from(seed).reduce((acc, char) => acc + char.charCodeAt(0), 0)
+  const options = [
+    { badge: '轻盈', title: '适合补齐一个小缺口', tip: '把最小的待办先合并掉，今天的节奏会更顺。', good: '写测试', lang: 'Go' },
+    { badge: '清晰', title: '适合读题和拆解边界', tip: '先确认输入输出和极端数据，再动手会更稳。', good: '整理题面', lang: 'Python' },
+    { badge: '高效', title: '适合完成一次提交闭环', tip: '从编译到 AC 的反馈链路会给你明确方向。', good: '调试样例', lang: 'C++' },
+    { badge: '专注', title: '适合复盘排行榜变化', tip: '看一眼自己和同学的差距，再定下一题。', good: '复盘错题', lang: 'Java' }
+  ]
+  return options[sum % options.length]
+})
 
 async function load() {
-  const [c, p, s] = await Promise.all([
+  const params = classroom.activeClassId ? { class_id: classroom.activeClassId } : {}
+  const [c, p, s, a, e] = await Promise.all([
     client.get('/courses'),
-    client.get('/problems'),
-    client.get('/submissions')
+    client.get('/problems', { params }),
+    client.get('/submissions'),
+    client.get('/assignments', { params }),
+    client.get('/exams', { params })
   ])
   courses.value = c.data
   problems.value = p.data
   submissions.value = s.data
+  assignments.value = a.data
+  exams.value = e.data
 }
 
-onMounted(load)
+watch(() => classroom.activeClassId, load)
+
+onMounted(async () => {
+  await classroom.load()
+  await load()
+})
 </script>
 
 <style scoped>
@@ -68,5 +146,48 @@ onMounted(load)
 
 .latest {
   margin-top: 16px;
+}
+
+.dashboard-row {
+  margin-top: 16px;
+}
+
+.fortune strong {
+  display: block;
+  margin-bottom: 8px;
+  font-size: 20px;
+}
+
+.fortune p {
+  margin: 0 0 12px;
+  color: var(--muted);
+}
+
+.fortune-tags,
+.quick-grid {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+
+.quick-card {
+  min-width: 130px;
+  padding: 12px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: color-mix(in srgb, var(--surface-strong) 72%, transparent);
+}
+
+.quick-card strong,
+.quick-card span {
+  display: block;
+}
+
+.quick-card strong {
+  font-size: 24px;
+}
+
+.quick-card span {
+  color: var(--muted);
 }
 </style>

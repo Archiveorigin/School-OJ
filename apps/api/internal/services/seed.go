@@ -103,15 +103,16 @@ func Seed(ctx context.Context, db *gorm.DB, client *minio.Client, cfg config.Con
 	if err := db.Create(&problem).Error; err != nil {
 		return err
 	}
+	_ = db.Create(&models.ClassProblem{ClassID: class.ID, ProblemID: problem.ID}).Error
 	now := time.Now()
 	due := now.Add(7 * 24 * time.Hour)
-	assignment := models.Assignment{CourseID: course.ID, Title: "第一次作业", Description: "基础输入输出练习", StartsAt: &now, DueAt: &due}
+	assignment := models.Assignment{CourseID: course.ID, ClassID: &class.ID, Title: "第一次作业", Description: "基础输入输出练习", StartsAt: &now, DueAt: &due}
 	if err := db.Create(&assignment).Error; err != nil {
 		return err
 	}
 	_ = db.Create(&models.AssignmentProblem{AssignmentID: assignment.ID, ProblemID: problem.ID, Score: 100}).Error
 	examEnd := now.Add(2 * time.Hour)
-	exam := models.Exam{CourseID: course.ID, Title: "期中考试", Description: "自动判题考试流程", StartsAt: &now, EndsAt: &examEnd}
+	exam := models.Exam{CourseID: course.ID, ClassID: &class.ID, Title: "期中考试", Description: "自动判题考试流程", StartsAt: &now, EndsAt: &examEnd}
 	if err := db.Create(&exam).Error; err != nil {
 		return err
 	}

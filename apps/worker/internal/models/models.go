@@ -67,3 +67,24 @@ type SubmissionResult struct {
 	Message      string           `json:"message"`
 	CreatedAt    time.Time        `json:"created_at"`
 }
+
+type ProblemProgressStatus string
+
+const (
+	ProgressUnattempted ProblemProgressStatus = "unattempted"
+	ProgressAttempted   ProblemProgressStatus = "attempted"
+	ProgressAccepted    ProblemProgressStatus = "accepted"
+)
+
+type ProblemProgress struct {
+	ID            uint                  `json:"id" gorm:"primaryKey"`
+	UserID        uint                  `json:"user_id"`
+	ProblemID     uint                  `json:"problem_id"`
+	Status        ProblemProgressStatus `json:"status"`
+	Points        int                   `json:"points"`
+	PointsAwarded bool                  `json:"points_awarded"`
+	FirstAccepted *time.Time            `json:"first_accepted_at"`
+	LastSubmitted *time.Time            `json:"last_submitted_at"`
+	CreatedAt     time.Time             `json:"created_at"`
+	UpdatedAt     time.Time             `json:"updated_at"`
+}

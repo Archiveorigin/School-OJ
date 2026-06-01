@@ -159,7 +159,7 @@ const days = computed(() => {
   for (let i = 364; i >= 0; i -= 1) {
     const date = new Date(today)
     date.setDate(today.getDate() - i)
-    const key = date.toISOString().slice(0, 10)
+    const key = `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`
     result.push({ date: key, count: map.get(key) || 0 })
   }
   return result
@@ -212,7 +212,7 @@ async function sendEmailCode() {
   sendingCode.value = true
   try {
     await client.post('/profile/email-code', { email: emailForm.email })
-    ElMessage.success('验证码已发送')
+    ElMessage.success('验证码已发送；本地 Docker 环境请打开 http://localhost:8025 查看邮件')
   } catch (err: any) {
     ElMessage.error(err.response?.data?.error || err.message)
   } finally {

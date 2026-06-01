@@ -43,6 +43,7 @@ type ProblemPackageDraft struct {
 	TimeLimitMS   int                `json:"time_limit_ms"`
 	MemoryLimitMB int                `json:"memory_limit_mb"`
 	OutputLimitKB int                `json:"output_limit_kb"`
+	ClassIDs      []uint             `json:"class_ids"`
 	Cases         []ProblemCaseDraft `json:"cases"`
 }
 

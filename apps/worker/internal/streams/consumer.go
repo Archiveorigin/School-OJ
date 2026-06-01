@@ -148,9 +148,47 @@ func (c Consumer) handle(ctx context.Context, msg redis.XMessage) error {
 		"message":   result.Message,
 		"trace":     result.Trace,
 	})
+	c.updateProgress(&sub, result.Status)
 	return nil
 }
 
 func (c Consumer) markSystemError(sub *models.Submission, err error) {
 	c.DB.Model(sub).Updates(map[string]any{"status": models.StatusSystemError, "message": err.Error()})
+	c.updateProgress(sub, models.StatusSystemError)
+}
+
+func (c Consumer) updateProgress(sub *models.Submission, status models.SubmissionStatus) {
+	now := time.Now()
+	var progress models.ProblemProgress
+	err := c.DB.Where("user_id = ? AND problem_id = ?", sub.UserID, sub.ProblemID).First(&progress).Error
+	if errors.Is(err, gorm.ErrRecordNotFound) {
+		progress = models.ProblemProgress{
+			UserID:        sub.UserID,
+			ProblemID:     sub.ProblemID,
+			Status:        models.ProgressUnattempted,
+			LastSubmitted: &now,
+		}
+		if createErr := c.DB.Create(&progress).Error; createErr != nil {
+			log.Printf("create progress for submission %d failed: %v", sub.ID, createErr)
+			return
+		}
+	} else if err != nil {
+		log.Printf("load progress for submission %d failed: %v", sub.ID, err)
+		return
+	}
+
+	updates := map[string]any{"last_submitted": now}
+	if status == models.StatusAccepted {
+		if progress.Status != models.ProgressAccepted {
+			updates["status"] = models.ProgressAccepted
+			updates["points"] = 1
+			updates["points_awarded"] = true
+			updates["first_accepted"] = now
+		}
+	} else if progress.Status == models.ProgressUnattempted {
+		updates["status"] = models.ProgressAttempted
+	}
+	if err := c.DB.Model(&progress).Updates(updates).Error; err != nil {
+		log.Printf("update progress for submission %d failed: %v", sub.ID, err)
+	}
 }

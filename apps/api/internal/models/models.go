@@ -62,6 +62,13 @@ type ClassMembership struct {
 	CreatedAt time.Time `json:"created_at"`
 }
 
+type ClassProblem struct {
+	ID        uint      `json:"id" gorm:"primaryKey"`
+	ClassID   uint      `json:"class_id" gorm:"uniqueIndex:idx_class_problem"`
+	ProblemID uint      `json:"problem_id" gorm:"uniqueIndex:idx_class_problem"`
+	CreatedAt time.Time `json:"created_at"`
+}
+
 type Problem struct {
 	ID              uint              `json:"id" gorm:"primaryKey"`
 	OwnerID         uint              `json:"owner_id" gorm:"index;not null"`
@@ -79,9 +86,31 @@ type Problem struct {
 	UpdatedAt       time.Time         `json:"updated_at"`
 }
 
+type ProblemProgressStatus string
+
+const (
+	ProgressUnattempted ProblemProgressStatus = "unattempted"
+	ProgressAttempted   ProblemProgressStatus = "attempted"
+	ProgressAccepted    ProblemProgressStatus = "accepted"
+)
+
+type ProblemProgress struct {
+	ID            uint                  `json:"id" gorm:"primaryKey"`
+	UserID        uint                  `json:"user_id" gorm:"uniqueIndex:idx_user_problem_progress"`
+	ProblemID     uint                  `json:"problem_id" gorm:"uniqueIndex:idx_user_problem_progress"`
+	Status        ProblemProgressStatus `json:"status" gorm:"type:varchar(32);index;not null;default:'unattempted'"`
+	Points        int                   `json:"points" gorm:"not null;default:0"`
+	PointsAwarded bool                  `json:"points_awarded" gorm:"not null;default:false"`
+	FirstAccepted *time.Time            `json:"first_accepted_at"`
+	LastSubmitted *time.Time            `json:"last_submitted_at"`
+	CreatedAt     time.Time             `json:"created_at"`
+	UpdatedAt     time.Time             `json:"updated_at"`
+}
+
 type Assignment struct {
 	ID          uint                `json:"id" gorm:"primaryKey"`
 	CourseID    uint                `json:"course_id" gorm:"index;not null"`
+	ClassID     *uint               `json:"class_id" gorm:"index"`
 	Title       string              `json:"title" gorm:"size:200;not null"`
 	Description string              `json:"description"`
 	StartsAt    *time.Time          `json:"starts_at"`
@@ -104,6 +133,7 @@ type AssignmentProblem struct {
 type Exam struct {
 	ID          uint              `json:"id" gorm:"primaryKey"`
 	CourseID    uint              `json:"course_id" gorm:"index;not null"`
+	ClassID     *uint             `json:"class_id" gorm:"index"`
 	Title       string            `json:"title" gorm:"size:200;not null"`
 	Description string            `json:"description"`
 	StartsAt    *time.Time        `json:"starts_at"`
@@ -231,7 +261,9 @@ func AllModels() []any {
 		&Class{},
 		&CourseMembership{},
 		&ClassMembership{},
+		&ClassProblem{},
 		&Problem{},
+		&ProblemProgress{},
 		&Assignment{},
 		&AssignmentProblem{},
 		&Exam{},

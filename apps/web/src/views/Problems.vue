@@ -14,6 +14,13 @@
             <el-table-column prop="id" label="ID" width="70" />
             <el-table-column prop="slug" label="Slug" width="140" />
             <el-table-column prop="title" label="题目" />
+            <el-table-column v-if="auth.role === 'student'" label="状态" width="110">
+              <template #default="{ row }">
+                <el-tag :type="progressTag(row.progress_status)" effect="light">
+                  {{ progressLabel(row.progress_status) }}
+                </el-tag>
+              </template>
+            </el-table-column>
           </el-table>
         </div>
       </el-col>
@@ -46,6 +53,18 @@
     <el-dialog v-model="problemDialogVisible" title="上传题目包" width="920px">
       <el-tabs v-model="problemDialogTab">
         <el-tab-pane label="上传现有 ZIP" name="zip">
+          <el-form label-width="110px">
+            <el-form-item label="发布班级">
+              <el-select v-model="selectedClassIDs" multiple clearable style="width: 100%">
+                <el-option
+                  v-for="item in classroom.classes"
+                  :key="item.class_id"
+                  :label="`${item.course_code} / ${item.class_name}`"
+                  :value="item.class_id"
+                />
+              </el-select>
+            </el-form-item>
+          </el-form>
           <el-upload
             drag
             :show-file-list="false"
@@ -59,6 +78,16 @@
         </el-tab-pane>
         <el-tab-pane label="表单创建题目" name="form">
           <el-form label-width="110px" class="problem-form">
+            <el-form-item label="发布班级">
+              <el-select v-model="selectedClassIDs" multiple clearable style="width: 100%">
+                <el-option
+                  v-for="item in classroom.classes"
+                  :key="item.class_id"
+                  :label="`${item.course_code} / ${item.class_name}`"
+                  :value="item.class_id"
+                />
+              </el-select>
+            </el-form-item>
             <el-row :gutter="12">
               <el-col :span="12">
                 <el-form-item label="Slug">
@@ -140,13 +169,15 @@
 
 <script setup lang="ts">
 import { ElMessage } from 'element-plus'
-import { computed, onMounted, reactive, ref } from 'vue'
+import { computed, onMounted, reactive, ref, watch } from 'vue'
 import { client, sseUrl, type Problem } from '../api/client'
 import CodeEditor from '../components/CodeEditor.vue'
 import StatusBadge from '../components/StatusBadge.vue'
 import { useAuthStore } from '../stores/auth'
+import { useClassroomStore } from '../stores/classroom'
 
 const auth = useAuthStore()
+const classroom = useClassroomStore()
 const canManage = computed(() => auth.role === 'admin' || auth.role === 'teacher')
 const problems = ref<Problem[]>([])
 const selected = ref<Problem | null>(null)
@@ -156,6 +187,7 @@ const live = ref<any>(null)
 const problemDialogVisible = ref(false)
 const problemDialogTab = ref('zip')
 const savingProblem = ref(false)
+const selectedClassIDs = ref<number[]>([])
 const problemForm = reactive({
   slug: '',
   title: '',
@@ -163,7 +195,7 @@ const problemForm = reactive({
   time_limit_ms: 1000,
   memory_limit_mb: 256,
   output_limit_kb: 1024,
-  cases: [{ name: 'sample1', input: '1 2\n', output: '3\n', weight: 100 }]
+  cases: [{ name: 'case-01', input: '1 2\n', output: '3\n', weight: 100 }]
 })
 const source = ref(`#include <bits/stdc++.h>
 using namespace std;
@@ -176,8 +208,12 @@ int main() {
 `)
 
 async function load() {
-  problems.value = (await client.get('/problems')).data
+  const params = classroom.activeClassId ? { class_id: classroom.activeClassId } : {}
+  problems.value = (await client.get('/problems', { params })).data
   selected.value ||= problems.value[0] || null
+  if (selected.value && !problems.value.some((item) => item.id === selected.value?.id)) {
+    selected.value = problems.value[0] || null
+  }
 }
 
 function selectProblem(row: Problem) {
@@ -188,12 +224,14 @@ function selectProblem(row: Problem) {
 function openProblemDialog() {
   problemDialogVisible.value = true
   problemDialogTab.value = 'zip'
+  selectedClassIDs.value = classroom.activeClassId ? [classroom.activeClassId] : []
 }
 
 async function upload(options: any) {
   try {
     const fd = new FormData()
     fd.append('package', options.file)
+    selectedClassIDs.value.forEach((id) => fd.append('class_ids', String(id)))
     await client.post('/problems/upload', fd)
     ElMessage.success('题目包已上传')
     problemDialogVisible.value = false
@@ -222,6 +260,7 @@ async function createFromForm() {
       time_limit_ms: problemForm.time_limit_ms,
       memory_limit_mb: problemForm.memory_limit_mb,
       output_limit_kb: problemForm.output_limit_kb,
+      class_ids: selectedClassIDs.value,
       cases: problemForm.cases
     })
     ElMessage.success('题目已创建')
@@ -244,11 +283,23 @@ function resetProblemForm() {
   problemForm.memory_limit_mb = 256
   problemForm.output_limit_kb = 1024
   problemForm.cases.splice(0, problemForm.cases.length, {
-    name: 'sample1',
+    name: 'case-01',
     input: '1 2\n',
     output: '3\n',
     weight: 100
   })
+}
+
+function progressLabel(status?: string) {
+  if (status === 'accepted') return '通过'
+  if (status === 'attempted') return '未通过'
+  return '未尝试'
+}
+
+function progressTag(status?: string): 'success' | 'warning' | 'info' {
+  if (status === 'accepted') return 'success'
+  if (status === 'attempted') return 'warning'
+  return 'info'
 }
 
 async function submit() {
@@ -274,7 +325,12 @@ function watchSubmission(id: number) {
   })
 }
 
-onMounted(load)
+watch(() => classroom.activeClassId, load)
+
+onMounted(async () => {
+  await classroom.load()
+  await load()
+})
 </script>
 
 <style scoped>

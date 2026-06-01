@@ -10,6 +10,11 @@
     <el-row :gutter="16">
       <el-col :span="14">
         <div class="panel">
+          <div v-if="auth.role === 'student'" class="join-strip">
+            <el-input-number v-model="joinClassID" :min="1" placeholder="班级 ID" />
+            <el-button type="primary" :loading="joining" @click="joinClass">加入班级</el-button>
+            <span class="muted">输入教师提供的班级 ID 后，即可看到该班级题库、作业、考试。</span>
+          </div>
           <el-table :data="courses">
             <el-table-column prop="code" label="代码" width="140" />
             <el-table-column prop="name" label="课程" />
@@ -25,11 +30,16 @@
       </el-col>
       <el-col :span="10">
         <div class="panel">
-          <h3>班级</h3>
+          <h3>{{ auth.role === 'student' ? '我的班级' : '班级' }}</h3>
           <el-table :data="classes" size="small">
             <el-table-column prop="id" label="ID" width="80" />
             <el-table-column prop="course_id" label="课程" width="90" />
             <el-table-column prop="name" label="名称" />
+            <el-table-column label="操作" width="90">
+              <template #default="{ row }">
+                <el-button size="small" @click="activate(row.id)">切换</el-button>
+              </template>
+            </el-table-column>
           </el-table>
         </div>
       </el-col>
@@ -83,21 +93,26 @@ import { ElMessage } from 'element-plus'
 import { computed, onMounted, reactive, ref } from 'vue'
 import { client } from '../api/client'
 import { useAuthStore } from '../stores/auth'
+import { useClassroomStore } from '../stores/classroom'
 
 const auth = useAuthStore()
+const classroom = useClassroomStore()
 const canManage = computed(() => auth.role === 'admin' || auth.role === 'teacher')
 const courses = ref<any[]>([])
 const classes = ref<any[]>([])
+const joinClassID = ref<number>()
 const courseDialogVisible = ref(false)
 const classDialogVisible = ref(false)
 const savingCourse = ref(false)
 const savingClass = ref(false)
+const joining = ref(false)
 const courseForm = reactive({ code: '', name: '', term: '2026 春', description: '' })
 const classForm = reactive({ course_id: 0, name: '' })
 
 async function load() {
   courses.value = (await client.get('/courses')).data
   classes.value = (await client.get('/classes')).data
+  await classroom.load()
 }
 
 async function loadClasses(courseID: number) {
@@ -147,6 +162,7 @@ async function submitClass() {
     ElMessage.success('班级已创建')
     classDialogVisible.value = false
     await loadClasses(classForm.course_id)
+    await classroom.load()
   } catch (err: any) {
     ElMessage.error(err.response?.data?.error || err.message)
   } finally {
@@ -154,5 +170,38 @@ async function submitClass() {
   }
 }
 
+async function joinClass() {
+  if (!joinClassID.value) {
+    ElMessage.error('请填写班级 ID')
+    return
+  }
+  joining.value = true
+  try {
+    await client.post(`/classes/${joinClassID.value}/join`)
+    ElMessage.success('已加入班级')
+    classroom.setActive(joinClassID.value)
+    await load()
+  } catch (err: any) {
+    ElMessage.error(err.response?.data?.error || err.message)
+  } finally {
+    joining.value = false
+  }
+}
+
+function activate(classID: number) {
+  classroom.setActive(classID)
+  ElMessage.success('已切换班级')
+}
+
 onMounted(load)
 </script>
+
+<style scoped>
+.join-strip {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 14px;
+  flex-wrap: wrap;
+}
+</style>

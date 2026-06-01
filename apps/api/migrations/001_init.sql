@@ -65,9 +65,32 @@ CREATE TABLE IF NOT EXISTS problems (
   updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 
+CREATE TABLE IF NOT EXISTS class_problems (
+  id BIGSERIAL PRIMARY KEY,
+  class_id BIGINT NOT NULL REFERENCES classes(id) ON DELETE CASCADE,
+  problem_id BIGINT NOT NULL REFERENCES problems(id) ON DELETE CASCADE,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+  UNIQUE(class_id, problem_id)
+);
+
+CREATE TABLE IF NOT EXISTS problem_progresses (
+  id BIGSERIAL PRIMARY KEY,
+  user_id BIGINT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  problem_id BIGINT NOT NULL REFERENCES problems(id) ON DELETE CASCADE,
+  status VARCHAR(32) NOT NULL DEFAULT 'unattempted',
+  points INT NOT NULL DEFAULT 0,
+  points_awarded BOOLEAN NOT NULL DEFAULT false,
+  first_accepted TIMESTAMPTZ,
+  last_submitted TIMESTAMPTZ,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+  updated_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+  UNIQUE(user_id, problem_id)
+);
+
 CREATE TABLE IF NOT EXISTS assignments (
   id BIGSERIAL PRIMARY KEY,
   course_id BIGINT NOT NULL REFERENCES courses(id) ON DELETE CASCADE,
+  class_id BIGINT REFERENCES classes(id) ON DELETE CASCADE,
   title VARCHAR(200) NOT NULL,
   description TEXT,
   starts_at TIMESTAMPTZ,
@@ -89,6 +112,7 @@ CREATE TABLE IF NOT EXISTS assignment_problems (
 CREATE TABLE IF NOT EXISTS exams (
   id BIGSERIAL PRIMARY KEY,
   course_id BIGINT NOT NULL REFERENCES courses(id) ON DELETE CASCADE,
+  class_id BIGINT REFERENCES classes(id) ON DELETE CASCADE,
   title VARCHAR(200) NOT NULL,
   description TEXT,
   starts_at TIMESTAMPTZ,
@@ -196,6 +220,8 @@ CREATE TABLE IF NOT EXISTS feedbacks (
 CREATE INDEX IF NOT EXISTS idx_users_account_deleted ON users(account_deleted);
 CREATE INDEX IF NOT EXISTS idx_submissions_status ON submissions(status);
 CREATE INDEX IF NOT EXISTS idx_submissions_problem_user ON submissions(problem_id, user_id);
+CREATE INDEX IF NOT EXISTS idx_class_problems_class ON class_problems(class_id);
+CREATE INDEX IF NOT EXISTS idx_problem_progresses_status ON problem_progresses(status);
 CREATE INDEX IF NOT EXISTS idx_audit_logs_action ON audit_logs(action);
 CREATE INDEX IF NOT EXISTS idx_email_verifications_lookup ON email_verifications(email, purpose, consumed, expires_at);
 CREATE INDEX IF NOT EXISTS idx_feedbacks_status ON feedbacks(status);

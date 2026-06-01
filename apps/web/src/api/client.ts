@@ -44,6 +44,19 @@ export interface Problem {
   time_limit_ms: number
   memory_limit_mb: number
   output_limit_kb: number
+  progress_status?: 'unattempted' | 'attempted' | 'accepted'
+  points?: number
+  points_awarded?: boolean
+}
+
+export interface ClassContext {
+  id: number
+  class_id: number
+  class_name: string
+  course_id: number
+  course_code: string
+  course_name: string
+  term: string
 }
 
 export interface Submission {

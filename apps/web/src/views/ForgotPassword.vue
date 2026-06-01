@@ -58,7 +58,7 @@ async function sendCode() {
   sending.value = true
   try {
     await client.post('/auth/send-code', { email: form.email, purpose: 'password_reset' })
-    ElMessage.success('验证码已发送')
+    ElMessage.success('验证码已发送；本地 Docker 环境请打开 http://localhost:8025 查看邮件')
     startCountdown()
   } catch (err: any) {
     ElMessage.error(err.response?.data?.error || err.message)
