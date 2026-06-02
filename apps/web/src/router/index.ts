@@ -8,6 +8,9 @@ import Assignments from '../views/Assignments.vue'
 import Courses from '../views/Courses.vue'
 import Dashboard from '../views/Dashboard.vue'
 import ExamDetail from '../views/ExamDetail.vue'
+import ExamProblems from '../views/exam/ExamProblems.vue'
+import ExamRecords from '../views/exam/ExamRecords.vue'
+import ExamSubmit from '../views/exam/ExamSubmit.vue'
 import Exams from '../views/Exams.vue'
 import Leaderboard from '../views/Leaderboard.vue'
 import Login from '../views/Login.vue'
@@ -34,7 +37,17 @@ const router = createRouter({
     { path: '/assignments', component: Assignments, meta: { title: '作业' } },
     { path: '/assignments/:id', component: AssignmentDetail, meta: { title: '作业', activeMenu: '/assignments' } },
     { path: '/exams', component: Exams, meta: { title: '考试' } },
-    { path: '/exams/:id', component: ExamDetail, meta: { title: '考试', activeMenu: '/exams' } },
+    {
+      path: '/exams/:id',
+      component: ExamDetail,
+      redirect: (to) => `/exams/${to.params.id}/problems`,
+      meta: { title: '考试', activeMenu: '/exams' },
+      children: [
+        { path: 'problems', component: ExamProblems, meta: { title: '考试', activeMenu: '/exams' } },
+        { path: 'submit', component: ExamSubmit, meta: { title: '考试', activeMenu: '/exams' } },
+        { path: 'records', component: ExamRecords, meta: { title: '考试', activeMenu: '/exams' } }
+      ]
+    },
     { path: '/submissions', component: Submissions, meta: { title: '提交' } },
     { path: '/leaderboard', component: Leaderboard, meta: { title: '排行榜' } },
     { path: '/plagiarism', component: Plagiarism, meta: { roles: ['admin', 'teacher'], title: 'JPlag 查重' } },
@@ -63,9 +76,10 @@ router.beforeEach(async (to, from) => {
     return '/'
   }
   const lockedExamPath = examLock.examId ? `/exams/${examLock.examId}` : '/exams'
-  if (examLock.locked && to.path !== lockedExamPath) {
+  const inLockedExam = examLock.examId && (to.path === lockedExamPath || to.path.startsWith(`${lockedExamPath}/`))
+  if (examLock.locked && !inLockedExam) {
     ElMessage.warning(examLock.message)
-    return { path: lockedExamPath }
+    return { path: examLock.examId ? `${lockedExamPath}/problems` : lockedExamPath }
   }
 })
 

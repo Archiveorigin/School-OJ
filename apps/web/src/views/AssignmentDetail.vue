@@ -16,46 +16,44 @@
     </div>
 
     <div v-if="detail" class="workbench">
-      <div class="coding-grid">
-        <aside class="problem-rail">
-          <button
-            v-for="entry in detail.problems"
-            :key="entry.problem.id"
-            type="button"
-            class="problem-pick"
-            :class="{ active: activeProblem?.id === entry.problem.id }"
-            @click="selectDetailProblem(entry)"
-          >
-            <strong>{{ entry.problem.title }}</strong>
-            <span>{{ entry.score }} 分 · {{ problemScoreText(entry.problem.id) }}</span>
-            <small v-if="entry.problem.deleted_at" class="muted">已下架</small>
-          </button>
-        </aside>
-
-        <main v-if="activeProblem" class="statement-panel">
-          <div class="panel-title">
-            <h3>{{ activeProblem.title }}</h3>
-            <span>{{ activeEntry?.score }} 分</span>
-          </div>
-          <p class="muted">{{ problemLimitText(activeProblem) }}</p>
-          <MarkdownRenderer :source="activeProblem.statement" :problem-id="activeProblem.id" />
-        </main>
-
-        <section v-if="activeProblem" class="editor-panel">
-          <div class="toolbar editor-toolbar">
-            <el-select v-model="language" style="width: 130px">
-              <el-option label="C++17" value="cpp" />
-              <el-option label="C" value="c" />
-              <el-option label="Python" value="python" />
-              <el-option label="Java" value="java" />
-            </el-select>
-            <el-button @click="formatSource">自动格式化</el-button>
-            <el-button type="primary" :loading="submitting" :disabled="!detail.can_submit" @click="submitSolution">提交</el-button>
-          </div>
-          <CodeEditor ref="editorRef" v-model="source" :language="language" />
-          <div v-if="live" class="live"><StatusBadge :status="live.status" /> 分数 {{ live.score }}，{{ live.message }}</div>
-        </section>
+      <div class="problem-strip">
+        <button
+          v-for="entry in detail.problems"
+          :key="entry.problem.id"
+          type="button"
+          class="problem-pick"
+          :class="{ active: activeProblem?.id === entry.problem.id }"
+          @click="selectDetailProblem(entry)"
+        >
+          <strong>{{ entry.problem.title }}</strong>
+          <span>{{ entry.score }} 分 · {{ problemScoreText(entry.problem.id) }}</span>
+          <small v-if="entry.problem.deleted_at" class="muted">已下架</small>
+        </button>
       </div>
+
+      <ProblemStatementView
+        v-if="activeProblem"
+        :problem="activeProblem"
+        :problem-number="activeProblem.id"
+        :score="activeEntry?.score"
+        :status-text="problemScoreText(activeProblem.id)"
+        :status-type="problemStatusType(activeProblem.id)"
+      />
+
+      <section v-if="activeProblem" class="panel editor-panel">
+        <div class="toolbar editor-toolbar">
+          <el-select v-model="language" style="width: 130px">
+            <el-option label="C++17" value="cpp" />
+            <el-option label="C" value="c" />
+            <el-option label="Python" value="python" />
+            <el-option label="Java" value="java" />
+          </el-select>
+          <el-button @click="formatSource">自动格式化</el-button>
+          <el-button type="primary" :loading="submitting" :disabled="!detail.can_submit" @click="submitSolution">提交</el-button>
+        </div>
+        <CodeEditor ref="editorRef" v-model="source" :language="language" />
+        <div v-if="live" class="live"><StatusBadge :status="live.status" /> 分数 {{ live.score }}，{{ live.message }}</div>
+      </section>
 
       <div class="panel history-panel">
         <div class="section-title"><h3>全部提交记录</h3></div>
@@ -80,10 +78,9 @@ import { computed, onMounted, reactive, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { client, sseUrl, type Problem, type Submission } from '../api/client'
 import CodeEditor from '../components/CodeEditor.vue'
-import MarkdownRenderer from '../components/MarkdownRenderer.vue'
+import ProblemStatementView from '../components/ProblemStatementView.vue'
 import StatusBadge from '../components/StatusBadge.vue'
 import { formatDateTime, workStatusLabel } from '../features/assignments/assignmentMeta'
-import { problemLimitText } from '../features/problems/problemMeta'
 
 type DetailProblem = { problem: Problem; score: number; problem_id: number }
 type EditorState = { language: string; source: string; live: any }
@@ -227,6 +224,15 @@ function problemScoreText(problemID: number) {
   return `${item.best_score} / ${item.score}`
 }
 
+function problemStatusType(problemID: number): 'success' | 'warning' | 'info' | 'danger' {
+  const item = scoreForProblem(problemID)
+  if (!item?.submission_id) return 'info'
+  if (!item.score_ready) return 'warning'
+  if (item.best_score >= item.score) return 'success'
+  if (item.best_score > 0) return 'warning'
+  return 'danger'
+}
+
 function problemTitle(problemID: number) {
   return detail.value?.problems?.find((entry: DetailProblem) => entry.problem.id === problemID)?.problem.title || `#${problemID}`
 }
@@ -242,33 +248,18 @@ onMounted(loadDetail)
   gap: 14px;
 }
 
-.coding-grid {
-  display: grid;
-  grid-template-columns: 220px minmax(280px, 0.75fr) minmax(520px, 1.45fr);
-  gap: 14px;
-  min-height: 560px;
-}
-
-.problem-rail,
-.statement-panel,
-.editor-panel,
-.history-panel {
-  border: 1px solid var(--border);
-  border-radius: 8px;
-  background: var(--surface);
-  padding: 12px;
-}
-
-.problem-rail {
-  display: grid;
-  align-content: start;
+.problem-strip {
+  display: flex;
+  align-items: stretch;
+  flex-wrap: wrap;
   gap: 8px;
 }
 
 .problem-pick {
   display: grid;
   gap: 4px;
-  width: 100%;
+  min-width: 180px;
+  max-width: 260px;
   padding: 10px;
   border: 1px solid #d9dee8;
   border-radius: 8px;
@@ -288,17 +279,6 @@ onMounted(loadDetail)
   font-size: 12px;
 }
 
-.panel-title {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 12px;
-}
-
-.panel-title h3 {
-  margin: 0;
-}
-
 .editor-panel {
   display: grid;
   grid-template-rows: auto minmax(420px, 1fr) auto;
@@ -316,8 +296,9 @@ onMounted(loadDetail)
 }
 
 @media (max-width: 1100px) {
-  .coding-grid {
-    grid-template-columns: 1fr;
+  .problem-pick {
+    max-width: none;
+    width: 100%;
   }
 }
 </style>

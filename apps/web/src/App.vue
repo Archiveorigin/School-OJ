@@ -1,49 +1,43 @@
 <template>
   <router-view v-if="publicPage" />
-  <el-container v-else class="shell">
-    <AppSidebar :active-menu="activeMenu" :role="auth.role" />
-    <el-container>
-      <el-header class="topbar">
-        <div class="topbar-title">
-          <span class="topbar-mark"></span>
-          <span>{{ pageTitle }}</span>
-        </div>
-        <div class="topbar-actions">
-          <el-select
-            v-if="auth.isAuthed && classroom.classes.length"
-            :model-value="classroom.activeClassId"
-            class="class-switch"
-            filterable
-            @change="setClass"
-          >
-            <el-option
-              v-for="item in classroom.classes"
-              :key="item.class_id"
-              :label="`${item.course_code} / ${item.class_name}`"
-              :value="item.class_id"
-            />
-          </el-select>
-          <el-dropdown trigger="click" @command="handleCommand">
-            <button class="avatar-button" type="button">
-              <img v-if="auth.user?.avatar_url" :src="auth.user.avatar_url" alt="" />
-              <span v-else>{{ initials }}</span>
-            </button>
-            <template #dropdown>
-              <el-dropdown-menu>
-                <el-dropdown-item command="profile">Profile</el-dropdown-item>
-                <el-dropdown-item command="theme">
-                  {{ auth.theme === 'dark' ? '切换明亮模式' : '切换暗黑模式' }}
-                </el-dropdown-item>
-                <el-dropdown-item divided command="logout">退出登录</el-dropdown-item>
-              </el-dropdown-menu>
-            </template>
-          </el-dropdown>
-        </div>
-      </el-header>
-      <el-main>
-        <router-view />
-      </el-main>
-    </el-container>
+  <el-container v-else direction="vertical" class="shell">
+    <el-header class="topbar" height="auto">
+      <AppSidebar :active-menu="activeMenu" :role="auth.role" />
+      <div class="topbar-actions">
+        <el-select
+          v-if="auth.isAuthed && classroom.classes.length"
+          :model-value="classroom.activeClassId"
+          class="class-switch"
+          filterable
+          @change="setClass"
+        >
+          <el-option
+            v-for="item in classroom.classes"
+            :key="item.class_id"
+            :label="`${item.course_code} / ${item.class_name}`"
+            :value="item.class_id"
+          />
+        </el-select>
+        <el-dropdown trigger="click" @command="handleCommand">
+          <button class="avatar-button" type="button">
+            <img v-if="auth.user?.avatar_url" :src="auth.user.avatar_url" alt="" />
+            <span v-else>{{ initials }}</span>
+          </button>
+          <template #dropdown>
+            <el-dropdown-menu>
+              <el-dropdown-item command="profile">Profile</el-dropdown-item>
+              <el-dropdown-item command="theme">
+                {{ auth.theme === 'dark' ? '切换明亮模式' : '切换暗黑模式' }}
+              </el-dropdown-item>
+              <el-dropdown-item divided command="logout">退出登录</el-dropdown-item>
+            </el-dropdown-menu>
+          </template>
+        </el-dropdown>
+      </div>
+    </el-header>
+    <el-main class="main-content">
+      <router-view />
+    </el-main>
   </el-container>
 </template>
 
@@ -65,9 +59,6 @@ const route = useRoute()
 const publicPage = computed(() => ['/login', '/register', '/forgot-password'].includes(route.path))
 const initials = computed(() => (auth.user?.name || auth.user?.email || 'U').trim().slice(0, 1).toUpperCase())
 const activeMenu = computed(() => String(route.meta.activeMenu || route.path))
-const pageTitle = computed(() => {
-  return String(route.meta.title || '黄海在线题测平台')
-})
 
 function logout() {
   auth.logout()
@@ -128,35 +119,22 @@ watch(
   align-items: center;
   justify-content: space-between;
   gap: 12px;
+  min-height: 64px;
+  padding: 0 18px;
   background: var(--glass);
   border-bottom: 1px solid var(--border);
   backdrop-filter: blur(18px);
-}
-
-.topbar-title {
-  display: inline-flex;
-  align-items: center;
-  gap: 10px;
-  color: var(--text);
-  font-weight: 700;
 }
 
 .topbar-actions {
   display: inline-flex;
   align-items: center;
   gap: 12px;
+  flex: 0 0 auto;
 }
 
 .class-switch {
   width: 240px;
-}
-
-.topbar-mark {
-  width: 10px;
-  height: 10px;
-  border-radius: 50%;
-  background: var(--accent);
-  box-shadow: 0 0 0 5px rgba(10, 94, 166, 0.12);
 }
 
 .avatar-button {
@@ -186,17 +164,19 @@ watch(
   object-fit: cover;
 }
 
-@media (max-width: 760px) {
-  .shell {
-    display: block;
-  }
+.main-content {
+  padding: 0;
+}
 
+@media (max-width: 760px) {
   .topbar {
-    min-height: 58px;
+    align-items: flex-start;
+    flex-direction: column;
+    padding: 10px 12px;
   }
 
   .class-switch {
-    width: min(240px, 48vw);
+    width: min(240px, calc(100vw - 82px));
   }
 }
 </style>

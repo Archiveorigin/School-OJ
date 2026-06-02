@@ -3,7 +3,7 @@
     <div class="page-header">
       <div>
         <h2>{{ detail?.exam?.title || '考试' }}</h2>
-        <p v-if="detail" class="muted">结束时间：{{ detail.exam.ends_at || '-' }}</p>
+        <p v-if="detail" class="muted">结束时间：{{ formatDateTime(detail.exam.ends_at) }}</p>
       </div>
       <div class="toolbar">
         <el-tag v-if="detail?.closed" type="info">已结束</el-tag>
@@ -12,65 +12,59 @@
         <el-tag v-if="detail?.manual_review" type="warning">人工阅卷</el-tag>
         <el-tag v-if="detail?.all_submitted" type="success">已提交全部题目</el-tag>
         <el-tag v-if="detail">{{ workStatusLabel(detail.work_status) }}</el-tag>
-        <strong v-if="detail">{{ detail.score_ready ? `${detail.total_score} / ${detail.max_score}` : (detail.work_status === 'submitted' ? '待评分' : '-') }}</strong>
-        <el-button v-if="!canManage" type="danger" :loading="finishing" :disabled="detail?.not_started || detail?.finished_at" @click="finishExam">结束考试</el-button>
+        <strong v-if="detail">{{ scoreSummary }}</strong>
+        <el-button
+          v-if="!canManage"
+          type="danger"
+          :loading="finishing"
+          :disabled="detail?.not_started || detail?.finished_at"
+          @click="finishExam"
+        >
+          结束考试
+        </el-button>
         <el-button @click="leavePage">返回列表</el-button>
       </div>
     </div>
 
-    <div v-if="detail" class="workbench">
-      <div class="coding-grid">
-        <aside class="problem-rail">
-          <button
-            v-for="entry in detail.problems"
-            :key="entry.problem.id"
-            type="button"
-            class="problem-pick"
-            :class="{ active: activeProblem?.id === entry.problem.id }"
-            @click="selectDetailProblem(entry)"
-          >
-            <strong>{{ entry.problem.title }}</strong>
-            <span>{{ entry.score }} 分 · {{ problemScoreText(entry.problem.id) }}</span>
-            <small v-if="entry.problem.deleted_at" class="muted">已下架</small>
-          </button>
-        </aside>
-
-        <main v-if="activeProblem" class="statement-panel">
-          <div class="panel-title"><h3>{{ activeProblem.title }}</h3><span>{{ activeEntry?.score }} 分</span></div>
-          <p class="muted">{{ activeProblem.time_limit_ms }} ms / {{ activeProblem.memory_limit_mb }} MB / {{ activeProblem.output_limit_kb }} KB</p>
-          <MarkdownRenderer :source="activeProblem.statement" :problem-id="activeProblem.id" />
-        </main>
-
-        <section v-if="activeProblem" class="editor-panel">
-          <div class="toolbar editor-toolbar">
-            <el-select v-model="language" style="width: 130px">
-              <el-option label="C++17" value="cpp" />
-              <el-option label="C" value="c" />
-              <el-option label="Python" value="python" />
-              <el-option label="Java" value="java" />
-            </el-select>
-            <el-button @click="formatSource">自动格式化</el-button>
-            <el-button type="primary" :loading="submitting" :disabled="!detail.can_submit" @click="submitSolution">提交</el-button>
-          </div>
-          <CodeEditor ref="editorRef" v-model="source" :language="language" />
-          <div v-if="live" class="live"><StatusBadge :status="live.status" /> {{ live.status === 'pending_review' ? '等待教师评分' : `分数 ${live.score}，${live.message}` }}</div>
-        </section>
+    <div v-if="detail" class="exam-workbench">
+      <div class="exam-tabs">
+        <el-button :type="tabType('problems')" @click="goExamTab('problems')">查看题目</el-button>
+        <el-button :type="tabType('submit')" @click="goExamTab('submit')">提交代码</el-button>
+        <el-button :type="tabType('records')" @click="goExamTab('records')">提交记录</el-button>
       </div>
 
-      <div class="panel history-panel">
-        <div class="section-title"><h3>全部提交记录</h3></div>
-        <el-table :data="history" size="small">
-          <el-table-column prop="id" label="ID" width="80" />
-          <el-table-column label="题目" min-width="180">
-            <template #default="{ row }">{{ problemTitle(row.problem_id) }}</template>
-          </el-table-column>
-          <el-table-column prop="language" label="语言" width="90" />
-          <el-table-column label="状态" width="130"><template #default="{ row }"><StatusBadge :status="row.status" /></template></el-table-column>
-          <el-table-column prop="score" label="参考分" width="90" />
-          <el-table-column label="最终分" width="90"><template #default="{ row }">{{ row.manual_score ?? '-' }}</template></el-table-column>
-          <el-table-column label="时间" min-width="160"><template #default="{ row }">{{ row.created_at }}</template></el-table-column>
-        </el-table>
+      <div class="problem-strip">
+        <button
+          v-for="entry in detail.problems"
+          :key="entry.problem.id"
+          type="button"
+          class="problem-pick"
+          :class="{ active: activeProblem?.id === entry.problem.id }"
+          @click="selectDetailProblem(entry)"
+        >
+          <strong>{{ entry.problem.title }}</strong>
+          <span>{{ entry.score }} 分 · {{ problemScoreText(entry.problem.id) }}</span>
+          <small v-if="entry.problem.deleted_at" class="muted">已下架</small>
+        </button>
       </div>
+
+      <router-view v-slot="{ Component }">
+        <component
+          :is="Component"
+          :detail="detail"
+          :active-entry="activeEntry"
+          :active-problem="activeProblem"
+          :history="history"
+          :language="language"
+          :source="source"
+          :live="live"
+          :submitting="submitting"
+          @update:language="language = $event"
+          @update:source="source = $event"
+          @submit="submitSolution"
+          @refresh-history="loadHistory"
+        />
+      </router-view>
     </div>
   </section>
 </template>
@@ -80,14 +74,13 @@ import { ElMessage, ElMessageBox } from 'element-plus'
 import { computed, onBeforeUnmount, onMounted, reactive, ref, watch } from 'vue'
 import { onBeforeRouteLeave, useRoute, useRouter } from 'vue-router'
 import { client, sseUrl, type Problem, type Submission } from '../api/client'
-import CodeEditor from '../components/CodeEditor.vue'
-import MarkdownRenderer from '../components/MarkdownRenderer.vue'
-import StatusBadge from '../components/StatusBadge.vue'
+import { formatDateTime, workStatusLabel } from '../features/assignments/assignmentMeta'
 import { useAuthStore } from '../stores/auth'
 import { useExamLockStore } from '../stores/examLock'
 
 type DetailProblem = { problem: Problem; score: number; problem_id: number }
 type EditorState = { language: string; source: string; live: any }
+type ExamTab = 'problems' | 'submit' | 'records'
 
 const auth = useAuthStore()
 const examLock = useExamLockStore()
@@ -100,9 +93,9 @@ const activeProblem = computed(() => activeEntry.value?.problem || null)
 const history = ref<Submission[]>([])
 const submitting = ref(false)
 const finishing = ref(false)
-const editorRef = ref<InstanceType<typeof CodeEditor> | null>(null)
 const editorStates = reactive<Record<number, EditorState>>({})
 
+const examID = computed(() => Number(route.params.id))
 const examLocked = computed(() => {
   return !canManage.value && Boolean(detail.value) && !detail.value.closed && !detail.value.not_started && !detail.value.finished_at
 })
@@ -128,13 +121,22 @@ const source = computed({
   }
 })
 const live = computed(() => activeState.value?.live)
+const activeTab = computed<ExamTab>(() => {
+  const value = route.path.split('/').pop()
+  if (value === 'submit' || value === 'records') return value
+  return 'problems'
+})
+const scoreSummary = computed(() => {
+  if (!detail.value) return ''
+  if (detail.value.score_ready) return `${detail.value.total_score} / ${detail.value.max_score}`
+  return detail.value.work_status === 'submitted' ? '待评分' : '-'
+})
 
 async function loadDetail() {
-  const id = Number(route.params.id)
-  if (!id) return
+  if (!examID.value) return
   try {
-    detail.value = (await client.get(`/exams/${id}`)).data
-    activeEntry.value = detail.value.problems?.[0] || null
+    detail.value = (await client.get(`/exams/${examID.value}`)).data
+    activeEntry.value = detail.value.problems?.find((entry: DetailProblem) => entry.problem.id === activeProblem.value?.id) || detail.value.problems?.[0] || null
     if (activeProblem.value) ensureEditorState(activeProblem.value.id)
     await loadHistory()
   } catch (err: any) {
@@ -151,6 +153,14 @@ async function loadDetail() {
 function selectDetailProblem(entry: DetailProblem) {
   activeEntry.value = entry
   ensureEditorState(entry.problem.id).live = null
+}
+
+function goExamTab(tab: ExamTab) {
+  router.push(`/exams/${examID.value}/${tab}`)
+}
+
+function tabType(tab: ExamTab) {
+  return activeTab.value === tab ? 'primary' : ''
 }
 
 async function submitSolution() {
@@ -254,14 +264,6 @@ function defaultSource(lang: string) {
   return '#include <bits/stdc++.h>\nusing namespace std;\nint main(){ long long a,b; cin>>a>>b; cout<<a+b<<"\\n"; return 0; }\n'
 }
 
-function formatSource() {
-  editorRef.value?.format()
-}
-
-function scoreForProblem(problemID: number) {
-  return detail.value?.problem_scores?.find((item: any) => item.problem.id === problemID)
-}
-
 function problemScoreText(problemID: number) {
   const item = scoreForProblem(problemID)
   if (!item?.submission_id) return '未提交'
@@ -270,14 +272,8 @@ function problemScoreText(problemID: number) {
   return `${item.best_score} / ${item.score}`
 }
 
-function problemTitle(problemID: number) {
-  return detail.value?.problems?.find((entry: DetailProblem) => entry.problem.id === problemID)?.problem.title || `#${problemID}`
-}
-
-function workStatusLabel(status: string) {
-  if (status === 'submitted') return '已提交'
-  if (status === 'unsubmitted') return '未提交'
-  return '未尝试'
+function scoreForProblem(problemID: number) {
+  return detail.value?.problem_scores?.find((item: any) => item.problem.id === problemID)
 }
 
 function beforeUnload(event: BeforeUnloadEvent) {
@@ -319,42 +315,28 @@ onMounted(async () => {
 </script>
 
 <style scoped>
-.workbench {
+.exam-workbench {
   display: grid;
   gap: 14px;
 }
 
-.coding-grid {
-  display: grid;
-  grid-template-columns: 220px minmax(280px, 0.75fr) minmax(520px, 1.45fr);
-  gap: 14px;
-  min-height: 560px;
-}
-
-.problem-rail,
-.statement-panel,
-.editor-panel,
-.history-panel {
-  border: 1px solid var(--border);
-  border-radius: 8px;
-  background: var(--surface);
-  padding: 12px;
-}
-
-.problem-rail {
-  display: grid;
-  align-content: start;
+.exam-tabs,
+.problem-strip {
+  display: flex;
+  align-items: stretch;
+  flex-wrap: wrap;
   gap: 8px;
 }
 
 .problem-pick {
   display: grid;
   gap: 4px;
-  width: 100%;
+  min-width: 180px;
+  max-width: 260px;
   padding: 10px;
   border: 1px solid #d9dee8;
   border-radius: 8px;
-  background: transparent;
+  background: var(--surface);
   color: var(--text);
   text-align: left;
   cursor: pointer;
@@ -370,36 +352,10 @@ onMounted(async () => {
   font-size: 12px;
 }
 
-.panel-title {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 12px;
-}
-
-.panel-title h3 {
-  margin: 0;
-}
-
-.editor-panel {
-  display: grid;
-  grid-template-rows: auto minmax(420px, 1fr) auto;
-  gap: 10px;
-}
-
-.editor-toolbar {
-  justify-content: flex-end;
-}
-
-.live {
-  display: flex;
-  gap: 10px;
-  align-items: center;
-}
-
-@media (max-width: 1100px) {
-  .coding-grid {
-    grid-template-columns: 1fr;
+@media (max-width: 760px) {
+  .problem-pick {
+    max-width: none;
+    width: 100%;
   }
 }
 </style>
