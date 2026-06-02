@@ -1047,9 +1047,6 @@ func (s Server) createAssignment(c *gin.Context) {
 	}
 	problemItems := normalizeWorkProblemInputs(req.Problems, req.ProblemIDs)
 	problemIDs := workProblemIDs(problemItems)
-	if !prepareExamProblemLabels(c, problemItems, req.ClassID, req.EndsAt) {
-		return
-	}
 	if req.ClassID != nil {
 		var class models.Class
 		if err := s.DB.First(&class, *req.ClassID).Error; err != nil {
