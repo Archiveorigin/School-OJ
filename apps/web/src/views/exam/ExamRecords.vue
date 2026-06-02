@@ -6,6 +6,9 @@
     </div>
     <el-table :data="history" size="small">
       <el-table-column prop="id" label="ID" width="80" />
+      <el-table-column label="题号" width="80">
+        <template #default="{ row }">{{ problemLabel(row.problem_id) }}</template>
+      </el-table-column>
       <el-table-column label="题目" min-width="180">
         <template #default="{ row }">{{ problemTitle(row.problem_id) }}</template>
       </el-table-column>
@@ -39,6 +42,11 @@ const emit = defineEmits<{
 
 function problemTitle(problemID: number) {
   return props.detail?.problems?.find((entry: { problem: Problem }) => entry.problem.id === problemID)?.problem.title || `#${problemID}`
+}
+
+function problemLabel(problemID: number) {
+  const entry = props.detail?.problems?.find((item: { problem: Problem; label?: string }) => item.problem.id === problemID)
+  return entry?.label || '-'
 }
 </script>
 

@@ -2,7 +2,7 @@
   <section v-if="activeProblem" class="panel submit-panel">
     <div class="section-title">
       <h3>提交代码</h3>
-      <span class="muted">#{{ activeProblem.id }} {{ activeProblem.title }}</span>
+      <span class="muted">{{ activeEntry?.label || `#${activeProblem.id}` }} {{ activeProblem.title }}</span>
     </div>
     <div class="toolbar editor-toolbar">
       <el-select :model-value="language" style="width: 130px" @update:model-value="emit('update:language', String($event))">
@@ -14,7 +14,13 @@
       <el-button @click="formatSource">自动格式化</el-button>
       <el-button type="primary" :loading="submitting" :disabled="!detail.can_submit" @click="emit('submit')">提交</el-button>
     </div>
-    <CodeEditor ref="editorRef" :model-value="source" :language="language" @update:model-value="emit('update:source', String($event))" />
+    <CodeEditor
+      :key="activeProblem.id"
+      ref="editorRef"
+      :model-value="source"
+      :language="language"
+      @update:model-value="emit('update:source', String($event))"
+    />
     <div v-if="live" class="live">
       <StatusBadge :status="live.status" />
       {{ live.status === 'pending_review' ? '等待教师评分' : `分数 ${live.score}，${live.message}` }}
@@ -31,6 +37,7 @@ import StatusBadge from '../../components/StatusBadge.vue'
 
 defineProps<{
   detail: any
+  activeEntry: { problem: Problem; score: number; label?: string; problem_id: number } | null
   activeProblem: Problem | null
   language: string
   source: string

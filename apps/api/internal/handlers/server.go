@@ -60,12 +60,15 @@ type preparedProblemInput struct {
 }
 
 type workProblemInput struct {
-	ProblemID uint `json:"problem_id"`
-	Score     int  `json:"score"`
+	ProblemID         uint   `json:"problem_id"`
+	Score             int    `json:"score"`
+	Label             string `json:"label"`
+	ReleaseAfterExam  bool   `json:"release_after_exam"`
 }
 
 type problemScoreView struct {
 	Problem          models.Problem          `json:"problem"`
+	Label            string                  `json:"label,omitempty"`
 	Score            int                     `json:"score"`
 	BestScore        int                     `json:"best_score"`
 	RawScore         int                     `json:"raw_score"`
@@ -1044,6 +1047,9 @@ func (s Server) createAssignment(c *gin.Context) {
 	}
 	problemItems := normalizeWorkProblemInputs(req.Problems, req.ProblemIDs)
 	problemIDs := workProblemIDs(problemItems)
+	if !prepareExamProblemLabels(c, problemItems, req.ClassID, req.EndsAt) {
+		return
+	}
 	if req.ClassID != nil {
 		var class models.Class
 		if err := s.DB.First(&class, *req.ClassID).Error; err != nil {
@@ -1278,6 +1284,9 @@ func (s Server) createExam(c *gin.Context) {
 		c.JSON(http.StatusForbidden, gin.H{"error": "forbidden"})
 		return
 	}
+	if !prepareExamProblemLabels(c, problemItems, req.ClassID, req.EndsAt) {
+		return
+	}
 	prepared, ok := s.validateProblemSelection(c, user, problemIDs, req.ClassID, req.EndsAt, "exam")
 	if !ok {
 		return
@@ -1295,10 +1304,15 @@ func (s Server) createExam(c *gin.Context) {
 			return err
 		}
 		for i, problemItem := range problemItems {
-			if err := tx.Create(&models.ExamProblem{ExamID: item.ID, ProblemID: problemItem.ProblemID, Score: problemItem.Score, SortOrder: i}).Error; err != nil {
+			if err := tx.Create(&models.ExamProblem{ExamID: item.ID, ProblemID: problemItem.ProblemID, Label: problemItem.Label, Score: problemItem.Score, SortOrder: i}).Error; err != nil {
 				return err
 			}
 			if _, isPrepared := prepared[problemItem.ProblemID]; isPrepared && req.ClassID != nil {
+				if err := s.linkProblemToClass(tx, *req.ClassID, problemItem.ProblemID, req.EndsAt); err != nil {
+					return err
+				}
+			}
+			if problemItem.ReleaseAfterExam && req.ClassID != nil {
 				if err := s.linkProblemToClass(tx, *req.ClassID, problemItem.ProblemID, req.EndsAt); err != nil {
 					return err
 				}
@@ -2094,9 +2108,41 @@ func assignmentProblemViews(item models.Assignment) []gin.H {
 func examProblemViews(item models.Exam) []gin.H {
 	problems := make([]gin.H, 0, len(item.Problems))
 	for _, link := range item.Problems {
-		problems = append(problems, gin.H{"problem": link.Problem, "score": link.Score, "problem_id": link.ProblemID})
+		problems = append(problems, gin.H{"problem": link.Problem, "score": link.Score, "label": link.Label, "problem_id": link.ProblemID})
 	}
 	return problems
+}
+
+func prepareExamProblemLabels(c *gin.Context, items []workProblemInput, classID *uint, endsAt *time.Time) bool {
+	labels := map[string]bool{}
+	for i := range items {
+		items[i].Label = strings.TrimSpace(items[i].Label)
+		if items[i].Label == "" {
+			items[i].Label = defaultProblemLabel(i)
+		}
+		key := strings.ToLower(items[i].Label)
+		if labels[key] {
+			c.JSON(http.StatusBadRequest, gin.H{"error": "problem labels must be unique"})
+			return false
+		}
+		labels[key] = true
+		if items[i].ReleaseAfterExam && (classID == nil || endsAt == nil) {
+			c.JSON(http.StatusBadRequest, gin.H{"error": "exam-only problems require class and end time"})
+			return false
+		}
+	}
+	return true
+}
+
+func defaultProblemLabel(index int) string {
+	index += 1
+	label := ""
+	for index > 0 {
+		index--
+		label = string(rune('A'+index%26)) + label
+		index /= 26
+	}
+	return label
 }
 
 func normalizeWorkProblemInputs(items []workProblemInput, problemIDs []uint) []workProblemInput {
@@ -2115,6 +2161,7 @@ func normalizeWorkProblemInputs(items []workProblemInput, problemIDs []uint) []w
 		if item.Score <= 0 {
 			item.Score = 100
 		}
+		item.Label = strings.TrimSpace(item.Label)
 		seen[item.ProblemID] = true
 		out = append(out, item)
 	}
@@ -2251,6 +2298,7 @@ func (s Server) workSummaryForLinks(userID uint, assignmentLinks []models.Assign
 	type linkInfo struct {
 		Problem   models.Problem
 		ProblemID uint
+		Label     string
 		Score     int
 	}
 	links := []linkInfo{}
@@ -2258,13 +2306,14 @@ func (s Server) workSummaryForLinks(userID uint, assignmentLinks []models.Assign
 		links = append(links, linkInfo{Problem: link.Problem, ProblemID: link.ProblemID, Score: link.Score})
 	}
 	for _, link := range examLinks {
-		links = append(links, linkInfo{Problem: link.Problem, ProblemID: link.ProblemID, Score: link.Score})
+		links = append(links, linkInfo{Problem: link.Problem, ProblemID: link.ProblemID, Label: link.Label, Score: link.Score})
 	}
 	hasSubmission := false
 	hasPending := false
 	for _, link := range links {
 		summary.MaxScore += link.Score
 		view, submitted, pending := s.problemScore(userID, link.ProblemID, link.Problem, link.Score, assignmentID, examID, manualReview)
+		view.Label = link.Label
 		if submitted {
 			hasSubmission = true
 		}

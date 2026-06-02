@@ -175,6 +175,7 @@ type ExamProblem struct {
 	ID        uint      `json:"id" gorm:"primaryKey"`
 	ExamID    uint      `json:"exam_id" gorm:"index;not null"`
 	ProblemID uint      `json:"problem_id" gorm:"index;not null"`
+	Label     string    `json:"label" gorm:"size:32;index"`
 	Score     int       `json:"score" gorm:"not null;default:100"`
 	SortOrder int       `json:"sort_order" gorm:"not null;default:0"`
 	Problem   Problem   `json:"problem" gorm:"foreignKey:ProblemID"`

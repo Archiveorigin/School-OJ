@@ -2,7 +2,7 @@
   <ProblemStatementView
     v-if="activeProblem"
     :problem="activeProblem"
-    :problem-number="activeProblem.id"
+    :problem-number="activeEntry?.label || activeProblem.id"
     :score="activeEntry?.score"
     :status-text="statusText"
     :status-type="statusType"
@@ -18,7 +18,7 @@ import ProblemStatementView from '../../components/ProblemStatementView.vue'
 
 const props = defineProps<{
   detail: any
-  activeEntry: { problem: Problem; score: number; problem_id: number } | null
+  activeEntry: { problem: Problem; score: number; label?: string; problem_id: number } | null
   activeProblem: Problem | null
 }>()
 

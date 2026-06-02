@@ -7,6 +7,7 @@ import AssignmentDetail from '../views/AssignmentDetail.vue'
 import Assignments from '../views/Assignments.vue'
 import Courses from '../views/Courses.vue'
 import Dashboard from '../views/Dashboard.vue'
+import ExamCreate from '../views/ExamCreate.vue'
 import ExamDetail from '../views/ExamDetail.vue'
 import ExamProblems from '../views/exam/ExamProblems.vue'
 import ExamRecords from '../views/exam/ExamRecords.vue'
@@ -37,6 +38,7 @@ const router = createRouter({
     { path: '/assignments', component: Assignments, meta: { title: '作业' } },
     { path: '/assignments/:id', component: AssignmentDetail, meta: { title: '作业', activeMenu: '/assignments' } },
     { path: '/exams', component: Exams, meta: { title: '考试' } },
+    { path: '/exams/new', component: ExamCreate, meta: { roles: ['admin', 'teacher'], title: '新建考试', activeMenu: '/exams' } },
     {
       path: '/exams/:id',
       component: ExamDetail,

@@ -31,6 +31,14 @@ watch(
   }
 )
 
+watch(
+  () => props.modelValue,
+  (value) => {
+    if (!editor || editor.getValue() === value) return
+    editor.setValue(value)
+  }
+)
+
 onBeforeUnmount(() => editor?.dispose())
 
 async function format() {
@@ -55,7 +63,7 @@ function lang(value: string) {
 
 function lightweightFormat(source: string, language: string) {
   const lines = source.replace(/\r\n/g, '\n').replace(/\r/g, '\n').replace(/\t/g, '  ').split('\n')
-  const formatted = language === 'python' ? formatPython(lines) : formatBraceLanguage(lines)
+  const formatted = language === 'python' ? formatPython(lines) : formatBraceLanguage(expandBraceLanguageLines(lines))
   return `${formatted.join('\n').replace(/\s+$/g, '')}\n`
 }
 
@@ -98,11 +106,117 @@ function formatBraceLanguage(lines: string[]) {
   return out
 }
 
+function expandBraceLanguageLines(lines: string[]) {
+  const out: string[] = []
+  for (const line of lines) {
+    if (!line.trim()) {
+      out.push('')
+      continue
+    }
+    out.push(...splitBraceLanguageLine(line))
+  }
+  return out
+}
+
+function splitBraceLanguageLine(line: string) {
+  const out: string[] = []
+  let buffer = ''
+  let parenDepth = 0
+  let inString: '"' | "'" | null = null
+  let escaped = false
+
+  const flush = () => {
+    const value = buffer.trim()
+    if (value) out.push(value)
+    buffer = ''
+  }
+
+  for (const char of line) {
+    if (inString) {
+      buffer += char
+      if (escaped) {
+        escaped = false
+      } else if (char === '\\') {
+        escaped = true
+      } else if (char === inString) {
+        inString = null
+      }
+      continue
+    }
+    if (char === '"' || char === "'") {
+      inString = char
+      buffer += char
+      continue
+    }
+    if (char === '(') parenDepth += 1
+    if (char === ')') parenDepth = Math.max(0, parenDepth - 1)
+    if (char === '{' || char === '}') {
+      flush()
+      out.push(char)
+      continue
+    }
+    buffer += char
+    if (char === ';' && parenDepth === 0) flush()
+  }
+  flush()
+  return out
+}
+
 function spaceCommonTokens(line: string) {
-  return line
-    .replace(/,\s*/g, ', ')
-    .replace(/\b(if|for|while|switch|catch)\(/g, '$1 (')
+  return splitStringSegments(line)
+    .map((part) => (part.string ? part.value : formatCodeSegment(part.value)))
+    .join('')
     .replace(/\s+$/g, '')
+}
+
+function formatCodeSegment(value: string) {
+  return value
+    .replace(/\s*,\s*/g, ', ')
+    .replace(/\b(if|for|while|switch|catch)\s*\(/g, '$1 (')
+    .replace(/\s*(<<|>>)\s*/g, ' $1 ')
+    .replace(/\s*(==|!=|<=|>=|&&|\|\|)\s*/g, ' $1 ')
+    .replace(/\s*([+\-*/%])\s*/g, ' $1 ')
+    .replace(/([^!<>=])\s*=\s*([^=])/g, '$1 = $2')
+    .replace(/\s+/g, ' ')
+    .replace(/\s+([;,)])/g, '$1')
+    .replace(/([({])\s+/g, '$1')
+}
+
+function splitStringSegments(line: string) {
+  const parts: Array<{ value: string; string: boolean }> = []
+  let buffer = ''
+  let inString: '"' | "'" | null = null
+  let escaped = false
+
+  const flush = (string: boolean) => {
+    if (!buffer) return
+    parts.push({ value: buffer, string })
+    buffer = ''
+  }
+
+  for (const char of line) {
+    if (inString) {
+      buffer += char
+      if (escaped) {
+        escaped = false
+      } else if (char === '\\') {
+        escaped = true
+      } else if (char === inString) {
+        flush(true)
+        inString = null
+      }
+      continue
+    }
+    if (char === '"' || char === "'") {
+      flush(false)
+      inString = char
+      buffer += char
+      continue
+    }
+    buffer += char
+  }
+  flush(Boolean(inString))
+  return parts
 }
 
 defineExpose({ format })

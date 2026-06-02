@@ -33,16 +33,28 @@
         <el-button :type="tabType('records')" @click="goExamTab('records')">提交记录</el-button>
       </div>
 
+      <div class="problem-select-row">
+        <span class="muted">题目选择</span>
+        <el-select v-model="activeProblemID" filterable class="problem-select" placeholder="选择题目">
+          <el-option
+            v-for="entry in detail.problems"
+            :key="entry.problem.id"
+            :label="problemOptionLabel(entry)"
+            :value="entry.problem.id"
+          />
+        </el-select>
+      </div>
+
       <div class="problem-strip">
         <button
-          v-for="entry in detail.problems"
+          v-for="(entry, index) in detail.problems"
           :key="entry.problem.id"
           type="button"
           class="problem-pick"
           :class="{ active: activeProblem?.id === entry.problem.id }"
           @click="selectDetailProblem(entry)"
         >
-          <strong>{{ entry.problem.title }}</strong>
+          <strong>{{ problemLabel(entry, index) }} · {{ entry.problem.title }}</strong>
           <span>{{ entry.score }} 分 · {{ problemScoreText(entry.problem.id) }}</span>
           <small v-if="entry.problem.deleted_at" class="muted">已下架</small>
         </button>
@@ -78,7 +90,7 @@ import { formatDateTime, workStatusLabel } from '../features/assignments/assignm
 import { useAuthStore } from '../stores/auth'
 import { useExamLockStore } from '../stores/examLock'
 
-type DetailProblem = { problem: Problem; score: number; problem_id: number }
+type DetailProblem = { problem: Problem; score: number; label?: string; problem_id: number }
 type EditorState = { language: string; source: string; live: any }
 type ExamTab = 'problems' | 'submit' | 'records'
 
@@ -102,6 +114,13 @@ const examLocked = computed(() => {
 const activeState = computed(() => {
   if (!activeProblem.value) return null
   return ensureEditorState(activeProblem.value.id)
+})
+const activeProblemID = computed({
+  get: () => activeProblem.value?.id,
+  set: (value: number | undefined) => {
+    const entry = detail.value?.problems?.find((item: DetailProblem) => item.problem.id === value)
+    if (entry) selectDetailProblem(entry)
+  }
 })
 const language = computed({
   get: () => activeState.value?.language || 'cpp',
@@ -152,7 +171,7 @@ async function loadDetail() {
 
 function selectDetailProblem(entry: DetailProblem) {
   activeEntry.value = entry
-  ensureEditorState(entry.problem.id).live = null
+  ensureEditorState(entry.problem.id)
 }
 
 function goExamTab(tab: ExamTab) {
@@ -276,6 +295,28 @@ function scoreForProblem(problemID: number) {
   return detail.value?.problem_scores?.find((item: any) => item.problem.id === problemID)
 }
 
+function problemOptionLabel(entry: DetailProblem) {
+  return `${problemLabel(entry)} · ${entry.problem.title} · ${entry.score} 分 · ${problemScoreText(entry.problem.id)}`
+}
+
+function problemLabel(entry: DetailProblem, index?: number) {
+  if (entry.label) return entry.label
+  const position = typeof index === 'number' ? index : detail.value?.problems?.findIndex((item: DetailProblem) => item.problem.id === entry.problem.id)
+  if (typeof position === 'number' && position >= 0) return defaultProblemLabel(position)
+  return `#${entry.problem.id}`
+}
+
+function defaultProblemLabel(index: number) {
+  index += 1
+  let label = ''
+  while (index > 0) {
+    index -= 1
+    label = String.fromCharCode(65 + (index % 26)) + label
+    index = Math.floor(index / 26)
+  }
+  return label
+}
+
 function beforeUnload(event: BeforeUnloadEvent) {
   if (!examLocked.value) return
   event.preventDefault()
@@ -328,6 +369,16 @@ onMounted(async () => {
   gap: 8px;
 }
 
+.problem-select-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.problem-select {
+  width: min(520px, 100%);
+}
+
 .problem-pick {
   display: grid;
   gap: 4px;
@@ -353,6 +404,11 @@ onMounted(async () => {
 }
 
 @media (max-width: 760px) {
+  .problem-select-row {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
   .problem-pick {
     max-width: none;
     width: 100%;
