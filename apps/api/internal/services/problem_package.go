@@ -40,6 +40,7 @@ type ProblemPackageDraft struct {
 	Slug          string             `json:"slug"`
 	Title         string             `json:"title"`
 	Statement     string             `json:"statement"`
+	Tags          []string           `json:"tags"`
 	TimeLimitMS   int                `json:"time_limit_ms"`
 	MemoryLimitMB int                `json:"memory_limit_mb"`
 	OutputLimitKB int                `json:"output_limit_kb"`

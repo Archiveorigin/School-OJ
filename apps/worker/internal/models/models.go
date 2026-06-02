@@ -26,16 +26,18 @@ type Problem struct {
 type SubmissionStatus string
 
 const (
-	StatusQueued       SubmissionStatus = "queued"
-	StatusRunning      SubmissionStatus = "running"
-	StatusAccepted     SubmissionStatus = "accepted"
-	StatusWrongAnswer  SubmissionStatus = "wrong_answer"
-	StatusCompileError SubmissionStatus = "compile_error"
-	StatusRuntimeError SubmissionStatus = "runtime_error"
-	StatusTimeLimit    SubmissionStatus = "time_limit"
-	StatusMemoryLimit  SubmissionStatus = "memory_limit"
-	StatusOutputLimit  SubmissionStatus = "output_limit"
-	StatusSystemError  SubmissionStatus = "system_error"
+	StatusQueued        SubmissionStatus = "queued"
+	StatusRunning       SubmissionStatus = "running"
+	StatusPendingReview SubmissionStatus = "pending_review"
+	StatusManualGraded  SubmissionStatus = "manual_graded"
+	StatusAccepted      SubmissionStatus = "accepted"
+	StatusWrongAnswer   SubmissionStatus = "wrong_answer"
+	StatusCompileError  SubmissionStatus = "compile_error"
+	StatusRuntimeError  SubmissionStatus = "runtime_error"
+	StatusTimeLimit     SubmissionStatus = "time_limit"
+	StatusMemoryLimit   SubmissionStatus = "memory_limit"
+	StatusOutputLimit   SubmissionStatus = "output_limit"
+	StatusSystemError   SubmissionStatus = "system_error"
 )
 
 type Submission struct {
@@ -49,6 +51,9 @@ type Submission struct {
 	SourceCode   string            `json:"source_code"`
 	Status       SubmissionStatus  `json:"status"`
 	Score        int               `json:"score"`
+	ManualScore  *int              `json:"manual_score"`
+	ManualGradedBy *uint           `json:"manual_graded_by"`
+	ManualGradedAt *time.Time      `json:"manual_graded_at"`
 	TimeMS       int               `json:"time_ms"`
 	MemoryKB     int               `json:"memory_kb"`
 	Message      string            `json:"message"`

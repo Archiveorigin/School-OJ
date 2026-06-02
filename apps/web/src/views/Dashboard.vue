@@ -5,61 +5,82 @@
         <h2>{{ roleTitle }}</h2>
         <p class="muted">{{ activeClassText }}</p>
       </div>
-      <el-button @click="load">刷新</el-button>
+      <el-button :loading="loading || classroom.loading" @click="refresh">刷新</el-button>
     </div>
-    <el-row :gutter="16">
-      <el-col :span="6" v-for="item in stats" :key="item.label">
-        <div class="panel stat">
-          <strong>{{ item.value }}</strong>
-          <span class="muted">{{ item.label }}</span>
-        </div>
-      </el-col>
-    </el-row>
-    <el-row :gutter="16" class="dashboard-row">
-      <el-col :span="10">
-        <div class="panel fortune">
-          <div class="section-title">
-            <h3>今日运势</h3>
-            <span>{{ fortune.badge }}</span>
+
+    <div v-if="loadError" class="panel dashboard-error">
+      <strong>概览加载失败</strong>
+      <span>{{ loadError }}</span>
+      <el-button size="small" @click="refresh">重试</el-button>
+    </div>
+
+    <div v-if="showNoClassState" class="panel no-class-state">
+      <div>
+        <h3>尚未加入班级</h3>
+        <p class="muted">加入教师提供的班级后，题库、作业、考试和排行榜会按班级显示。</p>
+      </div>
+      <div class="join-inline">
+        <el-input-number v-model="joinClassID" :min="1" placeholder="班级 ID" />
+        <el-button type="primary" :loading="joining" @click="joinClass">加入班级</el-button>
+      </div>
+    </div>
+
+    <template v-else>
+      <el-row :gutter="16">
+        <el-col :span="6" v-for="item in stats" :key="item.label">
+          <div class="panel stat">
+            <strong>{{ item.value }}</strong>
+            <span class="muted">{{ item.label }}</span>
           </div>
-          <strong>{{ fortune.title }}</strong>
-          <p>{{ fortune.tip }}</p>
-          <div class="fortune-tags">
-            <el-tag type="success">宜 {{ fortune.good }}</el-tag>
-            <el-tag type="info">幸运语言 {{ fortune.lang }}</el-tag>
-          </div>
-        </div>
-      </el-col>
-      <el-col :span="14">
-        <div class="panel">
-          <div class="section-title">
-            <h3>{{ rolePanelTitle }}</h3>
-          </div>
-          <div class="quick-grid">
-            <div v-for="item in roleCards" :key="item.label" class="quick-card">
-              <strong>{{ item.value }}</strong>
-              <span>{{ item.label }}</span>
+        </el-col>
+      </el-row>
+      <el-row :gutter="16" class="dashboard-row">
+        <el-col :span="10">
+          <div class="panel fortune">
+            <div class="section-title">
+              <h3>今日运势</h3>
+              <span>{{ fortune.badge }}</span>
+            </div>
+            <strong>{{ fortune.title }}</strong>
+            <p>{{ fortune.tip }}</p>
+            <div class="fortune-tags">
+              <el-tag type="success">宜 {{ fortune.good }}</el-tag>
+              <el-tag type="info">幸运语言 {{ fortune.lang }}</el-tag>
             </div>
           </div>
-        </div>
-      </el-col>
-    </el-row>
-    <div class="panel latest">
-      <h3>最近提交</h3>
-      <el-table :data="submissions" size="small">
-        <el-table-column prop="id" label="ID" width="90" />
-        <el-table-column prop="problem_id" label="题目" width="90" />
-        <el-table-column prop="language" label="语言" width="110" />
-        <el-table-column label="状态">
-          <template #default="{ row }"><StatusBadge :status="row.status" /></template>
-        </el-table-column>
-        <el-table-column prop="score" label="分数" width="90" />
-      </el-table>
-    </div>
+        </el-col>
+        <el-col :span="14">
+          <div class="panel">
+            <div class="section-title">
+              <h3>{{ rolePanelTitle }}</h3>
+            </div>
+            <div class="quick-grid">
+              <div v-for="item in roleCards" :key="item.label" class="quick-card">
+                <strong>{{ item.value }}</strong>
+                <span>{{ item.label }}</span>
+              </div>
+            </div>
+          </div>
+        </el-col>
+      </el-row>
+      <div class="panel latest">
+        <h3>最近提交</h3>
+        <el-table :data="submissions" size="small" v-loading="loading">
+          <el-table-column prop="id" label="ID" width="90" />
+          <el-table-column prop="problem_id" label="题目" width="90" />
+          <el-table-column prop="language" label="语言" width="110" />
+          <el-table-column label="状态">
+            <template #default="{ row }"><StatusBadge :status="row.status" /></template>
+          </el-table-column>
+          <el-table-column prop="score" label="分数" width="90" />
+        </el-table>
+      </div>
+    </template>
   </section>
 </template>
 
 <script setup lang="ts">
+import { ElMessage } from 'element-plus'
 import { computed, onMounted, ref, watch } from 'vue'
 import { client, type Submission } from '../api/client'
 import StatusBadge from '../components/StatusBadge.vue'
@@ -71,8 +92,13 @@ const problems = ref<any[]>([])
 const submissions = ref<Submission[]>([])
 const assignments = ref<any[]>([])
 const exams = ref<any[]>([])
+const loading = ref(false)
+const loadError = ref('')
+const joinClassID = ref<number>()
+const joining = ref(false)
 const auth = useAuthStore()
 const classroom = useClassroomStore()
+const showNoClassState = computed(() => auth.role === 'student' && classroom.loaded && classroom.classes.length === 0)
 const stats = computed(() => [
   { label: auth.role === 'student' ? '已加入课程' : '课程', value: courses.value.length },
   { label: '当前班级题目', value: problems.value.length },
@@ -85,8 +111,10 @@ const roleTitle = computed(() => {
   return '学习工作台'
 })
 const activeClassText = computed(() => {
+  if (classroom.loading && !classroom.loaded) return '正在加载班级'
   const item = classroom.activeClass
-  return item ? `${item.course_code} / ${item.class_name}` : '尚未选择班级'
+  if (item) return `${item.course_code} / ${item.class_name}`
+  return auth.role === 'student' ? '尚未加入班级' : '尚未选择班级'
 })
 const rolePanelTitle = computed(() => {
   if (auth.role === 'admin') return '系统运行'
@@ -110,23 +138,65 @@ const fortune = computed(() => {
   return options[sum % options.length]
 })
 
-async function load() {
-  const params = classroom.activeClassId ? { class_id: classroom.activeClassId } : {}
-  const [c, p, s, a, e] = await Promise.all([
-    client.get('/courses'),
-    client.get('/problems', { params }),
-    client.get('/submissions'),
-    client.get('/assignments', { params }),
-    client.get('/exams', { params })
-  ])
-  courses.value = c.data
-  problems.value = p.data
-  submissions.value = s.data
-  assignments.value = a.data
-  exams.value = e.data
+function list<T>(value: T[] | null | undefined) {
+  return Array.isArray(value) ? value : []
 }
 
-watch(() => classroom.activeClassId, load)
+async function load() {
+  loading.value = true
+  loadError.value = ''
+  try {
+    const params = classroom.activeClassId ? { class_id: classroom.activeClassId } : {}
+    const skipClassScoped = showNoClassState.value
+    const [c, p, s, a, e] = await Promise.all([
+      client.get('/courses'),
+      skipClassScoped ? Promise.resolve({ data: [] }) : client.get('/problems', { params }),
+      client.get('/submissions'),
+      skipClassScoped ? Promise.resolve({ data: [] }) : client.get('/assignments', { params }),
+      skipClassScoped ? Promise.resolve({ data: [] }) : client.get('/exams', { params })
+    ])
+    courses.value = list(c.data)
+    problems.value = list(p.data)
+    submissions.value = list(s.data)
+    assignments.value = list(a.data)
+    exams.value = list(e.data)
+  } catch (err: any) {
+    loadError.value = err.response?.data?.error || err.message || '未知错误'
+  } finally {
+    loading.value = false
+  }
+}
+
+async function refresh() {
+  await classroom.load({ force: true })
+  await load()
+}
+
+async function joinClass() {
+  if (!joinClassID.value) {
+    ElMessage.error('请填写班级 ID')
+    return
+  }
+  joining.value = true
+  try {
+    await client.post(`/classes/${joinClassID.value}/join`)
+    ElMessage.success('已加入班级')
+    classroom.setActive(joinClassID.value)
+    await classroom.load({ force: true })
+    await load()
+  } catch (err: any) {
+    ElMessage.error(err.response?.data?.error || err.message)
+  } finally {
+    joining.value = false
+  }
+}
+
+watch(
+  () => classroom.activeClassId,
+  () => {
+    if (classroom.loaded) load()
+  }
+)
 
 onMounted(async () => {
   await classroom.load()
@@ -150,6 +220,36 @@ onMounted(async () => {
 
 .dashboard-row {
   margin-top: 16px;
+}
+
+.dashboard-error {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-bottom: 16px;
+  color: #b42318;
+}
+
+.no-class-state {
+  display: grid;
+  gap: 18px;
+  max-width: 720px;
+}
+
+.no-class-state h3 {
+  margin: 0 0 8px;
+  color: var(--text);
+}
+
+.no-class-state p {
+  margin: 0;
+}
+
+.join-inline {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
 }
 
 .fortune strong {

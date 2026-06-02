@@ -176,7 +176,15 @@ func (s Server) getProfile(c *gin.Context) {
 	var byStatus []statusRow
 	s.DB.Table("submissions").Select("status, count(*) as count").Where("user_id = ?", user.ID).Group("status").Scan(&byStatus)
 	var activityRows []activityRow
-	s.DB.Raw("select to_char(created_at::date, 'YYYY-MM-DD') as date, count(*) as count from submissions where user_id = ? and created_at >= ? group by created_at::date order by date asc", user.ID, time.Now().AddDate(0, 0, -364)).Scan(&activityRows)
+	activityLabel := "代码提交活跃度"
+	activityUnit := "次提交"
+	if user.Role == models.RoleTeacher || user.Role == models.RoleAdmin {
+		activityLabel = "题目上传活跃度"
+		activityUnit = "次上传"
+		s.DB.Raw("select to_char(created_at::date, 'YYYY-MM-DD') as date, count(*) as count from problems where owner_id = ? and created_at >= ? group by created_at::date order by date asc", user.ID, time.Now().AddDate(0, 0, -364)).Scan(&activityRows)
+	} else {
+		s.DB.Raw("select to_char(created_at::date, 'YYYY-MM-DD') as date, count(*) as count from submissions where user_id = ? and created_at >= ? group by created_at::date order by date asc", user.ID, time.Now().AddDate(0, 0, -364)).Scan(&activityRows)
+	}
 	counts := map[string]int{}
 	for _, item := range activityRows {
 		counts[item.Date] = item.Count
@@ -192,14 +200,20 @@ func (s Server) getProfile(c *gin.Context) {
 	var solved int64
 	s.DB.Model(&models.Submission{}).Where("user_id = ? AND status = ?", user.ID, models.StatusAccepted).Distinct("problem_id").Count(&solved)
 	var submissions int64
-	s.DB.Model(&models.Submission{}).Where("user_id = ?", user.ID).Count(&submissions)
+	if user.Role == models.RoleTeacher || user.Role == models.RoleAdmin {
+		s.DB.Model(&models.Problem{}).Where("owner_id = ?", user.ID).Count(&submissions)
+	} else {
+		s.DB.Model(&models.Submission{}).Where("user_id = ?", user.ID).Count(&submissions)
+	}
 	c.JSON(http.StatusOK, gin.H{
-		"user":        user,
-		"solved":      solved,
-		"submissions": submissions,
-		"by_status":   byStatus,
-		"activity":    activity,
-		"recent":      recent,
+		"user":           user,
+		"solved":         solved,
+		"submissions":    submissions,
+		"by_status":      byStatus,
+		"activity":       activity,
+		"activity_label": activityLabel,
+		"activity_unit":  activityUnit,
+		"recent":         recent,
 	})
 }
 

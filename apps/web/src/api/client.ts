@@ -38,15 +38,32 @@ export interface User {
 
 export interface Problem {
   id: number
+  owner_id?: number
   slug: string
   title: string
   statement: string
+  tags?: Record<string, unknown>
   time_limit_ms: number
   memory_limit_mb: number
   output_limit_kb: number
+  manifest?: Record<string, unknown>
   progress_status?: 'unattempted' | 'attempted' | 'accepted'
   points?: number
   points_awarded?: boolean
+}
+
+export interface PreparedProblem {
+  id: number
+  problem_id: number
+  owner_id: number
+  folder?: string
+  difficulty?: string
+  source?: string
+  notes?: string
+  archived?: boolean
+  problem: Problem
+  created_at?: string
+  updated_at?: string
 }
 
 export interface ClassContext {
@@ -63,9 +80,15 @@ export interface Submission {
   id: number
   user_id: number
   problem_id: number
+  assignment_id?: number
+  exam_id?: number
   language: string
+  source_code?: string
   status: string
   score: number
+  manual_score?: number
+  manual_graded_by?: number
+  manual_graded_at?: string
   time_ms: number
   memory_kb: number
   message: string

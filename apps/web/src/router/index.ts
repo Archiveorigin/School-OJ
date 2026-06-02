@@ -9,6 +9,7 @@ import Leaderboard from '../views/Leaderboard.vue'
 import Login from '../views/Login.vue'
 import Plagiarism from '../views/Plagiarism.vue'
 import Problems from '../views/Problems.vue'
+import PreparedProblems from '../views/PreparedProblems.vue'
 import Profile from '../views/Profile.vue'
 import Register from '../views/Register.vue'
 import ForgotPassword from '../views/ForgotPassword.vue'
@@ -25,6 +26,7 @@ const router = createRouter({
     { path: '/profile', component: Profile },
     { path: '/courses', component: Courses },
     { path: '/problems', component: Problems },
+    { path: '/prepared-problems', component: PreparedProblems, meta: { roles: ['admin', 'teacher'] } },
     { path: '/assignments', component: Assignments },
     { path: '/exams', component: Exams },
     { path: '/submissions', component: Submissions },

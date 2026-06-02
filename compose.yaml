@@ -2,13 +2,12 @@ name: school-oj
 
 services:
   postgres:
+    restart: unless-stopped
     image: postgres:16-alpine
     environment:
-      POSTGRES_DB: oj
-      POSTGRES_USER: oj
-      POSTGRES_PASSWORD: ojpass
-    ports:
-      - "5432:5432"
+      POSTGRES_DB: "${POSTGRES_DB:-oj}"
+      POSTGRES_USER: "${POSTGRES_USER:-oj}"
+      POSTGRES_PASSWORD: "${POSTGRES_PASSWORD:-ojpass}"
     volumes:
       - postgres-data:/var/lib/postgresql/data
     healthcheck:
@@ -18,10 +17,9 @@ services:
       retries: 20
 
   redis:
+    restart: unless-stopped
     image: redis:7-alpine
     command: ["redis-server", "--appendonly", "yes"]
-    ports:
-      - "6379:6379"
     volumes:
       - redis-data:/data
     healthcheck:
@@ -31,37 +29,34 @@ services:
       retries: 20
 
   minio:
+    restart: unless-stopped
     image: minio/minio:latest
     command: ["server", "/data", "--console-address", ":9001"]
     environment:
-      MINIO_ROOT_USER: minioadmin
-      MINIO_ROOT_PASSWORD: minioadmin
-    ports:
-      - "9000:9000"
-      - "9001:9001"
+      MINIO_ROOT_USER: "${MINIO_ROOT_USER:-minioadmin}"
+      MINIO_ROOT_PASSWORD: "${MINIO_ROOT_PASSWORD:-minioadmin}"
     volumes:
       - minio-data:/data
-
-  mailpit:
-    image: axllent/mailpit:latest
-    ports:
-      - "8025:8025"
   api:
+    restart: unless-stopped
     build:
       context: ./apps/api
     environment:
       APP_ADDR: ":8080"
-      DATABASE_URL: "host=postgres user=oj password=ojpass dbname=oj port=5432 sslmode=disable TimeZone=Asia/Shanghai"
+      GIN_MODE: "release"
+      DATABASE_URL: "host=postgres user=${POSTGRES_USER:-oj} password=${POSTGRES_PASSWORD:-ojpass} dbname=${POSTGRES_DB:-oj} port=5432 sslmode=disable TimeZone=Asia/Shanghai"
       REDIS_ADDR: "redis:6379"
       MINIO_ENDPOINT: "minio:9000"
-      MINIO_ACCESS_KEY: "minioadmin"
-      MINIO_SECRET_KEY: "minioadmin"
-      MINIO_BUCKET: "oj-artifacts"
-      JWT_SECRET: "change-me-in-production"
-      SMTP_HOST: "mailpit"
-      SMTP_PORT: "1025"
-      MAIL_FROM: "no-reply@huanghailuoj.local"
-      MAIL_FROM_NAME: "黄海在线"
+      MINIO_ACCESS_KEY: "${MINIO_ROOT_USER:-minioadmin}"
+      MINIO_SECRET_KEY: "${MINIO_ROOT_PASSWORD:-minioadmin}"
+      MINIO_BUCKET: "${MINIO_BUCKET:-oj-artifacts}"
+      JWT_SECRET: "${JWT_SECRET:-change-me-in-production}"
+      SMTP_HOST: "${SMTP_HOST:-}"
+      SMTP_PORT: "${SMTP_PORT:-1025}"
+      SMTP_USERNAME: "${SMTP_USERNAME:-}"
+      SMTP_PASSWORD: "${SMTP_PASSWORD:-}"
+      MAIL_FROM: "${MAIL_FROM:-no-reply@huanghailuoj.local}"
+      MAIL_FROM_NAME: "${MAIL_FROM_NAME:-黄海在线}"
       AUTO_MIGRATE: "true"
       SEED_DATA: "true"
       JPLAG_WORK_DIR: "/tmp/jplag"
@@ -72,10 +67,6 @@ services:
         condition: service_healthy
       minio:
         condition: service_started
-      mailpit:
-        condition: service_started
-    ports:
-      - "8080:8080"
     healthcheck:
       test: ["CMD", "/usr/local/bin/api-healthcheck"]
       interval: 10s
@@ -83,15 +74,16 @@ services:
       retries: 20
 
   worker:
+    restart: unless-stopped
     build:
       context: ./apps/worker
     environment:
-      DATABASE_URL: "host=postgres user=oj password=ojpass dbname=oj port=5432 sslmode=disable TimeZone=Asia/Shanghai"
+      DATABASE_URL: "host=postgres user=${POSTGRES_USER:-oj} password=${POSTGRES_PASSWORD:-ojpass} dbname=${POSTGRES_DB:-oj} port=5432 sslmode=disable TimeZone=Asia/Shanghai"
       REDIS_ADDR: "redis:6379"
       MINIO_ENDPOINT: "minio:9000"
-      MINIO_ACCESS_KEY: "minioadmin"
-      MINIO_SECRET_KEY: "minioadmin"
-      MINIO_BUCKET: "oj-artifacts"
+      MINIO_ACCESS_KEY: "${MINIO_ROOT_USER:-minioadmin}"
+      MINIO_SECRET_KEY: "${MINIO_ROOT_PASSWORD:-minioadmin}"
+      MINIO_BUCKET: "${MINIO_BUCKET:-oj-artifacts}"
       SANDBOX_WORK_ROOT: "${OJ_WORK_ROOT:-/tmp/school-oj-worker}"
       DOCKER_SANDBOX_SECCOMP: "${OJ_WORK_ROOT:-/tmp/school-oj-worker}/seccomp/oj-seccomp.json"
       SANDBOX_CPU: "1.0"
@@ -105,13 +97,14 @@ services:
       - ${OJ_WORK_ROOT:-/tmp/school-oj-worker}:${OJ_WORK_ROOT:-/tmp/school-oj-worker}
 
   web:
+    restart: unless-stopped
     build:
       context: ./apps/web
     depends_on:
       api:
         condition: service_healthy
     ports:
-      - "3000:80"
+      - "${WEB_PORT:-25565}:80"
 
 volumes:
   postgres-data:

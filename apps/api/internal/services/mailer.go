@@ -3,6 +3,7 @@ package services
 import (
 	"bytes"
 	"crypto/rand"
+	"crypto/tls"
 	"fmt"
 	"log"
 	"math/big"
@@ -58,5 +59,46 @@ func (m Mailer) Send(to, subject, body string) error {
 	if m.Cfg.SMTPUsername != "" {
 		auth = smtp.PlainAuth("", m.Cfg.SMTPUsername, m.Cfg.SMTPPassword, m.Cfg.SMTPHost)
 	}
+	if m.Cfg.SMTPPort == 465 {
+		return sendMailTLS(addr, m.Cfg.SMTPHost, auth, m.Cfg.MailFrom, []string{to}, msg.Bytes())
+	}
 	return smtp.SendMail(addr, auth, m.Cfg.MailFrom, []string{to}, msg.Bytes())
+}
+
+func sendMailTLS(addr, host string, auth smtp.Auth, from string, to []string, msg []byte) error {
+	conn, err := tls.Dial("tcp", addr, &tls.Config{ServerName: host, MinVersion: tls.VersionTLS12})
+	if err != nil {
+		return err
+	}
+	client, err := smtp.NewClient(conn, host)
+	if err != nil {
+		_ = conn.Close()
+		return err
+	}
+	defer client.Close()
+	if auth != nil {
+		if err := client.Auth(auth); err != nil {
+			return err
+		}
+	}
+	if err := client.Mail(from); err != nil {
+		return err
+	}
+	for _, rcpt := range to {
+		if err := client.Rcpt(rcpt); err != nil {
+			return err
+		}
+	}
+	writer, err := client.Data()
+	if err != nil {
+		return err
+	}
+	if _, err := writer.Write(msg); err != nil {
+		_ = writer.Close()
+		return err
+	}
+	if err := writer.Close(); err != nil {
+		return err
+	}
+	return client.Quit()
 }

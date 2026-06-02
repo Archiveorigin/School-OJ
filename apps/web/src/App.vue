@@ -10,6 +10,7 @@
         <el-menu-item index="/">概览</el-menu-item>
         <el-menu-item index="/courses">课程班级</el-menu-item>
         <el-menu-item index="/problems">题库</el-menu-item>
+        <el-menu-item v-if="auth.role !== 'student'" index="/prepared-problems">预备题库</el-menu-item>
         <el-menu-item index="/assignments">作业</el-menu-item>
         <el-menu-item index="/exams">考试</el-menu-item>
         <el-menu-item index="/submissions">提交</el-menu-item>
@@ -82,6 +83,7 @@ const pageTitle = computed(() => {
     '/': '概览',
     '/courses': '课程班级',
     '/problems': '题库',
+    '/prepared-problems': '预备题库',
     '/assignments': '作业',
     '/exams': '考试',
     '/submissions': '提交',

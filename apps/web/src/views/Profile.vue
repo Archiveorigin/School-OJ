@@ -20,7 +20,7 @@
       <div class="profile-stats">
         <div>
           <strong>{{ profile?.submissions || 0 }}</strong>
-          <span>提交</span>
+          <span>{{ activityStatLabel }}</span>
         </div>
         <div>
           <strong>{{ profile?.solved || 0 }}</strong>
@@ -36,7 +36,7 @@
     <div class="profile-grid">
       <div class="panel">
         <div class="section-title">
-          <h3>代码提交活跃度</h3>
+          <h3>{{ profile?.activity_label || '代码提交活跃度' }}</h3>
           <span class="muted">近 365 天</span>
         </div>
         <div class="activity-scroll">
@@ -46,7 +46,7 @@
               :key="day.date"
               class="activity-cell"
               :class="levelClass(day.count)"
-              :title="`${day.date}: ${day.count} 次提交`"
+              :title="`${day.date}: ${day.count} ${profile?.activity_unit || '次提交'}`"
             ></span>
           </div>
         </div>
@@ -130,6 +130,8 @@ interface ProfileData {
   submissions: number
   by_status: Array<{ status: string; count: number }>
   activity: Array<{ date: string; count: number }>
+  activity_label?: string
+  activity_unit?: string
   recent: Submission[]
 }
 
@@ -152,6 +154,7 @@ const roleLabel = computed(() => {
   return role === 'admin' ? '管理员' : role === 'teacher' ? '教师' : '学生'
 })
 const statusTotal = computed(() => (profile.value?.by_status || []).reduce((sum, item) => sum + item.count, 0))
+const activityStatLabel = computed(() => (auth.role === 'teacher' || auth.role === 'admin' ? '上传题目' : '提交'))
 const days = computed(() => {
   const map = new Map((profile.value?.activity || []).map((item) => [item.date, item.count]))
   const today = new Date()

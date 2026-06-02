@@ -4,6 +4,7 @@
       <h2>题库</h2>
       <div class="toolbar">
         <el-button v-if="canManage" type="primary" @click="openProblemDialog">上传题目包</el-button>
+        <el-button v-if="canManage" @click="openPreparedPublish">从预备题库发布</el-button>
         <el-button @click="load">刷新</el-button>
       </div>
     </div>
@@ -164,13 +165,50 @@
         </el-button>
       </template>
     </el-dialog>
+
+    <el-dialog v-model="preparedPublishVisible" title="从预备题库发布" width="760px">
+      <el-form label-width="90px">
+        <el-form-item label="预备题">
+          <el-select v-model="preparedIDs" multiple filterable style="width: 100%">
+            <el-option
+              v-for="item in preparedItems"
+              :key="item.id"
+              :label="preparedLabel(item)"
+              :value="item.id"
+            />
+          </el-select>
+        </el-form-item>
+        <el-form-item label="班级">
+          <el-select v-model="publishClassIDs" multiple filterable style="width: 100%">
+            <el-option
+              v-for="item in classroom.classes"
+              :key="item.class_id"
+              :label="`${item.course_code} / ${item.class_name}`"
+              :value="item.class_id"
+            />
+          </el-select>
+        </el-form-item>
+      </el-form>
+      <el-table :data="preparedItems" height="260">
+        <el-table-column prop="problem.slug" label="Slug" width="140" />
+        <el-table-column prop="problem.title" label="题目" />
+        <el-table-column prop="folder" label="文件夹" width="130" />
+        <el-table-column prop="difficulty" label="难度" width="90" />
+      </el-table>
+      <template #footer>
+        <el-button @click="preparedPublishVisible = false">取消</el-button>
+        <el-button type="primary" :loading="publishingPrepared" @click="publishPrepared">
+          立即公开
+        </el-button>
+      </template>
+    </el-dialog>
   </section>
 </template>
 
 <script setup lang="ts">
 import { ElMessage } from 'element-plus'
 import { computed, onMounted, reactive, ref, watch } from 'vue'
-import { client, sseUrl, type Problem } from '../api/client'
+import { client, sseUrl, type PreparedProblem, type Problem } from '../api/client'
 import CodeEditor from '../components/CodeEditor.vue'
 import StatusBadge from '../components/StatusBadge.vue'
 import { useAuthStore } from '../stores/auth'
@@ -188,6 +226,11 @@ const problemDialogVisible = ref(false)
 const problemDialogTab = ref('zip')
 const savingProblem = ref(false)
 const selectedClassIDs = ref<number[]>([])
+const preparedPublishVisible = ref(false)
+const preparedItems = ref<PreparedProblem[]>([])
+const preparedIDs = ref<number[]>([])
+const publishClassIDs = ref<number[]>([])
+const publishingPrepared = ref(false)
 const problemForm = reactive({
   slug: '',
   title: '',
@@ -225,6 +268,41 @@ function openProblemDialog() {
   problemDialogVisible.value = true
   problemDialogTab.value = 'zip'
   selectedClassIDs.value = classroom.activeClassId ? [classroom.activeClassId] : []
+}
+
+async function openPreparedPublish() {
+  preparedPublishVisible.value = true
+  publishClassIDs.value = classroom.activeClassId ? [classroom.activeClassId] : []
+  preparedIDs.value = []
+  preparedItems.value = (await client.get('/prepared-problems')).data
+}
+
+function preparedLabel(item: PreparedProblem) {
+  const tags = tagList(item.problem?.tags)
+  const suffix = [item.folder, item.difficulty, tags.join('/')].filter(Boolean).join(' · ')
+  return `${item.problem?.id}. ${item.problem?.title}${suffix ? `（${suffix}）` : ''}`
+}
+
+async function publishPrepared() {
+  if (preparedIDs.value.length === 0 || publishClassIDs.value.length === 0) {
+    ElMessage.error('请选择预备题和班级')
+    return
+  }
+  publishingPrepared.value = true
+  try {
+    await Promise.all(
+      preparedIDs.value.map((id) =>
+        client.post(`/prepared-problems/${id}/publish`, { class_ids: publishClassIDs.value })
+      )
+    )
+    ElMessage.success('已发布到班级题库')
+    preparedPublishVisible.value = false
+    await load()
+  } catch (err: any) {
+    ElMessage.error(err.response?.data?.error || err.message)
+  } finally {
+    publishingPrepared.value = false
+  }
 }
 
 async function upload(options: any) {
@@ -300,6 +378,14 @@ function progressTag(status?: string): 'success' | 'warning' | 'info' {
   if (status === 'accepted') return 'success'
   if (status === 'attempted') return 'warning'
   return 'info'
+}
+
+function tagList(tags: any) {
+  if (!tags) return []
+  if (Array.isArray(tags)) return tags.map(String)
+  if (Array.isArray(tags.labels)) return tags.labels.map(String)
+  if (Array.isArray(tags.items)) return tags.items.map(String)
+  return []
 }
 
 async function submit() {

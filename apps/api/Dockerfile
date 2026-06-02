@@ -1,4 +1,5 @@
 FROM golang:1.24-alpine AS build
+ENV GOPROXY=https://goproxy.cn,direct GOSUMDB=sum.golang.google.cn
 WORKDIR /src
 COPY . .
 RUN CGO_ENABLED=0 GOOS=linux go build -mod=mod -o /out/api ./cmd/api

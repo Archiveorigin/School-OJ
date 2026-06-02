@@ -35,9 +35,19 @@
             <el-table-column prop="id" label="ID" width="80" />
             <el-table-column prop="course_id" label="课程" width="90" />
             <el-table-column prop="name" label="名称" />
-            <el-table-column label="操作" width="90">
+            <el-table-column label="操作" width="150">
               <template #default="{ row }">
                 <el-button size="small" @click="activate(row.id)">切换</el-button>
+                <el-button
+                  v-if="auth.role === 'student'"
+                  size="small"
+                  type="danger"
+                  plain
+                  :loading="leavingClassId === row.id"
+                  @click="leaveClass(row)"
+                >
+                  退出
+                </el-button>
               </template>
             </el-table-column>
           </el-table>
@@ -89,7 +99,7 @@
 </template>
 
 <script setup lang="ts">
-import { ElMessage } from 'element-plus'
+import { ElMessage, ElMessageBox } from 'element-plus'
 import { computed, onMounted, reactive, ref } from 'vue'
 import { client } from '../api/client'
 import { useAuthStore } from '../stores/auth'
@@ -106,17 +116,22 @@ const classDialogVisible = ref(false)
 const savingCourse = ref(false)
 const savingClass = ref(false)
 const joining = ref(false)
+const leavingClassId = ref<number>()
 const courseForm = reactive({ code: '', name: '', term: '2026 春', description: '' })
 const classForm = reactive({ course_id: 0, name: '' })
 
+function list<T>(value: T[] | null | undefined) {
+  return Array.isArray(value) ? value : []
+}
+
 async function load() {
-  courses.value = (await client.get('/courses')).data
-  classes.value = (await client.get('/classes')).data
+  courses.value = list((await client.get('/courses')).data)
+  classes.value = list((await client.get('/classes')).data)
   await classroom.load()
 }
 
 async function loadClasses(courseID: number) {
-  classes.value = (await client.get('/classes', { params: { course_id: courseID } })).data
+  classes.value = list((await client.get('/classes', { params: { course_id: courseID } })).data)
 }
 
 function openCourseDialog() {
@@ -185,6 +200,29 @@ async function joinClass() {
     ElMessage.error(err.response?.data?.error || err.message)
   } finally {
     joining.value = false
+  }
+}
+
+async function leaveClass(row: any) {
+  try {
+    await ElMessageBox.confirm(`确定退出班级「${row.name}」吗？退出后将无法继续查看该班级题库、作业和考试。`, '退出班级', {
+      confirmButtonText: '退出',
+      cancelButtonText: '取消',
+      type: 'warning'
+    })
+  } catch {
+    return
+  }
+  leavingClassId.value = row.id
+  try {
+    await client.post(`/classes/${row.id}/leave`)
+    ElMessage.success('已退出班级')
+    await classroom.load({ force: true })
+    await load()
+  } catch (err: any) {
+    ElMessage.error(err.response?.data?.error || err.message)
+  } finally {
+    leavingClassId.value = undefined
   }
 }
 

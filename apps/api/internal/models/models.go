@@ -63,10 +63,11 @@ type ClassMembership struct {
 }
 
 type ClassProblem struct {
-	ID        uint      `json:"id" gorm:"primaryKey"`
-	ClassID   uint      `json:"class_id" gorm:"uniqueIndex:idx_class_problem"`
-	ProblemID uint      `json:"problem_id" gorm:"uniqueIndex:idx_class_problem"`
-	CreatedAt time.Time `json:"created_at"`
+	ID        uint       `json:"id" gorm:"primaryKey"`
+	ClassID   uint       `json:"class_id" gorm:"uniqueIndex:idx_class_problem"`
+	ProblemID uint       `json:"problem_id" gorm:"uniqueIndex:idx_class_problem"`
+	ReleaseAt *time.Time `json:"release_at" gorm:"index"`
+	CreatedAt time.Time  `json:"created_at"`
 }
 
 type Problem struct {
@@ -84,6 +85,20 @@ type Problem struct {
 	Manifest        datatypes.JSONMap `json:"manifest" gorm:"type:jsonb"`
 	CreatedAt       time.Time         `json:"created_at"`
 	UpdatedAt       time.Time         `json:"updated_at"`
+}
+
+type PreparedProblem struct {
+	ID         uint      `json:"id" gorm:"primaryKey"`
+	ProblemID  uint      `json:"problem_id" gorm:"uniqueIndex;not null"`
+	OwnerID    uint      `json:"owner_id" gorm:"index;not null"`
+	Folder     string    `json:"folder" gorm:"size:160;index"`
+	Difficulty string    `json:"difficulty" gorm:"size:32;index"`
+	Source     string    `json:"source" gorm:"size:160"`
+	Notes      string    `json:"notes" gorm:"type:text"`
+	Archived   bool      `json:"archived" gorm:"not null;default:false;index"`
+	Problem    Problem   `json:"problem" gorm:"foreignKey:ProblemID"`
+	CreatedAt  time.Time `json:"created_at"`
+	UpdatedAt  time.Time `json:"updated_at"`
 }
 
 type ProblemProgressStatus string
@@ -119,6 +134,7 @@ type Assignment struct {
 	Problems    []AssignmentProblem `json:"problems,omitempty"`
 	CreatedAt   time.Time           `json:"created_at"`
 	UpdatedAt   time.Time           `json:"updated_at"`
+	DeletedAt   *time.Time          `json:"deleted_at,omitempty" gorm:"index"`
 }
 
 type AssignmentProblem struct {
@@ -127,7 +143,16 @@ type AssignmentProblem struct {
 	ProblemID    uint      `json:"problem_id" gorm:"index;not null"`
 	Score        int       `json:"score" gorm:"not null;default:100"`
 	SortOrder    int       `json:"sort_order" gorm:"not null;default:0"`
+	Problem      Problem   `json:"problem" gorm:"foreignKey:ProblemID"`
 	CreatedAt    time.Time `json:"created_at"`
+}
+
+type AssignmentAttempt struct {
+	ID           uint      `json:"id" gorm:"primaryKey"`
+	AssignmentID uint      `json:"assignment_id" gorm:"uniqueIndex:idx_assignment_attempt"`
+	UserID       uint      `json:"user_id" gorm:"uniqueIndex:idx_assignment_attempt"`
+	CreatedAt    time.Time `json:"created_at"`
+	UpdatedAt    time.Time `json:"updated_at"`
 }
 
 type Exam struct {
@@ -142,6 +167,7 @@ type Exam struct {
 	Problems    []ExamProblem     `json:"problems,omitempty"`
 	CreatedAt   time.Time         `json:"created_at"`
 	UpdatedAt   time.Time         `json:"updated_at"`
+	DeletedAt   *time.Time        `json:"deleted_at,omitempty" gorm:"index"`
 }
 
 type ExamProblem struct {
@@ -150,22 +176,33 @@ type ExamProblem struct {
 	ProblemID uint      `json:"problem_id" gorm:"index;not null"`
 	Score     int       `json:"score" gorm:"not null;default:100"`
 	SortOrder int       `json:"sort_order" gorm:"not null;default:0"`
+	Problem   Problem   `json:"problem" gorm:"foreignKey:ProblemID"`
 	CreatedAt time.Time `json:"created_at"`
+}
+
+type ExamAttempt struct {
+	ID        uint      `json:"id" gorm:"primaryKey"`
+	ExamID    uint      `json:"exam_id" gorm:"uniqueIndex:idx_exam_attempt"`
+	UserID    uint      `json:"user_id" gorm:"uniqueIndex:idx_exam_attempt"`
+	CreatedAt time.Time `json:"created_at"`
+	UpdatedAt time.Time `json:"updated_at"`
 }
 
 type SubmissionStatus string
 
 const (
-	StatusQueued       SubmissionStatus = "queued"
-	StatusRunning      SubmissionStatus = "running"
-	StatusAccepted     SubmissionStatus = "accepted"
-	StatusWrongAnswer  SubmissionStatus = "wrong_answer"
-	StatusCompileError SubmissionStatus = "compile_error"
-	StatusRuntimeError SubmissionStatus = "runtime_error"
-	StatusTimeLimit    SubmissionStatus = "time_limit"
-	StatusMemoryLimit  SubmissionStatus = "memory_limit"
-	StatusOutputLimit  SubmissionStatus = "output_limit"
-	StatusSystemError  SubmissionStatus = "system_error"
+	StatusQueued        SubmissionStatus = "queued"
+	StatusRunning       SubmissionStatus = "running"
+	StatusPendingReview SubmissionStatus = "pending_review"
+	StatusManualGraded  SubmissionStatus = "manual_graded"
+	StatusAccepted      SubmissionStatus = "accepted"
+	StatusWrongAnswer   SubmissionStatus = "wrong_answer"
+	StatusCompileError  SubmissionStatus = "compile_error"
+	StatusRuntimeError  SubmissionStatus = "runtime_error"
+	StatusTimeLimit     SubmissionStatus = "time_limit"
+	StatusMemoryLimit   SubmissionStatus = "memory_limit"
+	StatusOutputLimit   SubmissionStatus = "output_limit"
+	StatusSystemError   SubmissionStatus = "system_error"
 )
 
 type Submission struct {
@@ -178,6 +215,9 @@ type Submission struct {
 	SourceCode   string            `json:"source_code" gorm:"type:text;not null"`
 	Status       SubmissionStatus  `json:"status" gorm:"type:varchar(32);index;not null"`
 	Score        int               `json:"score" gorm:"not null;default:0"`
+	ManualScore  *int              `json:"manual_score"`
+	ManualGradedBy *uint           `json:"manual_graded_by" gorm:"index"`
+	ManualGradedAt *time.Time      `json:"manual_graded_at"`
 	TimeMS       int               `json:"time_ms" gorm:"not null;default:0"`
 	MemoryKB     int               `json:"memory_kb" gorm:"not null;default:0"`
 	Message      string            `json:"message" gorm:"type:text"`
@@ -263,11 +303,14 @@ func AllModels() []any {
 		&ClassMembership{},
 		&ClassProblem{},
 		&Problem{},
+		&PreparedProblem{},
 		&ProblemProgress{},
 		&Assignment{},
 		&AssignmentProblem{},
+		&AssignmentAttempt{},
 		&Exam{},
 		&ExamProblem{},
+		&ExamAttempt{},
 		&Submission{},
 		&SubmissionResult{},
 		&PlagiarismJob{},
