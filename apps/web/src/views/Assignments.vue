@@ -123,6 +123,7 @@
             >
               <strong>{{ entry.problem.title }}</strong>
               <span>{{ entry.score }} 分 · {{ problemScoreText(entry.problem.id) }}</span>
+              <small v-if="entry.problem.deleted_at" class="muted">已下架</small>
             </button>
           </aside>
 
@@ -132,7 +133,7 @@
               <span>{{ activeEntry?.score }} 分</span>
             </div>
             <p class="muted">{{ activeProblem.time_limit_ms }} ms / {{ activeProblem.memory_limit_mb }} MB / {{ activeProblem.output_limit_kb }} KB</p>
-            <MarkdownRenderer :source="activeProblem.statement" />
+            <MarkdownRenderer :source="activeProblem.statement" :problem-id="activeProblem.id" />
           </main>
 
           <section v-if="activeProblem" class="editor-panel">
@@ -143,9 +144,10 @@
                 <el-option label="Python" value="python" />
                 <el-option label="Java" value="java" />
               </el-select>
+              <el-button @click="formatSource">自动格式化</el-button>
               <el-button type="primary" :loading="submitting" :disabled="!detail.can_submit" @click="submitSolution">提交</el-button>
             </div>
-            <CodeEditor v-model="source" :language="language" />
+            <CodeEditor ref="editorRef" v-model="source" :language="language" />
             <div v-if="live" class="live"><StatusBadge :status="live.status" /> 分数 {{ live.score }}，{{ live.message }}</div>
           </section>
         </div>
@@ -230,6 +232,7 @@ const language = ref('cpp')
 const live = ref<any>(null)
 const history = ref<Submission[]>([])
 const source = ref('')
+const editorRef = ref<InstanceType<typeof CodeEditor> | null>(null)
 
 const form = reactive<any>({
   course_id: undefined,
@@ -251,13 +254,22 @@ const detailTitle = computed(() => detail.value?.assignment?.title || '作业')
 
 async function load() {
   const params = classroom.activeClassId ? { class_id: classroom.activeClassId } : {}
-  const requests: Promise<any>[] = [client.get('/assignments', { params }), client.get('/courses'), client.get('/problems', { params })]
-  if (canManage.value) requests.push(client.get('/prepared-problems'))
-  const [assignmentsRes, coursesRes, problemsRes, preparedRes] = await Promise.all(requests)
+  const assignmentsRes = await client.get('/assignments', { params })
   items.value = assignmentsRes.data
-  courses.value = coursesRes.data
-  problems.value = problemsRes.data
-  preparedProblems.value = preparedRes?.data || []
+  if (canManage.value) {
+    const [coursesRes, problemsRes, preparedRes] = await Promise.all([
+      client.get('/courses'),
+      client.get('/problems', { params }),
+      client.get('/prepared-problems')
+    ])
+    courses.value = coursesRes.data
+    problems.value = problemsRes.data
+    preparedProblems.value = preparedRes.data
+  } else {
+    courses.value = []
+    problems.value = []
+    preparedProblems.value = []
+  }
 }
 
 function openDialog() {
@@ -405,6 +417,10 @@ function saveDraft() {
   localStorage.setItem(draftKey(), source.value)
 }
 
+function formatSource() {
+  editorRef.value?.format()
+}
+
 function draftKey() {
   return `school-oj-draft:assignment:${detail.value.assignment.id}:${activeProblem.value?.id}:${language.value}`
 }
@@ -505,7 +521,7 @@ onMounted(async () => {
 
 .coding-grid {
   display: grid;
-  grid-template-columns: 230px minmax(260px, 0.9fr) minmax(360px, 1.1fr);
+  grid-template-columns: 220px minmax(280px, 0.75fr) minmax(520px, 1.45fr);
   gap: 14px;
   min-height: 560px;
 }

@@ -33,10 +33,77 @@ watch(
 
 onBeforeUnmount(() => editor?.dispose())
 
+async function format() {
+  if (!editor) return
+  const before = editor.getValue()
+  try {
+    await editor.getAction('editor.action.formatDocument')?.run()
+  } catch {
+    // Monaco does not ship formatters for every judge language.
+  }
+  if (editor.getValue() === before) {
+    editor.setValue(lightweightFormat(before, props.language))
+  }
+}
+
 function lang(value: string) {
   if (value === 'cpp') return 'cpp'
   if (value === 'c') return 'c'
   if (value === 'java') return 'java'
   return 'python'
 }
+
+function lightweightFormat(source: string, language: string) {
+  const lines = source.replace(/\r\n/g, '\n').replace(/\r/g, '\n').replace(/\t/g, '  ').split('\n')
+  const formatted = language === 'python' ? formatPython(lines) : formatBraceLanguage(lines)
+  return `${formatted.join('\n').replace(/\s+$/g, '')}\n`
+}
+
+function formatPython(lines: string[]) {
+  const out: string[] = []
+  let indent = 0
+  const dedent = /^(elif|else|except|finally)\b/
+  for (const line of lines) {
+    const trimmed = line.trim()
+    if (!trimmed) {
+      out.push('')
+      continue
+    }
+    if (dedent.test(trimmed)) indent = Math.max(0, indent - 1)
+    out.push(`${'  '.repeat(indent)}${trimmed}`)
+    if (trimmed.endsWith(':')) indent += 1
+  }
+  return out
+}
+
+function formatBraceLanguage(lines: string[]) {
+  const out: string[] = []
+  let indent = 0
+  for (const line of lines) {
+    const trimmed = line.trim()
+    if (!trimmed) {
+      out.push('')
+      continue
+    }
+    if (trimmed.startsWith('#')) {
+      out.push(trimmed)
+      continue
+    }
+    if (/^[}\])]/.test(trimmed)) indent = Math.max(0, indent - 1)
+    out.push(`${'  '.repeat(indent)}${spaceCommonTokens(trimmed)}`)
+    const opens = (trimmed.match(/[{\[]/g) || []).length
+    const closes = (trimmed.match(/[}\]]/g) || []).length
+    indent = Math.max(0, indent + opens - closes)
+  }
+  return out
+}
+
+function spaceCommonTokens(line: string) {
+  return line
+    .replace(/,\s*/g, ', ')
+    .replace(/\b(if|for|while|switch|catch)\(/g, '$1 (')
+    .replace(/\s+$/g, '')
+}
+
+defineExpose({ format })
 </script>

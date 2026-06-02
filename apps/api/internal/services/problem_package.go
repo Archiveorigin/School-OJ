@@ -4,9 +4,11 @@ import (
 	"archive/zip"
 	"bytes"
 	"crypto/sha256"
+	"encoding/base64"
 	"encoding/hex"
 	"fmt"
 	"io"
+	"net/http"
 	"path/filepath"
 	"strings"
 
@@ -14,13 +16,22 @@ import (
 )
 
 type ProblemManifest struct {
-	Slug          string         `json:"slug" yaml:"slug"`
-	Title         string         `json:"title" yaml:"title"`
-	Statement     string         `json:"statement" yaml:"statement"`
-	TimeLimitMS   int            `json:"time_limit_ms" yaml:"time_limit_ms"`
-	MemoryLimitMB int            `json:"memory_limit_mb" yaml:"memory_limit_mb"`
-	OutputLimitKB int            `json:"output_limit_kb" yaml:"output_limit_kb"`
-	Cases         []CaseManifest `json:"cases" yaml:"cases"`
+	Slug          string          `json:"slug" yaml:"slug"`
+	Title         string          `json:"title" yaml:"title"`
+	Statement     string          `json:"statement" yaml:"statement"`
+	TimeLimitMS   int             `json:"time_limit_ms" yaml:"time_limit_ms"`
+	MemoryLimitMB int             `json:"memory_limit_mb" yaml:"memory_limit_mb"`
+	OutputLimitKB int             `json:"output_limit_kb" yaml:"output_limit_kb"`
+	Assets        []AssetManifest `json:"assets,omitempty" yaml:"assets,omitempty"`
+	Cases         []CaseManifest  `json:"cases" yaml:"cases"`
+}
+
+type AssetManifest struct {
+	Name        string `json:"name,omitempty" yaml:"name,omitempty"`
+	Path        string `json:"path" yaml:"path"`
+	ContentType string `json:"content_type,omitempty" yaml:"content_type,omitempty"`
+	Size        int64  `json:"size,omitempty" yaml:"size,omitempty"`
+	Object      string `json:"object,omitempty" yaml:"-"`
 }
 
 type CaseManifest struct {
@@ -34,18 +45,35 @@ type ParsedProblemPackage struct {
 	Manifest ProblemManifest
 	SHA256   string
 	Size     int64
+	Assets   []ParsedProblemAsset
+}
+
+type ParsedProblemAsset struct {
+	Name        string
+	Path        string
+	ContentType string
+	Size        int64
+	Body        []byte
 }
 
 type ProblemPackageDraft struct {
-	Slug          string             `json:"slug"`
-	Title         string             `json:"title"`
-	Statement     string             `json:"statement"`
-	Tags          []string           `json:"tags"`
-	TimeLimitMS   int                `json:"time_limit_ms"`
-	MemoryLimitMB int                `json:"memory_limit_mb"`
-	OutputLimitKB int                `json:"output_limit_kb"`
-	ClassIDs      []uint             `json:"class_ids"`
-	Cases         []ProblemCaseDraft `json:"cases"`
+	Slug          string              `json:"slug"`
+	Title         string              `json:"title"`
+	Statement     string              `json:"statement"`
+	Tags          []string            `json:"tags"`
+	TimeLimitMS   int                 `json:"time_limit_ms"`
+	MemoryLimitMB int                 `json:"memory_limit_mb"`
+	OutputLimitKB int                 `json:"output_limit_kb"`
+	ClassIDs      []uint              `json:"class_ids"`
+	Assets        []ProblemAssetDraft `json:"assets"`
+	Cases         []ProblemCaseDraft  `json:"cases"`
+}
+
+type ProblemAssetDraft struct {
+	Name        string `json:"name"`
+	Path        string `json:"path"`
+	ContentType string `json:"content_type"`
+	Data        string `json:"data"`
 }
 
 type ProblemCaseDraft struct {
@@ -54,6 +82,11 @@ type ProblemCaseDraft struct {
 	Output string `json:"output"`
 	Weight int    `json:"weight"`
 }
+
+const (
+	MaxProblemAssetSize  = 5 << 20
+	MaxProblemAssetsSize = 20 << 20
+)
 
 func BuildProblemPackage(draft ProblemPackageDraft) ([]byte, ParsedProblemPackage, error) {
 	if strings.TrimSpace(draft.Slug) == "" || strings.TrimSpace(draft.Title) == "" {
@@ -81,7 +114,7 @@ func BuildProblemPackage(draft ProblemPackageDraft) ([]byte, ParsedProblemPackag
 		OutputLimitKB: draft.OutputLimitKB,
 		Cases:         make([]CaseManifest, 0, len(draft.Cases)),
 	}
-	files := map[string]string{}
+	files := map[string][]byte{}
 	for i, tc := range draft.Cases {
 		if strings.TrimSpace(tc.Input) == "" {
 			return nil, ParsedProblemPackage{}, fmt.Errorf("case %d input is required", i+1)
@@ -105,14 +138,55 @@ func BuildProblemPackage(draft ProblemPackageDraft) ([]byte, ParsedProblemPackag
 			Output: outputPath,
 			Weight: weight,
 		})
-		files[inputPath] = normalizeCaseText(tc.Input)
-		files[outputPath] = normalizeCaseText(tc.Output)
+		files[inputPath] = []byte(normalizeCaseText(tc.Input))
+		files[outputPath] = []byte(normalizeCaseText(tc.Output))
+	}
+	totalAssetSize := int64(0)
+	usedAssetPaths := map[string]bool{}
+	for i, asset := range draft.Assets {
+		path, err := NormalizeAssetPath(asset.Path)
+		if err != nil {
+			return nil, ParsedProblemPackage{}, fmt.Errorf("asset %d: %w", i+1, err)
+		}
+		if usedAssetPaths[path] {
+			return nil, ParsedProblemPackage{}, fmt.Errorf("duplicate asset path: %s", path)
+		}
+		body, err := DecodeProblemAssetData(asset.Data)
+		if err != nil {
+			return nil, ParsedProblemPackage{}, fmt.Errorf("asset %s: %w", path, err)
+		}
+		if len(body) == 0 {
+			return nil, ParsedProblemPackage{}, fmt.Errorf("asset %s is empty", path)
+		}
+		if len(body) > MaxProblemAssetSize {
+			return nil, ParsedProblemPackage{}, fmt.Errorf("asset %s is too large", path)
+		}
+		totalAssetSize += int64(len(body))
+		if totalAssetSize > MaxProblemAssetsSize {
+			return nil, ParsedProblemPackage{}, fmt.Errorf("problem assets are too large")
+		}
+		contentType, err := ValidateProblemAsset(path, body)
+		if err != nil {
+			return nil, ParsedProblemPackage{}, err
+		}
+		name := strings.TrimSpace(asset.Name)
+		if name == "" {
+			name = filepath.Base(path)
+		}
+		manifest.Assets = append(manifest.Assets, AssetManifest{
+			Name:        name,
+			Path:        path,
+			ContentType: contentType,
+			Size:        int64(len(body)),
+		})
+		files[path] = body
+		usedAssetPaths[path] = true
 	}
 	manifestBytes, err := yaml.Marshal(manifest)
 	if err != nil {
 		return nil, ParsedProblemPackage{}, err
 	}
-	files["problem.yaml"] = string(manifestBytes)
+	files["problem.yaml"] = manifestBytes
 
 	var buf bytes.Buffer
 	zw := zip.NewWriter(&buf)
@@ -121,7 +195,7 @@ func BuildProblemPackage(draft ProblemPackageDraft) ([]byte, ParsedProblemPackag
 		if err != nil {
 			return nil, ParsedProblemPackage{}, err
 		}
-		if _, err := io.WriteString(w, body); err != nil {
+		if _, err := w.Write(body); err != nil {
 			return nil, ParsedProblemPackage{}, err
 		}
 	}
@@ -142,11 +216,17 @@ func ParseProblemPackage(body []byte) (ParsedProblemPackage, error) {
 		return ParsedProblemPackage{}, fmt.Errorf("open zip: %w", err)
 	}
 	files := map[string]bool{}
+	assets := map[string]ParsedProblemAsset{}
+	totalAssetSize := int64(0)
 	var manifestBytes []byte
 	for _, f := range reader.File {
-		clean := filepath.ToSlash(filepath.Clean(f.Name))
-		if strings.HasPrefix(clean, "../") || strings.HasPrefix(clean, "/") {
+		rawPath := filepath.ToSlash(f.Name)
+		if unsafeZipPath(rawPath) {
 			return ParsedProblemPackage{}, fmt.Errorf("unsafe zip path: %s", f.Name)
+		}
+		clean := filepath.ToSlash(filepath.Clean(rawPath))
+		if f.FileInfo().IsDir() {
+			continue
 		}
 		files[clean] = true
 		if clean == "problem.yaml" {
@@ -158,6 +238,43 @@ func ParseProblemPackage(body []byte) (ParsedProblemPackage, error) {
 			_ = rc.Close()
 			if err != nil {
 				return ParsedProblemPackage{}, err
+			}
+			continue
+		}
+		if strings.HasPrefix(clean, "assets/") {
+			path, err := NormalizeAssetPath(clean)
+			if err != nil {
+				return ParsedProblemPackage{}, err
+			}
+			if f.UncompressedSize64 > MaxProblemAssetSize {
+				return ParsedProblemPackage{}, fmt.Errorf("asset %s is too large", path)
+			}
+			totalAssetSize += int64(f.UncompressedSize64)
+			if totalAssetSize > MaxProblemAssetsSize {
+				return ParsedProblemPackage{}, fmt.Errorf("problem assets are too large")
+			}
+			rc, err := f.Open()
+			if err != nil {
+				return ParsedProblemPackage{}, err
+			}
+			assetBody, err := io.ReadAll(io.LimitReader(rc, MaxProblemAssetSize+1))
+			_ = rc.Close()
+			if err != nil {
+				return ParsedProblemPackage{}, err
+			}
+			if len(assetBody) > MaxProblemAssetSize {
+				return ParsedProblemPackage{}, fmt.Errorf("asset %s is too large", path)
+			}
+			contentType, err := ValidateProblemAsset(path, assetBody)
+			if err != nil {
+				return ParsedProblemPackage{}, err
+			}
+			assets[path] = ParsedProblemAsset{
+				Name:        filepath.Base(path),
+				Path:        path,
+				ContentType: contentType,
+				Size:        int64(len(assetBody)),
+				Body:        assetBody,
 			}
 		}
 	}
@@ -183,6 +300,33 @@ func ParseProblemPackage(body []byte) (ParsedProblemPackage, error) {
 	if len(manifest.Cases) == 0 {
 		return ParsedProblemPackage{}, fmt.Errorf("at least one test case is required")
 	}
+	for i := range manifest.Assets {
+		asset := &manifest.Assets[i]
+		path, err := NormalizeAssetPath(asset.Path)
+		if err != nil {
+			return ParsedProblemPackage{}, err
+		}
+		parsedAsset, ok := assets[path]
+		if !ok {
+			return ParsedProblemPackage{}, fmt.Errorf("asset references missing file %s", asset.Path)
+		}
+		asset.Path = path
+		if strings.TrimSpace(asset.Name) == "" {
+			asset.Name = parsedAsset.Name
+		}
+		asset.ContentType = parsedAsset.ContentType
+		asset.Size = parsedAsset.Size
+	}
+	if len(manifest.Assets) == 0 && len(assets) > 0 {
+		for _, asset := range assets {
+			manifest.Assets = append(manifest.Assets, AssetManifest{
+				Name:        asset.Name,
+				Path:        asset.Path,
+				ContentType: asset.ContentType,
+				Size:        asset.Size,
+			})
+		}
+	}
 	for i := range manifest.Cases {
 		tc := &manifest.Cases[i]
 		if tc.Name == "" {
@@ -203,6 +347,7 @@ func ParseProblemPackage(body []byte) (ParsedProblemPackage, error) {
 		Manifest: manifest,
 		SHA256:   hex.EncodeToString(sum[:]),
 		Size:     int64(len(body)),
+		Assets:   sortedAssets(assets),
 	}, nil
 }
 
@@ -213,4 +358,93 @@ func normalizeCaseText(value string) string {
 		value += "\n"
 	}
 	return value
+}
+
+func NormalizeAssetPath(value string) (string, error) {
+	clean := filepath.ToSlash(filepath.Clean(strings.TrimSpace(value)))
+	if clean == "." || clean == "" || strings.HasPrefix(clean, "../") || strings.HasPrefix(clean, "/") {
+		return "", fmt.Errorf("unsafe asset path: %s", value)
+	}
+	if !strings.HasPrefix(clean, "assets/") || strings.TrimPrefix(clean, "assets/") == "" {
+		return "", fmt.Errorf("asset path must be under assets/: %s", value)
+	}
+	if strings.Contains(clean, "\x00") {
+		return "", fmt.Errorf("unsafe asset path: %s", value)
+	}
+	if _, ok := assetContentTypeForExt(clean); !ok {
+		return "", fmt.Errorf("asset type is not supported: %s", value)
+	}
+	return clean, nil
+}
+
+func unsafeZipPath(value string) bool {
+	if strings.HasPrefix(value, "/") || strings.Contains(value, "\x00") {
+		return true
+	}
+	for _, part := range strings.Split(value, "/") {
+		if part == ".." {
+			return true
+		}
+	}
+	return false
+}
+
+func DecodeProblemAssetData(value string) ([]byte, error) {
+	value = strings.TrimSpace(value)
+	if value == "" {
+		return nil, fmt.Errorf("asset data is required")
+	}
+	if comma := strings.Index(value, ","); strings.HasPrefix(value, "data:") && comma >= 0 {
+		value = value[comma+1:]
+	}
+	body, err := base64.StdEncoding.DecodeString(value)
+	if err != nil {
+		return nil, fmt.Errorf("decode asset data: %w", err)
+	}
+	return body, nil
+}
+
+func ValidateProblemAsset(path string, body []byte) (string, error) {
+	contentType, ok := assetContentTypeForExt(path)
+	if !ok {
+		return "", fmt.Errorf("asset type is not supported: %s", path)
+	}
+	detected := http.DetectContentType(body)
+	if detected == contentType || (contentType == "image/jpeg" && detected == "image/jpg") {
+		return contentType, nil
+	}
+	if contentType == "image/webp" && (detected == "application/octet-stream" || detected == "image/webp") {
+		return contentType, nil
+	}
+	return "", fmt.Errorf("asset %s content does not match %s", path, contentType)
+}
+
+func assetContentTypeForExt(path string) (string, bool) {
+	switch strings.ToLower(filepath.Ext(path)) {
+	case ".png":
+		return "image/png", true
+	case ".jpg", ".jpeg":
+		return "image/jpeg", true
+	case ".gif":
+		return "image/gif", true
+	case ".webp":
+		return "image/webp", true
+	default:
+		return "", false
+	}
+}
+
+func sortedAssets(items map[string]ParsedProblemAsset) []ParsedProblemAsset {
+	out := make([]ParsedProblemAsset, 0, len(items))
+	for _, item := range items {
+		out = append(out, item)
+	}
+	for i := 0; i < len(out); i++ {
+		for j := i + 1; j < len(out); j++ {
+			if out[j].Path < out[i].Path {
+				out[i], out[j] = out[j], out[i]
+			}
+		}
+	}
+	return out
 }

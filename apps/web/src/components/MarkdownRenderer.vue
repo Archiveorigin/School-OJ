@@ -6,9 +6,10 @@
 import katex from 'katex'
 import MarkdownIt from 'markdown-it'
 import { computed } from 'vue'
+import { problemAssetUrl } from '../api/client'
 import 'katex/dist/katex.min.css'
 
-const props = defineProps<{ source?: string | null }>()
+const props = defineProps<{ source?: string | null; problemId?: number; assetUrls?: Record<string, string> }>()
 
 const md = new MarkdownIt({
   html: false,
@@ -72,6 +73,15 @@ md.block.ruler.before('fence', 'math_block', (state: any, startLine: number, end
 
 md.renderer.rules.math_inline = (tokens, idx) => renderMath(tokens[idx].content, false)
 md.renderer.rules.math_block = (tokens, idx) => `<div class="math-block">${renderMath(tokens[idx].content, true)}</div>`
+md.renderer.rules.image = (tokens, idx, options, env, self) => {
+  const token = tokens[idx]
+  const src = token.attrGet('src') || ''
+  const resolved = resolveImage(src)
+  if (resolved) token.attrSet('src', resolved)
+  token.attrSet('loading', 'lazy')
+  token.attrSet('decoding', 'async')
+  return self.renderToken(tokens, idx, options)
+}
 
 function renderMath(source: string, displayMode: boolean) {
   try {
@@ -87,6 +97,15 @@ function renderMath(source: string, displayMode: boolean) {
 }
 
 const rendered = computed(() => md.render(props.source || ''))
+
+function resolveImage(src: string) {
+  if (!src || src.includes('://') || src.startsWith('data:') || src.startsWith('blob:') || src.startsWith('/') || src.startsWith('#')) {
+    return ''
+  }
+  if (props.assetUrls?.[src]) return props.assetUrls[src]
+  if (props.problemId && src.startsWith('assets/')) return problemAssetUrl(props.problemId, src)
+  return ''
+}
 </script>
 
 <style scoped>
@@ -148,6 +167,17 @@ const rendered = computed(() => md.render(props.source || ''))
   padding: 8px 12px;
   border-left: 4px solid var(--accent);
   background: rgba(10, 94, 166, 0.06);
+}
+
+.markdown-body :deep(img) {
+  display: block;
+  max-width: 100%;
+  max-height: 520px;
+  margin: 12px 0;
+  border-radius: 8px;
+  object-fit: contain;
+  border: 1px solid var(--border);
+  background: var(--surface-strong);
 }
 
 .math-block {

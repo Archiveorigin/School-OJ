@@ -50,6 +50,7 @@ export interface Problem {
   progress_status?: 'unattempted' | 'attempted' | 'accepted'
   points?: number
   points_awarded?: boolean
+  deleted_at?: string
 }
 
 export interface PreparedProblem {
@@ -100,4 +101,14 @@ export function sseUrl(path: string) {
   const token = localStorage.getItem('school-oj-token')
   const sep = path.includes('?') ? '&' : '?'
   return `${apiBase}${path}${sep}token=${encodeURIComponent(token || '')}`
+}
+
+export function problemAssetUrl(problemID: number, path: string) {
+  const token = localStorage.getItem('school-oj-token')
+  const clean = path.replace(/^\/+/, '')
+  const encoded = clean
+    .split('/')
+    .map((part) => encodeURIComponent(part))
+    .join('/')
+  return `${apiBase}/problems/${problemID}/assets/${encoded}?token=${encodeURIComponent(token || '')}`
 }

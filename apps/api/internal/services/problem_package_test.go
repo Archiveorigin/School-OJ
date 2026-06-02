@@ -60,3 +60,70 @@ func TestBuildProblemPackage(t *testing.T) {
 		t.Fatalf("unexpected input path %s", parsed.Manifest.Cases[0].Input)
 	}
 }
+
+func TestBuildProblemPackageWithAsset(t *testing.T) {
+	_, parsed, err := BuildProblemPackage(ProblemPackageDraft{
+		Slug:      "image-sum",
+		Title:     "Image Sum",
+		Statement: "see ![sample](assets/sample.png)",
+		Assets: []ProblemAssetDraft{
+			{Name: "sample.png", Path: "assets/sample.png", ContentType: "image/png", Data: tinyPNGDataURL},
+		},
+		Cases: []ProblemCaseDraft{
+			{Name: "sample", Input: "1 2\n", Output: "3\n", Weight: 100},
+		},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(parsed.Manifest.Assets) != 1 || len(parsed.Assets) != 1 {
+		t.Fatalf("expected one asset, got manifest=%d parsed=%d", len(parsed.Manifest.Assets), len(parsed.Assets))
+	}
+	if parsed.Manifest.Assets[0].Path != "assets/sample.png" || parsed.Assets[0].ContentType != "image/png" {
+		t.Fatalf("unexpected asset metadata: %+v %+v", parsed.Manifest.Assets[0], parsed.Assets[0])
+	}
+}
+
+func TestParseProblemPackageRejectsUnsafeAssetPath(t *testing.T) {
+	var buf bytes.Buffer
+	zw := zip.NewWriter(&buf)
+	files := map[string]string{
+		"problem.yaml":      "slug: bad\ntitle: Bad\nassets:\n  - path: ../bad.png\ncases:\n  - input: tests/1.in\n    output: tests/1.out\n    weight: 100\n",
+		"tests/1.in":        "1 2\n",
+		"tests/1.out":       "3\n",
+		"assets/../bad.png": "not an image",
+	}
+	for name, body := range files {
+		w, err := zw.Create(name)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if _, err := w.Write([]byte(body)); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if err := zw.Close(); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := ParseProblemPackage(buf.Bytes()); err == nil {
+		t.Fatal("expected unsafe asset path to be rejected")
+	}
+}
+
+func TestBuildProblemPackageRejectsUnsupportedAssetType(t *testing.T) {
+	_, _, err := BuildProblemPackage(ProblemPackageDraft{
+		Slug:  "bad-svg",
+		Title: "Bad SVG",
+		Assets: []ProblemAssetDraft{
+			{Name: "bad.svg", Path: "assets/bad.svg", ContentType: "image/svg+xml", Data: "PHN2Zz48L3N2Zz4="},
+		},
+		Cases: []ProblemCaseDraft{
+			{Name: "sample", Input: "1 2\n", Output: "3\n", Weight: 100},
+		},
+	})
+	if err == nil {
+		t.Fatal("expected unsupported asset type to be rejected")
+	}
+}
+
+const tinyPNGDataURL = "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+/p9sAAAAASUVORK5CYII="

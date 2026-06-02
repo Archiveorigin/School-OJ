@@ -8,12 +8,10 @@
         <el-button @click="load">刷新</el-button>
       </div>
     </div>
-    <el-row :gutter="16">
-      <el-col :span="10">
-        <div class="panel">
-          <el-table :data="problems" highlight-current-row @current-change="selectProblem">
+    <div class="problem-layout">
+      <aside class="panel problem-list-panel">
+          <el-table :data="problems" highlight-current-row @current-change="selectProblem" height="calc(100vh - 190px)">
             <el-table-column prop="id" label="ID" width="70" />
-            <el-table-column prop="slug" label="Slug" width="140" />
             <el-table-column prop="title" label="题目" />
             <el-table-column v-if="auth.role === 'student'" label="状态" width="110">
               <template #default="{ row }">
@@ -23,16 +21,20 @@
               </template>
             </el-table-column>
           </el-table>
-        </div>
-      </el-col>
-      <el-col :span="14">
-        <div class="panel" v-if="selected">
-          <h3>{{ selected.title }}</h3>
+      </aside>
+      <main class="panel problem-detail-panel" v-if="selected">
+          <div class="detail-head">
+            <div>
+              <h3>{{ selected.title }}</h3>
+              <p class="muted">{{ selected.slug }}</p>
+            </div>
+            <el-button v-if="canDeleteSelected" type="danger" plain @click="removeProblem">删除题目</el-button>
+          </div>
           <p class="muted">
             {{ selected.time_limit_ms }} ms / {{ selected.memory_limit_mb }} MB /
             {{ selected.output_limit_kb }} KB
           </p>
-          <MarkdownRenderer :source="selected.statement" />
+          <MarkdownRenderer :source="selected.statement" :problem-id="selected.id" />
           <el-divider />
           <div class="toolbar">
             <el-select v-model="language" style="width: 130px">
@@ -41,15 +43,16 @@
               <el-option label="Python" value="python" />
               <el-option label="Java" value="java" />
             </el-select>
+            <el-button @click="formatSource">自动格式化</el-button>
             <el-button type="primary" :loading="submitting" @click="submit">提交</el-button>
           </div>
-          <CodeEditor v-model="source" :language="language" />
+          <CodeEditor ref="editorRef" v-model="source" :language="language" />
           <div v-if="live" class="live">
             <StatusBadge :status="live.status" /> 分数 {{ live.score }}，{{ live.message }}
           </div>
-        </div>
-      </el-col>
-    </el-row>
+      </main>
+      <main v-else class="panel empty-detail muted">请选择题目</main>
+    </div>
 
     <el-dialog v-model="problemDialogVisible" title="上传题目包" width="920px">
       <el-tabs v-model="problemDialogTab">
@@ -108,9 +111,27 @@
                 :rows="8"
                 placeholder="支持 Markdown 和 LaTeX，例如：**加粗**、`代码`、$a+b$、$$\\sum_i a_i$$"
               />
+              <div class="statement-tools">
+                <el-upload
+                  action="#"
+                  :auto-upload="false"
+                  :show-file-list="false"
+                  multiple
+                  accept="image/png,image/jpeg,image/gif,image/webp"
+                  :on-change="addProblemImage"
+                >
+                  <el-button>插入图片</el-button>
+                </el-upload>
+                <span class="muted">支持 PNG、JPG、GIF、WebP，图片会自动写入题面 Markdown。</span>
+              </div>
+              <div v-if="problemForm.assets.length" class="asset-row">
+                <el-tag v-for="asset in problemForm.assets" :key="asset.path" closable @close="removeProblemImage(asset.path)">
+                  {{ asset.name }}
+                </el-tag>
+              </div>
               <div class="statement-preview">
                 <div class="muted">题面预览</div>
-                <MarkdownRenderer :source="problemForm.statement || '支持 **Markdown** 和 $a+b$。'" />
+                <MarkdownRenderer :source="problemForm.statement || '支持 **Markdown** 和 $a+b$。'" :asset-urls="problemAssetPreviewUrls" />
               </div>
             </el-form-item>
             <el-row :gutter="12">
@@ -210,7 +231,7 @@
 </template>
 
 <script setup lang="ts">
-import { ElMessage } from 'element-plus'
+import { ElMessage, ElMessageBox } from 'element-plus'
 import { computed, onMounted, reactive, ref, watch } from 'vue'
 import { client, sseUrl, type PreparedProblem, type Problem } from '../api/client'
 import CodeEditor from '../components/CodeEditor.vue'
@@ -222,11 +243,14 @@ import { useClassroomStore } from '../stores/classroom'
 const auth = useAuthStore()
 const classroom = useClassroomStore()
 const canManage = computed(() => auth.role === 'admin' || auth.role === 'teacher')
+type ProblemAssetForm = { name: string; path: string; content_type: string; data: string; preview_url: string }
 const problems = ref<Problem[]>([])
 const selected = ref<Problem | null>(null)
+const canDeleteSelected = computed(() => Boolean(selected.value && (auth.role === 'admin' || selected.value.owner_id === auth.user?.id)))
 const language = ref('cpp')
 const submitting = ref(false)
 const live = ref<any>(null)
+const editorRef = ref<InstanceType<typeof CodeEditor> | null>(null)
 const problemDialogVisible = ref(false)
 const problemDialogTab = ref('zip')
 const savingProblem = ref(false)
@@ -243,7 +267,11 @@ const problemForm = reactive({
   time_limit_ms: 1000,
   memory_limit_mb: 256,
   output_limit_kb: 1024,
+  assets: [] as ProblemAssetForm[],
   cases: [{ name: 'case-01', input: '1 2\n', output: '3\n', weight: 100 }]
+})
+const problemAssetPreviewUrls = computed(() => {
+  return Object.fromEntries(problemForm.assets.map((asset) => [asset.path, asset.preview_url]))
 })
 const source = ref(`#include <bits/stdc++.h>
 using namespace std;
@@ -310,6 +338,19 @@ async function publishPrepared() {
   }
 }
 
+async function removeProblem() {
+  if (!selected.value) return
+  try {
+    await ElMessageBox.confirm('删除后题目将从题库和学生端隐藏，历史提交与报表会保留。确认删除？', '删除题目', { type: 'warning' })
+    await client.delete(`/problems/${selected.value.id}`)
+    ElMessage.success('题目已下架')
+    selected.value = null
+    await load()
+  } catch (err: any) {
+    if (err !== 'cancel') ElMessage.error(err.response?.data?.error || err.message)
+  }
+}
+
 async function upload(options: any) {
   try {
     const fd = new FormData()
@@ -344,6 +385,7 @@ async function createFromForm() {
       memory_limit_mb: problemForm.memory_limit_mb,
       output_limit_kb: problemForm.output_limit_kb,
       class_ids: selectedClassIDs.value,
+      assets: problemForm.assets.map(({ name, path, content_type, data }) => ({ name, path, content_type, data })),
       cases: problemForm.cases
     })
     ElMessage.success('题目已创建')
@@ -359,18 +401,81 @@ async function createFromForm() {
 }
 
 function resetProblemForm() {
+  problemForm.assets.forEach((asset) => URL.revokeObjectURL(asset.preview_url))
   problemForm.slug = ''
   problemForm.title = ''
   problemForm.statement = ''
   problemForm.time_limit_ms = 1000
   problemForm.memory_limit_mb = 256
   problemForm.output_limit_kb = 1024
+  problemForm.assets.splice(0, problemForm.assets.length)
   problemForm.cases.splice(0, problemForm.cases.length, {
     name: 'case-01',
     input: '1 2\n',
     output: '3\n',
     weight: 100
   })
+}
+
+function addProblemImage(uploadFile: any) {
+  const file = uploadFile.raw as File | undefined
+  if (!file) return
+  if (!['image/png', 'image/jpeg', 'image/gif', 'image/webp'].includes(file.type)) {
+    ElMessage.error('仅支持 PNG、JPG、GIF、WebP 图片')
+    return
+  }
+  if (file.size > 5 * 1024 * 1024) {
+    ElMessage.error('单张图片不能超过 5 MB')
+    return
+  }
+  const path = uniqueAssetPath(file.name)
+  const reader = new FileReader()
+  reader.onload = () => {
+    problemForm.assets.push({
+      name: file.name,
+      path,
+      content_type: file.type,
+      data: String(reader.result),
+      preview_url: URL.createObjectURL(file)
+    })
+    const markdown = `![${file.name}](${path})`
+    problemForm.statement = `${problemForm.statement.trimEnd()}\n\n${markdown}\n`
+  }
+  reader.readAsDataURL(file)
+}
+
+function removeProblemImage(path: string) {
+  const index = problemForm.assets.findIndex((asset) => asset.path === path)
+  if (index < 0) return
+  URL.revokeObjectURL(problemForm.assets[index].preview_url)
+  problemForm.assets.splice(index, 1)
+  problemForm.statement = problemForm.statement.replace(new RegExp(`!\\[[^\\]]*\\]\\(${escapeRegExp(path)}\\)\\n?`, 'g'), '').trimEnd()
+}
+
+function uniqueAssetPath(name: string) {
+  const safe = name
+    .trim()
+    .replace(/\s+/g, '-')
+    .replace(/[^A-Za-z0-9._-]/g, '')
+    .replace(/^\.+/, '')
+  const fallback = `image-${Date.now()}.png`
+  const base = safe || fallback
+  let path = `assets/${base}`
+  let index = 1
+  while (problemForm.assets.some((asset) => asset.path === path)) {
+    const dot = base.lastIndexOf('.')
+    path = dot > 0 ? `assets/${base.slice(0, dot)}-${index}${base.slice(dot)}` : `assets/${base}-${index}`
+    index += 1
+  }
+  return path
+}
+
+function formatSource() {
+  editorRef.value?.format()
+}
+
+function escapeRegExp(value: string) {
+  return value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
 }
 
 function progressLabel(status?: string) {
@@ -432,6 +537,47 @@ onMounted(async () => {
   align-items: center;
 }
 
+.problem-layout {
+  display: grid;
+  grid-template-columns: minmax(280px, 340px) minmax(0, 1fr);
+  gap: 16px;
+  align-items: start;
+}
+
+.problem-list-panel,
+.problem-detail-panel,
+.empty-detail {
+  min-height: calc(100vh - 150px);
+}
+
+.problem-list-panel {
+  padding: 10px;
+}
+
+.problem-detail-panel {
+  min-width: 0;
+}
+
+.detail-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.detail-head h3 {
+  margin: 0 0 4px;
+}
+
+.detail-head p {
+  margin: 0;
+}
+
+.empty-detail {
+  display: grid;
+  place-items: center;
+}
+
 .zip-upload {
   width: 100%;
 }
@@ -486,5 +632,34 @@ onMounted(async () => {
   border: 1px solid var(--border);
   border-radius: 8px;
   background: rgba(15, 23, 42, 0.03);
+}
+
+.statement-tools {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+  width: 100%;
+  margin-top: 10px;
+}
+
+.asset-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  width: 100%;
+  margin-top: 8px;
+}
+
+@media (max-width: 1100px) {
+  .problem-layout {
+    grid-template-columns: 1fr;
+  }
+
+  .problem-list-panel,
+  .problem-detail-panel,
+  .empty-detail {
+    min-height: auto;
+  }
 }
 </style>

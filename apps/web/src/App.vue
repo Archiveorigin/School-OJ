@@ -132,6 +132,7 @@ function handleCommand(command: string) {
 }
 
 onMounted(() => {
+  examLock.hydrate()
   if (auth.isAuthed) classroom.load()
 })
 

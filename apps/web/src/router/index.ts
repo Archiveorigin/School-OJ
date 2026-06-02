@@ -44,10 +44,7 @@ const publicPaths = ['/login', '/register', '/forgot-password']
 router.beforeEach(async (to, from) => {
   const auth = useAuthStore()
   const examLock = useExamLockStore()
-  if (examLock.locked && to.path !== from.path) {
-    ElMessage.warning(examLock.message)
-    return false
-  }
+  examLock.hydrate()
   if (auth.isAuthed && !auth.hydrated) {
     await auth.hydrate()
   }
@@ -60,6 +57,13 @@ router.beforeEach(async (to, from) => {
   const roles = to.meta.roles as string[] | undefined
   if (roles && (!auth.user || !roles.includes(auth.user.role))) {
     return '/'
+  }
+  if (examLock.locked && to.path !== '/exams') {
+    ElMessage.warning(examLock.message)
+    return { path: '/exams', query: examLock.examId ? { locked_exam_id: String(examLock.examId) } : undefined }
+  }
+  if (examLock.locked && to.path === '/exams' && examLock.examId && to.query.locked_exam_id !== String(examLock.examId)) {
+    return { path: '/exams', query: { ...to.query, locked_exam_id: String(examLock.examId) } }
   }
 })
 

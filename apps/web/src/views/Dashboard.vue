@@ -86,6 +86,7 @@ import { client, type Submission } from '../api/client'
 import StatusBadge from '../components/StatusBadge.vue'
 import { useAuthStore } from '../stores/auth'
 import { useClassroomStore } from '../stores/classroom'
+import { useExamLockStore } from '../stores/examLock'
 
 const courses = ref<any[]>([])
 const problems = ref<any[]>([])
@@ -98,6 +99,7 @@ const joinClassID = ref<number>()
 const joining = ref(false)
 const auth = useAuthStore()
 const classroom = useClassroomStore()
+const examLock = useExamLockStore()
 const showNoClassState = computed(() => auth.role === 'student' && classroom.loaded && classroom.classes.length === 0)
 const stats = computed(() => [
   { label: auth.role === 'student' ? '已加入课程' : '课程', value: courses.value.length },
@@ -148,11 +150,12 @@ async function load() {
   try {
     const params = classroom.activeClassId ? { class_id: classroom.activeClassId } : {}
     const skipClassScoped = showNoClassState.value
+    const skipLockedViews = auth.role === 'student' && examLock.locked
     const [c, p, s, a, e] = await Promise.all([
       client.get('/courses'),
-      skipClassScoped ? Promise.resolve({ data: [] }) : client.get('/problems', { params }),
+      skipClassScoped || skipLockedViews ? Promise.resolve({ data: [] }) : client.get('/problems', { params }),
       client.get('/submissions'),
-      skipClassScoped ? Promise.resolve({ data: [] }) : client.get('/assignments', { params }),
+      skipClassScoped || skipLockedViews ? Promise.resolve({ data: [] }) : client.get('/assignments', { params }),
       skipClassScoped ? Promise.resolve({ data: [] }) : client.get('/exams', { params })
     ])
     courses.value = list(c.data)
@@ -161,6 +164,9 @@ async function load() {
     assignments.value = list(a.data)
     exams.value = list(e.data)
   } catch (err: any) {
+    if (err.response?.status === 423 && err.response?.data?.exam_id) {
+      return
+    }
     loadError.value = err.response?.data?.error || err.message || '未知错误'
   } finally {
     loading.value = false

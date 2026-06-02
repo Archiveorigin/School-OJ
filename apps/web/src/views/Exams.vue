@@ -120,13 +120,14 @@
             <button v-for="entry in detail.problems" :key="entry.problem.id" type="button" class="problem-pick" :class="{ active: activeProblem?.id === entry.problem.id }" @click="selectDetailProblem(entry)">
               <strong>{{ entry.problem.title }}</strong>
               <span>{{ entry.score }} 分 · {{ problemScoreText(entry.problem.id) }}</span>
+              <small v-if="entry.problem.deleted_at" class="muted">已下架</small>
             </button>
           </aside>
 
           <main v-if="activeProblem" class="statement-panel">
             <div class="panel-title"><h3>{{ activeProblem.title }}</h3><span>{{ activeEntry?.score }} 分</span></div>
             <p class="muted">{{ activeProblem.time_limit_ms }} ms / {{ activeProblem.memory_limit_mb }} MB / {{ activeProblem.output_limit_kb }} KB</p>
-            <MarkdownRenderer :source="activeProblem.statement" />
+            <MarkdownRenderer :source="activeProblem.statement" :problem-id="activeProblem.id" />
           </main>
 
           <section v-if="activeProblem" class="editor-panel">
@@ -137,9 +138,10 @@
                 <el-option label="Python" value="python" />
                 <el-option label="Java" value="java" />
               </el-select>
+              <el-button @click="formatSource">自动格式化</el-button>
               <el-button type="primary" :loading="submitting" :disabled="!detail.can_submit" @click="submitSolution">提交</el-button>
             </div>
-            <CodeEditor v-model="source" :language="language" />
+            <CodeEditor ref="editorRef" v-model="source" :language="language" />
             <div v-if="live" class="live"><StatusBadge :status="live.status" /> {{ live.status === 'pending_review' ? '等待教师评分' : `分数 ${live.score}，${live.message}` }}</div>
           </section>
         </div>
@@ -217,7 +219,7 @@
 <script setup lang="ts">
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { computed, onBeforeUnmount, onMounted, reactive, ref, watch } from 'vue'
-import { onBeforeRouteLeave } from 'vue-router'
+import { onBeforeRouteLeave, useRoute } from 'vue-router'
 import { client, sseUrl, type PreparedProblem, type Problem, type Submission } from '../api/client'
 import CodeEditor from '../components/CodeEditor.vue'
 import MarkdownRenderer from '../components/MarkdownRenderer.vue'
@@ -232,6 +234,7 @@ type SelectedProblem = { problem_id: number; title: string; source: string; scor
 const auth = useAuthStore()
 const classroom = useClassroomStore()
 const examLock = useExamLockStore()
+const route = useRoute()
 const canManage = computed(() => auth.role !== 'student')
 const items = ref<any[]>([])
 const courses = ref<any[]>([])
@@ -255,6 +258,7 @@ const language = ref('cpp')
 const live = ref<any>(null)
 const history = ref<Submission[]>([])
 const source = ref('')
+const editorRef = ref<InstanceType<typeof CodeEditor> | null>(null)
 const gradeSubmission = ref<any>(null)
 const gradeProblemScore = ref<any>(null)
 const manualScore = ref(0)
@@ -285,13 +289,22 @@ const examLocked = computed(() => {
 
 async function load() {
   const params = classroom.activeClassId ? { class_id: classroom.activeClassId } : {}
-  const requests: Promise<any>[] = [client.get('/exams', { params }), client.get('/courses'), client.get('/problems', { params })]
-  if (canManage.value) requests.push(client.get('/prepared-problems'))
-  const [examsRes, coursesRes, problemsRes, preparedRes] = await Promise.all(requests)
+  const examsRes = await client.get('/exams', { params })
   items.value = examsRes.data
-  courses.value = coursesRes.data
-  problems.value = problemsRes.data
-  preparedProblems.value = preparedRes?.data || []
+  if (canManage.value) {
+    const [coursesRes, problemsRes, preparedRes] = await Promise.all([
+      client.get('/courses'),
+      client.get('/problems', { params }),
+      client.get('/prepared-problems')
+    ])
+    courses.value = coursesRes.data
+    problems.value = problemsRes.data
+    preparedProblems.value = preparedRes.data
+  } else {
+    courses.value = []
+    problems.value = []
+    preparedProblems.value = []
+  }
 }
 
 function openDialog() {
@@ -361,6 +374,7 @@ async function openDetail(row: any) {
     loadDraft()
     await loadHistory()
   } catch (err: any) {
+    if (row.id === examLock.examId && err.response?.status === 404) examLock.unlock()
     ElMessage.error(err.response?.data?.error || err.message)
   }
 }
@@ -492,6 +506,25 @@ function saveDraft() {
   localStorage.setItem(draftKey(), source.value)
 }
 
+function formatSource() {
+  editorRef.value?.format()
+}
+
+async function openLockedExamFromRoute() {
+  if (canManage.value) return
+  const raw = route.query.locked_exam_id || examLock.examId
+  const id = Number(Array.isArray(raw) ? raw[0] : raw)
+  if (!id || detail.value?.exam?.id === id) return
+  const row = items.value.find((item) => item.id === id) || { id }
+  await openDetail(row)
+}
+
+function beforeUnload(event: BeforeUnloadEvent) {
+  if (!examLocked.value) return
+  event.preventDefault()
+  event.returnValue = ''
+}
+
 function draftKey() {
   return `school-oj-draft:exam:${detail.value.exam.id}:${activeProblem.value?.id}:${language.value}`
 }
@@ -551,27 +584,37 @@ watch(source, saveDraft)
 watch(
   examLocked,
   (locked) => {
-    if (locked) examLock.lock()
-    else examLock.unlock()
+    if (locked) {
+      examLock.lock(detail.value?.exam?.id)
+      return
+    }
+    if (detail.value?.exam?.id === examLock.examId && (detail.value?.closed || detail.value?.all_submitted || !detailVisible.value)) {
+      examLock.unlock()
+    }
   },
   { immediate: true }
 )
+
+watch(() => route.query.locked_exam_id, openLockedExamFromRoute)
 
 onBeforeRouteLeave(() => {
   if (examLocked.value) {
     ElMessage.warning(examLock.message)
     return false
   }
-  examLock.unlock()
+  if (detail.value?.exam?.id === examLock.examId) examLock.unlock()
 })
 
 onBeforeUnmount(() => {
-  examLock.unlock()
+  window.removeEventListener('beforeunload', beforeUnload)
 })
 
 onMounted(async () => {
+  examLock.hydrate()
+  window.addEventListener('beforeunload', beforeUnload)
   await classroom.load()
   await load()
+  await openLockedExamFromRoute()
 })
 </script>
 
@@ -624,7 +667,7 @@ onMounted(async () => {
 
 .coding-grid {
   display: grid;
-  grid-template-columns: 230px minmax(260px, 0.9fr) minmax(360px, 1.1fr);
+  grid-template-columns: 220px minmax(280px, 0.75fr) minmax(520px, 1.45fr);
   gap: 14px;
   min-height: 560px;
 }

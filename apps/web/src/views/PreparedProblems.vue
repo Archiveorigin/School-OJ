@@ -29,9 +29,8 @@
       <el-button @click="load">筛选</el-button>
     </div>
 
-    <el-row :gutter="16">
-      <el-col :span="15">
-        <div class="panel">
+    <div class="prepared-layout">
+      <section class="panel prepared-list-panel">
           <el-table :data="items" highlight-current-row @current-change="selectItem">
             <el-table-column prop="id" label="ID" width="70" />
             <el-table-column label="题目" min-width="210">
@@ -67,10 +66,8 @@
               </template>
             </el-table-column>
           </el-table>
-        </div>
-      </el-col>
-      <el-col :span="9">
-        <div v-if="selected" class="panel detail">
+      </section>
+      <aside v-if="selected" class="panel detail">
           <div class="detail-head">
             <div>
               <h3>{{ selected.problem.title }}</h3>
@@ -91,15 +88,14 @@
             </strong>
           </div>
           <el-divider />
-          <MarkdownRenderer :source="selected.problem.statement" />
+          <MarkdownRenderer :source="selected.problem.statement" :problem-id="selected.problem.id" />
           <el-divider />
           <div class="tag-row">
             <el-tag v-for="tag in tagList(selected.problem.tags)" :key="tag" size="small">{{ tag }}</el-tag>
           </div>
           <p v-if="selected.notes" class="notes">{{ selected.notes }}</p>
-        </div>
-      </el-col>
-    </el-row>
+      </aside>
+    </div>
 
     <el-dialog v-model="createVisible" title="上传预备题" width="940px">
       <el-form label-width="96px" class="meta-form">
@@ -168,9 +164,27 @@
                 :rows="8"
                 placeholder="支持 Markdown 和 LaTeX，例如：**加粗**、`代码`、$a+b$、$$\\sum_i a_i$$"
               />
+              <div class="statement-tools">
+                <el-upload
+                  action="#"
+                  :auto-upload="false"
+                  :show-file-list="false"
+                  multiple
+                  accept="image/png,image/jpeg,image/gif,image/webp"
+                  :on-change="addProblemImage"
+                >
+                  <el-button>插入图片</el-button>
+                </el-upload>
+                <span class="muted">支持 PNG、JPG、GIF、WebP，图片会自动写入题面 Markdown。</span>
+              </div>
+              <div v-if="problemForm.assets.length" class="asset-row">
+                <el-tag v-for="asset in problemForm.assets" :key="asset.path" closable @close="removeProblemImage(asset.path)">
+                  {{ asset.name }}
+                </el-tag>
+              </div>
               <div class="statement-preview">
                 <div class="muted">题面预览</div>
-                <MarkdownRenderer :source="problemForm.statement || '支持 **Markdown** 和 $a+b$。'" />
+                <MarkdownRenderer :source="problemForm.statement || '支持 **Markdown** 和 $a+b$。'" :asset-urls="problemAssetPreviewUrls" />
               </div>
             </el-form-item>
             <el-row :gutter="12">
@@ -279,6 +293,7 @@ import MarkdownRenderer from '../components/MarkdownRenderer.vue'
 import { useClassroomStore } from '../stores/classroom'
 
 const classroom = useClassroomStore()
+type ProblemAssetForm = { name: string; path: string; content_type: string; data: string; preview_url: string }
 const items = ref<PreparedProblem[]>([])
 const selected = ref<PreparedProblem | null>(null)
 const createVisible = ref(false)
@@ -321,7 +336,11 @@ const problemForm = reactive({
   time_limit_ms: 1000,
   memory_limit_mb: 256,
   output_limit_kb: 1024,
+  assets: [] as ProblemAssetForm[],
   cases: [{ name: 'case-01', input: '1 2\n', output: '3\n', weight: 100 }]
+})
+const problemAssetPreviewUrls = computed(() => {
+  return Object.fromEntries(problemForm.assets.map((asset) => [asset.path, asset.preview_url]))
 })
 
 const folderOptions = computed(() => {
@@ -379,6 +398,7 @@ async function createFromForm() {
       time_limit_ms: problemForm.time_limit_ms,
       memory_limit_mb: problemForm.memory_limit_mb,
       output_limit_kb: problemForm.output_limit_kb,
+      assets: problemForm.assets.map(({ name, path, content_type, data }) => ({ name, path, content_type, data })),
       cases: problemForm.cases
     })
     ElMessage.success('预备题已创建')
@@ -499,18 +519,76 @@ function resetMeta() {
 }
 
 function resetProblemForm() {
+  problemForm.assets.forEach((asset) => URL.revokeObjectURL(asset.preview_url))
   problemForm.slug = ''
   problemForm.title = ''
   problemForm.statement = ''
   problemForm.time_limit_ms = 1000
   problemForm.memory_limit_mb = 256
   problemForm.output_limit_kb = 1024
+  problemForm.assets.splice(0, problemForm.assets.length)
   problemForm.cases.splice(0, problemForm.cases.length, {
     name: 'case-01',
     input: '1 2\n',
     output: '3\n',
     weight: 100
   })
+}
+
+function addProblemImage(uploadFile: any) {
+  const file = uploadFile.raw as File | undefined
+  if (!file) return
+  if (!['image/png', 'image/jpeg', 'image/gif', 'image/webp'].includes(file.type)) {
+    ElMessage.error('仅支持 PNG、JPG、GIF、WebP 图片')
+    return
+  }
+  if (file.size > 5 * 1024 * 1024) {
+    ElMessage.error('单张图片不能超过 5 MB')
+    return
+  }
+  const path = uniqueAssetPath(file.name)
+  const reader = new FileReader()
+  reader.onload = () => {
+    problemForm.assets.push({
+      name: file.name,
+      path,
+      content_type: file.type,
+      data: String(reader.result),
+      preview_url: URL.createObjectURL(file)
+    })
+    problemForm.statement = `${problemForm.statement.trimEnd()}\n\n![${file.name}](${path})\n`
+  }
+  reader.readAsDataURL(file)
+}
+
+function removeProblemImage(path: string) {
+  const index = problemForm.assets.findIndex((asset) => asset.path === path)
+  if (index < 0) return
+  URL.revokeObjectURL(problemForm.assets[index].preview_url)
+  problemForm.assets.splice(index, 1)
+  problemForm.statement = problemForm.statement.replace(new RegExp(`!\\[[^\\]]*\\]\\(${escapeRegExp(path)}\\)\\n?`, 'g'), '').trimEnd()
+}
+
+function uniqueAssetPath(name: string) {
+  const safe = name
+    .trim()
+    .replace(/\s+/g, '-')
+    .replace(/[^A-Za-z0-9._-]/g, '')
+    .replace(/^\.+/, '')
+  const fallback = `image-${Date.now()}.png`
+  const base = safe || fallback
+  let path = `assets/${base}`
+  let index = 1
+  while (problemForm.assets.some((asset) => asset.path === path)) {
+    const dot = base.lastIndexOf('.')
+    path = dot > 0 ? `assets/${base.slice(0, dot)}-${index}${base.slice(dot)}` : `assets/${base}-${index}`
+    index += 1
+  }
+  return path
+}
+
+function escapeRegExp(value: string) {
+  return value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
 }
 
 function parseTags(value: string) {
@@ -541,6 +619,18 @@ onMounted(async () => {
   gap: 10px;
   margin-bottom: 16px;
   align-items: center;
+}
+
+.prepared-layout {
+  display: grid;
+  grid-template-columns: minmax(420px, 0.95fr) minmax(420px, 1.05fr);
+  gap: 16px;
+  align-items: start;
+}
+
+.prepared-list-panel,
+.detail {
+  min-width: 0;
 }
 
 .problem-title {
@@ -589,6 +679,23 @@ onMounted(async () => {
   border: 1px solid var(--border);
   border-radius: 8px;
   background: rgba(15, 23, 42, 0.03);
+}
+
+.statement-tools {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+  width: 100%;
+  margin-top: 10px;
+}
+
+.asset-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  width: 100%;
+  margin-top: 8px;
 }
 
 .tag-row {
@@ -650,6 +757,12 @@ onMounted(async () => {
 
 .case-head {
   margin-bottom: 10px;
+}
+
+@media (max-width: 1100px) {
+  .prepared-layout {
+    grid-template-columns: 1fr;
+  }
 }
 
 @media (max-width: 900px) {

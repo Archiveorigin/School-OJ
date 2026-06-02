@@ -85,6 +85,7 @@ type Problem struct {
 	Manifest        datatypes.JSONMap `json:"manifest" gorm:"type:jsonb"`
 	CreatedAt       time.Time         `json:"created_at"`
 	UpdatedAt       time.Time         `json:"updated_at"`
+	DeletedAt       *time.Time        `json:"deleted_at,omitempty" gorm:"index"`
 }
 
 type PreparedProblem struct {
@@ -206,24 +207,24 @@ const (
 )
 
 type Submission struct {
-	ID           uint              `json:"id" gorm:"primaryKey"`
-	UserID       uint              `json:"user_id" gorm:"index;not null"`
-	ProblemID    uint              `json:"problem_id" gorm:"index;not null"`
-	AssignmentID *uint             `json:"assignment_id" gorm:"index"`
-	ExamID       *uint             `json:"exam_id" gorm:"index"`
-	Language     string            `json:"language" gorm:"size:32;index;not null"`
-	SourceCode   string            `json:"source_code" gorm:"type:text;not null"`
-	Status       SubmissionStatus  `json:"status" gorm:"type:varchar(32);index;not null"`
-	Score        int               `json:"score" gorm:"not null;default:0"`
-	ManualScore  *int              `json:"manual_score"`
-	ManualGradedBy *uint           `json:"manual_graded_by" gorm:"index"`
-	ManualGradedAt *time.Time      `json:"manual_graded_at"`
-	TimeMS       int               `json:"time_ms" gorm:"not null;default:0"`
-	MemoryKB     int               `json:"memory_kb" gorm:"not null;default:0"`
-	Message      string            `json:"message" gorm:"type:text"`
-	Trace        datatypes.JSONMap `json:"trace" gorm:"type:jsonb"`
-	CreatedAt    time.Time         `json:"created_at"`
-	UpdatedAt    time.Time         `json:"updated_at"`
+	ID             uint              `json:"id" gorm:"primaryKey"`
+	UserID         uint              `json:"user_id" gorm:"index;not null"`
+	ProblemID      uint              `json:"problem_id" gorm:"index;not null"`
+	AssignmentID   *uint             `json:"assignment_id" gorm:"index"`
+	ExamID         *uint             `json:"exam_id" gorm:"index"`
+	Language       string            `json:"language" gorm:"size:32;index;not null"`
+	SourceCode     string            `json:"source_code" gorm:"type:text;not null"`
+	Status         SubmissionStatus  `json:"status" gorm:"type:varchar(32);index;not null"`
+	Score          int               `json:"score" gorm:"not null;default:0"`
+	ManualScore    *int              `json:"manual_score"`
+	ManualGradedBy *uint             `json:"manual_graded_by" gorm:"index"`
+	ManualGradedAt *time.Time        `json:"manual_graded_at"`
+	TimeMS         int               `json:"time_ms" gorm:"not null;default:0"`
+	MemoryKB       int               `json:"memory_kb" gorm:"not null;default:0"`
+	Message        string            `json:"message" gorm:"type:text"`
+	Trace          datatypes.JSONMap `json:"trace" gorm:"type:jsonb"`
+	CreatedAt      time.Time         `json:"created_at"`
+	UpdatedAt      time.Time         `json:"updated_at"`
 }
 
 type SubmissionResult struct {
