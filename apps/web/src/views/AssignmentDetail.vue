@@ -3,7 +3,7 @@
     <div class="page-header">
       <div>
         <h2>{{ detail?.assignment?.title || '作业' }}</h2>
-        <p v-if="detail" class="muted">截止时间：{{ detail.assignment.due_at || '-' }}</p>
+        <p v-if="detail" class="muted">截止时间：{{ formatDateTime(detail.assignment.due_at) }}</p>
       </div>
       <div class="toolbar">
         <el-tag v-if="detail?.not_started" type="warning">未开始</el-tag>
@@ -37,7 +37,7 @@
             <h3>{{ activeProblem.title }}</h3>
             <span>{{ activeEntry?.score }} 分</span>
           </div>
-          <p class="muted">{{ activeProblem.time_limit_ms }} ms / {{ activeProblem.memory_limit_mb }} MB / {{ activeProblem.output_limit_kb }} KB</p>
+          <p class="muted">{{ problemLimitText(activeProblem) }}</p>
           <MarkdownRenderer :source="activeProblem.statement" :problem-id="activeProblem.id" />
         </main>
 
@@ -82,6 +82,8 @@ import { client, sseUrl, type Problem, type Submission } from '../api/client'
 import CodeEditor from '../components/CodeEditor.vue'
 import MarkdownRenderer from '../components/MarkdownRenderer.vue'
 import StatusBadge from '../components/StatusBadge.vue'
+import { formatDateTime, workStatusLabel } from '../features/assignments/assignmentMeta'
+import { problemLimitText } from '../features/problems/problemMeta'
 
 type DetailProblem = { problem: Problem; score: number; problem_id: number }
 type EditorState = { language: string; source: string; live: any }
@@ -227,12 +229,6 @@ function problemScoreText(problemID: number) {
 
 function problemTitle(problemID: number) {
   return detail.value?.problems?.find((entry: DetailProblem) => entry.problem.id === problemID)?.problem.title || `#${problemID}`
-}
-
-function workStatusLabel(status: string) {
-  if (status === 'submitted') return '已提交'
-  if (status === 'unsubmitted') return '未提交'
-  return '未尝试'
 }
 
 watch(() => route.params.id, loadDetail)

@@ -8,11 +8,37 @@
         <el-button @click="load">刷新</el-button>
       </div>
     </div>
+    <div class="panel problem-filters">
+      <el-input v-model="filters.keyword" clearable placeholder="搜索 ID、标题、Slug、标签" />
+      <el-select v-model="filters.tag" clearable filterable placeholder="标签">
+        <el-option v-for="tag in tagOptions" :key="tag" :label="tag" :value="tag" />
+      </el-select>
+      <el-select v-if="auth.role === 'student'" v-model="filters.status" placeholder="状态">
+        <el-option
+          v-for="option in problemStatusOptions"
+          :key="option.value"
+          :label="option.label"
+          :value="option.value"
+        />
+      </el-select>
+      <el-button @click="resetFilters">重置</el-button>
+      <span class="muted filter-count">{{ filteredProblems.length }} / {{ problems.length }}</span>
+    </div>
     <div class="problem-layout">
       <aside class="panel problem-list-panel">
-          <el-table :data="problems" highlight-current-row @current-change="selectProblem" height="calc(100vh - 190px)">
+          <el-table :data="filteredProblems" highlight-current-row @current-change="selectProblem" height="calc(100vh - 232px)">
             <el-table-column prop="id" label="ID" width="70" />
-            <el-table-column prop="title" label="题目" />
+            <el-table-column label="题目" min-width="190">
+              <template #default="{ row }">
+                <div class="problem-title">{{ row.title }}</div>
+                <div class="muted">{{ row.slug }}</div>
+                <div v-if="tagList(row.tags).length" class="tag-strip">
+                  <el-tag v-for="tag in tagList(row.tags)" :key="tag" size="small">
+                    {{ tag }}
+                  </el-tag>
+                </div>
+              </template>
+            </el-table-column>
             <el-table-column v-if="auth.role === 'student'" label="状态" width="110">
               <template #default="{ row }">
                 <el-tag :type="progressTag(row.progress_status)" effect="light">
@@ -30,10 +56,12 @@
             </div>
             <el-button v-if="canDeleteSelected" type="danger" plain @click="removeProblem">删除题目</el-button>
           </div>
-          <p class="muted">
-            {{ selected.time_limit_ms }} ms / {{ selected.memory_limit_mb }} MB /
-            {{ selected.output_limit_kb }} KB
-          </p>
+          <p class="muted">{{ problemLimitText(selected) }}</p>
+          <div v-if="tagList(selected.tags).length" class="tag-strip detail-tags">
+            <el-tag v-for="tag in tagList(selected.tags)" :key="tag" size="small">
+              {{ tag }}
+            </el-tag>
+          </div>
           <MarkdownRenderer :source="selected.statement" :problem-id="selected.id" />
           <el-divider />
           <div class="toolbar">
@@ -237,6 +265,15 @@ import { client, sseUrl, type PreparedProblem, type Problem } from '../api/clien
 import CodeEditor from '../components/CodeEditor.vue'
 import MarkdownRenderer from '../components/MarkdownRenderer.vue'
 import StatusBadge from '../components/StatusBadge.vue'
+import {
+  problemLimitText,
+  problemMatchesFilters,
+  problemStatusOptions,
+  progressLabel,
+  progressTag,
+  tagList,
+  type ProblemFilters
+} from '../features/problems/problemMeta'
 import { useAuthStore } from '../stores/auth'
 import { useClassroomStore } from '../stores/classroom'
 
@@ -246,6 +283,11 @@ const canManage = computed(() => auth.role === 'admin' || auth.role === 'teacher
 type ProblemAssetForm = { name: string; path: string; content_type: string; data: string; preview_url: string }
 const problems = ref<Problem[]>([])
 const selected = ref<Problem | null>(null)
+const filters = reactive<ProblemFilters>({
+  keyword: '',
+  tag: '',
+  status: 'all'
+})
 const canDeleteSelected = computed(() => Boolean(selected.value && (auth.role === 'admin' || selected.value.owner_id === auth.user?.id)))
 const language = ref('cpp')
 const submitting = ref(false)
@@ -273,6 +315,11 @@ const problemForm = reactive({
 const problemAssetPreviewUrls = computed(() => {
   return Object.fromEntries(problemForm.assets.map((asset) => [asset.path, asset.preview_url]))
 })
+const tagOptions = computed(() => {
+  const set = new Set(problems.value.flatMap((problem) => tagList(problem.tags)))
+  return [...set].sort((a, b) => a.localeCompare(b, 'zh-CN'))
+})
+const filteredProblems = computed(() => problems.value.filter((problem) => problemMatchesFilters(problem, filters)))
 const source = ref(`#include <bits/stdc++.h>
 using namespace std;
 int main() {
@@ -292,9 +339,16 @@ async function load() {
   }
 }
 
-function selectProblem(row: Problem) {
+function selectProblem(row: Problem | null) {
+  if (!row) return
   selected.value = row
   live.value = null
+}
+
+function resetFilters() {
+  filters.keyword = ''
+  filters.tag = ''
+  filters.status = 'all'
 }
 
 function openProblemDialog() {
@@ -478,26 +532,6 @@ function escapeRegExp(value: string) {
   return value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
 }
 
-function progressLabel(status?: string) {
-  if (status === 'accepted') return '通过'
-  if (status === 'attempted') return '未通过'
-  return '未尝试'
-}
-
-function progressTag(status?: string): 'success' | 'warning' | 'info' {
-  if (status === 'accepted') return 'success'
-  if (status === 'attempted') return 'warning'
-  return 'info'
-}
-
-function tagList(tags: any) {
-  if (!tags) return []
-  if (Array.isArray(tags)) return tags.map(String)
-  if (Array.isArray(tags.labels)) return tags.labels.map(String)
-  if (Array.isArray(tags.items)) return tags.items.map(String)
-  return []
-}
-
 async function submit() {
   if (!selected.value) return
   submitting.value = true
@@ -523,6 +557,11 @@ function watchSubmission(id: number) {
 
 watch(() => classroom.activeClassId, load)
 
+watch(filteredProblems, (list) => {
+  if (selected.value && list.some((item) => item.id === selected.value?.id)) return
+  selected.value = list[0] || null
+})
+
 onMounted(async () => {
   await classroom.load()
   await load()
@@ -542,6 +581,35 @@ onMounted(async () => {
   grid-template-columns: minmax(280px, 340px) minmax(0, 1fr);
   gap: 16px;
   align-items: start;
+}
+
+.problem-filters {
+  display: grid;
+  grid-template-columns: minmax(220px, 1fr) 160px minmax(120px, 140px) auto auto;
+  gap: 10px;
+  align-items: center;
+  margin-bottom: 16px;
+}
+
+.problem-title {
+  font-weight: 700;
+  color: var(--text);
+}
+
+.tag-strip {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 5px;
+  margin-top: 6px;
+}
+
+.detail-tags {
+  margin-bottom: 12px;
+}
+
+.filter-count {
+  justify-self: end;
+  white-space: nowrap;
 }
 
 .problem-list-panel,
@@ -660,6 +728,16 @@ onMounted(async () => {
   .problem-detail-panel,
   .empty-detail {
     min-height: auto;
+  }
+}
+
+@media (max-width: 760px) {
+  .problem-filters {
+    grid-template-columns: 1fr;
+  }
+
+  .filter-count {
+    justify-self: start;
   }
 }
 </style>

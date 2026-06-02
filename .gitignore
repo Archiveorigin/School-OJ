@@ -6,6 +6,7 @@
 dist/
 node_modules/
 coverage/
+.npm-cache/
 tmp/
 *.log
 *.pid

@@ -1,25 +1,7 @@
 <template>
   <router-view v-if="publicPage" />
   <el-container v-else class="shell">
-    <el-aside width="220px" class="aside">
-      <div class="brand">
-        <img class="brand-logo" src="/logo.jpg" alt="黄海在线题测平台" />
-        <span>黄海在线题测平台</span>
-      </div>
-      <el-menu router :default-active="activeMenu" class="nav">
-        <el-menu-item index="/">概览</el-menu-item>
-        <el-menu-item index="/courses">课程班级</el-menu-item>
-        <el-menu-item index="/problems">题库</el-menu-item>
-        <el-menu-item v-if="auth.role !== 'student'" index="/prepared-problems">预备题库</el-menu-item>
-        <el-menu-item index="/assignments">作业</el-menu-item>
-        <el-menu-item index="/exams">考试</el-menu-item>
-        <el-menu-item index="/submissions">提交</el-menu-item>
-        <el-menu-item index="/leaderboard">排行榜</el-menu-item>
-        <el-menu-item v-if="auth.role !== 'student'" index="/plagiarism">JPlag 查重</el-menu-item>
-        <el-menu-item v-if="auth.role === 'admin'" index="/audit-logs">审计日志</el-menu-item>
-        <el-menu-item v-if="auth.role === 'admin'" index="/users">用户</el-menu-item>
-      </el-menu>
-    </el-aside>
+    <AppSidebar :active-menu="activeMenu" :role="auth.role" />
     <el-container>
       <el-header class="topbar">
         <div class="topbar-title">
@@ -69,6 +51,7 @@
 import { ElMessage } from 'element-plus'
 import { computed, onMounted, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
+import AppSidebar from './components/AppSidebar.vue'
 import { useAuthStore } from './stores/auth'
 import { useClassroomStore } from './stores/classroom'
 import { useExamLockStore } from './stores/examLock'
@@ -140,38 +123,6 @@ watch(
     var(--app-bg);
 }
 
-.aside {
-  background: var(--surface-strong);
-  border-right: 1px solid var(--border);
-  box-shadow: 8px 0 28px rgba(15, 23, 42, 0.04);
-}
-
-.brand {
-  min-height: 64px;
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  padding: 0 16px;
-  font-weight: 800;
-  line-height: 1.2;
-  color: var(--text);
-  border-bottom: 1px solid var(--border);
-}
-
-.brand-logo {
-  width: 36px;
-  height: 36px;
-  object-fit: cover;
-  border-radius: 8px;
-  background: #fff;
-  box-shadow: 0 8px 20px rgba(10, 94, 166, 0.15);
-}
-
-.nav {
-  border-right: 0;
-  background: transparent;
-}
-
 .topbar {
   display: flex;
   align-items: center;
@@ -233,5 +184,19 @@ watch(
   width: 100%;
   height: 100%;
   object-fit: cover;
+}
+
+@media (max-width: 760px) {
+  .shell {
+    display: block;
+  }
+
+  .topbar {
+    min-height: 58px;
+  }
+
+  .class-switch {
+    width: min(240px, 48vw);
+  }
 }
 </style>
