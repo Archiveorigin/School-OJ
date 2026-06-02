@@ -16,6 +16,12 @@
         <el-table-column prop="title" label="标题" min-width="180" />
         <el-table-column prop="starts_at" label="开始" min-width="170" />
         <el-table-column prop="ends_at" label="结束" min-width="170" />
+        <el-table-column v-if="canManage" label="模式" width="190">
+          <template #default="{ row }">
+            <el-tag v-if="row.settings?.manual_review" type="warning" effect="light">人工阅卷</el-tag>
+            <el-tag v-if="row.settings?.lock_exit" type="danger" effect="light" class="mode-tag">锁定退出</el-tag>
+          </template>
+        </el-table-column>
         <el-table-column v-if="!canManage" label="状态" width="110">
           <template #default="{ row }"><el-tag :type="workStatusType(row.work_status)">{{ workStatusLabel(row.work_status) }}</el-tag></template>
         </el-table-column>
@@ -51,6 +57,12 @@
         <el-form-item label="阅卷方式">
           <el-checkbox v-model="form.manual_review">提交后判题，教师人工确认分数</el-checkbox>
         </el-form-item>
+        <el-form-item label="考试限制">
+          <div class="setting-line">
+            <el-checkbox v-model="form.lock_exit">学生考试过程中无法退出</el-checkbox>
+            <span class="muted">学生提交完全部题目后自动退出考试界面，未提交完时不能关闭或站内跳转。</span>
+          </div>
+        </el-form-item>
         <el-form-item label="添加题目">
           <div class="problem-add">
             <el-radio-group v-model="problemSource" @change="problemPickID = undefined">
@@ -77,7 +89,15 @@
       </template>
     </el-dialog>
 
-    <el-drawer v-model="detailVisible" :title="detailTitle" size="92%">
+    <el-drawer
+      v-model="detailVisible"
+      :title="detailTitle"
+      size="92%"
+      :show-close="!examLocked"
+      :close-on-click-modal="!examLocked"
+      :close-on-press-escape="!examLocked"
+      :before-close="beforeDetailClose"
+    >
       <div v-if="detail" class="workbench">
         <div class="workbench-head">
           <div>
@@ -89,6 +109,7 @@
             <el-tag v-else-if="detail.not_started" type="warning">未开始，可提交</el-tag>
             <el-tag v-else type="success">进行中</el-tag>
             <el-tag v-if="detail.manual_review" type="warning">人工阅卷</el-tag>
+            <el-tag v-if="detail.lock_exit" type="danger">锁定退出</el-tag>
             <el-tag>{{ workStatusLabel(detail.work_status) }}</el-tag>
             <strong>{{ detail.score_ready ? `${detail.total_score} / ${detail.max_score}` : (detail.work_status === 'submitted' ? '待评分' : '-') }}</strong>
           </div>
@@ -105,7 +126,7 @@
           <main v-if="activeProblem" class="statement-panel">
             <div class="panel-title"><h3>{{ activeProblem.title }}</h3><span>{{ activeEntry?.score }} 分</span></div>
             <p class="muted">{{ activeProblem.time_limit_ms }} ms / {{ activeProblem.memory_limit_mb }} MB / {{ activeProblem.output_limit_kb }} KB</p>
-            <p class="statement">{{ activeProblem.statement }}</p>
+            <MarkdownRenderer :source="activeProblem.statement" />
           </main>
 
           <section v-if="activeProblem" class="editor-panel">
@@ -195,18 +216,22 @@
 
 <script setup lang="ts">
 import { ElMessage, ElMessageBox } from 'element-plus'
-import { computed, onMounted, reactive, ref, watch } from 'vue'
+import { computed, onBeforeUnmount, onMounted, reactive, ref, watch } from 'vue'
+import { onBeforeRouteLeave } from 'vue-router'
 import { client, sseUrl, type PreparedProblem, type Problem, type Submission } from '../api/client'
 import CodeEditor from '../components/CodeEditor.vue'
+import MarkdownRenderer from '../components/MarkdownRenderer.vue'
 import StatusBadge from '../components/StatusBadge.vue'
 import { useAuthStore } from '../stores/auth'
 import { useClassroomStore } from '../stores/classroom'
+import { useExamLockStore } from '../stores/examLock'
 
 type DetailProblem = { problem: Problem; score: number; problem_id: number }
 type SelectedProblem = { problem_id: number; title: string; source: string; score: number }
 
 const auth = useAuthStore()
 const classroom = useClassroomStore()
+const examLock = useExamLockStore()
 const canManage = computed(() => auth.role !== 'student')
 const items = ref<any[]>([])
 const courses = ref<any[]>([])
@@ -242,7 +267,8 @@ const form = reactive<any>({
   description: '',
   starts_at: null,
   ends_at: null,
-  manual_review: false
+  manual_review: false,
+  lock_exit: false
 })
 
 const problemOptions = computed(() => {
@@ -253,6 +279,9 @@ const problemOptions = computed(() => {
 })
 const selectedTotalScore = computed(() => selectedProblems.value.reduce((sum, item) => sum + Number(item.score || 0), 0))
 const detailTitle = computed(() => detail.value?.exam?.title || '考试')
+const examLocked = computed(() => {
+  return !canManage.value && detailVisible.value && Boolean(detail.value?.lock_exit) && !detail.value?.closed && !detail.value?.all_submitted
+})
 
 async function load() {
   const params = classroom.activeClassId ? { class_id: classroom.activeClassId } : {}
@@ -310,6 +339,7 @@ async function submitCreate() {
       starts_at: form.starts_at,
       ends_at: form.ends_at,
       manual_review: form.manual_review,
+      lock_exit: form.lock_exit,
       problems: selectedProblems.value.map((item) => ({ problem_id: item.problem_id, score: item.score }))
     })
     ElMessage.success('考试已创建')
@@ -333,6 +363,14 @@ async function openDetail(row: any) {
   } catch (err: any) {
     ElMessage.error(err.response?.data?.error || err.message)
   }
+}
+
+function beforeDetailClose(done: () => void) {
+  if (examLocked.value) {
+    ElMessage.warning(examLock.message)
+    return
+  }
+  done()
 }
 
 async function openReport(row: any) {
@@ -392,8 +430,15 @@ function watchSubmission(id: number) {
 async function refreshDetail() {
   if (!detail.value) return
   const activeID = activeProblem.value?.id
+  const wasLocked = examLocked.value
   detail.value = (await client.get(`/exams/${detail.value.exam.id}`)).data
   activeEntry.value = detail.value.problems.find((entry: DetailProblem) => entry.problem.id === activeID) || detail.value.problems[0] || null
+  if (wasLocked && detail.value.all_submitted) {
+    ElMessage.success('已提交所有题目，已自动退出考试')
+    detailVisible.value = false
+    examLock.unlock()
+    await load()
+  }
 }
 
 async function loadHistory() {
@@ -495,6 +540,7 @@ function reset() {
   form.starts_at = null
   form.ends_at = null
   form.manual_review = false
+  form.lock_exit = false
   selectedProblems.value = []
   problemPickID.value = undefined
 }
@@ -502,6 +548,26 @@ function reset() {
 watch(() => classroom.activeClassId, load)
 watch(language, loadDraft)
 watch(source, saveDraft)
+watch(
+  examLocked,
+  (locked) => {
+    if (locked) examLock.lock()
+    else examLock.unlock()
+  },
+  { immediate: true }
+)
+
+onBeforeRouteLeave(() => {
+  if (examLocked.value) {
+    ElMessage.warning(examLock.message)
+    return false
+  }
+  examLock.unlock()
+})
+
+onBeforeUnmount(() => {
+  examLock.unlock()
+})
 
 onMounted(async () => {
   await classroom.load()
@@ -519,6 +585,15 @@ onMounted(async () => {
 
 .problem-select {
   width: 100%;
+}
+
+.mode-tag {
+  margin-left: 6px;
+}
+
+.setting-line {
+  display: grid;
+  gap: 4px;
 }
 
 .selected-problems {

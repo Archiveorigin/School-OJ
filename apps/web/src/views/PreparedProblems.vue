@@ -91,7 +91,7 @@
             </strong>
           </div>
           <el-divider />
-          <p class="statement">{{ selected.problem.statement }}</p>
+          <MarkdownRenderer :source="selected.problem.statement" />
           <el-divider />
           <div class="tag-row">
             <el-tag v-for="tag in tagList(selected.problem.tags)" :key="tag" size="small">{{ tag }}</el-tag>
@@ -144,7 +144,7 @@
             class="zip-upload"
           >
             <div class="upload-text">选择或拖入题目包 ZIP</div>
-            <div class="muted">ZIP 根目录需要包含 problem.yaml 和测试数据文件</div>
+            <div class="muted">problem.yaml 的 statement 可使用 Markdown 和 LaTeX 多行文本</div>
           </el-upload>
         </el-tab-pane>
         <el-tab-pane label="表单创建题目" name="form">
@@ -162,7 +162,16 @@
               </el-col>
             </el-row>
             <el-form-item label="题面">
-              <el-input v-model="problemForm.statement" type="textarea" :rows="4" />
+              <el-input
+                v-model="problemForm.statement"
+                type="textarea"
+                :rows="8"
+                placeholder="支持 Markdown 和 LaTeX，例如：**加粗**、`代码`、$a+b$、$$\\sum_i a_i$$"
+              />
+              <div class="statement-preview">
+                <div class="muted">题面预览</div>
+                <MarkdownRenderer :source="problemForm.statement || '支持 **Markdown** 和 $a+b$。'" />
+              </div>
             </el-form-item>
             <el-row :gutter="12">
               <el-col :span="8">
@@ -266,6 +275,7 @@
 import { ElMessage } from 'element-plus'
 import { computed, onMounted, reactive, ref } from 'vue'
 import { client, type PreparedProblem } from '../api/client'
+import MarkdownRenderer from '../components/MarkdownRenderer.vue'
 import { useClassroomStore } from '../stores/classroom'
 
 const classroom = useClassroomStore()
@@ -570,6 +580,15 @@ onMounted(async () => {
 .statement {
   white-space: pre-wrap;
   line-height: 1.7;
+}
+
+.statement-preview {
+  width: 100%;
+  margin-top: 10px;
+  padding: 12px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: rgba(15, 23, 42, 0.03);
 }
 
 .tag-row {

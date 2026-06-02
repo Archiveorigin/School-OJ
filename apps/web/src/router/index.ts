@@ -1,5 +1,7 @@
 import { createRouter, createWebHistory } from 'vue-router'
+import { ElMessage } from 'element-plus'
 import { useAuthStore } from '../stores/auth'
+import { useExamLockStore } from '../stores/examLock'
 import AuditLogs from '../views/AuditLogs.vue'
 import Assignments from '../views/Assignments.vue'
 import Courses from '../views/Courses.vue'
@@ -39,8 +41,13 @@ const router = createRouter({
 
 const publicPaths = ['/login', '/register', '/forgot-password']
 
-router.beforeEach(async (to) => {
+router.beforeEach(async (to, from) => {
   const auth = useAuthStore()
+  const examLock = useExamLockStore()
+  if (examLock.locked && to.path !== from.path) {
+    ElMessage.warning(examLock.message)
+    return false
+  }
   if (auth.isAuthed && !auth.hydrated) {
     await auth.hydrate()
   }

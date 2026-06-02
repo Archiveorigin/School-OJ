@@ -132,7 +132,7 @@
               <span>{{ activeEntry?.score }} 分</span>
             </div>
             <p class="muted">{{ activeProblem.time_limit_ms }} ms / {{ activeProblem.memory_limit_mb }} MB / {{ activeProblem.output_limit_kb }} KB</p>
-            <p class="statement">{{ activeProblem.statement }}</p>
+            <MarkdownRenderer :source="activeProblem.statement" />
           </main>
 
           <section v-if="activeProblem" class="editor-panel">
@@ -199,6 +199,7 @@ import { ElMessage, ElMessageBox } from 'element-plus'
 import { computed, onMounted, reactive, ref, watch } from 'vue'
 import { client, sseUrl, type PreparedProblem, type Problem, type Submission } from '../api/client'
 import CodeEditor from '../components/CodeEditor.vue'
+import MarkdownRenderer from '../components/MarkdownRenderer.vue'
 import StatusBadge from '../components/StatusBadge.vue'
 import { useAuthStore } from '../stores/auth'
 import { useClassroomStore } from '../stores/classroom'

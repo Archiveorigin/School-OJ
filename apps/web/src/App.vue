@@ -66,13 +66,16 @@
 </template>
 
 <script setup lang="ts">
+import { ElMessage } from 'element-plus'
 import { computed, onMounted, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { useAuthStore } from './stores/auth'
 import { useClassroomStore } from './stores/classroom'
+import { useExamLockStore } from './stores/examLock'
 
 const auth = useAuthStore()
 const classroom = useClassroomStore()
+const examLock = useExamLockStore()
 const router = useRouter()
 const route = useRoute()
 
@@ -103,10 +106,18 @@ function logout() {
 }
 
 function setClass(value: number) {
+  if (examLock.locked) {
+    ElMessage.warning(examLock.message)
+    return
+  }
   classroom.setActive(value)
 }
 
 function handleCommand(command: string) {
+  if (examLock.locked && command !== 'theme') {
+    ElMessage.warning(examLock.message)
+    return
+  }
   if (command === 'profile') {
     router.push('/profile')
     return

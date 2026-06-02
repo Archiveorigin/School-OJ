@@ -1140,15 +1140,16 @@ func (s Server) listExams(c *gin.Context) {
 func (s Server) createExam(c *gin.Context) {
 	user, _ := middleware.CurrentUser(c)
 	var req struct {
-		CourseID    uint       `json:"course_id"`
-		ClassID     *uint      `json:"class_id"`
-		Title       string     `json:"title" binding:"required"`
-		Description string     `json:"description"`
-		StartsAt    *time.Time `json:"starts_at"`
-		EndsAt      *time.Time `json:"ends_at"`
-		ProblemIDs  []uint     `json:"problem_ids"`
-		Problems    []workProblemInput `json:"problems"`
-		ManualReview bool       `json:"manual_review"`
+		CourseID     uint               `json:"course_id"`
+		ClassID      *uint              `json:"class_id"`
+		Title        string             `json:"title" binding:"required"`
+		Description  string             `json:"description"`
+		StartsAt     *time.Time         `json:"starts_at"`
+		EndsAt       *time.Time         `json:"ends_at"`
+		ProblemIDs   []uint             `json:"problem_ids"`
+		Problems     []workProblemInput `json:"problems"`
+		ManualReview bool               `json:"manual_review"`
+		LockExit     bool               `json:"lock_exit"`
 	}
 	if !bind(c, &req) {
 		return
@@ -1178,6 +1179,9 @@ func (s Server) createExam(c *gin.Context) {
 	settings := datatypes.JSONMap{}
 	if req.ManualReview {
 		settings["manual_review"] = true
+	}
+	if req.LockExit {
+		settings["lock_exit"] = true
 	}
 	item := models.Exam{CourseID: req.CourseID, ClassID: req.ClassID, Title: req.Title, Description: req.Description, StartsAt: req.StartsAt, EndsAt: req.EndsAt, Settings: settings}
 	if err := s.DB.Transaction(func(tx *gorm.DB) error {
@@ -1228,18 +1232,21 @@ func (s Server) getExam(c *gin.Context) {
 		_ = s.recordExamAttempt(item.ID, user.ID)
 	}
 	summary := s.examSummary(item.ID, user.ID, true)
+	allSubmitted := user.Role == models.RoleStudent && s.examAllSubmitted(item.ID, user.ID)
 	c.JSON(http.StatusOK, gin.H{
-		"exam":        item,
-		"problems":    examProblemViews(item),
-		"now":         now,
-		"closed":      closed,
-		"not_started": item.StartsAt != nil && now.Before(*item.StartsAt),
-		"can_submit":  user.Role != models.RoleStudent || !closed,
-		"manual_review": examManualReview(item),
-		"work_status":  summary.WorkStatus,
-		"total_score":  summary.TotalScore,
-		"max_score":    summary.MaxScore,
-		"score_ready":  summary.ScoreReady,
+		"exam":           item,
+		"problems":       examProblemViews(item),
+		"now":            now,
+		"closed":         closed,
+		"not_started":    item.StartsAt != nil && now.Before(*item.StartsAt),
+		"can_submit":     user.Role != models.RoleStudent || !closed,
+		"manual_review":  examManualReview(item),
+		"lock_exit":      examLockExit(item),
+		"all_submitted":  allSubmitted,
+		"work_status":    summary.WorkStatus,
+		"total_score":    summary.TotalScore,
+		"max_score":      summary.MaxScore,
+		"score_ready":    summary.ScoreReady,
 		"problem_scores": summary.Problems,
 	})
 }
@@ -1847,6 +1854,20 @@ func examManualReview(exam models.Exam) bool {
 	return false
 }
 
+func examLockExit(exam models.Exam) bool {
+	value, ok := exam.Settings["lock_exit"]
+	if !ok {
+		return false
+	}
+	if enabled, ok := value.(bool); ok {
+		return enabled
+	}
+	if text, ok := value.(string); ok {
+		return text == "true" || text == "1"
+	}
+	return false
+}
+
 func (s Server) recordAssignmentAttempt(assignmentID uint, userID uint) error {
 	attempt := models.AssignmentAttempt{AssignmentID: assignmentID, UserID: userID}
 	return s.DB.Where("assignment_id = ? AND user_id = ?", assignmentID, userID).FirstOrCreate(&attempt).Error
@@ -1881,6 +1902,19 @@ func (s Server) examSummary(examID uint, userID uint, includeProblems bool) work
 	var attempts int64
 	s.DB.Model(&models.ExamAttempt{}).Where("exam_id = ? AND user_id = ?", examID, userID).Count(&attempts)
 	return s.workSummaryForLinks(userID, nil, links, nil, &examID, examManualReview(exam), attempts > 0, includeProblems)
+}
+
+func (s Server) examAllSubmitted(examID uint, userID uint) bool {
+	var problemIDs []uint
+	if err := s.DB.Model(&models.ExamProblem{}).Where("exam_id = ?", examID).Pluck("problem_id", &problemIDs).Error; err != nil || len(problemIDs) == 0 {
+		return false
+	}
+	var submitted int64
+	s.DB.Model(&models.Submission{}).
+		Where("exam_id = ? AND user_id = ? AND problem_id IN ?", examID, userID, problemIDs).
+		Distinct("problem_id").
+		Count(&submitted)
+	return submitted >= int64(len(problemIDs))
 }
 
 func (s Server) workSummaryForLinks(userID uint, assignmentLinks []models.AssignmentProblem, examLinks []models.ExamProblem, assignmentID *uint, examID *uint, manualReview bool, attempted bool, includeProblems bool) workSummary {
