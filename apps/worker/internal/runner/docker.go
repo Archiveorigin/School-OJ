@@ -74,10 +74,12 @@ func (r DockerRunner) Judge(ctx context.Context, req JudgeRequest) JudgeResult {
 		}
 	}
 	var cases []CaseResult
-	totalScore := 0
+	passedWeight := 0
+	totalWeight := 0
 	maxTime := 0
 	finalStatus := models.StatusAccepted
 	for _, tc := range req.Package.Manifest.Cases {
+		totalWeight += tc.Weight
 		expected := normalize(req.Package.CaseOutput(tc))
 		actual, status, ms := r.runContainer(ctx, workDir, spec.Image, spec.Run, req.Package.CaseInput(tc), limit)
 		caseResult := CaseResult{Name: tc.Name, Status: status, TimeMS: ms}
@@ -86,7 +88,7 @@ func (r DockerRunner) Judge(ctx context.Context, req JudgeRequest) JudgeResult {
 		}
 		if status == models.StatusAccepted {
 			if normalize(actual) == expected {
-				totalScore += tc.Weight
+				passedWeight += tc.Weight
 				caseResult.Message = "ok"
 			} else {
 				status = models.StatusWrongAnswer
@@ -101,14 +103,22 @@ func (r DockerRunner) Judge(ctx context.Context, req JudgeRequest) JudgeResult {
 		}
 		cases = append(cases, caseResult)
 	}
-	if totalScore > 100 {
-		totalScore = 100
-	}
+	totalScore := weightedScore(passedWeight, totalWeight)
 	message := "accepted"
 	if finalStatus != models.StatusAccepted {
 		message = "some test cases failed"
 	}
 	return JudgeResult{Status: finalStatus, Score: totalScore, TimeMS: maxTime, Message: message, Trace: trace(limit), Cases: cases}
+}
+
+func weightedScore(passedWeight int, totalWeight int) int {
+	if passedWeight <= 0 || totalWeight <= 0 {
+		return 0
+	}
+	if passedWeight >= totalWeight {
+		return 100
+	}
+	return (passedWeight*100 + totalWeight/2) / totalWeight
 }
 
 type spec struct {

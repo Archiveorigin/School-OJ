@@ -151,6 +151,7 @@ func (s Server) Router() *gin.Engine {
 	auth.DELETE("/assignments/:id", middleware.RequireRoles(models.RoleAdmin, models.RoleTeacher), s.deleteAssignment)
 	auth.GET("/exams", s.listExams)
 	auth.GET("/exams/:id", s.getExam)
+	auth.POST("/exams/:id/finish", middleware.RequireRoles(models.RoleStudent), s.finishExam)
 	auth.POST("/exams", middleware.RequireRoles(models.RoleAdmin, models.RoleTeacher), s.createExam)
 	auth.GET("/exams/:id/report", middleware.RequireRoles(models.RoleAdmin, models.RoleTeacher), s.examReport)
 	auth.DELETE("/exams/:id", middleware.RequireRoles(models.RoleAdmin, models.RoleTeacher), s.deleteExam)
@@ -1220,11 +1221,13 @@ func (s Server) listExams(c *gin.Context) {
 	}
 	type examListView struct {
 		models.Exam
-		WorkStatus string `json:"work_status"`
-		TotalScore int    `json:"total_score"`
-		MaxScore   int    `json:"max_score"`
-		ScoreReady bool   `json:"score_ready"`
+		WorkStatus string     `json:"work_status"`
+		TotalScore int        `json:"total_score"`
+		MaxScore   int        `json:"max_score"`
+		ScoreReady bool       `json:"score_ready"`
+		FinishedAt *time.Time `json:"finished_at"`
 	}
+	finished := s.examFinishedAtMap(user.ID, modelIDs(items))
 	views := make([]examListView, 0, len(items))
 	for _, item := range items {
 		summary := s.examSummary(item.ID, user.ID, false)
@@ -1234,6 +1237,7 @@ func (s Server) listExams(c *gin.Context) {
 			TotalScore: summary.TotalScore,
 			MaxScore:   summary.MaxScore,
 			ScoreReady: summary.ScoreReady,
+			FinishedAt: finished[item.ID],
 		})
 	}
 	c.JSON(http.StatusOK, views)
@@ -1330,8 +1334,17 @@ func (s Server) getExam(c *gin.Context) {
 	}
 	now := time.Now()
 	closed := item.EndsAt != nil && now.After(*item.EndsAt)
+	notStarted := item.StartsAt != nil && now.Before(*item.StartsAt)
+	var finishedAt *time.Time
 	if user.Role == models.RoleStudent {
-		_ = s.recordExamAttempt(item.ID, user.ID)
+		finishedAt = s.examFinishedAt(item.ID, user.ID)
+		if finishedAt != nil {
+			c.JSON(http.StatusForbidden, gin.H{"error": "exam has been finished", "finished_at": finishedAt})
+			return
+		}
+		if !closed && !notStarted {
+			_ = s.recordExamAttempt(item.ID, user.ID)
+		}
 	}
 	summary := s.examSummary(item.ID, user.ID, true)
 	allSubmitted := user.Role == models.RoleStudent && s.examAllSubmitted(item.ID, user.ID)
@@ -1340,17 +1353,46 @@ func (s Server) getExam(c *gin.Context) {
 		"problems":       examProblemViews(item),
 		"now":            now,
 		"closed":         closed,
-		"not_started":    item.StartsAt != nil && now.Before(*item.StartsAt),
-		"can_submit":     user.Role != models.RoleStudent || !closed,
+		"not_started":    notStarted,
+		"can_submit":     user.Role != models.RoleStudent || (!closed && !notStarted && finishedAt == nil),
 		"manual_review":  examManualReview(item),
 		"lock_exit":      examLockExit(item),
 		"all_submitted":  allSubmitted,
+		"finished_at":    finishedAt,
 		"work_status":    summary.WorkStatus,
 		"total_score":    summary.TotalScore,
 		"max_score":      summary.MaxScore,
 		"score_ready":    summary.ScoreReady,
 		"problem_scores": summary.Problems,
 	})
+}
+
+func (s Server) finishExam(c *gin.Context) {
+	user, _ := middleware.CurrentUser(c)
+	id, ok := idParam(c, "id")
+	if !ok {
+		return
+	}
+	var item models.Exam
+	if err := s.DB.Where("exams.deleted_at IS NULL").First(&item, id).Error; err != nil {
+		c.JSON(http.StatusNotFound, gin.H{"error": "exam not found"})
+		return
+	}
+	if item.ClassID == nil || !s.studentInClass(user.ID, *item.ClassID) {
+		c.JSON(http.StatusForbidden, gin.H{"error": "exam is not available in your class"})
+		return
+	}
+	if item.StartsAt != nil && time.Now().Before(*item.StartsAt) {
+		c.JSON(http.StatusForbidden, gin.H{"error": "exam has not started"})
+		return
+	}
+	attempt, err := s.finishExamAttempt(item.ID, user.ID)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+	services.Audit(c, s.DB, "exam.finish", "exam", item.ID, datatypes.JSONMap{"user_id": user.ID, "finished_at": attempt.FinishedAt})
+	c.JSON(http.StatusOK, gin.H{"finished": true, "exam_id": item.ID, "finished_at": attempt.FinishedAt})
 }
 
 func (s Server) examReport(c *gin.Context) {
@@ -1927,7 +1969,7 @@ func (s Server) examContainsProblem(examID uint, problemID uint) bool {
 
 func (s Server) activeLockedExamForStudent(userID uint) (models.Exam, bool) {
 	var attempts []models.ExamAttempt
-	if err := s.DB.Where("user_id = ?", userID).Order("updated_at desc, id desc").Limit(20).Find(&attempts).Error; err != nil {
+	if err := s.DB.Where("user_id = ? AND finished_at IS NULL", userID).Order("updated_at desc, id desc").Limit(20).Find(&attempts).Error; err != nil {
 		return models.Exam{}, false
 	}
 	now := time.Now()
@@ -1936,13 +1978,10 @@ func (s Server) activeLockedExamForStudent(userID uint) (models.Exam, bool) {
 		if err := s.DB.Where("deleted_at IS NULL").First(&exam, attempt.ExamID).Error; err != nil {
 			continue
 		}
-		if !examLockExit(exam) {
+		if exam.StartsAt != nil && now.Before(*exam.StartsAt) {
 			continue
 		}
 		if exam.EndsAt != nil && now.After(*exam.EndsAt) {
-			continue
-		}
-		if s.examAllSubmitted(exam.ID, userID) {
 			continue
 		}
 		return exam, true
@@ -1962,7 +2001,7 @@ func (s Server) blockedByActiveLockedExam(c *gin.Context, user models.User, allo
 		return false
 	}
 	c.JSON(http.StatusLocked, gin.H{
-		"error":   "locked exam is active; finish all exam problems before leaving",
+		"error":   "active exam must be finished before leaving",
 		"exam_id": exam.ID,
 		"title":   exam.Title,
 	})
@@ -2005,8 +2044,15 @@ func (s Server) canStudentSubmitExam(userID uint, examID uint, problemID uint) (
 	if count == 0 {
 		return false, "problem is not part of this exam"
 	}
-	if exam.EndsAt != nil && time.Now().After(*exam.EndsAt) {
+	now := time.Now()
+	if exam.StartsAt != nil && now.Before(*exam.StartsAt) {
+		return false, "exam has not started"
+	}
+	if exam.EndsAt != nil && now.After(*exam.EndsAt) {
 		return false, "exam is closed"
+	}
+	if s.examFinishedAt(examID, userID) != nil {
+		return false, "exam has been finished"
 	}
 	return true, ""
 }
@@ -2119,6 +2165,43 @@ func (s Server) recordAssignmentAttempt(assignmentID uint, userID uint) error {
 func (s Server) recordExamAttempt(examID uint, userID uint) error {
 	attempt := models.ExamAttempt{ExamID: examID, UserID: userID}
 	return s.DB.Where("exam_id = ? AND user_id = ?", examID, userID).FirstOrCreate(&attempt).Error
+}
+
+func (s Server) finishExamAttempt(examID uint, userID uint) (models.ExamAttempt, error) {
+	attempt := models.ExamAttempt{ExamID: examID, UserID: userID}
+	if err := s.DB.Where("exam_id = ? AND user_id = ?", examID, userID).FirstOrCreate(&attempt).Error; err != nil {
+		return models.ExamAttempt{}, err
+	}
+	if attempt.FinishedAt != nil {
+		return attempt, nil
+	}
+	now := time.Now()
+	if err := s.DB.Model(&attempt).Update("finished_at", now).Error; err != nil {
+		return models.ExamAttempt{}, err
+	}
+	attempt.FinishedAt = &now
+	return attempt, nil
+}
+
+func (s Server) examFinishedAt(examID uint, userID uint) *time.Time {
+	var attempt models.ExamAttempt
+	if err := s.DB.Where("exam_id = ? AND user_id = ? AND finished_at IS NOT NULL", examID, userID).First(&attempt).Error; err != nil {
+		return nil
+	}
+	return attempt.FinishedAt
+}
+
+func (s Server) examFinishedAtMap(userID uint, examIDs []uint) map[uint]*time.Time {
+	out := map[uint]*time.Time{}
+	if len(examIDs) == 0 {
+		return out
+	}
+	var attempts []models.ExamAttempt
+	s.DB.Where("user_id = ? AND exam_id IN ? AND finished_at IS NOT NULL", userID, examIDs).Find(&attempts)
+	for _, attempt := range attempts {
+		out[attempt.ExamID] = attempt.FinishedAt
+	}
+	return out
 }
 
 func (s Server) assignmentSummary(assignmentID uint, userID uint, includeProblems bool) workSummary {
@@ -2547,6 +2630,14 @@ func dedupeUint(values []uint) []uint {
 		out = append(out, value)
 	}
 	return out
+}
+
+func modelIDs(items []models.Exam) []uint {
+	ids := make([]uint, 0, len(items))
+	for _, item := range items {
+		ids = append(ids, item.ID)
+	}
+	return ids
 }
 
 func parseTagFields(values []string, single string) []string {

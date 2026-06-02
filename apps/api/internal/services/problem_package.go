@@ -116,12 +116,6 @@ func BuildProblemPackage(draft ProblemPackageDraft) ([]byte, ParsedProblemPackag
 	}
 	files := map[string][]byte{}
 	for i, tc := range draft.Cases {
-		if strings.TrimSpace(tc.Input) == "" {
-			return nil, ParsedProblemPackage{}, fmt.Errorf("case %d input is required", i+1)
-		}
-		if strings.TrimSpace(tc.Output) == "" {
-			return nil, ParsedProblemPackage{}, fmt.Errorf("case %d output is required", i+1)
-		}
 		name := strings.TrimSpace(tc.Name)
 		if name == "" {
 			name = fmt.Sprintf("case-%02d", i+1)
@@ -354,7 +348,7 @@ func ParseProblemPackage(body []byte) (ParsedProblemPackage, error) {
 func normalizeCaseText(value string) string {
 	value = strings.ReplaceAll(value, "\r\n", "\n")
 	value = strings.ReplaceAll(value, "\r", "\n")
-	if !strings.HasSuffix(value, "\n") {
+	if value != "" && !strings.HasSuffix(value, "\n") {
 		value += "\n"
 	}
 	return value

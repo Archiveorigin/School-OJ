@@ -6,7 +6,7 @@ export const useExamLockStore = defineStore('examLock', {
   state: () => ({
     locked: false,
     examId: undefined as number | undefined,
-    message: '该考试要求提交所有题目后退出'
+    message: '该考试需要点击结束考试后才能退出'
   }),
   actions: {
     hydrate() {

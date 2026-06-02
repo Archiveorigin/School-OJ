@@ -3,9 +3,11 @@ import { ElMessage } from 'element-plus'
 import { useAuthStore } from '../stores/auth'
 import { useExamLockStore } from '../stores/examLock'
 import AuditLogs from '../views/AuditLogs.vue'
+import AssignmentDetail from '../views/AssignmentDetail.vue'
 import Assignments from '../views/Assignments.vue'
 import Courses from '../views/Courses.vue'
 import Dashboard from '../views/Dashboard.vue'
+import ExamDetail from '../views/ExamDetail.vue'
 import Exams from '../views/Exams.vue'
 import Leaderboard from '../views/Leaderboard.vue'
 import Login from '../views/Login.vue'
@@ -21,21 +23,23 @@ import Users from '../views/Users.vue'
 const router = createRouter({
   history: createWebHistory(),
   routes: [
-    { path: '/login', component: Login },
-    { path: '/register', component: Register },
-    { path: '/forgot-password', component: ForgotPassword },
-    { path: '/', component: Dashboard },
-    { path: '/profile', component: Profile },
-    { path: '/courses', component: Courses },
-    { path: '/problems', component: Problems },
-    { path: '/prepared-problems', component: PreparedProblems, meta: { roles: ['admin', 'teacher'] } },
-    { path: '/assignments', component: Assignments },
-    { path: '/exams', component: Exams },
-    { path: '/submissions', component: Submissions },
-    { path: '/leaderboard', component: Leaderboard },
-    { path: '/plagiarism', component: Plagiarism, meta: { roles: ['admin', 'teacher'] } },
-    { path: '/audit-logs', component: AuditLogs, meta: { roles: ['admin'] } },
-    { path: '/users', component: Users, meta: { roles: ['admin'] } }
+    { path: '/login', component: Login, meta: { public: true } },
+    { path: '/register', component: Register, meta: { public: true } },
+    { path: '/forgot-password', component: ForgotPassword, meta: { public: true } },
+    { path: '/', component: Dashboard, meta: { title: '概览' } },
+    { path: '/profile', component: Profile, meta: { title: 'Profile' } },
+    { path: '/courses', component: Courses, meta: { title: '课程班级' } },
+    { path: '/problems', component: Problems, meta: { title: '题库' } },
+    { path: '/prepared-problems', component: PreparedProblems, meta: { roles: ['admin', 'teacher'], title: '预备题库' } },
+    { path: '/assignments', component: Assignments, meta: { title: '作业' } },
+    { path: '/assignments/:id', component: AssignmentDetail, meta: { title: '作业', activeMenu: '/assignments' } },
+    { path: '/exams', component: Exams, meta: { title: '考试' } },
+    { path: '/exams/:id', component: ExamDetail, meta: { title: '考试', activeMenu: '/exams' } },
+    { path: '/submissions', component: Submissions, meta: { title: '提交' } },
+    { path: '/leaderboard', component: Leaderboard, meta: { title: '排行榜' } },
+    { path: '/plagiarism', component: Plagiarism, meta: { roles: ['admin', 'teacher'], title: 'JPlag 查重' } },
+    { path: '/audit-logs', component: AuditLogs, meta: { roles: ['admin'], title: '审计日志' } },
+    { path: '/users', component: Users, meta: { roles: ['admin'], title: '用户管理' } }
   ]
 })
 
@@ -58,12 +62,10 @@ router.beforeEach(async (to, from) => {
   if (roles && (!auth.user || !roles.includes(auth.user.role))) {
     return '/'
   }
-  if (examLock.locked && to.path !== '/exams') {
+  const lockedExamPath = examLock.examId ? `/exams/${examLock.examId}` : '/exams'
+  if (examLock.locked && to.path !== lockedExamPath) {
     ElMessage.warning(examLock.message)
-    return { path: '/exams', query: examLock.examId ? { locked_exam_id: String(examLock.examId) } : undefined }
-  }
-  if (examLock.locked && to.path === '/exams' && examLock.examId && to.query.locked_exam_id !== String(examLock.examId)) {
-    return { path: '/exams', query: { ...to.query, locked_exam_id: String(examLock.examId) } }
+    return { path: lockedExamPath }
   }
 })
 

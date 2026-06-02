@@ -209,9 +209,42 @@
             </el-row>
             <div class="case-toolbar">
               <h4>测试点</h4>
-              <el-button size="small" @click="addCase">添加测试点</el-button>
+              <div class="case-actions">
+                <el-radio-group v-model="caseInputMode" size="small">
+                  <el-radio-button label="manual">手动添加</el-radio-button>
+                  <el-radio-button label="files">上传样例文件</el-radio-button>
+                </el-radio-group>
+                <el-button v-if="caseInputMode === 'manual'" size="small" @click="addCase">添加测试点</el-button>
+              </div>
             </div>
-            <div v-for="(item, index) in problemForm.cases" :key="index" class="case-editor">
+            <div v-if="caseInputMode === 'files'" class="case-file-panel">
+              <div class="case-file-actions">
+                <el-upload
+                  :key="caseFileUploadKey"
+                  action="#"
+                  :auto-upload="false"
+                  :show-file-list="false"
+                  multiple
+                  accept=".in,.out"
+                  :on-change="handleCaseFilesChanged"
+                >
+                  <el-button>选择 .in/.out 文件</el-button>
+                </el-upload>
+                <el-button :disabled="!caseFileRows.length" @click="clearCaseFiles">清空文件</el-button>
+                <span class="muted">按同名主干配对，例如 26_1.in / 26_1.out。</span>
+              </div>
+              <el-table v-if="caseFileRows.length" :data="caseFileRows" size="small" max-height="260">
+                <el-table-column prop="name" label="测试点" min-width="140" />
+                <el-table-column label="输入文件" min-width="180">
+                  <template #default="{ row }">{{ row.inputName }} · {{ formatBytes(row.inputSize) }}</template>
+                </el-table-column>
+                <el-table-column label="输出文件" min-width="180">
+                  <template #default="{ row }">{{ row.outputName }} · {{ formatBytes(row.outputSize) }}</template>
+                </el-table-column>
+                <el-table-column prop="weight" label="权重" width="80" />
+              </el-table>
+            </div>
+            <div v-for="(item, index) in problemForm.cases" v-show="caseInputMode === 'manual'" :key="index" class="case-editor">
               <div class="case-head">
                 <el-input v-model="item.name" placeholder="测试点名称" />
                 <el-input-number v-model="item.weight" :min="1" :max="100" />
@@ -294,15 +327,21 @@ import { useClassroomStore } from '../stores/classroom'
 
 const classroom = useClassroomStore()
 type ProblemAssetForm = { name: string; path: string; content_type: string; data: string; preview_url: string }
+type CaseFilePair = { name: string; inputName: string; outputName: string; inputSize: number; outputSize: number; weight: number }
+type ParsedCaseFile = { stem: string; ext: 'in' | 'out'; name: string; size: number; text: string }
 const items = ref<PreparedProblem[]>([])
 const selected = ref<PreparedProblem | null>(null)
 const createVisible = ref(false)
 const editVisible = ref(false)
 const publishVisible = ref(false)
 const createTab = ref('zip')
+const caseInputMode = ref<'manual' | 'files'>('manual')
+const caseFileRows = ref<CaseFilePair[]>([])
+const caseFileUploadKey = ref(0)
 const saving = ref(false)
 const publishing = ref<PreparedProblem | null>(null)
 const publishClassIDs = ref<number[]>([])
+let caseFileParseSeq = 0
 
 const filters = reactive({
   q: '',
@@ -388,6 +427,10 @@ function openPublishDialog(row: PreparedProblem) {
 }
 
 async function createFromForm() {
+  if (caseInputMode.value === 'files' && caseFileRows.value.length === 0) {
+    ElMessage.error('请先上传并配对输入输出样例文件')
+    return
+  }
   saving.value = true
   try {
     const { data } = await client.post('/prepared-problems', {
@@ -533,6 +576,82 @@ function resetProblemForm() {
     output: '3\n',
     weight: 100
   })
+  caseInputMode.value = 'manual'
+  caseFileRows.value = []
+  caseFileUploadKey.value += 1
+}
+
+async function handleCaseFilesChanged(_uploadFile: any, uploadFiles: any[]) {
+  const files = uploadFiles.map((item) => item.raw as File | undefined).filter(Boolean) as File[]
+  if (!files.length) return
+  const seq = ++caseFileParseSeq
+  try {
+    const parsed = await Promise.all(files.map(readCaseFile))
+    if (seq !== caseFileParseSeq) return
+    const grouped = new Map<string, Partial<Record<'in' | 'out', ParsedCaseFile>>>()
+    for (const file of parsed) {
+      const group = grouped.get(file.stem) || {}
+      if (group[file.ext]) {
+        throw new Error(`测试点 ${file.stem} 存在重复的 .${file.ext} 文件`)
+      }
+      group[file.ext] = file
+      grouped.set(file.stem, group)
+    }
+    const stems = [...grouped.keys()].sort((a, b) => a.localeCompare(b, undefined, { numeric: true, sensitivity: 'base' }))
+    const missing = stems.filter((stem) => !grouped.get(stem)?.in || !grouped.get(stem)?.out)
+    if (missing.length) {
+      throw new Error(`以下测试点缺少输入或输出文件：${missing.join(', ')}`)
+    }
+    const rows: CaseFilePair[] = []
+    const cases = stems.map((stem) => {
+      const pair = grouped.get(stem)!
+      const input = pair.in!
+      const output = pair.out!
+      rows.push({ name: stem, inputName: input.name, outputName: output.name, inputSize: input.size, outputSize: output.size, weight: 1 })
+      return { name: stem, input: input.text, output: output.text, weight: 1 }
+    })
+    problemForm.cases.splice(0, problemForm.cases.length, ...cases)
+    caseFileRows.value = rows
+    ElMessage.success(`已导入 ${rows.length} 个测试点`)
+  } catch (err: any) {
+    ElMessage.error(err.message || '测试点文件解析失败')
+  }
+}
+
+async function readCaseFile(file: File): Promise<ParsedCaseFile> {
+  const match = file.name.match(/^(.+)\.(in|out)$/i)
+  if (!match) {
+    throw new Error(`仅支持 .in / .out 文件：${file.name}`)
+  }
+  const buffer = await file.arrayBuffer()
+  const text = new TextDecoder('utf-8', { fatal: true }).decode(buffer)
+  if (text.includes('\u0000')) {
+    throw new Error(`文件不是有效文本：${file.name}`)
+  }
+  return {
+    stem: match[1],
+    ext: match[2].toLowerCase() as 'in' | 'out',
+    name: file.name,
+    size: file.size,
+    text
+  }
+}
+
+function clearCaseFiles() {
+  caseFileRows.value = []
+  caseFileUploadKey.value += 1
+  problemForm.cases.splice(0, problemForm.cases.length, {
+    name: 'case-01',
+    input: '1 2\n',
+    output: '3\n',
+    weight: 100
+  })
+}
+
+function formatBytes(value: number) {
+  if (value < 1024) return `${value} B`
+  if (value < 1024 * 1024) return `${(value / 1024).toFixed(1)} KB`
+  return `${(value / 1024 / 1024).toFixed(1)} MB`
 }
 
 function addProblemImage(uploadFile: any) {
@@ -733,7 +852,8 @@ onMounted(async () => {
 }
 
 .case-toolbar,
-.case-head {
+.case-head,
+.case-file-actions {
   display: flex;
   align-items: center;
   justify-content: space-between;
@@ -746,6 +866,24 @@ onMounted(async () => {
 
 .case-toolbar h4 {
   margin: 0;
+}
+
+.case-actions,
+.case-file-actions {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+
+.case-file-panel {
+  display: grid;
+  gap: 10px;
+  margin-bottom: 12px;
+  padding: 12px;
+  border: 1px solid #d9dee8;
+  border-radius: 8px;
+  background: rgba(248, 250, 252, 0.72);
 }
 
 .case-editor {

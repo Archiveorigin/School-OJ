@@ -84,6 +84,43 @@ func TestBuildProblemPackageWithAsset(t *testing.T) {
 	}
 }
 
+func TestBuildProblemPackageAllowsManyWeightedCases(t *testing.T) {
+	cases := make([]ProblemCaseDraft, 0, 200)
+	for i := 0; i < 200; i++ {
+		cases = append(cases, ProblemCaseDraft{Name: "case", Input: "1\n", Output: "1\n", Weight: 1})
+	}
+	_, parsed, err := BuildProblemPackage(ProblemPackageDraft{
+		Slug:  "many-cases",
+		Title: "Many Cases",
+		Cases: cases,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(parsed.Manifest.Cases) != 200 {
+		t.Fatalf("expected 200 cases, got %d", len(parsed.Manifest.Cases))
+	}
+	if parsed.Manifest.Cases[0].Weight != 1 {
+		t.Fatalf("expected weight 1, got %d", parsed.Manifest.Cases[0].Weight)
+	}
+}
+
+func TestBuildProblemPackageAllowsEmptyCaseFiles(t *testing.T) {
+	body, parsed, err := BuildProblemPackage(ProblemPackageDraft{
+		Slug:  "empty-io",
+		Title: "Empty IO",
+		Cases: []ProblemCaseDraft{
+			{Name: "empty", Input: "", Output: "", Weight: 100},
+		},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(body) == 0 || len(parsed.Manifest.Cases) != 1 {
+		t.Fatalf("unexpected package: size=%d cases=%d", len(body), len(parsed.Manifest.Cases))
+	}
+}
+
 func TestParseProblemPackageRejectsUnsafeAssetPath(t *testing.T) {
 	var buf bytes.Buffer
 	zw := zip.NewWriter(&buf)

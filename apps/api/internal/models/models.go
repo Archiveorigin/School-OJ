@@ -182,11 +182,12 @@ type ExamProblem struct {
 }
 
 type ExamAttempt struct {
-	ID        uint      `json:"id" gorm:"primaryKey"`
-	ExamID    uint      `json:"exam_id" gorm:"uniqueIndex:idx_exam_attempt"`
-	UserID    uint      `json:"user_id" gorm:"uniqueIndex:idx_exam_attempt"`
-	CreatedAt time.Time `json:"created_at"`
-	UpdatedAt time.Time `json:"updated_at"`
+	ID         uint       `json:"id" gorm:"primaryKey"`
+	ExamID     uint       `json:"exam_id" gorm:"uniqueIndex:idx_exam_attempt"`
+	UserID     uint       `json:"user_id" gorm:"uniqueIndex:idx_exam_attempt"`
+	FinishedAt *time.Time `json:"finished_at"`
+	CreatedAt  time.Time  `json:"created_at"`
+	UpdatedAt  time.Time  `json:"updated_at"`
 }
 
 type SubmissionStatus string

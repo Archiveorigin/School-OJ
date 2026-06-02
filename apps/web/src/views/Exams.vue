@@ -16,21 +16,22 @@
         <el-table-column prop="title" label="标题" min-width="180" />
         <el-table-column prop="starts_at" label="开始" min-width="170" />
         <el-table-column prop="ends_at" label="结束" min-width="170" />
-        <el-table-column v-if="canManage" label="模式" width="190">
+        <el-table-column v-if="canManage" label="模式" width="130">
           <template #default="{ row }">
             <el-tag v-if="row.settings?.manual_review" type="warning" effect="light">人工阅卷</el-tag>
-            <el-tag v-if="row.settings?.lock_exit" type="danger" effect="light" class="mode-tag">锁定退出</el-tag>
           </template>
         </el-table-column>
         <el-table-column v-if="!canManage" label="状态" width="110">
-          <template #default="{ row }"><el-tag :type="workStatusType(row.work_status)">{{ workStatusLabel(row.work_status) }}</el-tag></template>
+          <template #default="{ row }"><el-tag :type="examStatusType(row)">{{ examStatusLabel(row) }}</el-tag></template>
         </el-table-column>
         <el-table-column v-if="!canManage" label="分数" width="120">
           <template #default="{ row }">{{ scoreText(row) }}</template>
         </el-table-column>
         <el-table-column label="操作" width="260">
           <template #default="{ row }">
-            <el-button size="small" type="primary" @click="openDetail(row)">进入</el-button>
+            <el-button size="small" type="primary" :disabled="!canManage && Boolean(row.finished_at)" @click="openDetail(row)">
+              {{ !canManage && row.finished_at ? '已结束' : '进入' }}
+            </el-button>
             <el-button v-if="canManage" size="small" @click="openReport(row)">完成情况</el-button>
             <el-button v-if="canManage" size="small" type="danger" plain @click="removeExam(row)">删除</el-button>
           </template>
@@ -57,11 +58,8 @@
         <el-form-item label="阅卷方式">
           <el-checkbox v-model="form.manual_review">提交后判题，教师人工确认分数</el-checkbox>
         </el-form-item>
-        <el-form-item label="考试限制">
-          <div class="setting-line">
-            <el-checkbox v-model="form.lock_exit">学生考试过程中无法退出</el-checkbox>
-            <span class="muted">学生提交完全部题目后自动退出考试界面，未提交完时不能关闭或站内跳转。</span>
-          </div>
+        <el-form-item label="考试退出">
+          <span class="muted">学生进入考试后必须点击“结束考试”才能退出，结束后不能再次进入。</span>
         </el-form-item>
         <el-form-item label="添加题目">
           <div class="problem-add">
@@ -88,77 +86,6 @@
         <el-button type="primary" :loading="saving" @click="submitCreate">创建</el-button>
       </template>
     </el-dialog>
-
-    <el-drawer
-      v-model="detailVisible"
-      :title="detailTitle"
-      size="92%"
-      :show-close="!examLocked"
-      :close-on-click-modal="!examLocked"
-      :close-on-press-escape="!examLocked"
-      :before-close="beforeDetailClose"
-    >
-      <div v-if="detail" class="workbench">
-        <div class="workbench-head">
-          <div>
-            <h3>{{ detail.exam.title }}</h3>
-            <span class="muted">结束时间：{{ detail.exam.ends_at || '-' }}</span>
-          </div>
-          <div class="toolbar">
-            <el-tag v-if="detail.closed" type="info">已结束</el-tag>
-            <el-tag v-else-if="detail.not_started" type="warning">未开始，可提交</el-tag>
-            <el-tag v-else type="success">进行中</el-tag>
-            <el-tag v-if="detail.manual_review" type="warning">人工阅卷</el-tag>
-            <el-tag v-if="detail.lock_exit" type="danger">锁定退出</el-tag>
-            <el-tag>{{ workStatusLabel(detail.work_status) }}</el-tag>
-            <strong>{{ detail.score_ready ? `${detail.total_score} / ${detail.max_score}` : (detail.work_status === 'submitted' ? '待评分' : '-') }}</strong>
-          </div>
-        </div>
-
-        <div class="coding-grid">
-          <aside class="problem-rail">
-            <button v-for="entry in detail.problems" :key="entry.problem.id" type="button" class="problem-pick" :class="{ active: activeProblem?.id === entry.problem.id }" @click="selectDetailProblem(entry)">
-              <strong>{{ entry.problem.title }}</strong>
-              <span>{{ entry.score }} 分 · {{ problemScoreText(entry.problem.id) }}</span>
-              <small v-if="entry.problem.deleted_at" class="muted">已下架</small>
-            </button>
-          </aside>
-
-          <main v-if="activeProblem" class="statement-panel">
-            <div class="panel-title"><h3>{{ activeProblem.title }}</h3><span>{{ activeEntry?.score }} 分</span></div>
-            <p class="muted">{{ activeProblem.time_limit_ms }} ms / {{ activeProblem.memory_limit_mb }} MB / {{ activeProblem.output_limit_kb }} KB</p>
-            <MarkdownRenderer :source="activeProblem.statement" :problem-id="activeProblem.id" />
-          </main>
-
-          <section v-if="activeProblem" class="editor-panel">
-            <div class="toolbar editor-toolbar">
-              <el-select v-model="language" style="width: 130px">
-                <el-option label="C++17" value="cpp" />
-                <el-option label="C" value="c" />
-                <el-option label="Python" value="python" />
-                <el-option label="Java" value="java" />
-              </el-select>
-              <el-button @click="formatSource">自动格式化</el-button>
-              <el-button type="primary" :loading="submitting" :disabled="!detail.can_submit" @click="submitSolution">提交</el-button>
-            </div>
-            <CodeEditor ref="editorRef" v-model="source" :language="language" />
-            <div v-if="live" class="live"><StatusBadge :status="live.status" /> {{ live.status === 'pending_review' ? '等待教师评分' : `分数 ${live.score}，${live.message}` }}</div>
-          </section>
-        </div>
-
-        <div class="panel history-panel">
-          <div class="section-title"><h3>当前题提交记录</h3></div>
-          <el-table :data="history" size="small">
-            <el-table-column prop="id" label="ID" width="80" />
-            <el-table-column prop="language" label="语言" width="90" />
-            <el-table-column label="状态" width="130"><template #default="{ row }"><StatusBadge :status="row.status" /></template></el-table-column>
-            <el-table-column prop="score" label="参考分" width="90" />
-            <el-table-column label="最终分" width="90"><template #default="{ row }">{{ row.manual_score ?? '-' }}</template></el-table-column>
-            <el-table-column label="时间" min-width="160"><template #default="{ row }">{{ row.created_at }}</template></el-table-column>
-          </el-table>
-        </div>
-      </div>
-    </el-drawer>
 
     <el-drawer v-model="reportVisible" title="考试完成情况" size="86%">
       <div v-if="report" class="panel">
@@ -218,47 +145,32 @@
 
 <script setup lang="ts">
 import { ElMessage, ElMessageBox } from 'element-plus'
-import { computed, onBeforeUnmount, onMounted, reactive, ref, watch } from 'vue'
-import { onBeforeRouteLeave, useRoute } from 'vue-router'
-import { client, sseUrl, type PreparedProblem, type Problem, type Submission } from '../api/client'
-import CodeEditor from '../components/CodeEditor.vue'
-import MarkdownRenderer from '../components/MarkdownRenderer.vue'
+import { computed, onMounted, reactive, ref, watch } from 'vue'
+import { useRouter } from 'vue-router'
+import { client, type PreparedProblem, type Problem } from '../api/client'
 import StatusBadge from '../components/StatusBadge.vue'
 import { useAuthStore } from '../stores/auth'
 import { useClassroomStore } from '../stores/classroom'
-import { useExamLockStore } from '../stores/examLock'
 
-type DetailProblem = { problem: Problem; score: number; problem_id: number }
 type SelectedProblem = { problem_id: number; title: string; source: string; score: number }
 
 const auth = useAuthStore()
 const classroom = useClassroomStore()
-const examLock = useExamLockStore()
-const route = useRoute()
+const router = useRouter()
 const canManage = computed(() => auth.role !== 'student')
 const items = ref<any[]>([])
 const courses = ref<any[]>([])
 const problems = ref<Problem[]>([])
 const preparedProblems = ref<PreparedProblem[]>([])
 const dialogVisible = ref(false)
-const detailVisible = ref(false)
 const reportVisible = ref(false)
 const gradeVisible = ref(false)
 const saving = ref(false)
-const submitting = ref(false)
 const grading = ref(false)
 const problemSource = ref<'class' | 'prepared'>('class')
 const problemPickID = ref<number>()
 const selectedProblems = ref<SelectedProblem[]>([])
-const detail = ref<any>(null)
 const report = ref<any>(null)
-const activeEntry = ref<DetailProblem | null>(null)
-const activeProblem = computed(() => activeEntry.value?.problem || null)
-const language = ref('cpp')
-const live = ref<any>(null)
-const history = ref<Submission[]>([])
-const source = ref('')
-const editorRef = ref<InstanceType<typeof CodeEditor> | null>(null)
 const gradeSubmission = ref<any>(null)
 const gradeProblemScore = ref<any>(null)
 const manualScore = ref(0)
@@ -271,8 +183,7 @@ const form = reactive<any>({
   description: '',
   starts_at: null,
   ends_at: null,
-  manual_review: false,
-  lock_exit: false
+  manual_review: false
 })
 
 const problemOptions = computed(() => {
@@ -282,10 +193,6 @@ const problemOptions = computed(() => {
   return problems.value.map((problem) => ({ value: problem.id, label: `[题库] ${problem.id}. ${problem.title}`, title: problem.title, source: '题库' }))
 })
 const selectedTotalScore = computed(() => selectedProblems.value.reduce((sum, item) => sum + Number(item.score || 0), 0))
-const detailTitle = computed(() => detail.value?.exam?.title || '考试')
-const examLocked = computed(() => {
-  return !canManage.value && detailVisible.value && Boolean(detail.value?.lock_exit) && !detail.value?.closed && !detail.value?.all_submitted
-})
 
 async function load() {
   const params = classroom.activeClassId ? { class_id: classroom.activeClassId } : {}
@@ -352,7 +259,6 @@ async function submitCreate() {
       starts_at: form.starts_at,
       ends_at: form.ends_at,
       manual_review: form.manual_review,
-      lock_exit: form.lock_exit,
       problems: selectedProblems.value.map((item) => ({ problem_id: item.problem_id, score: item.score }))
     })
     ElMessage.success('考试已创建')
@@ -365,26 +271,12 @@ async function submitCreate() {
   }
 }
 
-async function openDetail(row: any) {
-  try {
-    detail.value = (await client.get(`/exams/${row.id}`)).data
-    activeEntry.value = detail.value.problems?.[0] || null
-    live.value = null
-    detailVisible.value = true
-    loadDraft()
-    await loadHistory()
-  } catch (err: any) {
-    if (row.id === examLock.examId && err.response?.status === 404) examLock.unlock()
-    ElMessage.error(err.response?.data?.error || err.message)
-  }
-}
-
-function beforeDetailClose(done: () => void) {
-  if (examLocked.value) {
-    ElMessage.warning(examLock.message)
+function openDetail(row: any) {
+  if (!canManage.value && row.finished_at) {
+    ElMessage.warning('考试已结束，不能再次进入')
     return
   }
-  done()
+  router.push(`/exams/${row.id}`)
 }
 
 async function openReport(row: any) {
@@ -401,63 +293,6 @@ async function removeExam(row: any) {
   } catch (err: any) {
     if (err !== 'cancel') ElMessage.error(err.response?.data?.error || err.message)
   }
-}
-
-function selectDetailProblem(entry: DetailProblem) {
-  activeEntry.value = entry
-  live.value = null
-  loadDraft()
-  loadHistory()
-}
-
-async function submitSolution() {
-  if (!activeProblem.value || !detail.value) return
-  submitting.value = true
-  try {
-    const { data } = await client.post('/submissions', {
-      problem_id: activeProblem.value.id,
-      exam_id: detail.value.exam.id,
-      language: language.value,
-      source_code: source.value
-    })
-    watchSubmission(data.id)
-    await loadHistory()
-  } catch (err: any) {
-    ElMessage.error(err.response?.data?.error || err.message)
-  } finally {
-    submitting.value = false
-  }
-}
-
-function watchSubmission(id: number) {
-  const es = new EventSource(sseUrl(`/submissions/${id}/events`))
-  es.addEventListener('status', async (event) => {
-    live.value = JSON.parse((event as MessageEvent).data)
-    if (!['queued', 'running'].includes(live.value.status)) {
-      es.close()
-      await refreshDetail()
-      await loadHistory()
-    }
-  })
-}
-
-async function refreshDetail() {
-  if (!detail.value) return
-  const activeID = activeProblem.value?.id
-  const wasLocked = examLocked.value
-  detail.value = (await client.get(`/exams/${detail.value.exam.id}`)).data
-  activeEntry.value = detail.value.problems.find((entry: DetailProblem) => entry.problem.id === activeID) || detail.value.problems[0] || null
-  if (wasLocked && detail.value.all_submitted) {
-    ElMessage.success('已提交所有题目，已自动退出考试')
-    detailVisible.value = false
-    examLock.unlock()
-    await load()
-  }
-}
-
-async function loadHistory() {
-  if (!detail.value || !activeProblem.value) return
-  history.value = (await client.get('/submissions', { params: { problem_id: activeProblem.value.id, exam_id: detail.value.exam.id } })).data
 }
 
 async function openGradeDialog(problemScore: any) {
@@ -496,61 +331,20 @@ async function saveManualGrade() {
   }
 }
 
-function loadDraft() {
-  if (!detail.value || !activeProblem.value) return
-  source.value = localStorage.getItem(draftKey()) || defaultSource(language.value)
-}
-
-function saveDraft() {
-  if (!detail.value || !activeProblem.value) return
-  localStorage.setItem(draftKey(), source.value)
-}
-
-function formatSource() {
-  editorRef.value?.format()
-}
-
-async function openLockedExamFromRoute() {
-  if (canManage.value) return
-  const raw = route.query.locked_exam_id || examLock.examId
-  const id = Number(Array.isArray(raw) ? raw[0] : raw)
-  if (!id || detail.value?.exam?.id === id) return
-  const row = items.value.find((item) => item.id === id) || { id }
-  await openDetail(row)
-}
-
-function beforeUnload(event: BeforeUnloadEvent) {
-  if (!examLocked.value) return
-  event.preventDefault()
-  event.returnValue = ''
-}
-
-function draftKey() {
-  return `school-oj-draft:exam:${detail.value.exam.id}:${activeProblem.value?.id}:${language.value}`
-}
-
-function defaultSource(lang: string) {
-  if (lang === 'python') return 'a, b = map(int, input().split())\nprint(a + b)\n'
-  if (lang === 'java') return 'import java.util.*;\npublic class Main { public static void main(String[] args) { Scanner sc = new Scanner(System.in); long a = sc.nextLong(), b = sc.nextLong(); System.out.println(a + b); } }\n'
-  if (lang === 'c') return '#include <stdio.h>\nint main(){ long long a,b; scanf("%lld%lld",&a,&b); printf("%lld\\n", a+b); return 0; }\n'
-  return '#include <bits/stdc++.h>\nusing namespace std;\nint main(){ long long a,b; cin>>a>>b; cout<<a+b<<"\\n"; return 0; }\n'
-}
-
-function scoreForProblem(problemID: number) {
-  return detail.value?.problem_scores?.find((item: any) => item.problem.id === problemID)
-}
-
-function problemScoreText(problemID: number) {
-  const item = scoreForProblem(problemID)
-  if (!item?.submission_id) return '未提交'
-  if (detail.value?.manual_review && !item.score_ready) return '待评分'
-  if (!item.score_ready) return '计算中'
-  return `${item.best_score} / ${item.score}`
-}
-
 function scoreText(row: any) {
+  if (row.finished_at && row.work_status !== 'submitted') return `${row.total_score || 0} / ${row.max_score || 0}`
   if (row.work_status !== 'submitted') return '-'
   return row.score_ready ? `${row.total_score} / ${row.max_score}` : '待评分'
+}
+
+function examStatusLabel(row: any) {
+  if (row.finished_at) return '已结束'
+  return workStatusLabel(row.work_status)
+}
+
+function examStatusType(row: any): 'success' | 'warning' | 'info' {
+  if (row.finished_at) return 'info'
+  return workStatusType(row.work_status)
 }
 
 function workStatusLabel(status: string) {
@@ -573,48 +367,15 @@ function reset() {
   form.starts_at = null
   form.ends_at = null
   form.manual_review = false
-  form.lock_exit = false
   selectedProblems.value = []
   problemPickID.value = undefined
 }
 
 watch(() => classroom.activeClassId, load)
-watch(language, loadDraft)
-watch(source, saveDraft)
-watch(
-  examLocked,
-  (locked) => {
-    if (locked) {
-      examLock.lock(detail.value?.exam?.id)
-      return
-    }
-    if (detail.value?.exam?.id === examLock.examId && (detail.value?.closed || detail.value?.all_submitted || !detailVisible.value)) {
-      examLock.unlock()
-    }
-  },
-  { immediate: true }
-)
-
-watch(() => route.query.locked_exam_id, openLockedExamFromRoute)
-
-onBeforeRouteLeave(() => {
-  if (examLocked.value) {
-    ElMessage.warning(examLock.message)
-    return false
-  }
-  if (detail.value?.exam?.id === examLock.examId) examLock.unlock()
-})
-
-onBeforeUnmount(() => {
-  window.removeEventListener('beforeunload', beforeUnload)
-})
 
 onMounted(async () => {
-  examLock.hydrate()
-  window.addEventListener('beforeunload', beforeUnload)
   await classroom.load()
   await load()
-  await openLockedExamFromRoute()
 })
 </script>
 
@@ -630,15 +391,6 @@ onMounted(async () => {
   width: 100%;
 }
 
-.mode-tag {
-  margin-left: 6px;
-}
-
-.setting-line {
-  display: grid;
-  gap: 4px;
-}
-
 .selected-problems {
   margin-left: 96px;
   width: calc(100% - 96px);
@@ -649,69 +401,6 @@ onMounted(async () => {
   font-weight: 700;
 }
 
-.workbench {
-  display: grid;
-  gap: 14px;
-}
-
-.workbench-head {
-  display: flex;
-  align-items: flex-start;
-  justify-content: space-between;
-  gap: 16px;
-}
-
-.workbench-head h3 {
-  margin: 0 0 4px;
-}
-
-.coding-grid {
-  display: grid;
-  grid-template-columns: 220px minmax(280px, 0.75fr) minmax(520px, 1.45fr);
-  gap: 14px;
-  min-height: 560px;
-}
-
-.problem-rail,
-.statement-panel,
-.editor-panel,
-.history-panel {
-  border: 1px solid var(--border);
-  border-radius: 8px;
-  background: var(--surface);
-  padding: 12px;
-}
-
-.problem-rail {
-  display: grid;
-  align-content: start;
-  gap: 8px;
-}
-
-.problem-pick {
-  display: grid;
-  gap: 4px;
-  width: 100%;
-  padding: 10px;
-  border: 1px solid #d9dee8;
-  border-radius: 8px;
-  background: transparent;
-  color: var(--text);
-  text-align: left;
-  cursor: pointer;
-}
-
-.problem-pick.active {
-  border-color: var(--accent);
-  box-shadow: 0 0 0 3px rgba(10, 94, 166, 0.12);
-}
-
-.problem-pick span {
-  color: #6b7280;
-  font-size: 12px;
-}
-
-.panel-title,
 .report-toolbar,
 .grade-actions {
   display: flex;
@@ -720,34 +409,9 @@ onMounted(async () => {
   gap: 12px;
 }
 
-.panel-title h3 {
-  margin: 0;
-}
-
-.statement {
-  white-space: pre-wrap;
-  line-height: 1.7;
-}
-
-.editor-panel {
-  display: grid;
-  grid-template-rows: auto minmax(420px, 1fr) auto;
-  gap: 10px;
-}
-
-.editor-toolbar {
-  justify-content: flex-end;
-}
-
-.live {
-  display: flex;
-  gap: 10px;
-  align-items: center;
-}
-
 .grade-grid {
   display: grid;
-  grid-template-columns: 1fr 1fr;
+  grid-template-columns: minmax(320px, 1fr) minmax(320px, 1fr);
   gap: 14px;
 }
 
@@ -756,18 +420,11 @@ onMounted(async () => {
   overflow: auto;
   padding: 12px;
   border-radius: 8px;
-  background: #111827;
-  color: #f9fafb;
-  white-space: pre-wrap;
+  background: #0f172a;
+  color: #e2e8f0;
 }
 
-.grade-actions {
-  justify-content: flex-start;
-  margin-top: 12px;
-}
-
-@media (max-width: 1100px) {
-  .coding-grid,
+@media (max-width: 900px) {
   .grade-grid {
     grid-template-columns: 1fr;
   }

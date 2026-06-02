@@ -6,6 +6,10 @@ import (
 	"school-oj/apps/api/internal/services"
 )
 
+func TestRouterBuilds(t *testing.T) {
+	_ = (Server{}).Router()
+}
+
 func TestPreparedProblemInputDraftKeepsAssets(t *testing.T) {
 	req := preparedProblemInput{
 		Slug:          "image-prepared-problem",

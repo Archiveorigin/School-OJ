@@ -45,5 +45,37 @@ func Connect(ctx context.Context, cfg config.Config) (*gorm.DB, error) {
 }
 
 func AutoMigrate(gdb *gorm.DB) error {
+	if err := cleanupOrphanProblemLinks(gdb); err != nil {
+		return err
+	}
 	return gdb.AutoMigrate(models.AllModels()...)
+}
+
+func cleanupOrphanProblemLinks(gdb *gorm.DB) error {
+	statements := map[string]string{
+		"assignment_problems": `
+DELETE FROM assignment_problems
+WHERE NOT EXISTS (
+  SELECT 1 FROM problems WHERE problems.id = assignment_problems.problem_id
+)`,
+		"exam_problems": `
+DELETE FROM exam_problems
+WHERE NOT EXISTS (
+  SELECT 1 FROM problems WHERE problems.id = exam_problems.problem_id
+)`,
+		"prepared_problems": `
+DELETE FROM prepared_problems
+WHERE NOT EXISTS (
+  SELECT 1 FROM problems WHERE problems.id = prepared_problems.problem_id
+)`,
+	}
+	for table, sql := range statements {
+		if !gdb.Migrator().HasTable(table) || !gdb.Migrator().HasTable("problems") {
+			continue
+		}
+		if err := gdb.Exec(sql).Error; err != nil {
+			return err
+		}
+	}
+	return nil
 }

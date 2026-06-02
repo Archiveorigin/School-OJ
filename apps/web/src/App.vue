@@ -6,7 +6,7 @@
         <img class="brand-logo" src="/logo.jpg" alt="黄海在线题测平台" />
         <span>黄海在线题测平台</span>
       </div>
-      <el-menu router :default-active="$route.path" class="nav">
+      <el-menu router :default-active="activeMenu" class="nav">
         <el-menu-item index="/">概览</el-menu-item>
         <el-menu-item index="/courses">课程班级</el-menu-item>
         <el-menu-item index="/problems">题库</el-menu-item>
@@ -81,22 +81,9 @@ const route = useRoute()
 
 const publicPage = computed(() => ['/login', '/register', '/forgot-password'].includes(route.path))
 const initials = computed(() => (auth.user?.name || auth.user?.email || 'U').trim().slice(0, 1).toUpperCase())
+const activeMenu = computed(() => String(route.meta.activeMenu || route.path))
 const pageTitle = computed(() => {
-  const map: Record<string, string> = {
-    '/': '概览',
-    '/courses': '课程班级',
-    '/problems': '题库',
-    '/prepared-problems': '预备题库',
-    '/assignments': '作业',
-    '/exams': '考试',
-    '/submissions': '提交',
-    '/leaderboard': '排行榜',
-    '/plagiarism': 'JPlag 查重',
-    '/audit-logs': '审计日志',
-    '/users': '用户管理',
-    '/profile': 'Profile'
-  }
-  return map[route.path] || '黄海在线题测平台'
+  return String(route.meta.title || '黄海在线题测平台')
 })
 
 function logout() {

@@ -29,3 +29,15 @@ func TestParsePackage(t *testing.T) {
 		t.Fatalf("unexpected output %q", got)
 	}
 }
+
+func TestWeightedScoreNormalizesLargeCaseSets(t *testing.T) {
+	if got := weightedScore(100, 200); got != 50 {
+		t.Fatalf("expected 50, got %d", got)
+	}
+	if got := weightedScore(200, 200); got != 100 {
+		t.Fatalf("expected 100, got %d", got)
+	}
+	if got := weightedScore(0, 200); got != 0 {
+		t.Fatalf("expected 0, got %d", got)
+	}
+}
