@@ -2467,6 +2467,9 @@ func (s Server) validateProblemSelection(c *gin.Context, user models.User, probl
 	_ = s.DB.Where("problem_id IN ?", ids).Find(&preparedRows).Error
 	prepared := map[uint]models.PreparedProblem{}
 	for _, item := range preparedRows {
+		if classID != nil && s.classHasReleasedProblem(*classID, item.ProblemID) {
+			continue
+		}
 		if user.Role != models.RoleAdmin && item.OwnerID != user.ID {
 			c.JSON(http.StatusForbidden, gin.H{"error": "prepared problem is not yours"})
 			return nil, false
