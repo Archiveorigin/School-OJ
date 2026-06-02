@@ -44,18 +44,19 @@ type leaderboardRow struct {
 }
 
 type preparedProblemInput struct {
-	Slug          string                      `json:"slug"`
-	Title         string                      `json:"title"`
-	Statement     string                      `json:"statement"`
-	Tags          []string                    `json:"tags"`
-	TimeLimitMS   int                         `json:"time_limit_ms"`
-	MemoryLimitMB int                         `json:"memory_limit_mb"`
-	OutputLimitKB int                         `json:"output_limit_kb"`
-	Cases         []services.ProblemCaseDraft `json:"cases"`
-	Folder        string                      `json:"folder"`
-	Difficulty    string                      `json:"difficulty"`
-	Source        string                      `json:"source"`
-	Notes         string                      `json:"notes"`
+	Slug          string                       `json:"slug"`
+	Title         string                       `json:"title"`
+	Statement     string                       `json:"statement"`
+	Tags          []string                     `json:"tags"`
+	TimeLimitMS   int                          `json:"time_limit_ms"`
+	MemoryLimitMB int                          `json:"memory_limit_mb"`
+	OutputLimitKB int                          `json:"output_limit_kb"`
+	Assets        []services.ProblemAssetDraft `json:"assets"`
+	Cases         []services.ProblemCaseDraft  `json:"cases"`
+	Folder        string                       `json:"folder"`
+	Difficulty    string                       `json:"difficulty"`
+	Source        string                       `json:"source"`
+	Notes         string                       `json:"notes"`
 }
 
 type workProblemInput struct {
@@ -92,6 +93,7 @@ func (req preparedProblemInput) draft() services.ProblemPackageDraft {
 		TimeLimitMS:   req.TimeLimitMS,
 		MemoryLimitMB: req.MemoryLimitMB,
 		OutputLimitKB: req.OutputLimitKB,
+		Assets:        req.Assets,
 		Cases:         req.Cases,
 	}
 }
