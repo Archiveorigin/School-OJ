@@ -39,6 +39,7 @@ export interface User {
 export interface Problem {
   id: number
   owner_id?: number
+  display_code?: string
   slug: string
   title: string
   statement: string

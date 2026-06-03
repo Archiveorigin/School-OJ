@@ -41,12 +41,25 @@ const emit = defineEmits<{
 }>()
 
 function problemTitle(problemID: number) {
-  return props.detail?.problems?.find((entry: { problem: Problem }) => entry.problem.id === problemID)?.problem.title || `#${problemID}`
+  return props.detail?.problems?.find((entry: { problem: Problem }) => entry.problem.id === problemID)?.problem.title || String(problemID)
 }
 
 function problemLabel(problemID: number) {
-  const entry = props.detail?.problems?.find((item: { problem: Problem; label?: string }) => item.problem.id === problemID)
-  return entry?.label || '-'
+  const index = props.detail?.problems?.findIndex((item: { problem: Problem }) => item.problem.id === problemID) ?? -1
+  const entry = props.detail?.problems?.[index] as { problem: Problem; label?: string } | undefined
+  if (entry?.label?.trim()) return entry.label.trim()
+  return index >= 0 ? defaultProblemLabel(index) : '-'
+}
+
+function defaultProblemLabel(index: number) {
+  index += 1
+  let label = ''
+  while (index > 0) {
+    index -= 1
+    label = String.fromCharCode(65 + (index % 26)) + label
+    index = Math.floor(index / 26)
+  }
+  return label
 }
 </script>
 

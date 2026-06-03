@@ -159,6 +159,7 @@ import {
   workStatusType,
   type AssignmentFilters
 } from '../features/assignments/assignmentMeta'
+import { problemDisplayCode } from '../features/problems/problemMeta'
 import { useAuthStore } from '../stores/auth'
 import { useClassroomStore } from '../stores/classroom'
 
@@ -195,9 +196,12 @@ const form = reactive<any>({
 
 const problemOptions = computed(() => {
   if (problemSource.value === 'prepared') {
-    return preparedProblems.value.map((item) => ({ value: item.problem_id, label: `[预备] ${item.problem_id}. ${item.problem?.title}`, title: item.problem?.title, source: '预备' }))
+    return preparedProblems.value.map((item) => {
+      const code = item.problem ? problemDisplayCode(item.problem) : item.problem_id
+      return { value: item.problem_id, label: `[预备] ${code}. ${item.problem?.title}`, title: item.problem?.title, source: '预备' }
+    })
   }
-  return problems.value.map((problem) => ({ value: problem.id, label: `[题库] ${problem.id}. ${problem.title}`, title: problem.title, source: '题库' }))
+  return problems.value.map((problem) => ({ value: problem.id, label: `[题库] ${problemDisplayCode(problem)}. ${problem.title}`, title: problem.title, source: '题库' }))
 })
 const selectedTotalScore = computed(() => selectedProblems.value.reduce((sum, item) => sum + Number(item.score || 0), 0))
 const filteredItems = computed(() => items.value.filter((item) => assignmentMatchesFilters(item, filters)))

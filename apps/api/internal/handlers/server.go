@@ -1,12 +1,14 @@
 package handlers
 
 import (
+	"archive/zip"
 	"bytes"
 	"context"
 	"encoding/json"
 	"fmt"
 	"io"
 	"net/http"
+	"path/filepath"
 	"strconv"
 	"strings"
 	"time"
@@ -139,6 +141,9 @@ func (s Server) Router() *gin.Engine {
 	auth.POST("/problems", middleware.RequireRoles(models.RoleAdmin, models.RoleTeacher), s.createProblem)
 	auth.POST("/problems/upload", middleware.RequireRoles(models.RoleAdmin, models.RoleTeacher), s.uploadProblem)
 	auth.GET("/problems/:id/assets/*asset_path", s.getProblemAsset)
+	auth.GET("/problems/:id/tests", middleware.RequireRoles(models.RoleAdmin, models.RoleTeacher), s.listProblemTests)
+	auth.GET("/problems/:id/tests/download", middleware.RequireRoles(models.RoleAdmin, models.RoleTeacher), s.downloadProblemTests)
+	auth.GET("/problems/:id/tests/*test_path", middleware.RequireRoles(models.RoleAdmin, models.RoleTeacher), s.downloadProblemTestFile)
 	auth.GET("/problems/:id", s.getProblem)
 	auth.DELETE("/problems/:id", middleware.RequireRoles(models.RoleAdmin, models.RoleTeacher), s.deleteProblem)
 	auth.GET("/prepared-problems", middleware.RequireRoles(models.RoleAdmin, models.RoleTeacher), s.listPreparedProblems)
@@ -641,6 +646,7 @@ func (s Server) saveProblemPackage(c *gin.Context, user models.User, body []byte
 	_ = json.Unmarshal(manifestJSON, &manifest)
 	problem := models.Problem{
 		OwnerID:         user.ID,
+		DisplayCode:     "",
 		Slug:            pkg.Manifest.Slug,
 		Title:           pkg.Manifest.Title,
 		Statement:       pkg.Manifest.Statement,
@@ -652,18 +658,53 @@ func (s Server) saveProblemPackage(c *gin.Context, user models.User, body []byte
 		PackageChecksum: pkg.SHA256,
 		Manifest:        manifest,
 	}
-	if err := s.DB.Create(&problem).Error; err != nil {
+	if err := s.DB.Transaction(func(tx *gorm.DB) error {
+		displayCode, err := nextProblemDisplayCode(tx)
+		if err != nil {
+			return err
+		}
+		problem.DisplayCode = displayCode
+		if err := tx.Create(&problem).Error; err != nil {
+			return err
+		}
+		for _, classID := range classIDs {
+			if err := s.linkProblemToClass(tx, classID, problem.ID, releaseAt); err != nil {
+				return err
+			}
+		}
+		return nil
+	}); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 		return models.Problem{}, false
 	}
-	for _, classID := range classIDs {
-		if err := s.linkProblemToClass(s.DB, classID, problem.ID, releaseAt); err != nil {
-			c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
-			return models.Problem{}, false
-		}
-	}
 	services.Audit(c, s.DB, action, "problem", problem.ID, datatypes.JSONMap{"slug": problem.Slug})
 	return problem, true
+}
+
+func nextProblemDisplayCode(tx *gorm.DB) (string, error) {
+	var codes []string
+	if err := tx.Model(&models.Problem{}).Pluck("display_code", &codes).Error; err != nil {
+		return "", err
+	}
+	maxIndex := 0
+	for _, code := range codes {
+		if index := parseProblemDisplayCode(code); index > maxIndex {
+			maxIndex = index
+		}
+	}
+	return models.FormatProblemDisplayCode(maxIndex + 1), nil
+}
+
+func parseProblemDisplayCode(value string) int {
+	value = strings.TrimSpace(strings.ToUpper(value))
+	if !strings.HasPrefix(value, "T") {
+		return 0
+	}
+	index, err := strconv.Atoi(strings.TrimPrefix(value, "T"))
+	if err != nil || index < 0 {
+		return 0
+	}
+	return index
 }
 
 func (s Server) getProblem(c *gin.Context) {
@@ -733,6 +774,285 @@ func (s Server) getProblemAsset(c *gin.Context) {
 	}
 	c.Header("Cache-Control", "private, max-age=3600")
 	c.DataFromReader(http.StatusOK, stat.Size, contentType, src, nil)
+}
+
+type problemTestView struct {
+	Name   string `json:"name"`
+	Input  string `json:"input"`
+	Output string `json:"output"`
+	Weight int    `json:"weight"`
+}
+
+func (s Server) listProblemTests(c *gin.Context) {
+	user, _ := middleware.CurrentUser(c)
+	problem, ok := s.problemForTestDownload(c, user)
+	if !ok {
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{"tests": problemTestCases(problem.Manifest)})
+}
+
+func (s Server) downloadProblemTests(c *gin.Context) {
+	user, _ := middleware.CurrentUser(c)
+	problem, ok := s.problemForTestDownload(c, user)
+	if !ok {
+		return
+	}
+	cases := problemTestCases(problem.Manifest)
+	if len(cases) == 0 {
+		c.JSON(http.StatusNotFound, gin.H{"error": "tests not found"})
+		return
+	}
+	body, ok := s.problemPackageBody(c, problem)
+	if !ok {
+		return
+	}
+	var out bytes.Buffer
+	zw := zip.NewWriter(&out)
+	for i, tc := range cases {
+		for _, item := range []struct {
+			path string
+			ext  string
+		}{
+			{path: tc.Input, ext: ".in"},
+			{path: tc.Output, ext: ".out"},
+		} {
+			data, found, err := problemZipFile(body, item.path)
+			if err != nil {
+				_ = zw.Close()
+				c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+				return
+			}
+			if !found {
+				_ = zw.Close()
+				c.JSON(http.StatusNotFound, gin.H{"error": "test file not found"})
+				return
+			}
+			name := fmt.Sprintf("tests/%02d_%s%s", i+1, safeDownloadStem(tc.Name, i+1), item.ext)
+			w, err := zw.Create(name)
+			if err != nil {
+				_ = zw.Close()
+				c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+				return
+			}
+			if _, err := w.Write(data); err != nil {
+				_ = zw.Close()
+				c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+				return
+			}
+		}
+	}
+	if err := zw.Close(); err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		return
+	}
+	filename := fmt.Sprintf("%s-tests.zip", problemDownloadStem(problem))
+	c.Header("Content-Disposition", fmt.Sprintf(`attachment; filename="%s"`, filename))
+	c.Data(http.StatusOK, "application/zip", out.Bytes())
+}
+
+func (s Server) downloadProblemTestFile(c *gin.Context) {
+	user, _ := middleware.CurrentUser(c)
+	problem, ok := s.problemForTestDownload(c, user)
+	if !ok {
+		return
+	}
+	testPath, err := normalizeTestPath(strings.TrimPrefix(c.Param("test_path"), "/"))
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+	if !problemManifestHasTestPath(problem.Manifest, testPath) {
+		c.JSON(http.StatusNotFound, gin.H{"error": "test file not found"})
+		return
+	}
+	body, ok := s.problemPackageBody(c, problem)
+	if !ok {
+		return
+	}
+	data, found, err := problemZipFile(body, testPath)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+	if !found {
+		c.JSON(http.StatusNotFound, gin.H{"error": "test file not found"})
+		return
+	}
+	c.Header("Content-Disposition", fmt.Sprintf(`attachment; filename="%s"`, filepath.Base(testPath)))
+	c.Data(http.StatusOK, "text/plain; charset=utf-8", data)
+}
+
+func (s Server) problemForTestDownload(c *gin.Context, user models.User) (models.Problem, bool) {
+	id, ok := idParam(c, "id")
+	if !ok {
+		return models.Problem{}, false
+	}
+	var problem models.Problem
+	if err := s.DB.Where("deleted_at IS NULL").First(&problem, id).Error; err != nil {
+		c.JSON(http.StatusNotFound, gin.H{"error": "problem not found"})
+		return models.Problem{}, false
+	}
+	if !s.canManageProblemData(user, problem) {
+		c.JSON(http.StatusForbidden, gin.H{"error": "forbidden"})
+		return models.Problem{}, false
+	}
+	return problem, true
+}
+
+func (s Server) canManageProblemData(user models.User, problem models.Problem) bool {
+	if user.Role == models.RoleAdmin {
+		return true
+	}
+	if user.Role != models.RoleTeacher {
+		return false
+	}
+	return problem.OwnerID == user.ID || s.problemInVisibleClass(user, problem.ID)
+}
+
+func (s Server) problemPackageBody(c *gin.Context, problem models.Problem) ([]byte, bool) {
+	src, err := s.MinIO.GetObject(c.Request.Context(), s.Cfg.MinIOBucket, problem.PackageObject, minio.GetObjectOptions{})
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		return nil, false
+	}
+	defer src.Close()
+	body, err := io.ReadAll(io.LimitReader(src, 128<<20))
+	if err != nil {
+		resp := minio.ToErrorResponse(err)
+		if resp.Code == "NoSuchKey" || resp.Code == "NoSuchBucket" {
+			c.JSON(http.StatusNotFound, gin.H{"error": "problem package not found"})
+			return nil, false
+		}
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		return nil, false
+	}
+	return body, true
+}
+
+func problemTestCases(manifest datatypes.JSONMap) []problemTestView {
+	raw, ok := manifest["cases"].([]any)
+	if !ok {
+		return nil
+	}
+	out := make([]problemTestView, 0, len(raw))
+	for i, item := range raw {
+		entry, ok := item.(map[string]any)
+		if !ok {
+			continue
+		}
+		name, _ := entry["name"].(string)
+		if strings.TrimSpace(name) == "" {
+			name = fmt.Sprintf("case-%02d", i+1)
+		}
+		input, _ := entry["input"].(string)
+		output, _ := entry["output"].(string)
+		cleanInput, err := normalizeTestPath(input)
+		if err != nil {
+			continue
+		}
+		cleanOutput, err := normalizeTestPath(output)
+		if err != nil {
+			continue
+		}
+		out = append(out, problemTestView{
+			Name:   name,
+			Input:  cleanInput,
+			Output: cleanOutput,
+			Weight: intFromJSON(entry["weight"]),
+		})
+	}
+	return out
+}
+
+func problemManifestHasTestPath(manifest datatypes.JSONMap, testPath string) bool {
+	for _, tc := range problemTestCases(manifest) {
+		if tc.Input == testPath || tc.Output == testPath {
+			return true
+		}
+	}
+	return false
+}
+
+func problemZipFile(body []byte, name string) ([]byte, bool, error) {
+	clean, err := normalizeTestPath(name)
+	if err != nil {
+		return nil, false, err
+	}
+	reader, err := zip.NewReader(bytes.NewReader(body), int64(len(body)))
+	if err != nil {
+		return nil, false, err
+	}
+	for _, file := range reader.File {
+		filePath := filepath.ToSlash(filepath.Clean(file.Name))
+		if filePath != clean {
+			continue
+		}
+		rc, err := file.Open()
+		if err != nil {
+			return nil, false, err
+		}
+		data, err := io.ReadAll(io.LimitReader(rc, 64<<20))
+		_ = rc.Close()
+		if err != nil {
+			return nil, false, err
+		}
+		return data, true, nil
+	}
+	return nil, false, nil
+}
+
+func normalizeTestPath(value string) (string, error) {
+	clean := filepath.ToSlash(filepath.Clean(strings.TrimSpace(value)))
+	if clean == "." || clean == "" || strings.HasPrefix(clean, "../") || strings.HasPrefix(clean, "/") {
+		return "", fmt.Errorf("unsafe test path: %s", value)
+	}
+	if !strings.HasPrefix(clean, "tests/") || strings.TrimPrefix(clean, "tests/") == "" {
+		return "", fmt.Errorf("test path must be under tests/: %s", value)
+	}
+	switch strings.ToLower(filepath.Ext(clean)) {
+	case ".in", ".out":
+		return clean, nil
+	default:
+		return "", fmt.Errorf("test file type is not supported: %s", value)
+	}
+}
+
+func intFromJSON(value any) int {
+	switch v := value.(type) {
+	case int:
+		return v
+	case int64:
+		return int(v)
+	case float64:
+		return int(v)
+	case json.Number:
+		n, _ := v.Int64()
+		return int(n)
+	default:
+		return 0
+	}
+}
+
+func problemDownloadStem(problem models.Problem) string {
+	if strings.TrimSpace(problem.DisplayCode) != "" {
+		return safeDownloadStem(problem.DisplayCode, int(problem.ID))
+	}
+	return fmt.Sprintf("problem-%d", problem.ID)
+}
+
+func safeDownloadStem(value string, fallback int) string {
+	value = strings.TrimSpace(value)
+	if value == "" {
+		return fmt.Sprintf("case-%02d", fallback)
+	}
+	replacer := strings.NewReplacer("/", "_", "\\", "_", ":", "_", "*", "_", "?", "_", "\"", "_", "<", "_", ">", "_", "|", "_")
+	value = replacer.Replace(value)
+	value = strings.Trim(value, " .")
+	if value == "" {
+		return fmt.Sprintf("case-%02d", fallback)
+	}
+	return value
 }
 
 func (s Server) deleteProblem(c *gin.Context) {
@@ -1637,7 +1957,9 @@ func (s Server) getSubmission(c *gin.Context) {
 		return
 	}
 	var results []models.SubmissionResult
-	s.DB.Where("submission_id = ?", sub.ID).Order("id asc").Find(&results)
+	if user.Role != models.RoleStudent {
+		s.DB.Where("submission_id = ?", sub.ID).Order("id asc").Find(&results)
+	}
 	c.JSON(http.StatusOK, gin.H{"submission": sub, "results": results})
 }
 

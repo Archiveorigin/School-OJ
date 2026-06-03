@@ -3,6 +3,8 @@ package db
 import (
 	"context"
 	"fmt"
+	"strconv"
+	"strings"
 	"time"
 
 	"school-oj/apps/api/internal/config"
@@ -48,7 +50,45 @@ func AutoMigrate(gdb *gorm.DB) error {
 	if err := cleanupOrphanProblemLinks(gdb); err != nil {
 		return err
 	}
-	return gdb.AutoMigrate(models.AllModels()...)
+	if err := gdb.AutoMigrate(models.AllModels()...); err != nil {
+		return err
+	}
+	return backfillProblemDisplayCodes(gdb)
+}
+
+func backfillProblemDisplayCodes(gdb *gorm.DB) error {
+	var problems []models.Problem
+	if err := gdb.Order("id asc").Find(&problems).Error; err != nil {
+		return err
+	}
+	maxIndex := 0
+	for _, problem := range problems {
+		if index := parseProblemDisplayCode(problem.DisplayCode); index > maxIndex {
+			maxIndex = index
+		}
+	}
+	for _, problem := range problems {
+		if strings.TrimSpace(problem.DisplayCode) != "" {
+			continue
+		}
+		maxIndex += 1
+		if err := gdb.Model(&models.Problem{}).Where("id = ?", problem.ID).Update("display_code", models.FormatProblemDisplayCode(maxIndex)).Error; err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func parseProblemDisplayCode(value string) int {
+	value = strings.TrimSpace(strings.ToUpper(value))
+	if !strings.HasPrefix(value, "T") {
+		return 0
+	}
+	index, err := strconv.Atoi(strings.TrimPrefix(value, "T"))
+	if err != nil || index < 0 {
+		return 0
+	}
+	return index
 }
 
 func cleanupOrphanProblemLinks(gdb *gorm.DB) error {

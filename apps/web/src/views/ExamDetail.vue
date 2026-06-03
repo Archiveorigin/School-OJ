@@ -71,6 +71,7 @@
           :source="source"
           :live="live"
           :submitting="submitting"
+          :can-manage="canManage"
           @update:language="language = $event"
           @update:source="source = $event"
           @submit="submitSolution"
@@ -300,10 +301,10 @@ function problemOptionLabel(entry: DetailProblem) {
 }
 
 function problemLabel(entry: DetailProblem, index?: number) {
-  if (entry.label) return entry.label
+  if (entry.label?.trim()) return entry.label.trim()
   const position = typeof index === 'number' ? index : detail.value?.problems?.findIndex((item: DetailProblem) => item.problem.id === entry.problem.id)
   if (typeof position === 'number' && position >= 0) return defaultProblemLabel(position)
-  return `#${entry.problem.id}`
+  return defaultProblemLabel(0)
 }
 
 function defaultProblemLabel(index: number) {

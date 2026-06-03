@@ -83,6 +83,7 @@ func Seed(ctx context.Context, db *gorm.DB, client *minio.Client, cfg config.Con
 	}
 	problem := models.Problem{
 		OwnerID:         teacher.ID,
+		DisplayCode:     models.FormatProblemDisplayCode(1),
 		Slug:            "a-plus-b",
 		Title:           "A + B Problem",
 		Statement:       "输入两个整数 a 和 b，输出它们的和。",

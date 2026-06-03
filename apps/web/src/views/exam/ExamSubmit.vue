@@ -2,7 +2,7 @@
   <section v-if="activeProblem" class="panel submit-panel">
     <div class="section-title">
       <h3>提交代码</h3>
-      <span class="muted">{{ activeEntry?.label || `#${activeProblem.id}` }} {{ activeProblem.title }}</span>
+      <span class="muted">{{ displayNumber }} {{ activeProblem.title }}</span>
     </div>
     <div class="toolbar editor-toolbar">
       <el-select :model-value="language" style="width: 130px" @update:model-value="emit('update:language', String($event))">
@@ -30,12 +30,12 @@
 </template>
 
 <script setup lang="ts">
-import { ref } from 'vue'
+import { computed, ref } from 'vue'
 import type { Problem } from '../../api/client'
 import CodeEditor from '../../components/CodeEditor.vue'
 import StatusBadge from '../../components/StatusBadge.vue'
 
-defineProps<{
+const props = defineProps<{
   detail: any
   activeEntry: { problem: Problem; score: number; label?: string; problem_id: number } | null
   activeProblem: Problem | null
@@ -52,9 +52,25 @@ const emit = defineEmits<{
 }>()
 
 const editorRef = ref<InstanceType<typeof CodeEditor> | null>(null)
+const displayNumber = computed(() => {
+  if (props.activeEntry?.label?.trim()) return props.activeEntry.label.trim()
+  const index = props.detail?.problems?.findIndex((entry: { problem: Problem }) => entry.problem.id === props.activeProblem?.id) ?? 0
+  return defaultProblemLabel(index >= 0 ? index : 0)
+})
 
 function formatSource() {
   editorRef.value?.format()
+}
+
+function defaultProblemLabel(index: number) {
+  index += 1
+  let label = ''
+  while (index > 0) {
+    index -= 1
+    label = String.fromCharCode(65 + (index % 26)) + label
+    index = Math.floor(index / 26)
+  }
+  return label
 }
 </script>
 

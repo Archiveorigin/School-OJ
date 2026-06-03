@@ -9,7 +9,7 @@
       </div>
     </div>
     <div class="panel problem-filters">
-      <el-input v-model="filters.keyword" clearable placeholder="搜索 ID、标题、Slug、标签" />
+      <el-input v-model="filters.keyword" clearable placeholder="搜索编号、标题、Slug、标签" />
       <el-select v-model="filters.tag" clearable filterable placeholder="标签">
         <el-option v-for="tag in tagOptions" :key="tag" :label="tag" :value="tag" />
       </el-select>
@@ -27,7 +27,9 @@
     <div class="problem-layout">
       <aside class="panel problem-list-panel">
           <el-table :data="filteredProblems" highlight-current-row @current-change="selectProblem" height="calc(100vh - 232px)">
-            <el-table-column prop="id" label="ID" width="70" />
+            <el-table-column label="编号" width="88">
+              <template #default="{ row }">{{ problemDisplayCode(row) }}</template>
+            </el-table-column>
             <el-table-column label="题目" min-width="190">
               <template #default="{ row }">
                 <div class="problem-title">{{ row.title }}</div>
@@ -52,9 +54,11 @@
           <div class="detail-head">
             <div>
               <h3>{{ selected.title }}</h3>
-              <p class="muted">{{ selected.slug }}</p>
+              <p class="muted">{{ problemDisplayCode(selected) }} · {{ selected.slug }}</p>
             </div>
-            <el-button v-if="canDeleteSelected" type="danger" plain @click="removeProblem">删除题目</el-button>
+            <div class="toolbar">
+              <el-button v-if="canDeleteSelected" type="danger" plain @click="removeProblem">删除题目</el-button>
+            </div>
           </div>
           <p class="muted">{{ problemLimitText(selected) }}</p>
           <div v-if="tagList(selected.tags).length" class="tag-strip detail-tags">
@@ -62,6 +66,8 @@
               {{ tag }}
             </el-tag>
           </div>
+          <ProblemTestDownloads v-if="canManage" :problem-id="selected.id" :problem-code="selected.display_code" class="detail-tests" />
+          <el-divider v-if="canManage" />
           <MarkdownRenderer :source="selected.statement" :problem-id="selected.id" />
           <el-divider />
           <div class="toolbar">
@@ -264,8 +270,10 @@ import { computed, onMounted, reactive, ref, watch } from 'vue'
 import { client, sseUrl, type PreparedProblem, type Problem } from '../api/client'
 import CodeEditor from '../components/CodeEditor.vue'
 import MarkdownRenderer from '../components/MarkdownRenderer.vue'
+import ProblemTestDownloads from '../components/ProblemTestDownloads.vue'
 import StatusBadge from '../components/StatusBadge.vue'
 import {
+  problemDisplayCode,
   problemLimitText,
   problemMatchesFilters,
   problemStatusOptions,
@@ -367,7 +375,8 @@ async function openPreparedPublish() {
 function preparedLabel(item: PreparedProblem) {
   const tags = tagList(item.problem?.tags)
   const suffix = [item.folder, item.difficulty, tags.join('/')].filter(Boolean).join(' · ')
-  return `${item.problem?.id}. ${item.problem?.title}${suffix ? `（${suffix}）` : ''}`
+  const code = item.problem ? problemDisplayCode(item.problem) : item.problem_id
+  return `${code}. ${item.problem?.title}${suffix ? `（${suffix}）` : ''}`
 }
 
 async function publishPrepared() {
@@ -605,6 +614,10 @@ onMounted(async () => {
 
 .detail-tags {
   margin-bottom: 12px;
+}
+
+.detail-tests {
+  margin: 12px 0;
 }
 
 .filter-count {

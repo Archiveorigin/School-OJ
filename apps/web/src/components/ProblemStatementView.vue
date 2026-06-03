@@ -36,7 +36,7 @@
     <aside class="panel meta-box">
       <div class="meta-title">
         <span class="eyebrow">题目编号</span>
-        <strong>#{{ problemNumber || problem.id }}</strong>
+        <strong>{{ displayNumber }}</strong>
       </div>
       <div class="meta-grid">
         <span>提交状态</span>
@@ -48,7 +48,9 @@
           <el-tag :type="difficultyTagType(difficulty)" effect="light">{{ difficulty || '未设置' }}</el-tag>
         </template>
         <span>限制</span>
-        <strong>{{ problemLimitText(problem) }}</strong>
+        <strong class="limit-lines">
+          <span v-for="line in problemLimitLines(problem)" :key="line">{{ line }}</span>
+        </strong>
       </div>
       <div class="tag-section">
         <span class="muted">标签</span>
@@ -69,6 +71,8 @@ import {
   difficultyFromTags,
   difficultyTagType,
   extractStatementSamples,
+  problemDisplayCode,
+  problemLimitLines,
   problemLimitText,
   tagList
 } from '../features/problems/problemMeta'
@@ -91,6 +95,7 @@ const props = withDefaults(
 const samples = computed(() => extractStatementSamples(props.problem.statement))
 const tags = computed(() => tagList(props.problem.tags))
 const difficulty = computed(() => difficultyFromTags(props.problem.tags))
+const displayNumber = computed(() => props.problemNumber || problemDisplayCode(props.problem))
 
 async function copyText(value: string) {
   try {
@@ -195,6 +200,11 @@ async function copyText(value: string) {
 .meta-grid span,
 .tag-section > span {
   color: var(--muted);
+}
+
+.limit-lines {
+  display: grid;
+  gap: 2px;
 }
 
 .tag-section {

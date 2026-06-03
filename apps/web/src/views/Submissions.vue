@@ -26,7 +26,7 @@
       <div v-if="detail" class="submission-detail">
         <div class="summary-grid">
           <span>ID</span><strong>#{{ detail.submission.id }}</strong>
-          <span>题目</span><strong>#{{ detail.submission.problem_id }}</strong>
+          <span>题目</span><strong>{{ detail.submission.problem_id }}</strong>
           <span>语言</span><strong>{{ detail.submission.language }}</strong>
           <span>状态</span><strong><StatusBadge :status="detail.submission.status" /></strong>
           <span>分数</span><strong>{{ detail.submission.score }}</strong>

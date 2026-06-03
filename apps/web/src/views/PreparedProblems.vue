@@ -32,7 +32,9 @@
     <div class="prepared-layout">
       <section class="panel prepared-list-panel">
           <el-table :data="items" highlight-current-row @current-change="selectItem">
-            <el-table-column prop="id" label="ID" width="70" />
+            <el-table-column label="编号" width="88">
+              <template #default="{ row }">{{ problemDisplayCode(row.problem) }}</template>
+            </el-table-column>
             <el-table-column label="题目" min-width="210">
               <template #default="{ row }">
                 <div class="problem-title">{{ row.problem?.title }}</div>
@@ -71,7 +73,7 @@
           <div class="detail-head">
             <div>
               <h3>{{ selected.problem.title }}</h3>
-              <p class="muted">{{ selected.problem.slug }}</p>
+              <p class="muted">{{ problemDisplayCode(selected.problem) }} · {{ selected.problem.slug }}</p>
             </div>
             <el-tag :type="selected.archived ? 'info' : 'success'">
               {{ selected.archived ? '已归档' : '可发布' }}
@@ -87,6 +89,8 @@
               {{ selected.problem.memory_limit_mb }} MB
             </strong>
           </div>
+          <el-divider />
+          <ProblemTestDownloads :problem-id="selected.problem.id" :problem-code="selected.problem.display_code" />
           <el-divider />
           <MarkdownRenderer :source="selected.problem.statement" :problem-id="selected.problem.id" />
           <el-divider />
@@ -323,6 +327,8 @@ import { ElMessage } from 'element-plus'
 import { computed, onMounted, reactive, ref } from 'vue'
 import { client, type PreparedProblem } from '../api/client'
 import MarkdownRenderer from '../components/MarkdownRenderer.vue'
+import ProblemTestDownloads from '../components/ProblemTestDownloads.vue'
+import { problemDisplayCode } from '../features/problems/problemMeta'
 import { useClassroomStore } from '../stores/classroom'
 
 const classroom = useClassroomStore()

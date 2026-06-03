@@ -44,8 +44,16 @@ export function progressTag(status?: string): 'success' | 'warning' | 'info' {
   return 'info'
 }
 
+export function problemDisplayCode(problem: Pick<Problem, 'id' | 'display_code'>) {
+  return problem.display_code || String(problem.id)
+}
+
 export function problemLimitText(problem: Pick<Problem, 'time_limit_ms' | 'memory_limit_mb' | 'output_limit_kb'>) {
   return `${problem.time_limit_ms} ms / ${problem.memory_limit_mb} MB / ${problem.output_limit_kb} KB`
+}
+
+export function problemLimitLines(problem: Pick<Problem, 'time_limit_ms' | 'memory_limit_mb'>) {
+  return [`时间限制：${problem.time_limit_ms} ms`, `内存限制：${problem.memory_limit_mb} MB`]
 }
 
 export function difficultyFromTags(tags: unknown) {
@@ -88,7 +96,7 @@ export function problemMatchesFilters(problem: Problem, filters: ProblemFilters)
   const keyword = filters.keyword.trim().toLowerCase()
   const tags = tagList(problem.tags)
   if (keyword) {
-    const haystack = [String(problem.id), problem.slug, problem.title, ...tags].join(' ').toLowerCase()
+    const haystack = [String(problem.id), problem.display_code, problem.slug, problem.title, ...tags].filter(Boolean).join(' ').toLowerCase()
     if (!haystack.includes(keyword)) return false
   }
   if (filters.tag && !tags.includes(filters.tag)) return false

@@ -25,7 +25,7 @@
           :class="{ active: activeProblem?.id === entry.problem.id }"
           @click="selectDetailProblem(entry)"
         >
-          <strong>{{ entry.problem.title }}</strong>
+          <strong>{{ problemDisplayCode(entry.problem) }} · {{ entry.problem.title }}</strong>
           <span>{{ entry.score }} 分 · {{ problemScoreText(entry.problem.id) }}</span>
           <small v-if="entry.problem.deleted_at" class="muted">已下架</small>
         </button>
@@ -34,7 +34,7 @@
       <ProblemStatementView
         v-if="activeProblem"
         :problem="activeProblem"
-        :problem-number="activeProblem.id"
+        :problem-number="problemDisplayCode(activeProblem)"
         :score="activeEntry?.score"
         :status-text="problemScoreText(activeProblem.id)"
         :status-type="problemStatusType(activeProblem.id)"
@@ -81,6 +81,7 @@ import CodeEditor from '../components/CodeEditor.vue'
 import ProblemStatementView from '../components/ProblemStatementView.vue'
 import StatusBadge from '../components/StatusBadge.vue'
 import { formatDateTime, workStatusLabel } from '../features/assignments/assignmentMeta'
+import { problemDisplayCode } from '../features/problems/problemMeta'
 
 type DetailProblem = { problem: Problem; score: number; problem_id: number }
 type EditorState = { language: string; source: string; live: any }
@@ -234,7 +235,8 @@ function problemStatusType(problemID: number): 'success' | 'warning' | 'info' | 
 }
 
 function problemTitle(problemID: number) {
-  return detail.value?.problems?.find((entry: DetailProblem) => entry.problem.id === problemID)?.problem.title || `#${problemID}`
+  const entry = detail.value?.problems?.find((item: DetailProblem) => item.problem.id === problemID)
+  return entry ? `${problemDisplayCode(entry.problem)} · ${entry.problem.title}` : String(problemID)
 }
 
 watch(() => route.params.id, loadDetail)

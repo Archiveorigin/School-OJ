@@ -1,6 +1,7 @@
 package models
 
 import (
+	"fmt"
 	"time"
 
 	"gorm.io/datatypes"
@@ -73,6 +74,7 @@ type ClassProblem struct {
 type Problem struct {
 	ID              uint              `json:"id" gorm:"primaryKey"`
 	OwnerID         uint              `json:"owner_id" gorm:"index;not null"`
+	DisplayCode     string            `json:"display_code" gorm:"uniqueIndex;size:16"`
 	Slug            string            `json:"slug" gorm:"uniqueIndex;size:120;not null"`
 	Title           string            `json:"title" gorm:"size:200;not null"`
 	Statement       string            `json:"statement" gorm:"type:text"`
@@ -80,9 +82,9 @@ type Problem struct {
 	TimeLimitMS     int               `json:"time_limit_ms" gorm:"not null;default:1000"`
 	MemoryLimitMB   int               `json:"memory_limit_mb" gorm:"not null;default:256"`
 	OutputLimitKB   int               `json:"output_limit_kb" gorm:"not null;default:1024"`
-	PackageObject   string            `json:"package_object" gorm:"size:512;not null"`
-	PackageChecksum string            `json:"package_checksum" gorm:"size:128;not null"`
-	Manifest        datatypes.JSONMap `json:"manifest" gorm:"type:jsonb"`
+	PackageObject   string            `json:"-" gorm:"size:512;not null"`
+	PackageChecksum string            `json:"-" gorm:"size:128;not null"`
+	Manifest        datatypes.JSONMap `json:"-" gorm:"type:jsonb"`
 	CreatedAt       time.Time         `json:"created_at"`
 	UpdatedAt       time.Time         `json:"updated_at"`
 	DeletedAt       *time.Time        `json:"deleted_at,omitempty" gorm:"index"`
@@ -180,6 +182,10 @@ type ExamProblem struct {
 	SortOrder int       `json:"sort_order" gorm:"not null;default:0"`
 	Problem   Problem   `json:"problem" gorm:"foreignKey:ProblemID"`
 	CreatedAt time.Time `json:"created_at"`
+}
+
+func FormatProblemDisplayCode(index int) string {
+	return fmt.Sprintf("T%03d", index)
 }
 
 type ExamAttempt struct {

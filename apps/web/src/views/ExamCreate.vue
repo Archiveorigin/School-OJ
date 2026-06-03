@@ -149,6 +149,24 @@
               <div class="statement-preview">
                 <div class="muted">题面预览</div>
                 <MarkdownRenderer :source="problemForm.statement || '支持 **Markdown** 和 $a+b$。'" :asset-urls="problemAssetPreviewUrls" />
+                <div v-if="statementSamples.length" class="preview-samples">
+                  <div v-for="sample in statementSamples" :key="sample.index" class="preview-sample-pair">
+                    <div class="preview-sample">
+                      <div class="sample-head">
+                        <strong>输入样例 {{ sample.index }}</strong>
+                        <el-button size="small" text @click="copyText(sample.input)">复制</el-button>
+                      </div>
+                      <pre>{{ sample.input }}</pre>
+                    </div>
+                    <div class="preview-sample">
+                      <div class="sample-head">
+                        <strong>输出样例 {{ sample.index }}</strong>
+                        <el-button size="small" text @click="copyText(sample.output)">复制</el-button>
+                      </div>
+                      <pre>{{ sample.output }}</pre>
+                    </div>
+                  </div>
+                </div>
               </div>
             </el-form-item>
             <el-row :gutter="12">
@@ -171,25 +189,45 @@
                 </el-form-item>
               </el-col>
             </el-row>
-            <div class="case-toolbar">
-              <h4>测试点</h4>
-              <el-button size="small" @click="addCase">添加测试点</el-button>
-            </div>
-            <div v-for="(item, index) in problemForm.cases" :key="index" class="case-editor">
-              <div class="case-head">
-                <el-input v-model="item.name" placeholder="测试点名称" />
-                <el-input-number v-model="item.weight" :min="1" :max="100" />
-                <el-button :disabled="problemForm.cases.length === 1" @click="removeCase(index)">删除</el-button>
+            <el-form-item label="隐藏测试点">
+              <div class="test-file-panel">
+                <el-upload
+                  :key="testPointUploadKey"
+                  drag
+                  action="#"
+                  multiple
+                  accept=".in,.out"
+                  :auto-upload="false"
+                  :file-list="testPointUploadFiles"
+                  :on-change="syncTestPointFiles"
+                  :on-remove="syncTestPointFiles"
+                >
+                  <div class="upload-text">选择或拖入 .in / .out 测试点文件</div>
+                  <div class="muted">按同名文件配对，例如 two_sum_测试点1.in 与 two_sum_测试点1.out；这些文件不会展示给考生。</div>
+                </el-upload>
+                <div v-if="testPointErrors.length" class="test-errors">
+                  <el-alert
+                    v-for="error in testPointErrors"
+                    :key="error"
+                    type="error"
+                    :title="error"
+                    show-icon
+                    :closable="false"
+                  />
+                </div>
+                <el-table v-if="problemForm.cases.length" :data="problemForm.cases" size="small" class="test-case-table">
+                  <el-table-column prop="name" label="测试点" min-width="160" />
+                  <el-table-column label="输入长度" width="110">
+                    <template #default="{ row }">{{ row.input.length }} 字符</template>
+                  </el-table-column>
+                  <el-table-column label="输出长度" width="110">
+                    <template #default="{ row }">{{ row.output.length }} 字符</template>
+                  </el-table-column>
+                  <el-table-column prop="weight" label="权重" width="80" />
+                </el-table>
+                <p v-else class="muted form-note">请至少上传一组完整的 .in / .out 测试点文件。</p>
               </div>
-              <el-row :gutter="12">
-                <el-col :span="12">
-                  <el-input v-model="item.input" type="textarea" :rows="5" placeholder="输入数据" />
-                </el-col>
-                <el-col :span="12">
-                  <el-input v-model="item.output" type="textarea" :rows="5" placeholder="期望输出" />
-                </el-col>
-              </el-row>
-            </div>
+            </el-form-item>
             <div class="toolbar form-actions">
               <el-button @click="resetProblemForm">重置出题表单</el-button>
               <el-button type="primary" :loading="creatingProblem" @click="createMarkdownProblem">创建并加入考试</el-button>
@@ -207,7 +245,7 @@ import { computed, onMounted, reactive, ref, watch } from 'vue'
 import { useRouter } from 'vue-router'
 import { client, type PreparedProblem, type Problem } from '../api/client'
 import MarkdownRenderer from '../components/MarkdownRenderer.vue'
-import { tagList } from '../features/problems/problemMeta'
+import { extractStatementSamples, problemDisplayCode, tagList } from '../features/problems/problemMeta'
 import { useClassroomStore } from '../stores/classroom'
 
 type ProblemAssetForm = { name: string; path: string; content_type: string; data: string; preview_url: string }
@@ -232,6 +270,10 @@ const creatingProblem = ref(false)
 const problemSource = ref<'class' | 'prepared' | 'markdown'>('class')
 const problemPickID = ref<number>()
 const slugManuallyEdited = ref(false)
+const testPointUploadFiles = ref<any[]>([])
+const testPointUploadKey = ref(0)
+const testPointErrors = ref<string[]>([])
+const readingTestPoints = ref(false)
 
 const form = reactive<any>({
   course_id: undefined,
@@ -253,19 +295,21 @@ const problemForm = reactive({
   memory_limit_mb: 256,
   output_limit_kb: 1024,
   assets: [] as ProblemAssetForm[],
-  cases: [{ name: 'case-01', input: '1 2\n', output: '3\n', weight: 100 }] as ProblemCaseForm[]
+  cases: [] as ProblemCaseForm[]
 })
 
 const selectedTotalScore = computed(() => selectedProblems.value.reduce((sum, item) => sum + Number(item.score || 0), 0))
 const problemAssetPreviewUrls = computed(() => Object.fromEntries(problemForm.assets.map((asset) => [asset.path, asset.preview_url])))
+const statementSamples = computed(() => extractStatementSamples(problemForm.statement))
 const classProblemOptions = computed(() => {
-  return problems.value.map((problem) => ({ value: problem.id, label: `[题库] ${problem.id}. ${problem.title}`, title: problem.title, source: '题库' }))
+  return problems.value.map((problem) => ({ value: problem.id, label: `[题库] ${problemDisplayCode(problem)}. ${problem.title}`, title: problem.title, source: '题库' }))
 })
 const preparedProblemOptions = computed(() => {
   return preparedProblems.value.map((item) => {
     const tags = tagList(item.problem?.tags)
     const suffix = [item.folder, item.difficulty, tags.join('/')].filter(Boolean).join(' · ')
-    return { value: item.problem_id, label: `[预备] ${item.problem_id}. ${item.problem?.title}${suffix ? `（${suffix}）` : ''}`, title: item.problem?.title, source: '预备' }
+    const code = item.problem ? problemDisplayCode(item.problem) : item.problem_id
+    return { value: item.problem_id, label: `[预备] ${code}. ${item.problem?.title}${suffix ? `（${suffix}）` : ''}`, title: item.problem?.title, source: '预备' }
   })
 })
 
@@ -321,6 +365,18 @@ async function createMarkdownProblem() {
   }
   if (selectedProblems.value.some((item) => item.label.trim().toLowerCase() === problemForm.label.trim().toLowerCase())) {
     ElMessage.error('题号不能重复')
+    return
+  }
+  if (readingTestPoints.value) {
+    ElMessage.warning('测试点文件仍在读取中，请稍后再试')
+    return
+  }
+  if (testPointErrors.value.length > 0) {
+    ElMessage.error('请先修正测试点文件错误')
+    return
+  }
+  if (problemForm.cases.length === 0) {
+    ElMessage.error('请至少上传一组完整的 .in / .out 测试点文件')
     return
   }
   creatingProblem.value = true
@@ -440,15 +496,6 @@ function slugifyTitle(value: string) {
     .replace(/^-+|-+$/g, '')
 }
 
-function addCase() {
-  const next = problemForm.cases.length + 1
-  problemForm.cases.push({ name: `case-${String(next).padStart(2, '0')}`, input: '', output: '', weight: 1 })
-}
-
-function removeCase(index: number) {
-  problemForm.cases.splice(index, 1)
-}
-
 function resetProblemForm() {
   problemForm.assets.forEach((asset) => URL.revokeObjectURL(asset.preview_url))
   problemForm.label = nextAvailableLabel()
@@ -460,13 +507,78 @@ function resetProblemForm() {
   problemForm.memory_limit_mb = 256
   problemForm.output_limit_kb = 1024
   problemForm.assets.splice(0, problemForm.assets.length)
-  problemForm.cases.splice(0, problemForm.cases.length, {
-    name: 'case-01',
-    input: '1 2\n',
-    output: '3\n',
-    weight: 100
-  })
+  problemForm.cases.splice(0, problemForm.cases.length)
+  testPointUploadFiles.value = []
+  testPointUploadKey.value += 1
+  testPointErrors.value = []
   slugManuallyEdited.value = false
+}
+
+async function syncTestPointFiles(_uploadFile: any, uploadFiles: any[]) {
+  testPointUploadFiles.value = [...uploadFiles]
+  await rebuildTestCasesFromFiles(testPointUploadFiles.value)
+}
+
+async function rebuildTestCasesFromFiles(uploadFiles: any[]) {
+  readingTestPoints.value = true
+  try {
+    const errors: string[] = []
+    const groups = new Map<string, { input?: File; output?: File }>()
+    const seen = new Set<string>()
+    for (const item of uploadFiles) {
+      const file = item.raw as File | undefined
+      if (!file) continue
+      const ext = file.name.toLowerCase().endsWith('.in') ? '.in' : file.name.toLowerCase().endsWith('.out') ? '.out' : ''
+      if (!ext) {
+        errors.push(`${file.name} 不是 .in 或 .out 文件`)
+        continue
+      }
+      if (file.size === 0) {
+        errors.push(`${file.name} 是空文件`)
+        continue
+      }
+      const base = file.name.slice(0, -ext.length).trim()
+      if (!base) {
+        errors.push(`${file.name} 缺少测试点名称`)
+        continue
+      }
+      const key = `${base.toLowerCase()}${ext}`
+      if (seen.has(key)) {
+        errors.push(`${file.name} 与已有文件重复`)
+        continue
+      }
+      seen.add(key)
+      const group = groups.get(base) || {}
+      if (ext === '.in') group.input = file
+      else group.output = file
+      groups.set(base, group)
+    }
+    const cases: ProblemCaseForm[] = []
+    for (const [base, group] of [...groups.entries()].sort(([a], [b]) => a.localeCompare(b, 'zh-CN'))) {
+      if (!group.input || !group.output) {
+        errors.push(`${base} 缺少 ${group.input ? '.out' : '.in'} 配对文件`)
+        continue
+      }
+      const [input, output] = await Promise.all([group.input.text(), group.output.text()])
+      cases.push({ name: base, input, output, weight: 1 })
+    }
+    problemForm.cases.splice(0, problemForm.cases.length, ...cases)
+    testPointErrors.value = errors
+  } catch (err: any) {
+    problemForm.cases.splice(0, problemForm.cases.length)
+    testPointErrors.value = [err.message || '读取测试点文件失败']
+  } finally {
+    readingTestPoints.value = false
+  }
+}
+
+async function copyText(value: string) {
+  try {
+    await navigator.clipboard.writeText(value)
+    ElMessage.success('已复制')
+  } catch {
+    ElMessage.error('复制失败，请手动选择文本')
+  }
 }
 
 function addProblemImage(uploadFile: any) {
@@ -580,33 +692,6 @@ onMounted(async () => {
   color: #6b7280;
 }
 
-.case-toolbar,
-.case-head {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 10px;
-}
-
-.case-toolbar {
-  margin: 8px 0 10px;
-}
-
-.case-toolbar h4 {
-  margin: 0;
-}
-
-.case-editor {
-  border: 1px solid #d9dee8;
-  border-radius: 8px;
-  padding: 12px;
-  margin-bottom: 12px;
-}
-
-.case-head {
-  margin-bottom: 10px;
-}
-
 .statement-preview {
   width: 100%;
   margin-top: 10px;
@@ -614,6 +699,54 @@ onMounted(async () => {
   border: 1px solid var(--border);
   border-radius: 8px;
   background: rgba(15, 23, 42, 0.03);
+}
+
+.preview-samples,
+.test-file-panel,
+.test-errors {
+  display: grid;
+  gap: 10px;
+  width: 100%;
+}
+
+.preview-samples {
+  margin-top: 12px;
+}
+
+.preview-sample-pair {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.preview-sample {
+  min-width: 0;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  overflow: hidden;
+  background: var(--surface);
+}
+
+.sample-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 8px 10px;
+  border-bottom: 1px solid var(--border);
+}
+
+.preview-sample pre {
+  max-height: 220px;
+  margin: 0;
+  overflow: auto;
+  padding: 10px;
+  color: #e2e8f0;
+  background: #0f172a;
+}
+
+.test-case-table {
+  width: 100%;
 }
 
 .statement-tools {
@@ -635,6 +768,10 @@ onMounted(async () => {
 
 @media (max-width: 980px) {
   .exam-create-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .preview-sample-pair {
     grid-template-columns: 1fr;
   }
 }
