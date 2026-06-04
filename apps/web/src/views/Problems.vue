@@ -57,6 +57,7 @@
               <p class="muted">{{ problemDisplayCode(selected) }} · {{ selected.slug }}</p>
             </div>
             <div class="toolbar">
+              <el-button v-if="canManage" type="primary" plain @click="openEditProblem">修改题目</el-button>
               <el-button v-if="canDeleteSelected" type="danger" plain @click="removeProblem">删除题目</el-button>
             </div>
           </div>
@@ -261,6 +262,7 @@
         </el-button>
       </template>
     </el-dialog>
+    <ProblemEditDialog v-model="editProblemVisible" :problem="selected" @saved="handleProblemSaved" />
   </section>
 </template>
 
@@ -270,6 +272,7 @@ import { computed, onMounted, reactive, ref, watch } from 'vue'
 import { client, sseUrl, type PreparedProblem, type Problem } from '../api/client'
 import CodeEditor from '../components/CodeEditor.vue'
 import MarkdownRenderer from '../components/MarkdownRenderer.vue'
+import ProblemEditDialog from '../components/ProblemEditDialog.vue'
 import ProblemTestDownloads from '../components/ProblemTestDownloads.vue'
 import StatusBadge from '../components/StatusBadge.vue'
 import {
@@ -304,6 +307,7 @@ const editorRef = ref<InstanceType<typeof CodeEditor> | null>(null)
 const problemDialogVisible = ref(false)
 const problemDialogTab = ref('zip')
 const savingProblem = ref(false)
+const editProblemVisible = ref(false)
 const selectedClassIDs = ref<number[]>([])
 const preparedPublishVisible = ref(false)
 const preparedItems = ref<PreparedProblem[]>([])
@@ -363,6 +367,17 @@ function openProblemDialog() {
   problemDialogVisible.value = true
   problemDialogTab.value = 'zip'
   selectedClassIDs.value = classroom.activeClassId ? [classroom.activeClassId] : []
+}
+
+function openEditProblem() {
+  if (!selected.value) return
+  editProblemVisible.value = true
+}
+
+function handleProblemSaved(problem: Problem) {
+  const index = problems.value.findIndex((item) => item.id === problem.id)
+  if (index >= 0) problems.value[index] = problem
+  selected.value = problem
 }
 
 async function openPreparedPublish() {

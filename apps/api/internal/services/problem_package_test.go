@@ -121,6 +121,64 @@ func TestBuildProblemPackageAllowsEmptyCaseFiles(t *testing.T) {
 	}
 }
 
+func TestRebuildProblemPackageUpdatesStatementAndPreservesTests(t *testing.T) {
+	body, parsed, err := BuildProblemPackage(ProblemPackageDraft{
+		Slug:      "editable",
+		Title:     "Editable",
+		Statement: "old statement",
+		Cases: []ProblemCaseDraft{
+			{Name: "sample", Input: "1 2\n", Output: "3\n", Weight: 100},
+		},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	manifest := parsed.Manifest
+	manifest.Title = "Edited"
+	manifest.Statement = "new statement"
+	rebuilt, reparsed, err := RebuildProblemPackage(body, manifest, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if reparsed.Manifest.Title != "Edited" || reparsed.Manifest.Statement != "new statement" {
+		t.Fatalf("manifest was not updated: %+v", reparsed.Manifest)
+	}
+	if got := zipText(t, rebuilt, "tests/01.in"); got != "1 2\n" {
+		t.Fatalf("old test input was not preserved: %q", got)
+	}
+	if got := zipText(t, rebuilt, "tests/01.out"); got != "3\n" {
+		t.Fatalf("old test output was not preserved: %q", got)
+	}
+}
+
+func TestRebuildProblemPackageReplacesTestsAndStripsUTF8BOM(t *testing.T) {
+	body, parsed, err := BuildProblemPackage(ProblemPackageDraft{
+		Slug:  "replace-tests",
+		Title: "Replace Tests",
+		Cases: []ProblemCaseDraft{
+			{Name: "old", Input: "old\n", Output: "old\n", Weight: 100},
+		},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	rebuilt, reparsed, err := RebuildProblemPackage(body, parsed.Manifest, []ProblemCaseDraft{
+		{Name: "new", Input: "\ufeff2 2\n", Output: "\ufeff4\n", Weight: 1},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(reparsed.Manifest.Cases) != 1 || reparsed.Manifest.Cases[0].Name != "new" {
+		t.Fatalf("replacement cases were not applied: %+v", reparsed.Manifest.Cases)
+	}
+	if got := zipText(t, rebuilt, "tests/01.in"); got != "2 2\n" {
+		t.Fatalf("replacement input was not normalized: %q", got)
+	}
+	if got := zipText(t, rebuilt, "tests/01.out"); got != "4\n" {
+		t.Fatalf("replacement output was not normalized: %q", got)
+	}
+}
+
 func TestBuildProblemCasesFromOrdinaryFilesSortsByNumericID(t *testing.T) {
 	cases, err := BuildProblemCasesFromTestPointFiles([]TestPointUploadFile{
 		{Name: "score-a10.in", Body: []byte("10\n")},
@@ -278,6 +336,32 @@ func testZip(t *testing.T, files map[string]string) []byte {
 		t.Fatal(err)
 	}
 	return buf.Bytes()
+}
+
+func zipText(t *testing.T, body []byte, name string) string {
+	t.Helper()
+	reader, err := zip.NewReader(bytes.NewReader(body), int64(len(body)))
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, item := range reader.File {
+		if item.Name != name {
+			continue
+		}
+		rc, err := item.Open()
+		if err != nil {
+			t.Fatal(err)
+		}
+		var out bytes.Buffer
+		if _, err := out.ReadFrom(rc); err != nil {
+			_ = rc.Close()
+			t.Fatal(err)
+		}
+		_ = rc.Close()
+		return out.String()
+	}
+	t.Fatalf("zip file %s not found", name)
+	return ""
 }
 
 const tinyPNGDataURL = "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+/p9sAAAAASUVORK5CYII="

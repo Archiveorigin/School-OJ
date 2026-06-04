@@ -64,8 +64,9 @@
                     <span v-else>-</span>
                   </template>
                 </el-table-column>
-                <el-table-column label="操作" width="190">
+                <el-table-column label="操作" width="240">
                   <template #default="{ row: item }">
+                    <el-button size="small" @click="openProblemEditor(item.problem)">修改题目</el-button>
                     <el-button v-if="report.manual_review && item.submission_id" size="small" @click="openGradeDialog(item)">阅卷</el-button>
                   </template>
                 </el-table-column>
@@ -109,6 +110,7 @@
         </div>
       </div>
     </el-dialog>
+    <ProblemEditDialog v-model="problemEditorVisible" :problem="editingProblem" @saved="handleProblemSaved" />
   </section>
 </template>
 
@@ -116,7 +118,8 @@
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { computed, onMounted, ref, watch } from 'vue'
 import { useRouter } from 'vue-router'
-import { client } from '../api/client'
+import { client, type Problem } from '../api/client'
+import ProblemEditDialog from '../components/ProblemEditDialog.vue'
 import StatusBadge from '../components/StatusBadge.vue'
 import { useAuthStore } from '../stores/auth'
 import { useClassroomStore } from '../stores/classroom'
@@ -132,6 +135,8 @@ const grading = ref(false)
 const report = ref<any>(null)
 const gradeSubmission = ref<any>(null)
 const gradeProblemScore = ref<any>(null)
+const problemEditorVisible = ref(false)
+const editingProblem = ref<Problem | null>(null)
 const manualScore = ref(0)
 const gradeMaxScore = computed(() => gradeProblemScore.value?.score || 100)
 const exporting = ref(false)
@@ -189,6 +194,19 @@ async function openGradeDialog(problemScore: any) {
   gradeSubmission.value = data
   manualScore.value = data.submission.manual_score ?? problemScore.best_score ?? 0
   gradeVisible.value = true
+}
+
+function openProblemEditor(problem: Problem) {
+  editingProblem.value = problem
+  problemEditorVisible.value = true
+}
+
+async function handleProblemSaved(problem: Problem) {
+  editingProblem.value = problem
+  if (reportVisible.value && report.value?.exam) {
+    await openReport(report.value.exam)
+  }
+  ElMessage.info('历史提交不会自动重判，需要时可手动重判相关提交')
 }
 
 async function runReferenceJudge() {

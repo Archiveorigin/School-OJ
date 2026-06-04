@@ -63,6 +63,15 @@ type preparedProblemInput struct {
 	Notes         string                       `json:"notes"`
 }
 
+type problemUpdateInput struct {
+	Title         string   `json:"title"`
+	Statement     string   `json:"statement"`
+	Tags          []string `json:"tags"`
+	TimeLimitMS   int      `json:"time_limit_ms"`
+	MemoryLimitMB int      `json:"memory_limit_mb"`
+	OutputLimitKB int      `json:"output_limit_kb"`
+}
+
 type workProblemInput struct {
 	ProblemID        uint   `json:"problem_id"`
 	Score            int    `json:"score"`
@@ -147,6 +156,7 @@ func (s Server) Router() *gin.Engine {
 	auth.GET("/problems", s.listProblems)
 	auth.POST("/problems", middleware.RequireRoles(models.RoleAdmin, models.RoleTeacher), s.createProblem)
 	auth.POST("/problems/upload", middleware.RequireRoles(models.RoleAdmin, models.RoleTeacher), s.uploadProblem)
+	auth.PUT("/problems/:id", middleware.RequireRoles(models.RoleAdmin, models.RoleTeacher), s.updateProblem)
 	auth.GET("/problems/:id/assets/*asset_path", s.getProblemAsset)
 	auth.GET("/problems/:id/tests", middleware.RequireRoles(models.RoleAdmin, models.RoleTeacher), s.listProblemTests)
 	auth.GET("/problems/:id/tests/download", middleware.RequireRoles(models.RoleAdmin, models.RoleTeacher), s.downloadProblemTests)
@@ -704,18 +714,24 @@ func testPointUploadsFromMultipart(form *multipart.Form) ([]services.TestPointUp
 	return uploads, nil
 }
 
-func (s Server) saveProblemPackage(c *gin.Context, user models.User, body []byte, pkg services.ParsedProblemPackage, classIDs []uint, releaseAt *time.Time, tags datatypes.JSONMap, action string) (models.Problem, bool) {
+type problemPackageArtifacts struct {
+	Object   string
+	Checksum string
+	Manifest datatypes.JSONMap
+}
+
+func (s Server) uploadProblemPackageArtifacts(c *gin.Context, body []byte, pkg *services.ParsedProblemPackage) (problemPackageArtifacts, bool) {
 	baseObject := fmt.Sprintf("problems/%s/%d", pkg.Manifest.Slug, time.Now().UnixNano())
 	object := baseObject + ".zip"
 	if _, err := s.MinIO.PutObject(c.Request.Context(), s.Cfg.MinIOBucket, object, bytes.NewReader(body), int64(len(body)), minio.PutObjectOptions{ContentType: "application/zip"}); err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
-		return models.Problem{}, false
+		return problemPackageArtifacts{}, false
 	}
 	for _, asset := range pkg.Assets {
 		assetObject := fmt.Sprintf("%s/%s", baseObject, asset.Path)
 		if _, err := s.MinIO.PutObject(c.Request.Context(), s.Cfg.MinIOBucket, assetObject, bytes.NewReader(asset.Body), asset.Size, minio.PutObjectOptions{ContentType: asset.ContentType}); err != nil {
 			c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
-			return models.Problem{}, false
+			return problemPackageArtifacts{}, false
 		}
 		for i := range pkg.Manifest.Assets {
 			if pkg.Manifest.Assets[i].Path == asset.Path {
@@ -727,6 +743,14 @@ func (s Server) saveProblemPackage(c *gin.Context, user models.User, body []byte
 	manifestJSON, _ := json.Marshal(pkg.Manifest)
 	var manifest datatypes.JSONMap
 	_ = json.Unmarshal(manifestJSON, &manifest)
+	return problemPackageArtifacts{Object: object, Checksum: pkg.SHA256, Manifest: manifest}, true
+}
+
+func (s Server) saveProblemPackage(c *gin.Context, user models.User, body []byte, pkg services.ParsedProblemPackage, classIDs []uint, releaseAt *time.Time, tags datatypes.JSONMap, action string) (models.Problem, bool) {
+	artifacts, ok := s.uploadProblemPackageArtifacts(c, body, &pkg)
+	if !ok {
+		return models.Problem{}, false
+	}
 	problem := models.Problem{
 		OwnerID:         user.ID,
 		DisplayCode:     "",
@@ -737,9 +761,9 @@ func (s Server) saveProblemPackage(c *gin.Context, user models.User, body []byte
 		TimeLimitMS:     pkg.Manifest.TimeLimitMS,
 		MemoryLimitMB:   pkg.Manifest.MemoryLimitMB,
 		OutputLimitKB:   pkg.Manifest.OutputLimitKB,
-		PackageObject:   object,
-		PackageChecksum: pkg.SHA256,
-		Manifest:        manifest,
+		PackageObject:   artifacts.Object,
+		PackageChecksum: artifacts.Checksum,
+		Manifest:        artifacts.Manifest,
 	}
 	if err := s.DB.Transaction(func(tx *gorm.DB) error {
 		displayCode, err := nextProblemDisplayCode(tx)
@@ -809,6 +833,142 @@ func (s Server) getProblem(c *gin.Context) {
 		return
 	}
 	c.JSON(http.StatusOK, problem)
+}
+
+func (s Server) updateProblem(c *gin.Context) {
+	user, _ := middleware.CurrentUser(c)
+	id, ok := idParam(c, "id")
+	if !ok {
+		return
+	}
+	var problem models.Problem
+	if err := s.DB.Where("deleted_at IS NULL").First(&problem, id).Error; err != nil {
+		c.JSON(http.StatusNotFound, gin.H{"error": "problem not found"})
+		return
+	}
+	if !s.canManageProblemData(user, problem) {
+		c.JSON(http.StatusForbidden, gin.H{"error": "forbidden"})
+		return
+	}
+	req, replacementCases, testsUpdated, ok := s.parseProblemUpdateRequest(c)
+	if !ok {
+		return
+	}
+	currentBody, ok := s.problemPackageBody(c, problem)
+	if !ok {
+		return
+	}
+	currentPkg, err := services.ParseProblemPackage(currentBody)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+	manifest := currentPkg.Manifest
+	if title := strings.TrimSpace(req.Title); title != "" {
+		manifest.Title = title
+	} else {
+		manifest.Title = problem.Title
+	}
+	manifest.Statement = req.Statement
+	if req.TimeLimitMS > 0 {
+		manifest.TimeLimitMS = req.TimeLimitMS
+	} else {
+		manifest.TimeLimitMS = problem.TimeLimitMS
+	}
+	if req.MemoryLimitMB > 0 {
+		manifest.MemoryLimitMB = req.MemoryLimitMB
+	} else {
+		manifest.MemoryLimitMB = problem.MemoryLimitMB
+	}
+	if req.OutputLimitKB > 0 {
+		manifest.OutputLimitKB = req.OutputLimitKB
+	} else {
+		manifest.OutputLimitKB = problem.OutputLimitKB
+	}
+	rebuiltBody, rebuiltPkg, err := services.RebuildProblemPackage(currentBody, manifest, replacementCases)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+	artifacts, ok := s.uploadProblemPackageArtifacts(c, rebuiltBody, &rebuiltPkg)
+	if !ok {
+		return
+	}
+	updates := map[string]any{
+		"title":            rebuiltPkg.Manifest.Title,
+		"statement":        rebuiltPkg.Manifest.Statement,
+		"time_limit_ms":    rebuiltPkg.Manifest.TimeLimitMS,
+		"memory_limit_mb":  rebuiltPkg.Manifest.MemoryLimitMB,
+		"output_limit_kb":  rebuiltPkg.Manifest.OutputLimitKB,
+		"package_object":   artifacts.Object,
+		"package_checksum": artifacts.Checksum,
+		"manifest":         artifacts.Manifest,
+	}
+	if req.Tags != nil {
+		updates["tags"] = tagsJSONMap(req.Tags)
+	}
+	if err := s.DB.Model(&models.Problem{}).Where("id = ?", problem.ID).Updates(updates).Error; err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+	services.Audit(c, s.DB, "problem.update", "problem", problem.ID, datatypes.JSONMap{"slug": problem.Slug, "tests_updated": testsUpdated})
+	var fresh models.Problem
+	if err := s.DB.First(&fresh, problem.ID).Error; err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+	c.JSON(http.StatusOK, fresh)
+}
+
+func (s Server) parseProblemUpdateRequest(c *gin.Context) (problemUpdateInput, []services.ProblemCaseDraft, bool, bool) {
+	var req problemUpdateInput
+	var replacementCases []services.ProblemCaseDraft
+	testsUpdated := false
+	if strings.HasPrefix(strings.ToLower(c.GetHeader("Content-Type")), "multipart/form-data") {
+		if err := c.Request.ParseMultipartForm(32 << 20); err != nil {
+			c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+			return req, nil, false, false
+		}
+		rawDraft := strings.TrimSpace(c.PostForm("draft"))
+		if rawDraft == "" {
+			c.JSON(http.StatusBadRequest, gin.H{"error": "draft is required"})
+			return req, nil, false, false
+		}
+		if err := json.Unmarshal([]byte(rawDraft), &req); err != nil {
+			c.JSON(http.StatusBadRequest, gin.H{"error": "parse draft: " + err.Error()})
+			return req, nil, false, false
+		}
+		uploads, hasFiles, err := optionalTestPointUploadsFromMultipart(c.Request.MultipartForm)
+		if err != nil {
+			c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+			return req, nil, false, false
+		}
+		if hasFiles {
+			cases, err := services.BuildProblemCasesFromTestPointFiles(uploads)
+			if err != nil {
+				c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+				return req, nil, false, false
+			}
+			replacementCases = cases
+			testsUpdated = true
+		}
+		return req, replacementCases, testsUpdated, true
+	}
+	if !bind(c, &req) {
+		return req, nil, false, false
+	}
+	return req, nil, false, true
+}
+
+func optionalTestPointUploadsFromMultipart(form *multipart.Form) ([]services.TestPointUploadFile, bool, error) {
+	if form == nil || len(form.File) == 0 {
+		return nil, false, nil
+	}
+	uploads, err := testPointUploadsFromMultipart(form)
+	if err != nil {
+		return nil, false, err
+	}
+	return uploads, true, nil
 }
 
 func (s Server) getProblemAsset(c *gin.Context) {

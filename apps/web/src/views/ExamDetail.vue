@@ -43,6 +43,7 @@
             :value="entry.problem.id"
           />
         </el-select>
+        <el-button v-if="canManage && activeProblem" type="primary" plain @click="openProblemEditor">修改题目</el-button>
       </div>
 
       <router-view v-slot="{ Component }">
@@ -63,6 +64,7 @@
           @refresh-history="loadHistory"
         />
       </router-view>
+      <ProblemEditDialog v-model="problemEditorVisible" :problem="activeProblem" @saved="handleProblemSaved" />
     </div>
   </section>
 </template>
@@ -72,6 +74,7 @@ import { ElMessage, ElMessageBox } from 'element-plus'
 import { computed, onBeforeUnmount, onMounted, reactive, ref, watch } from 'vue'
 import { onBeforeRouteLeave, useRoute, useRouter } from 'vue-router'
 import { client, sseUrl, type Problem, type Submission } from '../api/client'
+import ProblemEditDialog from '../components/ProblemEditDialog.vue'
 import { formatDateTime, workStatusLabel } from '../features/assignments/assignmentMeta'
 import { useAuthStore } from '../stores/auth'
 import { useExamLockStore } from '../stores/examLock'
@@ -91,6 +94,7 @@ const activeProblem = computed(() => activeEntry.value?.problem || null)
 const history = ref<Submission[]>([])
 const submitting = ref(false)
 const finishing = ref(false)
+const problemEditorVisible = ref(false)
 const editorStates = reactive<Record<number, EditorState>>({})
 let deadlineTimer: ReturnType<typeof window.setTimeout> | null = null
 let deadlinePoller: ReturnType<typeof window.setInterval> | null = null
@@ -172,6 +176,16 @@ function selectDetailProblem(entry: DetailProblem) {
 
 function goExamTab(tab: ExamTab) {
   router.push(`/exams/${examID.value}/${tab}`)
+}
+
+function openProblemEditor() {
+  if (!activeProblem.value) return
+  problemEditorVisible.value = true
+}
+
+async function handleProblemSaved() {
+  await refreshDetail()
+  ElMessage.info('历史提交不会自动重判，需要时可在提交记录中手动重判')
 }
 
 function tabType(tab: ExamTab) {

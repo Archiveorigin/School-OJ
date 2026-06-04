@@ -370,6 +370,128 @@ func BuildProblemPackage(draft ProblemPackageDraft) ([]byte, ParsedProblemPackag
 	return body, parsed, nil
 }
 
+func RebuildProblemPackage(base []byte, manifest ProblemManifest, replacementCases []ProblemCaseDraft) ([]byte, ParsedProblemPackage, error) {
+	files, err := packageFiles(base)
+	if err != nil {
+		return nil, ParsedProblemPackage{}, err
+	}
+	delete(files, "problem.yaml")
+	if replacementCases != nil {
+		if len(replacementCases) == 0 {
+			return nil, ParsedProblemPackage{}, fmt.Errorf("at least one test case is required")
+		}
+		for name := range files {
+			if strings.HasPrefix(name, "tests/") {
+				delete(files, name)
+			}
+		}
+		manifest.Cases = make([]CaseManifest, 0, len(replacementCases))
+		for i, tc := range replacementCases {
+			name := strings.TrimSpace(tc.Name)
+			if name == "" {
+				name = fmt.Sprintf("case-%02d", i+1)
+			}
+			weight := tc.Weight
+			if weight <= 0 {
+				weight = 100 / len(replacementCases)
+			}
+			inputPath := fmt.Sprintf("tests/%02d.in", i+1)
+			outputPath := fmt.Sprintf("tests/%02d.out", i+1)
+			manifest.Cases = append(manifest.Cases, CaseManifest{
+				Name:   name,
+				Input:  inputPath,
+				Output: outputPath,
+				Weight: weight,
+			})
+			files[inputPath] = []byte(normalizeCaseText(tc.Input))
+			files[outputPath] = []byte(normalizeCaseText(tc.Output))
+		}
+	}
+	if strings.TrimSpace(manifest.Slug) == "" || strings.TrimSpace(manifest.Title) == "" {
+		return nil, ParsedProblemPackage{}, fmt.Errorf("slug and title are required")
+	}
+	if manifest.TimeLimitMS <= 0 {
+		manifest.TimeLimitMS = 1000
+	}
+	if manifest.MemoryLimitMB <= 0 {
+		manifest.MemoryLimitMB = 256
+	}
+	if manifest.OutputLimitKB <= 0 {
+		manifest.OutputLimitKB = 1024
+	}
+	manifest.Slug = strings.TrimSpace(manifest.Slug)
+	manifest.Title = strings.TrimSpace(manifest.Title)
+	manifest.Statement = strings.TrimSpace(manifest.Statement)
+	manifestBytes, err := yaml.Marshal(manifest)
+	if err != nil {
+		return nil, ParsedProblemPackage{}, err
+	}
+	files["problem.yaml"] = manifestBytes
+	body, err := buildProblemZip(files)
+	if err != nil {
+		return nil, ParsedProblemPackage{}, err
+	}
+	parsed, err := ParseProblemPackage(body)
+	if err != nil {
+		return nil, ParsedProblemPackage{}, err
+	}
+	return body, parsed, nil
+}
+
+func packageFiles(body []byte) (map[string][]byte, error) {
+	reader, err := zip.NewReader(bytes.NewReader(body), int64(len(body)))
+	if err != nil {
+		return nil, fmt.Errorf("open zip: %w", err)
+	}
+	files := map[string][]byte{}
+	for _, item := range reader.File {
+		rawPath := filepath.ToSlash(item.Name)
+		if unsafeZipPath(rawPath) {
+			return nil, fmt.Errorf("unsafe zip path: %s", item.Name)
+		}
+		if item.FileInfo().IsDir() {
+			continue
+		}
+		clean := filepath.ToSlash(filepath.Clean(rawPath))
+		rc, err := item.Open()
+		if err != nil {
+			return nil, err
+		}
+		data, err := io.ReadAll(io.LimitReader(rc, 128<<20))
+		_ = rc.Close()
+		if err != nil {
+			return nil, err
+		}
+		files[clean] = data
+	}
+	return files, nil
+}
+
+func buildProblemZip(files map[string][]byte) ([]byte, error) {
+	names := make([]string, 0, len(files))
+	for name := range files {
+		names = append(names, name)
+	}
+	sort.Strings(names)
+	var buf bytes.Buffer
+	zw := zip.NewWriter(&buf)
+	for _, name := range names {
+		w, err := zw.Create(name)
+		if err != nil {
+			_ = zw.Close()
+			return nil, err
+		}
+		if _, err := w.Write(files[name]); err != nil {
+			_ = zw.Close()
+			return nil, err
+		}
+	}
+	if err := zw.Close(); err != nil {
+		return nil, err
+	}
+	return buf.Bytes(), nil
+}
+
 func ParseProblemPackage(body []byte) (ParsedProblemPackage, error) {
 	reader, err := zip.NewReader(bytes.NewReader(body), int64(len(body)))
 	if err != nil {
