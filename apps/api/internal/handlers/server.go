@@ -5,8 +5,10 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"encoding/xml"
 	"fmt"
 	"io"
+	"mime/multipart"
 	"net/http"
 	"path/filepath"
 	"strconv"
@@ -62,10 +64,10 @@ type preparedProblemInput struct {
 }
 
 type workProblemInput struct {
-	ProblemID         uint   `json:"problem_id"`
-	Score             int    `json:"score"`
-	Label             string `json:"label"`
-	ReleaseAfterExam  bool   `json:"release_after_exam"`
+	ProblemID        uint   `json:"problem_id"`
+	Score            int    `json:"score"`
+	Label            string `json:"label"`
+	ReleaseAfterExam bool   `json:"release_after_exam"`
 }
 
 type problemScoreView struct {
@@ -87,6 +89,11 @@ type workSummary struct {
 	MaxScore   int                `json:"max_score"`
 	ScoreReady bool               `json:"score_ready"`
 	Problems   []problemScoreView `json:"problem_scores,omitempty"`
+}
+
+type submissionListView struct {
+	models.Submission
+	ErrorPoint string `json:"error_point,omitempty"`
 }
 
 func (req preparedProblemInput) draft() services.ProblemPackageDraft {
@@ -143,7 +150,7 @@ func (s Server) Router() *gin.Engine {
 	auth.GET("/problems/:id/assets/*asset_path", s.getProblemAsset)
 	auth.GET("/problems/:id/tests", middleware.RequireRoles(models.RoleAdmin, models.RoleTeacher), s.listProblemTests)
 	auth.GET("/problems/:id/tests/download", middleware.RequireRoles(models.RoleAdmin, models.RoleTeacher), s.downloadProblemTests)
-	auth.GET("/problems/:id/tests/*test_path", middleware.RequireRoles(models.RoleAdmin, models.RoleTeacher), s.downloadProblemTestFile)
+	auth.GET("/problems/:id/tests/file/*file_path", middleware.RequireRoles(models.RoleAdmin, models.RoleTeacher), s.downloadProblemTestFile)
 	auth.GET("/problems/:id", s.getProblem)
 	auth.DELETE("/problems/:id", middleware.RequireRoles(models.RoleAdmin, models.RoleTeacher), s.deleteProblem)
 	auth.GET("/prepared-problems", middleware.RequireRoles(models.RoleAdmin, models.RoleTeacher), s.listPreparedProblems)
@@ -161,6 +168,7 @@ func (s Server) Router() *gin.Engine {
 	auth.GET("/exams/:id", s.getExam)
 	auth.POST("/exams/:id/finish", middleware.RequireRoles(models.RoleStudent), s.finishExam)
 	auth.POST("/exams", middleware.RequireRoles(models.RoleAdmin, models.RoleTeacher), s.createExam)
+	auth.GET("/exams/:id/report/export", middleware.RequireRoles(models.RoleAdmin, models.RoleTeacher), s.exportExamReport)
 	auth.GET("/exams/:id/report", middleware.RequireRoles(models.RoleAdmin, models.RoleTeacher), s.examReport)
 	auth.DELETE("/exams/:id", middleware.RequireRoles(models.RoleAdmin, models.RoleTeacher), s.deleteExam)
 	auth.POST("/exams/:id/submissions/:submission_id/judge", middleware.RequireRoles(models.RoleAdmin, models.RoleTeacher), s.judgeManualExamSubmission)
@@ -602,6 +610,10 @@ func (s Server) uploadProblem(c *gin.Context) {
 
 func (s Server) createProblem(c *gin.Context) {
 	user, _ := middleware.CurrentUser(c)
+	if strings.HasPrefix(strings.ToLower(c.GetHeader("Content-Type")), "multipart/form-data") {
+		s.createProblemMultipart(c, user)
+		return
+	}
 	var req services.ProblemPackageDraft
 	if !bind(c, &req) {
 		return
@@ -619,6 +631,77 @@ func (s Server) createProblem(c *gin.Context) {
 		return
 	}
 	c.JSON(http.StatusCreated, problem)
+}
+
+func (s Server) createProblemMultipart(c *gin.Context, user models.User) {
+	if err := c.Request.ParseMultipartForm(32 << 20); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+	rawDraft := strings.TrimSpace(c.PostForm("draft"))
+	if rawDraft == "" {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "draft is required"})
+		return
+	}
+	var req services.ProblemPackageDraft
+	if err := json.Unmarshal([]byte(rawDraft), &req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "parse draft: " + err.Error()})
+		return
+	}
+	if !s.validateClassIDs(c, user, req.ClassIDs) {
+		return
+	}
+	uploads, err := testPointUploadsFromMultipart(c.Request.MultipartForm)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+	cases, err := services.BuildProblemCasesFromTestPointFiles(uploads)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+	req.Cases = cases
+	body, pkg, err := services.BuildProblemPackage(req)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+	problem, ok := s.saveProblemPackage(c, user, body, pkg, req.ClassIDs, nil, tagsJSONMap(req.Tags), "problem.create")
+	if !ok {
+		return
+	}
+	c.JSON(http.StatusCreated, problem)
+}
+
+func testPointUploadsFromMultipart(form *multipart.Form) ([]services.TestPointUploadFile, error) {
+	if form == nil || len(form.File) == 0 {
+		return nil, fmt.Errorf("test files are required")
+	}
+	var uploads []services.TestPointUploadFile
+	totalSize := 0
+	for _, headers := range form.File {
+		for _, header := range headers {
+			src, err := header.Open()
+			if err != nil {
+				return nil, err
+			}
+			body, err := io.ReadAll(io.LimitReader(src, services.MaxProblemTestFilesSize+1))
+			_ = src.Close()
+			if err != nil {
+				return nil, err
+			}
+			totalSize += len(body)
+			if len(body) > services.MaxProblemTestFilesSize || totalSize > services.MaxProblemTestFilesSize {
+				return nil, fmt.Errorf("test files are too large")
+			}
+			uploads = append(uploads, services.TestPointUploadFile{Name: header.Filename, Body: body})
+		}
+	}
+	if len(uploads) == 0 {
+		return nil, fmt.Errorf("test files are required")
+	}
+	return uploads, nil
 }
 
 func (s Server) saveProblemPackage(c *gin.Context, user models.User, body []byte, pkg services.ParsedProblemPackage, classIDs []uint, releaseAt *time.Time, tags datatypes.JSONMap, action string) (models.Problem, bool) {
@@ -857,7 +940,7 @@ func (s Server) downloadProblemTestFile(c *gin.Context) {
 	if !ok {
 		return
 	}
-	testPath, err := normalizeTestPath(strings.TrimPrefix(c.Param("test_path"), "/"))
+	testPath, err := normalizeTestPath(strings.TrimPrefix(c.Param("file_path"), "/"))
 	if err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 		return
@@ -1753,6 +1836,57 @@ func (s Server) examReport(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{"exam": item, "manual_review": examManualReview(item), "problems": examProblemViews(item), "rows": rows})
 }
 
+func (s Server) exportExamReport(c *gin.Context) {
+	user, _ := middleware.CurrentUser(c)
+	id, ok := idParam(c, "id")
+	if !ok {
+		return
+	}
+	var item models.Exam
+	if err := s.DB.Where("exams.deleted_at IS NULL").First(&item, id).Error; err != nil {
+		c.JSON(http.StatusNotFound, gin.H{"error": "exam not found"})
+		return
+	}
+	if !s.canManageCourse(user, item.CourseID) {
+		c.JSON(http.StatusForbidden, gin.H{"error": "forbidden"})
+		return
+	}
+	if item.EndsAt == nil || time.Now().Before(*item.EndsAt) {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "exam has not ended"})
+		return
+	}
+	rows := [][]xlsxCell{
+		{
+			xlsxString("学生姓名"),
+			xlsxString("学号"),
+			xlsxString("通过题目数"),
+			xlsxString("所得分数"),
+		},
+	}
+	for _, student := range s.classStudents(item.ClassID) {
+		summary := s.examSummary(item.ID, student.ID, true)
+		solved := 0
+		for _, problem := range summary.Problems {
+			if problem.ScoreReady && problem.Score > 0 && problem.BestScore >= problem.Score {
+				solved++
+			}
+		}
+		rows = append(rows, []xlsxCell{
+			xlsxString(student.Name),
+			xlsxString(student.StudentNo),
+			xlsxNumber(solved),
+			xlsxNumber(summary.TotalScore),
+		})
+	}
+	body, err := buildXLSX(rows)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		return
+	}
+	c.Header("Content-Disposition", fmt.Sprintf(`attachment; filename="exam-%d-report.xlsx"`, item.ID))
+	c.Data(http.StatusOK, "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", body)
+}
+
 func (s Server) deleteExam(c *gin.Context) {
 	user, _ := middleware.CurrentUser(c)
 	id, ok := idParam(c, "id")
@@ -1938,7 +2072,60 @@ func (s Server) listSubmissions(c *gin.Context) {
 		q = q.Where("exam_id = ?", examID)
 	}
 	q.Find(&items)
-	c.JSON(http.StatusOK, items)
+	c.JSON(http.StatusOK, s.submissionListViews(items))
+}
+
+func (s Server) submissionListViews(items []models.Submission) []submissionListView {
+	views := make([]submissionListView, 0, len(items))
+	if len(items) == 0 {
+		return views
+	}
+	ids := make([]uint, 0, len(items))
+	for _, item := range items {
+		ids = append(ids, item.ID)
+	}
+	var results []models.SubmissionResult
+	s.DB.Where("submission_id IN ?", ids).Order("submission_id asc, id asc").Find(&results)
+	firstFailure := map[uint]string{}
+	caseIndex := map[uint]int{}
+	for _, result := range results {
+		caseIndex[result.SubmissionID]++
+		if result.Status == models.StatusAccepted || firstFailure[result.SubmissionID] != "" {
+			continue
+		}
+		firstFailure[result.SubmissionID] = verdictCode(result.Status) + strconv.Itoa(caseIndex[result.SubmissionID])
+	}
+	for _, item := range items {
+		view := submissionListView{Submission: item, ErrorPoint: firstFailure[item.ID]}
+		if view.ErrorPoint == "" && item.Status != models.StatusAccepted && item.Status != models.StatusQueued && item.Status != models.StatusRunning && item.Status != models.StatusPendingReview {
+			view.ErrorPoint = verdictCode(item.Status)
+		}
+		views = append(views, view)
+	}
+	return views
+}
+
+func verdictCode(status models.SubmissionStatus) string {
+	switch status {
+	case models.StatusWrongAnswer:
+		return "WA"
+	case models.StatusTimeLimit:
+		return "TLE"
+	case models.StatusRuntimeError:
+		return "RE"
+	case models.StatusMemoryLimit:
+		return "MLE"
+	case models.StatusOutputLimit:
+		return "OLE"
+	case models.StatusCompileError:
+		return "CE"
+	case models.StatusSystemError:
+		return "SE"
+	case models.StatusManualGraded:
+		return "MR"
+	default:
+		return strings.ToUpper(string(status))
+	}
 }
 
 func (s Server) getSubmission(c *gin.Context) {
@@ -2725,6 +2912,95 @@ func clamp(value int, minValue int, maxValue int) int {
 		return maxValue
 	}
 	return value
+}
+
+type xlsxCell struct {
+	Value  string
+	Number bool
+}
+
+func xlsxString(value string) xlsxCell {
+	return xlsxCell{Value: value}
+}
+
+func xlsxNumber(value int) xlsxCell {
+	return xlsxCell{Value: strconv.Itoa(value), Number: true}
+}
+
+func buildXLSX(rows [][]xlsxCell) ([]byte, error) {
+	var out bytes.Buffer
+	zw := zip.NewWriter(&out)
+	files := map[string]string{
+		"[Content_Types].xml": `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>` +
+			`<Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types">` +
+			`<Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/>` +
+			`<Default Extension="xml" ContentType="application/xml"/>` +
+			`<Override PartName="/xl/workbook.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet.main+xml"/>` +
+			`<Override PartName="/xl/worksheets/sheet1.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.worksheet+xml"/>` +
+			`</Types>`,
+		"_rels/.rels": `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>` +
+			`<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">` +
+			`<Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/officeDocument" Target="xl/workbook.xml"/>` +
+			`</Relationships>`,
+		"xl/workbook.xml": `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>` +
+			`<workbook xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships">` +
+			`<sheets><sheet name="考试成绩" sheetId="1" r:id="rId1"/></sheets>` +
+			`</workbook>`,
+		"xl/_rels/workbook.xml.rels": `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>` +
+			`<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">` +
+			`<Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/worksheet" Target="worksheets/sheet1.xml"/>` +
+			`</Relationships>`,
+		"xl/worksheets/sheet1.xml": buildSheetXML(rows),
+	}
+	for name, body := range files {
+		w, err := zw.Create(name)
+		if err != nil {
+			return nil, err
+		}
+		if _, err := w.Write([]byte(body)); err != nil {
+			return nil, err
+		}
+	}
+	if err := zw.Close(); err != nil {
+		return nil, err
+	}
+	return out.Bytes(), nil
+}
+
+func buildSheetXML(rows [][]xlsxCell) string {
+	var b strings.Builder
+	b.WriteString(`<?xml version="1.0" encoding="UTF-8" standalone="yes"?>`)
+	b.WriteString(`<worksheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main"><sheetData>`)
+	for rowIndex, row := range rows {
+		b.WriteString(fmt.Sprintf(`<row r="%d">`, rowIndex+1))
+		for colIndex, cell := range row {
+			ref := fmt.Sprintf("%s%d", xlsxColumnName(colIndex+1), rowIndex+1)
+			if cell.Number {
+				b.WriteString(fmt.Sprintf(`<c r="%s"><v>%s</v></c>`, ref, cell.Value))
+				continue
+			}
+			b.WriteString(fmt.Sprintf(`<c r="%s" t="inlineStr"><is><t>%s</t></is></c>`, ref, xmlEscape(cell.Value)))
+		}
+		b.WriteString(`</row>`)
+	}
+	b.WriteString(`</sheetData></worksheet>`)
+	return b.String()
+}
+
+func xlsxColumnName(index int) string {
+	name := ""
+	for index > 0 {
+		index--
+		name = string(rune('A'+index%26)) + name
+		index /= 26
+	}
+	return name
+}
+
+func xmlEscape(value string) string {
+	var b bytes.Buffer
+	_ = xml.EscapeText(&b, []byte(value))
+	return b.String()
 }
 
 func (s Server) classStudents(classID *uint) []models.User {

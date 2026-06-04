@@ -5,7 +5,6 @@
       <el-button @click="emit('refresh-history')">刷新</el-button>
     </div>
     <el-table :data="history" size="small">
-      <el-table-column prop="id" label="ID" width="80" />
       <el-table-column label="题号" width="80">
         <template #default="{ row }">{{ problemLabel(row.problem_id) }}</template>
       </el-table-column>
@@ -16,12 +15,11 @@
       <el-table-column label="状态" width="130">
         <template #default="{ row }"><StatusBadge :status="row.status" /></template>
       </el-table-column>
-      <el-table-column prop="score" label="参考分" width="90" />
-      <el-table-column label="最终分" width="90">
-        <template #default="{ row }">{{ row.manual_score ?? '-' }}</template>
+      <el-table-column label="错误点" width="90">
+        <template #default="{ row }">{{ row.error_point || '-' }}</template>
       </el-table-column>
       <el-table-column label="时间" min-width="160">
-        <template #default="{ row }">{{ row.created_at }}</template>
+        <template #default="{ row }">{{ formatRecordTime(row.created_at) }}</template>
       </el-table-column>
     </el-table>
   </section>
@@ -49,6 +47,14 @@ function problemLabel(problemID: number) {
   const entry = props.detail?.problems?.[index] as { problem: Problem; label?: string } | undefined
   if (entry?.label?.trim()) return entry.label.trim()
   return index >= 0 ? defaultProblemLabel(index) : '-'
+}
+
+function formatRecordTime(value?: string) {
+  if (!value) return '-'
+  const date = new Date(value)
+  if (Number.isNaN(date.getTime())) return value
+  const pad = (item: number) => String(item).padStart(2, '0')
+  return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())} ${pad(date.getHours())}:${pad(date.getMinutes())}:${pad(date.getSeconds())}`
 }
 
 function defaultProblemLabel(index: number) {

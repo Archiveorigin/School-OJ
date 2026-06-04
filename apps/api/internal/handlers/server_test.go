@@ -1,6 +1,10 @@
 package handlers
 
 import (
+	"archive/zip"
+	"bytes"
+	"io"
+	"strings"
 	"testing"
 
 	"school-oj/apps/api/internal/services"
@@ -40,5 +44,38 @@ func TestPreparedProblemInputDraftKeepsAssets(t *testing.T) {
 	}
 	if draft.Assets[0].Data == "" {
 		t.Fatal("expected asset data to be preserved")
+	}
+}
+
+func TestBuildXLSXIncludesExamReportRows(t *testing.T) {
+	body, err := buildXLSX([][]xlsxCell{
+		{xlsxString("学生姓名"), xlsxString("学号"), xlsxString("通过题目数"), xlsxString("所得分数")},
+		{xlsxString("张三"), xlsxString("20260001"), xlsxNumber(2), xlsxNumber(180)},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	zr, err := zip.NewReader(bytes.NewReader(body), int64(len(body)))
+	if err != nil {
+		t.Fatal(err)
+	}
+	var sheet string
+	for _, file := range zr.File {
+		if file.Name != "xl/worksheets/sheet1.xml" {
+			continue
+		}
+		rc, err := file.Open()
+		if err != nil {
+			t.Fatal(err)
+		}
+		raw, err := io.ReadAll(rc)
+		_ = rc.Close()
+		if err != nil {
+			t.Fatal(err)
+		}
+		sheet = string(raw)
+	}
+	if !strings.Contains(sheet, "张三") || !strings.Contains(sheet, "<v>180</v>") {
+		t.Fatalf("worksheet does not contain report row: %s", sheet)
 	}
 }

@@ -84,7 +84,7 @@ async function downloadFile(path: string, filename: string) {
       .split('/')
       .map((part) => encodeURIComponent(part))
       .join('/')
-    const { data } = await client.get(`/problems/${props.problemId}/tests/${encoded}`, { responseType: 'blob' })
+    const { data } = await client.get(`/problems/${props.problemId}/tests/file/${encoded}`, { responseType: 'blob' })
     downloadBlob(data, filename)
   } catch (err: any) {
     ElMessage.error(err.response?.data?.error || err.message)

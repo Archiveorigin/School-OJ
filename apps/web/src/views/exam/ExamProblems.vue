@@ -6,6 +6,7 @@
       :score="activeEntry?.score"
       :status-text="statusText"
       :status-type="statusType"
+      :status-image="statusImage"
       :show-difficulty="false"
     />
     <section v-if="canManage" class="panel test-download-panel">
@@ -45,6 +46,11 @@ const statusType = computed<'success' | 'warning' | 'info' | 'danger'>(() => {
   if (item.best_score >= item.score) return 'success'
   if (item.best_score > 0) return 'warning'
   return 'danger'
+})
+const statusImage = computed<'ac' | 'uac' | ''>(() => {
+  const item = scoreItem.value
+  if (!item?.submission_id || !item.score_ready) return ''
+  return item.best_score >= item.score ? 'ac' : 'uac'
 })
 const displayNumber = computed(() => {
   if (props.activeEntry?.label?.trim()) return props.activeEntry.label.trim()

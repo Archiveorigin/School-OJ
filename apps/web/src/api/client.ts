@@ -94,6 +94,7 @@ export interface Submission {
   time_ms: number
   memory_kb: number
   message: string
+  error_point?: string
   created_at: string
   updated_at: string
 }

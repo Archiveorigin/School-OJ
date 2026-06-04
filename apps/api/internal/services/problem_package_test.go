@@ -121,6 +121,71 @@ func TestBuildProblemPackageAllowsEmptyCaseFiles(t *testing.T) {
 	}
 }
 
+func TestBuildProblemCasesFromOrdinaryFilesSortsByNumericID(t *testing.T) {
+	cases, err := BuildProblemCasesFromTestPointFiles([]TestPointUploadFile{
+		{Name: "score-a10.in", Body: []byte("10\n")},
+		{Name: "score-a2.out", Body: []byte("2\n")},
+		{Name: "score-a1.out", Body: []byte("1\n")},
+		{Name: "score-a10.out", Body: []byte("10\n")},
+		{Name: "score-a2.in", Body: []byte("2\n")},
+		{Name: "score-a1.in", Body: []byte("1\n")},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(cases) != 3 {
+		t.Fatalf("expected 3 cases, got %d", len(cases))
+	}
+	if cases[0].Input != "1\n" || cases[1].Input != "2\n" || cases[2].Input != "10\n" {
+		t.Fatalf("cases were not sorted by numeric id: %+v", cases)
+	}
+}
+
+func TestBuildProblemCasesFromZip(t *testing.T) {
+	body := testZip(t, map[string]string{
+		"folder/case_002.out": "4\n",
+		"folder/case_001.in":  "1 2\n",
+		"folder/case_002.in":  "2 2\n",
+		"folder/case_001.out": "3\n",
+	})
+	cases, err := BuildProblemCasesFromTestPointFiles([]TestPointUploadFile{{Name: "tests.zip", Body: body}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(cases) != 2 || cases[0].Output != "3\n" || cases[1].Output != "4\n" {
+		t.Fatalf("unexpected cases: %+v", cases)
+	}
+}
+
+func TestBuildProblemCasesRejectsMissingPair(t *testing.T) {
+	_, err := BuildProblemCasesFromTestPointFiles([]TestPointUploadFile{
+		{Name: "case1.in", Body: []byte("1\n")},
+	})
+	if err == nil {
+		t.Fatal("expected missing pair error")
+	}
+}
+
+func TestBuildProblemCasesRejectsDuplicateNumber(t *testing.T) {
+	_, err := BuildProblemCasesFromTestPointFiles([]TestPointUploadFile{
+		{Name: "case1.in", Body: []byte("1\n")},
+		{Name: "other-001.in", Body: []byte("1\n")},
+		{Name: "case1.out", Body: []byte("1\n")},
+	})
+	if err == nil {
+		t.Fatal("expected duplicate case error")
+	}
+}
+
+func TestBuildProblemCasesRejectsUnsupportedFile(t *testing.T) {
+	_, err := BuildProblemCasesFromTestPointFiles([]TestPointUploadFile{
+		{Name: "case1.txt", Body: []byte("1\n")},
+	})
+	if err == nil {
+		t.Fatal("expected unsupported file error")
+	}
+}
+
 func TestParseProblemPackageRejectsUnsafeAssetPath(t *testing.T) {
 	var buf bytes.Buffer
 	zw := zip.NewWriter(&buf)
@@ -161,6 +226,25 @@ func TestBuildProblemPackageRejectsUnsupportedAssetType(t *testing.T) {
 	if err == nil {
 		t.Fatal("expected unsupported asset type to be rejected")
 	}
+}
+
+func testZip(t *testing.T, files map[string]string) []byte {
+	t.Helper()
+	var buf bytes.Buffer
+	zw := zip.NewWriter(&buf)
+	for name, body := range files {
+		w, err := zw.Create(name)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if _, err := w.Write([]byte(body)); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if err := zw.Close(); err != nil {
+		t.Fatal(err)
+	}
+	return buf.Bytes()
 }
 
 const tinyPNGDataURL = "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+/p9sAAAAASUVORK5CYII="

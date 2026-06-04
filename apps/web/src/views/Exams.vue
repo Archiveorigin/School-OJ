@@ -44,6 +44,7 @@
         <div class="toolbar report-toolbar">
           <el-tag v-if="report.manual_review" type="warning">人工阅卷</el-tag>
           <span class="muted">展开学生行可查看每题提交与评分</span>
+          <el-button size="small" type="primary" :disabled="!reportEnded" :loading="exporting" @click="exportReport">导出 Excel</el-button>
         </div>
         <el-table :data="report.rows">
           <el-table-column type="expand">
@@ -133,6 +134,11 @@ const gradeSubmission = ref<any>(null)
 const gradeProblemScore = ref<any>(null)
 const manualScore = ref(0)
 const gradeMaxScore = computed(() => gradeProblemScore.value?.score || 100)
+const exporting = ref(false)
+const reportEnded = computed(() => {
+  if (!report.value?.exam?.ends_at) return false
+  return new Date(report.value.exam.ends_at).getTime() <= Date.now()
+})
 
 async function load() {
   const params = classroom.activeClassId ? { class_id: classroom.activeClassId } : {}
@@ -151,6 +157,19 @@ function openDetail(row: any) {
 async function openReport(row: any) {
   report.value = (await client.get(`/exams/${row.id}/report`)).data
   reportVisible.value = true
+}
+
+async function exportReport() {
+  if (!report.value?.exam?.id) return
+  exporting.value = true
+  try {
+    const { data } = await client.get(`/exams/${report.value.exam.id}/report/export`, { responseType: 'blob' })
+    downloadBlob(data, `exam-${report.value.exam.id}-report.xlsx`)
+  } catch (err: any) {
+    ElMessage.error(err.response?.data?.error || err.message)
+  } finally {
+    exporting.value = false
+  }
 }
 
 async function removeExam(row: any) {
@@ -226,6 +245,15 @@ function workStatusType(status: string): 'success' | 'warning' | 'info' {
   if (status === 'submitted') return 'success'
   if (status === 'unsubmitted') return 'warning'
   return 'info'
+}
+
+function downloadBlob(blob: Blob, filename: string) {
+  const url = URL.createObjectURL(blob)
+  const link = document.createElement('a')
+  link.href = url
+  link.download = filename
+  link.click()
+  URL.revokeObjectURL(url)
 }
 
 watch(() => classroom.activeClassId, load)

@@ -196,14 +196,14 @@
                   drag
                   action="#"
                   multiple
-                  accept=".in,.out"
+                  accept=".zip,.in,.out"
                   :auto-upload="false"
                   :file-list="testPointUploadFiles"
                   :on-change="syncTestPointFiles"
                   :on-remove="syncTestPointFiles"
                 >
-                  <div class="upload-text">选择或拖入 .in / .out 测试点文件</div>
-                  <div class="muted">按同名文件配对，例如 two_sum_测试点1.in 与 two_sum_测试点1.out；这些文件不会展示给考生。</div>
+                  <div class="upload-text">选择或拖入 .zip / .in / .out 测试点文件</div>
+                  <div class="muted">按文件名中的数字序号配对，例如 data1.in 与 answer1.out；ZIP 会在上传后解析，这些文件不会展示给考生。</div>
                 </el-upload>
                 <div v-if="testPointErrors.length" class="test-errors">
                   <el-alert
@@ -216,16 +216,17 @@
                   />
                 </div>
                 <el-table v-if="problemForm.cases.length" :data="problemForm.cases" size="small" class="test-case-table">
-                  <el-table-column prop="name" label="测试点" min-width="160" />
-                  <el-table-column label="输入长度" width="110">
-                    <template #default="{ row }">{{ row.input.length }} 字符</template>
+                  <el-table-column prop="name" label="测试点" min-width="120" />
+                  <el-table-column label="输入文件" min-width="180">
+                    <template #default="{ row }">{{ row.inputName }} · {{ formatBytes(row.inputSize) }}</template>
                   </el-table-column>
-                  <el-table-column label="输出长度" width="110">
-                    <template #default="{ row }">{{ row.output.length }} 字符</template>
+                  <el-table-column label="输出文件" min-width="180">
+                    <template #default="{ row }">{{ row.outputName }} · {{ formatBytes(row.outputSize) }}</template>
                   </el-table-column>
                   <el-table-column prop="weight" label="权重" width="80" />
                 </el-table>
-                <p v-else class="muted form-note">请至少上传一组完整的 .in / .out 测试点文件。</p>
+                <p v-else-if="testPointUploadFiles.length" class="muted form-note">已选择 ZIP 文件，上传后将由后端解析并按数字序号配对。</p>
+                <p v-else class="muted form-note">请至少上传一组完整的 .in / .out 测试点文件，或上传一个测试点 ZIP。</p>
               </div>
             </el-form-item>
             <div class="toolbar form-actions">
@@ -249,7 +250,7 @@ import { extractStatementSamples, problemDisplayCode, tagList } from '../feature
 import { useClassroomStore } from '../stores/classroom'
 
 type ProblemAssetForm = { name: string; path: string; content_type: string; data: string; preview_url: string }
-type ProblemCaseForm = { name: string; input: string; output: string; weight: number }
+type ProblemCaseForm = { name: string; inputName: string; inputSize: number; outputName: string; outputSize: number; weight: number }
 type SelectedProblem = {
   problem_id: number
   title: string
@@ -375,13 +376,14 @@ async function createMarkdownProblem() {
     ElMessage.error('请先修正测试点文件错误')
     return
   }
-  if (problemForm.cases.length === 0) {
-    ElMessage.error('请至少上传一组完整的 .in / .out 测试点文件')
+  if (testPointUploadFiles.value.length === 0) {
+    ElMessage.error('请至少上传一组完整的 .in / .out 测试点文件，或上传一个测试点 ZIP')
     return
   }
   creatingProblem.value = true
   try {
-    const { data } = await client.post('/problems', {
+    const fd = new FormData()
+    fd.append('draft', JSON.stringify({
       slug: problemForm.slug,
       title: problemForm.title,
       statement: problemForm.statement,
@@ -389,9 +391,13 @@ async function createMarkdownProblem() {
       memory_limit_mb: problemForm.memory_limit_mb,
       output_limit_kb: problemForm.output_limit_kb,
       class_ids: [],
-      assets: problemForm.assets.map(({ name, path, content_type, data }) => ({ name, path, content_type, data })),
-      cases: problemForm.cases
-    })
+      assets: problemForm.assets.map(({ name, path, content_type, data }) => ({ name, path, content_type, data }))
+    }))
+    for (const item of testPointUploadFiles.value) {
+      const file = item.raw as File | undefined
+      if (file) fd.append('tests', file, file.name)
+    }
+    const { data } = await client.post('/problems', fd, { timeout: 120000 })
     selectedProblems.value.push({
       problem_id: data.id,
       title: data.title,
@@ -523,18 +529,17 @@ async function rebuildTestCasesFromFiles(uploadFiles: any[]) {
   readingTestPoints.value = true
   try {
     const errors: string[] = []
-    const groups = new Map<string, { input?: File; output?: File }>()
+    const groups = new Map<number, { input?: File; output?: File }>()
     const seen = new Set<string>()
     for (const item of uploadFiles) {
       const file = item.raw as File | undefined
       if (!file) continue
-      const ext = file.name.toLowerCase().endsWith('.in') ? '.in' : file.name.toLowerCase().endsWith('.out') ? '.out' : ''
-      if (!ext) {
-        errors.push(`${file.name} 不是 .in 或 .out 文件`)
+      if (file.name.toLowerCase().endsWith('.zip')) {
         continue
       }
-      if (file.size === 0) {
-        errors.push(`${file.name} 是空文件`)
+      const ext = file.name.toLowerCase().endsWith('.in') ? '.in' : file.name.toLowerCase().endsWith('.out') ? '.out' : ''
+      if (!ext) {
+        errors.push(`${file.name} 不是 .zip、.in 或 .out 文件`)
         continue
       }
       const base = file.name.slice(0, -ext.length).trim()
@@ -542,25 +547,36 @@ async function rebuildTestCasesFromFiles(uploadFiles: any[]) {
         errors.push(`${file.name} 缺少测试点名称`)
         continue
       }
-      const key = `${base.toLowerCase()}${ext}`
+      const seq = extractLastNumber(base)
+      if (!seq) {
+        errors.push(`${file.name} 缺少数字测试点序号`)
+        continue
+      }
+      const key = `${seq}${ext}`
       if (seen.has(key)) {
-        errors.push(`${file.name} 与已有文件重复`)
+        errors.push(`${file.name} 与已有第 ${seq} 个${ext}文件重复`)
         continue
       }
       seen.add(key)
-      const group = groups.get(base) || {}
+      const group = groups.get(seq) || {}
       if (ext === '.in') group.input = file
       else group.output = file
-      groups.set(base, group)
+      groups.set(seq, group)
     }
     const cases: ProblemCaseForm[] = []
-    for (const [base, group] of [...groups.entries()].sort(([a], [b]) => a.localeCompare(b, 'zh-CN'))) {
+    for (const [seq, group] of [...groups.entries()].sort(([a], [b]) => a - b)) {
       if (!group.input || !group.output) {
-        errors.push(`${base} 缺少 ${group.input ? '.out' : '.in'} 配对文件`)
+        errors.push(`第 ${seq} 个测试点缺少 ${group.input ? '.out' : '.in'} 配对文件`)
         continue
       }
-      const [input, output] = await Promise.all([group.input.text(), group.output.text()])
-      cases.push({ name: base, input, output, weight: 1 })
+      cases.push({
+        name: `case-${String(cases.length + 1).padStart(2, '0')}`,
+        inputName: group.input.name,
+        inputSize: group.input.size,
+        outputName: group.output.name,
+        outputSize: group.output.size,
+        weight: 1
+      })
     }
     problemForm.cases.splice(0, problemForm.cases.length, ...cases)
     testPointErrors.value = errors
@@ -570,6 +586,18 @@ async function rebuildTestCasesFromFiles(uploadFiles: any[]) {
   } finally {
     readingTestPoints.value = false
   }
+}
+
+function extractLastNumber(value: string) {
+  const match = value.match(/(\d+)(?!.*\d)/)
+  if (!match) return 0
+  return Number(match[1])
+}
+
+function formatBytes(value: number) {
+  if (value < 1024) return `${value} B`
+  if (value < 1024 * 1024) return `${(value / 1024).toFixed(1)} KB`
+  return `${(value / 1024 / 1024).toFixed(1)} MB`
 }
 
 async function copyText(value: string) {

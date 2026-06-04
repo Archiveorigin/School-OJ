@@ -40,7 +40,10 @@
       </div>
       <div class="meta-grid">
         <span>提交状态</span>
-        <el-tag :type="statusType || 'info'" effect="light">{{ statusText || '未提交' }}</el-tag>
+        <div v-if="statusImageSrc" class="status-image-wrap">
+          <img class="status-image" :src="statusImageSrc" :alt="statusImageAlt" />
+        </div>
+        <el-tag v-else :type="statusType || 'info'" effect="light">{{ statusText || '未提交' }}</el-tag>
         <span>分值</span>
         <strong>{{ score ?? '-' }}</strong>
         <template v-if="showDifficulty">
@@ -67,6 +70,8 @@
 import { ElMessage } from 'element-plus'
 import { computed } from 'vue'
 import type { Problem } from '../api/client'
+import acStatusImage from '../assets/status/AC.png'
+import uacStatusImage from '../assets/status/UAC.png'
 import {
   difficultyFromTags,
   difficultyTagType,
@@ -85,6 +90,7 @@ const props = withDefaults(
     score?: number | string
     statusText?: string
     statusType?: 'success' | 'warning' | 'info' | 'danger'
+    statusImage?: 'ac' | 'uac' | ''
     showDifficulty?: boolean
   }>(),
   {
@@ -96,6 +102,12 @@ const samples = computed(() => extractStatementSamples(props.problem.statement))
 const tags = computed(() => tagList(props.problem.tags))
 const difficulty = computed(() => difficultyFromTags(props.problem.tags))
 const displayNumber = computed(() => props.problemNumber || problemDisplayCode(props.problem))
+const statusImageSrc = computed(() => {
+  if (props.statusImage === 'ac') return acStatusImage
+  if (props.statusImage === 'uac') return uacStatusImage
+  return ''
+})
+const statusImageAlt = computed(() => (props.statusImage === 'ac' ? '通过' : '未通过'))
 
 async function copyText(value: string) {
   try {
@@ -195,6 +207,18 @@ async function copyText(value: string) {
   grid-template-columns: 76px minmax(0, 1fr);
   gap: 10px 12px;
   align-items: center;
+}
+
+.status-image-wrap {
+  display: flex;
+  align-items: center;
+  min-height: 44px;
+}
+
+.status-image {
+  width: min(128px, 100%);
+  max-height: 64px;
+  object-fit: contain;
 }
 
 .meta-grid span,
