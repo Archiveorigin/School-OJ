@@ -75,7 +75,7 @@ type Problem struct {
 	ID              uint              `json:"id" gorm:"primaryKey"`
 	OwnerID         uint              `json:"owner_id" gorm:"index;not null"`
 	DisplayCode     string            `json:"display_code" gorm:"uniqueIndex;size:16"`
-	Slug            string            `json:"slug" gorm:"uniqueIndex;size:120;not null"`
+	Slug            string            `json:"slug" gorm:"uniqueIndex:idx_problems_slug_active,where:deleted_at IS NULL;size:120;not null"`
 	Title           string            `json:"title" gorm:"size:200;not null"`
 	Statement       string            `json:"statement" gorm:"type:text"`
 	Tags            datatypes.JSONMap `json:"tags" gorm:"type:jsonb"`

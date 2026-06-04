@@ -53,7 +53,28 @@ func AutoMigrate(gdb *gorm.DB) error {
 	if err := gdb.AutoMigrate(models.AllModels()...); err != nil {
 		return err
 	}
+	if err := migrateProblemSlugUniqueness(gdb); err != nil {
+		return err
+	}
 	return backfillProblemDisplayCodes(gdb)
+}
+
+func migrateProblemSlugUniqueness(gdb *gorm.DB) error {
+	if !gdb.Migrator().HasTable("problems") {
+		return nil
+	}
+	statements := []string{
+		`CREATE UNIQUE INDEX IF NOT EXISTS idx_problems_slug_active ON problems(slug) WHERE deleted_at IS NULL`,
+		`ALTER TABLE problems DROP CONSTRAINT IF EXISTS problems_slug_key`,
+		`ALTER TABLE problems DROP CONSTRAINT IF EXISTS idx_problems_slug`,
+		`DROP INDEX IF EXISTS idx_problems_slug`,
+	}
+	for _, statement := range statements {
+		if err := gdb.Exec(statement).Error; err != nil {
+			return err
+		}
+	}
+	return nil
 }
 
 func backfillProblemDisplayCodes(gdb *gorm.DB) error {

@@ -51,7 +51,7 @@ CREATE TABLE IF NOT EXISTS class_memberships (
 CREATE TABLE IF NOT EXISTS problems (
   id BIGSERIAL PRIMARY KEY,
   owner_id BIGINT NOT NULL REFERENCES users(id),
-  slug VARCHAR(120) NOT NULL UNIQUE,
+  slug VARCHAR(120) NOT NULL,
   title VARCHAR(200) NOT NULL,
   statement TEXT,
   tags JSONB,
