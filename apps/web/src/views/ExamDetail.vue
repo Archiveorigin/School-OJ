@@ -109,6 +109,8 @@ const finishing = ref(false)
 const editorStates = reactive<Record<number, EditorState>>({})
 let deadlineTimer: ReturnType<typeof window.setTimeout> | null = null
 let deadlinePoller: ReturnType<typeof window.setInterval> | null = null
+let forceLeavingExam = false
+const liveStreams = new Set<EventSource>()
 
 const examID = computed(() => Number(route.params.id))
 const examLocked = computed(() => {
@@ -167,6 +169,7 @@ async function loadDetail() {
     await loadHistory()
     scheduleDeadlineCheck()
   } catch (err: any) {
+    if (handleInvalidExamError(err)) return
     if (err.response?.data?.finished_at) {
       examLock.unlock()
       ElMessage.warning('考试已结束，不能再次进入')
@@ -204,6 +207,7 @@ async function submitSolution() {
     watchSubmission(data.id, problemID)
     await loadHistory()
   } catch (err: any) {
+    if (handleInvalidExamError(err)) return
     ElMessage.error(err.response?.data?.error || err.message)
   } finally {
     submitting.value = false
@@ -212,10 +216,11 @@ async function submitSolution() {
 
 function watchSubmission(id: number, problemID: number) {
   const es = new EventSource(sseUrl(`/submissions/${id}/events`))
+  liveStreams.add(es)
   es.addEventListener('status', async (event) => {
     ensureEditorState(problemID).live = JSON.parse((event as MessageEvent).data)
     if (!['queued', 'running'].includes(ensureEditorState(problemID).live.status)) {
-      es.close()
+      closeLiveStream(es)
       await refreshDetail()
       await loadHistory()
     }
@@ -225,7 +230,12 @@ function watchSubmission(id: number, problemID: number) {
 async function refreshDetail() {
   if (!detail.value) return
   const activeID = activeProblem.value?.id
-  detail.value = (await client.get(`/exams/${detail.value.exam.id}`)).data
+  try {
+    detail.value = (await client.get(`/exams/${detail.value.exam.id}`)).data
+  } catch (err: any) {
+    if (handleInvalidExamError(err)) return
+    throw err
+  }
   if (!canManage.value && detail.value.closed) {
     exitClosedExam()
     return
@@ -261,12 +271,14 @@ async function finishExam() {
   }
 }
 
-function leavePage() {
+async function leavePage() {
   if (deadlineReached()) {
-    exitClosedExam()
+    await handleDeadlineReached()
     return
   }
   if (examLocked.value) {
+    const stillLocked = await validateExamLock()
+    if (!stillLocked) return
     ElMessage.warning(examLock.message)
     return
   }
@@ -382,7 +394,8 @@ async function handleDeadlineReached() {
   try {
     const { data } = await client.get(`/exams/${detail.value.exam.id}`)
     detail.value = data
-  } catch {
+  } catch (err: any) {
+    if (handleInvalidExamError(err)) return
     // If refresh fails at the cutoff moment, unlock locally so the student can leave.
   }
   exitClosedExam()
@@ -394,6 +407,80 @@ function exitClosedExam() {
   if (detail.value) detail.value.closed = true
   ElMessage.warning('考试已截止，已自动退出')
   router.replace('/exams')
+}
+
+function handleInvalidExamError(err: any) {
+  if (canManage.value || !isInvalidExamError(err)) return false
+  forceExitExam('考试已删除或已失效，已自动退出')
+  return true
+}
+
+function isInvalidExamError(err: any) {
+  const status = err?.response?.status
+  if (status === 404) return true
+  if (status !== 403 || err?.response?.data?.finished_at) return false
+  const message = String(err?.response?.data?.error || '').toLowerCase()
+  return message.includes('forbidden') || message.includes('not available') || message.includes('not found')
+}
+
+async function validateExamLock() {
+  if (!detail.value?.exam?.id) return false
+  try {
+    const { data } = await client.get(`/exams/${detail.value.exam.id}`)
+    detail.value = data
+    if (!data.closed && !data.finished_at) {
+      scheduleDeadlineCheck()
+      return true
+    }
+    exitClosedExam()
+    return false
+  } catch (err: any) {
+    if (handleInvalidExamError(err)) return false
+    return true
+  }
+}
+
+function forceExitExam(message: string) {
+  forceLeavingExam = true
+  clearExamRuntimeState(currentExamID())
+  ElMessage.warning(message)
+  router.replace('/exams')
+}
+
+function currentExamID() {
+  return detail.value?.exam?.id || examID.value || examLock.examId
+}
+
+function clearExamRuntimeState(id?: number) {
+  clearDeadlineTimers()
+  closeLiveStreams()
+  examLock.unlock()
+  detail.value = null
+  activeEntry.value = null
+  history.value = []
+  submitting.value = false
+  finishing.value = false
+  for (const key of Object.keys(editorStates)) delete editorStates[Number(key)]
+  clearExamDraftCache(id)
+}
+
+function closeLiveStream(stream: EventSource) {
+  stream.close()
+  liveStreams.delete(stream)
+}
+
+function closeLiveStreams() {
+  for (const stream of liveStreams) stream.close()
+  liveStreams.clear()
+}
+
+function clearExamDraftCache(id?: number) {
+  if (!id) return
+  const prefix = `school-oj-draft:exam:${id}:`
+  for (let index = localStorage.length - 1; index >= 0; index -= 1) {
+    const key = localStorage.key(index)
+    if (key?.startsWith(prefix)) localStorage.removeItem(key)
+  }
 }
 
 watch(
@@ -410,6 +497,7 @@ watch(
 watch(() => route.params.id, loadDetail)
 
 onBeforeRouteLeave(() => {
+  if (forceLeavingExam) return true
   if (examLocked.value) {
     ElMessage.warning(examLock.message)
     return false
@@ -419,6 +507,7 @@ onBeforeRouteLeave(() => {
 
 onBeforeUnmount(() => {
   clearDeadlineTimers()
+  closeLiveStreams()
   window.removeEventListener('beforeunload', beforeUnload)
 })
 
