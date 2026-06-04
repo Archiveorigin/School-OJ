@@ -92,7 +92,7 @@ import { useAuthStore } from '../stores/auth'
 import { useExamLockStore } from '../stores/examLock'
 
 type DetailProblem = { problem: Problem; score: number; label?: string; problem_id: number }
-type EditorState = { language: string; source: string; live: any }
+type EditorState = { language: string; source: string; live: any; dirty: boolean }
 type ExamTab = 'problems' | 'submit' | 'records'
 
 const auth = useAuthStore()
@@ -107,6 +107,8 @@ const history = ref<Submission[]>([])
 const submitting = ref(false)
 const finishing = ref(false)
 const editorStates = reactive<Record<number, EditorState>>({})
+let deadlineTimer: ReturnType<typeof window.setTimeout> | null = null
+let deadlinePoller: ReturnType<typeof window.setInterval> | null = null
 
 const examID = computed(() => Number(route.params.id))
 const examLocked = computed(() => {
@@ -127,9 +129,9 @@ const language = computed({
   get: () => activeState.value?.language || 'cpp',
   set: (value: string) => {
     if (!activeProblem.value || !activeState.value) return
-    saveDraft(activeProblem.value.id, activeState.value.language, activeState.value.source)
     activeState.value.language = value
-    activeState.value.source = loadDraft(activeProblem.value.id, value)
+    activeState.value.source = preferredSource(activeProblem.value.id, value)
+    activeState.value.dirty = false
   }
 })
 const source = computed({
@@ -137,7 +139,7 @@ const source = computed({
   set: (value: string) => {
     if (!activeProblem.value || !activeState.value) return
     activeState.value.source = value
-    saveDraft(activeProblem.value.id, activeState.value.language, value)
+    activeState.value.dirty = true
   }
 })
 const live = computed(() => activeState.value?.live)
@@ -156,9 +158,14 @@ async function loadDetail() {
   if (!examID.value) return
   try {
     detail.value = (await client.get(`/exams/${examID.value}`)).data
+    if (!canManage.value && detail.value.closed) {
+      exitClosedExam()
+      return
+    }
     activeEntry.value = detail.value.problems?.find((entry: DetailProblem) => entry.problem.id === activeProblem.value?.id) || detail.value.problems?.[0] || null
     if (activeProblem.value) ensureEditorState(activeProblem.value.id)
     await loadHistory()
+    scheduleDeadlineCheck()
   } catch (err: any) {
     if (err.response?.data?.finished_at) {
       examLock.unlock()
@@ -219,12 +226,18 @@ async function refreshDetail() {
   if (!detail.value) return
   const activeID = activeProblem.value?.id
   detail.value = (await client.get(`/exams/${detail.value.exam.id}`)).data
+  if (!canManage.value && detail.value.closed) {
+    exitClosedExam()
+    return
+  }
   activeEntry.value = detail.value.problems.find((entry: DetailProblem) => entry.problem.id === activeID) || detail.value.problems[0] || null
+  scheduleDeadlineCheck()
 }
 
 async function loadHistory() {
   if (!detail.value) return
   history.value = (await client.get('/submissions', { params: { exam_id: detail.value.exam.id } })).data
+  hydrateEditorStatesFromHistory()
 }
 
 async function finishExam() {
@@ -249,6 +262,10 @@ async function finishExam() {
 }
 
 function leavePage() {
+  if (deadlineReached()) {
+    exitClosedExam()
+    return
+  }
   if (examLocked.value) {
     ElMessage.warning(examLock.message)
     return
@@ -258,30 +275,34 @@ function leavePage() {
 
 function ensureEditorState(problemID: number) {
   if (!editorStates[problemID]) {
-    editorStates[problemID] = { language: 'cpp', source: loadDraft(problemID, 'cpp'), live: null }
+    const submission = preferredSubmission(problemID)
+    const language = submission?.language || 'cpp'
+    editorStates[problemID] = { language, source: submission?.source_code || '', live: null, dirty: false }
   }
   return editorStates[problemID]
 }
 
-function loadDraft(problemID: number, lang: string) {
-  if (!detail.value) return defaultSource(lang)
-  return localStorage.getItem(draftKey(problemID, lang)) || defaultSource(lang)
+function hydrateEditorStatesFromHistory() {
+  for (const entry of detail.value?.problems || []) {
+    const state = editorStates[entry.problem.id]
+    if (!state || state.dirty) continue
+    const submission = preferredSubmission(entry.problem.id, state.language) || preferredSubmission(entry.problem.id)
+    if (submission) {
+      state.language = submission.language
+      state.source = submission.source_code || ''
+      continue
+    }
+    state.source = preferredSource(entry.problem.id, state.language)
+  }
 }
 
-function saveDraft(problemID: number, lang: string, value: string) {
-  if (!detail.value) return
-  localStorage.setItem(draftKey(problemID, lang), value)
+function preferredSubmission(problemID: number, language?: string) {
+  const items = history.value.filter((item) => item.problem_id === problemID && (!language || item.language === language))
+  return items.find((item) => item.status === 'accepted') || items[0] || null
 }
 
-function draftKey(problemID: number, lang: string) {
-  return `school-oj-draft:exam:${detail.value.exam.id}:${problemID}:${lang}`
-}
-
-function defaultSource(lang: string) {
-  if (lang === 'python') return 'a, b = map(int, input().split())\nprint(a + b)\n'
-  if (lang === 'java') return 'import java.util.*;\npublic class Main { public static void main(String[] args) { Scanner sc = new Scanner(System.in); long a = sc.nextLong(), b = sc.nextLong(); System.out.println(a + b); } }\n'
-  if (lang === 'c') return '#include <stdio.h>\nint main(){ long long a,b; scanf("%lld%lld",&a,&b); printf("%lld\\n", a+b); return 0; }\n'
-  return '#include <bits/stdc++.h>\nusing namespace std;\nint main(){ long long a,b; cin>>a>>b; cout<<a+b<<"\\n"; return 0; }\n'
+function preferredSource(problemID: number, language: string) {
+  return preferredSubmission(problemID, language)?.source_code || ''
 }
 
 function problemScoreText(problemID: number) {
@@ -324,6 +345,57 @@ function beforeUnload(event: BeforeUnloadEvent) {
   event.returnValue = ''
 }
 
+function scheduleDeadlineCheck() {
+  clearDeadlineTimers()
+  if (canManage.value || !detail.value?.exam?.ends_at || detail.value.closed || detail.value.finished_at) return
+  const deadline = new Date(detail.value.exam.ends_at).getTime()
+  const delay = deadline - Date.now()
+  if (delay <= 0) {
+    void handleDeadlineReached()
+    return
+  }
+  deadlineTimer = window.setTimeout(handleDeadlineReached, Math.min(delay + 1000, 2147483647))
+  deadlinePoller = window.setInterval(() => {
+    if (deadlineReached()) void handleDeadlineReached()
+  }, 30000)
+}
+
+function clearDeadlineTimers() {
+  if (deadlineTimer) {
+    window.clearTimeout(deadlineTimer)
+    deadlineTimer = null
+  }
+  if (deadlinePoller) {
+    window.clearInterval(deadlinePoller)
+    deadlinePoller = null
+  }
+}
+
+function deadlineReached() {
+  if (!detail.value?.exam?.ends_at) return false
+  return Date.now() >= new Date(detail.value.exam.ends_at).getTime()
+}
+
+async function handleDeadlineReached() {
+  if (canManage.value || !detail.value) return
+  clearDeadlineTimers()
+  try {
+    const { data } = await client.get(`/exams/${detail.value.exam.id}`)
+    detail.value = data
+  } catch {
+    // If refresh fails at the cutoff moment, unlock locally so the student can leave.
+  }
+  exitClosedExam()
+}
+
+function exitClosedExam() {
+  clearDeadlineTimers()
+  examLock.unlock()
+  if (detail.value) detail.value.closed = true
+  ElMessage.warning('考试已截止，已自动退出')
+  router.replace('/exams')
+}
+
 watch(
   examLocked,
   (locked) => {
@@ -346,6 +418,7 @@ onBeforeRouteLeave(() => {
 })
 
 onBeforeUnmount(() => {
+  clearDeadlineTimers()
   window.removeEventListener('beforeunload', beforeUnload)
 })
 
