@@ -11,6 +11,8 @@ import (
 	"gopkg.in/yaml.v3"
 )
 
+const utf8BOM = "\ufeff"
+
 type ProblemPackage struct {
 	Manifest Manifest
 	Files    map[string][]byte
@@ -90,9 +92,13 @@ func ParsePackage(body []byte) (ProblemPackage, error) {
 }
 
 func (p ProblemPackage) CaseInput(c Case) string {
-	return string(p.Files[filepath.ToSlash(filepath.Clean(c.Input))])
+	return stripUTF8BOM(string(p.Files[filepath.ToSlash(filepath.Clean(c.Input))]))
 }
 
 func (p ProblemPackage) CaseOutput(c Case) string {
-	return string(p.Files[filepath.ToSlash(filepath.Clean(c.Output))])
+	return stripUTF8BOM(string(p.Files[filepath.ToSlash(filepath.Clean(c.Output))]))
+}
+
+func stripUTF8BOM(value string) string {
+	return strings.TrimPrefix(value, utf8BOM)
 }

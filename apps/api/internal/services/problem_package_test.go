@@ -141,6 +141,22 @@ func TestBuildProblemCasesFromOrdinaryFilesSortsByNumericID(t *testing.T) {
 	}
 }
 
+func TestBuildProblemCasesFromOrdinaryFilesStripsUTF8BOM(t *testing.T) {
+	cases, err := BuildProblemCasesFromTestPointFiles([]TestPointUploadFile{
+		{Name: "case1.in", Body: []byte("\ufeff1 2\n")},
+		{Name: "case1.out", Body: []byte("\ufeff3\n")},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(cases) != 1 {
+		t.Fatalf("expected 1 case, got %d", len(cases))
+	}
+	if cases[0].Input != "1 2\n" || cases[0].Output != "3\n" {
+		t.Fatalf("BOM was not stripped: %+v", cases[0])
+	}
+}
+
 func TestBuildProblemCasesFromZip(t *testing.T) {
 	body := testZip(t, map[string]string{
 		"folder/case_002.out": "4\n",
@@ -154,6 +170,23 @@ func TestBuildProblemCasesFromZip(t *testing.T) {
 	}
 	if len(cases) != 2 || cases[0].Output != "3\n" || cases[1].Output != "4\n" {
 		t.Fatalf("unexpected cases: %+v", cases)
+	}
+}
+
+func TestBuildProblemCasesFromZipStripsUTF8BOM(t *testing.T) {
+	body := testZip(t, map[string]string{
+		"folder/case_001.in":  "\ufeff1 2\n",
+		"folder/case_001.out": "\ufeff3\n",
+	})
+	cases, err := BuildProblemCasesFromTestPointFiles([]TestPointUploadFile{{Name: "tests.zip", Body: body}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(cases) != 1 {
+		t.Fatalf("expected 1 case, got %d", len(cases))
+	}
+	if cases[0].Input != "1 2\n" || cases[0].Output != "3\n" {
+		t.Fatalf("BOM was not stripped: %+v", cases[0])
 	}
 }
 

@@ -73,15 +73,35 @@ func (r DockerRunner) Judge(ctx context.Context, req JudgeRequest) JudgeResult {
 			return JudgeResult{Status: models.StatusCompileError, Message: failureMessage("compile", status, out), TimeMS: ms, Trace: trace(compileLimit)}
 		}
 	}
-	var cases []CaseResult
-	passedWeight := 0
+	finalStatus, totalScore, maxTime, cases := judgeCases(
+		req.Package.Manifest.Cases,
+		req.Package.CaseInput,
+		req.Package.CaseOutput,
+		func(input string) (string, models.SubmissionStatus, int) {
+			return r.runContainer(ctx, workDir, spec.Image, spec.Run, input, limit)
+		},
+	)
+	message := "accepted"
+	if finalStatus != models.StatusAccepted {
+		message = "some test cases failed"
+	}
+	return JudgeResult{Status: finalStatus, Score: totalScore, TimeMS: maxTime, Message: message, Trace: trace(limit), Cases: cases}
+}
+
+type caseRunner func(input string) (string, models.SubmissionStatus, int)
+
+func judgeCases(cases []Case, inputFor func(Case) string, outputFor func(Case) string, run caseRunner) (models.SubmissionStatus, int, int, []CaseResult) {
 	totalWeight := 0
+	for _, tc := range cases {
+		totalWeight += tc.Weight
+	}
+	passedWeight := 0
 	maxTime := 0
 	finalStatus := models.StatusAccepted
-	for _, tc := range req.Package.Manifest.Cases {
-		totalWeight += tc.Weight
-		expected := normalize(req.Package.CaseOutput(tc))
-		actual, status, ms := r.runContainer(ctx, workDir, spec.Image, spec.Run, req.Package.CaseInput(tc), limit)
+	results := make([]CaseResult, 0, len(cases))
+	for _, tc := range cases {
+		expected := normalize(outputFor(tc))
+		actual, status, ms := run(inputFor(tc))
 		caseResult := CaseResult{Name: tc.Name, Status: status, TimeMS: ms}
 		if ms > maxTime {
 			maxTime = ms
@@ -98,17 +118,13 @@ func (r DockerRunner) Judge(ctx context.Context, req JudgeRequest) JudgeResult {
 		} else {
 			caseResult.Message = actual
 		}
-		if finalStatus == models.StatusAccepted && status != models.StatusAccepted {
+		results = append(results, caseResult)
+		if status != models.StatusAccepted {
 			finalStatus = status
+			break
 		}
-		cases = append(cases, caseResult)
 	}
-	totalScore := weightedScore(passedWeight, totalWeight)
-	message := "accepted"
-	if finalStatus != models.StatusAccepted {
-		message = "some test cases failed"
-	}
-	return JudgeResult{Status: finalStatus, Score: totalScore, TimeMS: maxTime, Message: message, Trace: trace(limit), Cases: cases}
+	return finalStatus, weightedScore(passedWeight, totalWeight), maxTime, results
 }
 
 func weightedScore(passedWeight int, totalWeight int) int {
@@ -262,6 +278,7 @@ func (b *limitedBuffer) Write(p []byte) (int, error) {
 }
 
 func normalize(s string) string {
+	s = stripUTF8BOM(s)
 	lines := strings.Split(strings.ReplaceAll(s, "\r\n", "\n"), "\n")
 	for i := range lines {
 		lines[i] = strings.TrimRight(lines[i], " \t")

@@ -94,6 +94,7 @@ const (
 	MaxProblemAssetSize     = 5 << 20
 	MaxProblemAssetsSize    = 20 << 20
 	MaxProblemTestFilesSize = 128 << 20
+	utf8BOM                 = "\ufeff"
 )
 
 type rawTestPointFile struct {
@@ -164,8 +165,8 @@ func BuildProblemCasesFromTestPointFiles(files []TestPointUploadFile) ([]Problem
 		}
 		cases = append(cases, ProblemCaseDraft{
 			Name:   fmt.Sprintf("case-%02d", len(cases)+1),
-			Input:  string(group.input),
-			Output: string(group.output),
+			Input:  normalizeCaseText(string(group.input)),
+			Output: normalizeCaseText(string(group.output)),
 			Weight: 1,
 		})
 	}
@@ -511,6 +512,7 @@ func ParseProblemPackage(body []byte) (ParsedProblemPackage, error) {
 }
 
 func normalizeCaseText(value string) string {
+	value = strings.TrimPrefix(value, utf8BOM)
 	value = strings.ReplaceAll(value, "\r\n", "\n")
 	value = strings.ReplaceAll(value, "\r", "\n")
 	if value != "" && !strings.HasSuffix(value, "\n") {

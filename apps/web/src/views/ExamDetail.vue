@@ -45,21 +45,6 @@
         </el-select>
       </div>
 
-      <div class="problem-strip">
-        <button
-          v-for="(entry, index) in detail.problems"
-          :key="entry.problem.id"
-          type="button"
-          class="problem-pick"
-          :class="{ active: activeProblem?.id === entry.problem.id }"
-          @click="selectDetailProblem(entry)"
-        >
-          <strong>{{ problemLabel(entry, index) }} · {{ entry.problem.title }}</strong>
-          <span>{{ entry.score }} 分 · {{ problemScoreText(entry.problem.id) }}</span>
-          <small v-if="entry.problem.deleted_at" class="muted">已下架</small>
-        </button>
-      </div>
-
       <router-view v-slot="{ Component }">
         <component
           :is="Component"
@@ -524,8 +509,7 @@ onMounted(async () => {
   gap: 14px;
 }
 
-.exam-tabs,
-.problem-strip {
+.exam-tabs {
   display: flex;
   align-items: stretch;
   flex-wrap: wrap;
@@ -542,39 +526,10 @@ onMounted(async () => {
   width: min(520px, 100%);
 }
 
-.problem-pick {
-  display: grid;
-  gap: 4px;
-  min-width: 180px;
-  max-width: 260px;
-  padding: 10px;
-  border: 1px solid #d9dee8;
-  border-radius: 8px;
-  background: var(--surface);
-  color: var(--text);
-  text-align: left;
-  cursor: pointer;
-}
-
-.problem-pick.active {
-  border-color: var(--accent);
-  box-shadow: 0 0 0 3px rgba(10, 94, 166, 0.12);
-}
-
-.problem-pick span {
-  color: #6b7280;
-  font-size: 12px;
-}
-
 @media (max-width: 760px) {
   .problem-select-row {
     align-items: stretch;
     flex-direction: column;
-  }
-
-  .problem-pick {
-    max-width: none;
-    width: 100%;
   }
 }
 </style>
