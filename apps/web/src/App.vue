@@ -1,7 +1,7 @@
 <template>
   <router-view v-if="publicPage" />
-  <el-container v-else direction="vertical" class="shell">
-    <el-header class="topbar" height="auto">
+  <el-container v-else direction="vertical" class="shell" :class="{ 'exam-shell': studentExamWorkspace }">
+    <el-header v-if="!studentExamWorkspace" class="topbar" height="auto">
       <AppSidebar :active-menu="activeMenu" :role="auth.role" />
       <div class="topbar-actions">
         <el-select
@@ -35,14 +35,14 @@
         </el-dropdown>
       </div>
     </el-header>
-    <el-main class="main-content">
+    <el-main class="main-content" :class="{ 'exam-main-content': studentExamWorkspace }">
       <router-view />
     </el-main>
   </el-container>
 </template>
 
 <script setup lang="ts">
-import { ElMessage } from 'element-plus'
+import { ElMessageBox } from 'element-plus'
 import { computed, onMounted, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import AppSidebar from './components/AppSidebar.vue'
@@ -55,30 +55,32 @@ const classroom = useClassroomStore()
 const examLock = useExamLockStore()
 const router = useRouter()
 const route = useRoute()
+let activeExamPromptOpen = false
+let lastPromptedExamId: number | undefined
 
 const publicPage = computed(() => ['/login', '/register', '/forgot-password'].includes(route.path))
 const initials = computed(() => (auth.user?.name || auth.user?.email || 'U').trim().slice(0, 1).toUpperCase())
 const activeMenu = computed(() => String(route.meta.activeMenu || route.path))
+const currentExamRouteId = computed(() => {
+  const value = route.params.id
+  return typeof value === 'string' ? Number(value) : undefined
+})
+const studentExamWorkspace = computed(() => auth.role === 'student' && Boolean(currentExamRouteId.value) && route.path.startsWith('/exams/'))
+const activeExamRoot = computed(() => (examLock.examId ? `/exams/${examLock.examId}` : ''))
+const inActiveExam = computed(() => Boolean(activeExamRoot.value) && (route.path === activeExamRoot.value || route.path.startsWith(`${activeExamRoot.value}/`)))
 
 function logout() {
   auth.logout()
+  examLock.unlock()
   classroom.clear()
   router.push('/login')
 }
 
 function setClass(value: number) {
-  if (examLock.locked) {
-    ElMessage.warning(examLock.message)
-    return
-  }
   classroom.setActive(value)
 }
 
 function handleCommand(command: string) {
-  if (examLock.locked && command !== 'theme') {
-    ElMessage.warning(examLock.message)
-    return
-  }
   if (command === 'profile') {
     router.push('/profile')
     return
@@ -92,6 +94,41 @@ function handleCommand(command: string) {
   }
 }
 
+async function maybeShowActiveExamPrompt() {
+  if (!auth.isAuthed || auth.role !== 'student' || publicPage.value) return
+  try {
+    await examLock.syncActiveExam()
+  } catch {
+    return
+  }
+  if (!examLock.locked || !examLock.examId) {
+    lastPromptedExamId = undefined
+    return
+  }
+  if (inActiveExam.value) {
+    lastPromptedExamId = undefined
+    return
+  }
+  if (activeExamPromptOpen || lastPromptedExamId === examLock.examId) return
+  const examId = examLock.examId
+  activeExamPromptOpen = true
+  lastPromptedExamId = examId
+  try {
+    await ElMessageBox.confirm(examLock.message, '正在进行的考试', {
+      type: 'warning',
+      confirmButtonText: '返回考试',
+      cancelButtonText: '继续浏览',
+      distinguishCancelAndClose: true,
+      customClass: 'active-exam-dialog'
+    })
+    if (examLock.examId === examId) router.push(`/exams/${examId}/problems`)
+  } catch {
+    // The student may continue browsing; the reminder is intentionally not a lock.
+  } finally {
+    activeExamPromptOpen = false
+  }
+}
+
 onMounted(() => {
   examLock.hydrate()
   if (auth.isAuthed) classroom.load()
@@ -101,8 +138,20 @@ watch(
   () => auth.isAuthed,
   (authed) => {
     if (authed) classroom.load()
-    else classroom.clear()
+    else {
+      classroom.clear()
+      examLock.unlock()
+      lastPromptedExamId = undefined
+    }
   }
+)
+
+watch(
+  () => [auth.isAuthed, auth.role, route.fullPath],
+  () => {
+    void maybeShowActiveExamPrompt()
+  },
+  { immediate: true }
 )
 </script>
 
@@ -166,6 +215,30 @@ watch(
 
 .main-content {
   padding: 0;
+}
+
+.exam-shell {
+  min-height: 100vh;
+}
+
+.exam-main-content :deep(.page) {
+  min-height: 100vh;
+}
+
+:global(.active-exam-dialog) {
+  border: 2px solid #f59e0b;
+  box-shadow: 0 28px 80px rgba(146, 64, 14, 0.28);
+}
+
+:global(.active-exam-dialog .el-message-box__title) {
+  color: #92400e;
+  font-weight: 800;
+}
+
+:global(.active-exam-dialog .el-message-box__message) {
+  color: var(--text);
+  font-size: 16px;
+  line-height: 1.7;
 }
 
 @media (max-width: 760px) {

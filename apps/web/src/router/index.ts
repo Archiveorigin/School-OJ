@@ -1,7 +1,5 @@
 import { createRouter, createWebHistory } from 'vue-router'
-import { ElMessage } from 'element-plus'
 import { useAuthStore } from '../stores/auth'
-import { useExamLockStore } from '../stores/examLock'
 import AuditLogs from '../views/AuditLogs.vue'
 import AssignmentDetail from '../views/AssignmentDetail.vue'
 import Assignments from '../views/Assignments.vue'
@@ -62,8 +60,6 @@ const publicPaths = ['/login', '/register', '/forgot-password']
 
 router.beforeEach(async (to, from) => {
   const auth = useAuthStore()
-  const examLock = useExamLockStore()
-  examLock.hydrate()
   if (auth.isAuthed && !auth.hydrated) {
     await auth.hydrate()
   }
@@ -76,12 +72,6 @@ router.beforeEach(async (to, from) => {
   const roles = to.meta.roles as string[] | undefined
   if (roles && (!auth.user || !roles.includes(auth.user.role))) {
     return '/'
-  }
-  const lockedExamPath = examLock.examId ? `/exams/${examLock.examId}` : '/exams'
-  const inLockedExam = examLock.examId && (to.path === lockedExamPath || to.path.startsWith(`${lockedExamPath}/`))
-  if (examLock.locked && !inLockedExam) {
-    ElMessage.warning(examLock.message)
-    return { path: examLock.examId ? `${lockedExamPath}/problems` : lockedExamPath }
   }
 })
 

@@ -139,6 +139,7 @@ func (s Server) Router() *gin.Engine {
 	auth := api.Group("")
 	auth.Use(middleware.Auth(s.DB, s.Cfg.JWTSecret))
 	auth.GET("/me", s.me)
+	auth.GET("/me/active-exam", s.activeExam)
 	auth.GET("/profile", s.getProfile)
 	auth.PUT("/profile", s.updateProfile)
 	auth.POST("/profile/email-code", s.sendProfileEmailCode)
@@ -261,6 +262,31 @@ func (s Server) clearFailedLogin(email string) {
 func (s Server) me(c *gin.Context) {
 	user, _ := middleware.CurrentUser(c)
 	c.JSON(http.StatusOK, user)
+}
+
+func (s Server) activeExam(c *gin.Context) {
+	user, _ := middleware.CurrentUser(c)
+	if user.Role != models.RoleStudent {
+		c.JSON(http.StatusOK, gin.H{"active": false})
+		return
+	}
+	exam, ok := s.activeStartedExamAttemptForStudent(user.ID)
+	if !ok {
+		c.JSON(http.StatusOK, gin.H{"active": false})
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{
+		"active": true,
+		"exam": gin.H{
+			"id":          exam.ID,
+			"course_id":   exam.CourseID,
+			"class_id":    exam.ClassID,
+			"title":       exam.Title,
+			"description": exam.Description,
+			"starts_at":   exam.StartsAt,
+			"ends_at":     exam.EndsAt,
+		},
+	})
 }
 
 func (s Server) listUsers(c *gin.Context) {
@@ -509,9 +535,6 @@ func (s Server) leaveClass(c *gin.Context) {
 
 func (s Server) listProblems(c *gin.Context) {
 	user, _ := middleware.CurrentUser(c)
-	if s.blockedByActiveLockedExam(c, user, nil) {
-		return
-	}
 	var problems []models.Problem
 	q := s.DB.Model(&models.Problem{}).Where("problems.deleted_at IS NULL").Order("problems.id desc")
 	if classID, ok := queryUint(c, "class_id"); ok {
@@ -816,9 +839,6 @@ func parseProblemDisplayCode(value string) int {
 
 func (s Server) getProblem(c *gin.Context) {
 	user, _ := middleware.CurrentUser(c)
-	if s.blockedByActiveLockedExam(c, user, nil) {
-		return
-	}
 	id, ok := idParam(c, "id")
 	if !ok {
 		return
@@ -1540,9 +1560,6 @@ func (s Server) publishPreparedProblem(c *gin.Context) {
 
 func (s Server) listAssignments(c *gin.Context) {
 	user, _ := middleware.CurrentUser(c)
-	if s.blockedByActiveLockedExam(c, user, nil) {
-		return
-	}
 	var items []models.Assignment
 	q := s.DB.Preload("Problems").Where("assignments.deleted_at IS NULL").Order("id desc")
 	if classID, ok := queryUint(c, "class_id"); ok {
@@ -1656,9 +1673,6 @@ func (s Server) createAssignment(c *gin.Context) {
 
 func (s Server) getAssignment(c *gin.Context) {
 	user, _ := middleware.CurrentUser(c)
-	if s.blockedByActiveLockedExam(c, user, nil) {
-		return
-	}
 	id, ok := idParam(c, "id")
 	if !ok {
 		return
@@ -2157,9 +2171,6 @@ func (s Server) createSubmission(c *gin.Context) {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "assignment_id and exam_id cannot both be set"})
 		return
 	}
-	if s.blockedByActiveLockedExam(c, user, req.ExamID) {
-		return
-	}
 	if user.Role == models.RoleStudent {
 		if req.AssignmentID != nil {
 			if ok, msg := s.canStudentSubmitAssignment(user.ID, *req.AssignmentID, req.ProblemID); !ok {
@@ -2230,6 +2241,10 @@ func (s Server) listSubmissions(c *gin.Context) {
 	}
 	if examID := c.Query("exam_id"); examID != "" {
 		q = q.Where("exam_id = ?", examID)
+	} else if user.Role == models.RoleStudent {
+		if hiddenExamIDs := s.activeExamIDsForStudent(user.ID); len(hiddenExamIDs) > 0 {
+			q = q.Where("(exam_id IS NULL OR exam_id NOT IN ?)", hiddenExamIDs)
+		}
 	}
 	q.Find(&items)
 	c.JSON(http.StatusOK, s.submissionListViews(items))
@@ -2352,6 +2367,10 @@ func (s Server) submissionEvents(c *gin.Context) {
 
 func (s Server) leaderboard(c *gin.Context) {
 	user, _ := middleware.CurrentUser(c)
+	hiddenExamIDs := []uint{}
+	if user.Role == models.RoleStudent {
+		hiddenExamIDs = s.activeExamIDsForStudent(user.ID)
+	}
 	type group struct {
 		ClassID    uint             `json:"class_id"`
 		ClassName  string           `json:"class_name"`
@@ -2365,7 +2384,7 @@ func (s Server) leaderboard(c *gin.Context) {
 			c.JSON(http.StatusForbidden, gin.H{"error": "forbidden"})
 			return
 		}
-		rows := s.classLeaderboardRows(classID)
+		rows := s.classLeaderboardRows(classID, hiddenExamIDs)
 		c.JSON(http.StatusOK, rows)
 		return
 	}
@@ -2392,19 +2411,25 @@ func (s Server) leaderboard(c *gin.Context) {
 			CourseID:   info.CourseID,
 			CourseCode: info.CourseCode,
 			CourseName: info.CourseName,
-			Rows:       s.classLeaderboardRows(classID),
+			Rows:       s.classLeaderboardRows(classID, hiddenExamIDs),
 		})
 	}
 	c.JSON(http.StatusOK, groups)
 }
 
-func (s Server) classLeaderboardRows(classID uint) []leaderboardRow {
+func (s Server) classLeaderboardRows(classID uint, hiddenExamIDs []uint) []leaderboardRow {
 	var rows []leaderboardRow
+	submissionsJoin := "left join submissions on submissions.user_id = users.id and submissions.problem_id = class_problems.problem_id"
+	submissionsArgs := []any{}
+	if len(hiddenExamIDs) > 0 {
+		submissionsJoin += " and (submissions.exam_id IS NULL OR submissions.exam_id NOT IN ?)"
+		submissionsArgs = append(submissionsArgs, hiddenExamIDs)
+	}
 	s.DB.Table("class_memberships").
-		Select("users.id as user_id, users.name as name, count(distinct case when problem_progresses.status = ? then problem_progresses.problem_id end) as solved, coalesce(sum(case when problem_progresses.status = ? then problem_progresses.points else 0 end), 0) as score, max(problem_progresses.last_submitted) as last_submission", models.ProgressAccepted, models.ProgressAccepted).
+		Select("users.id as user_id, users.name as name, count(distinct case when submissions.status = ? then submissions.problem_id end) as solved, count(distinct case when submissions.status = ? then submissions.problem_id end) as score, max(submissions.created_at) as last_submission", models.StatusAccepted, models.StatusAccepted).
 		Joins("join users on users.id = class_memberships.user_id and users.role = ?", models.RoleStudent).
 		Joins("left join class_problems on class_problems.class_id = class_memberships.class_id and "+releasedClassProblemSQL(), time.Now()).
-		Joins("left join problem_progresses on problem_progresses.user_id = users.id and problem_progresses.problem_id = class_problems.problem_id").
+		Joins(submissionsJoin, submissionsArgs...).
 		Where("class_memberships.class_id = ? AND users.account_deleted = false", classID).
 		Group("users.id, users.name").
 		Order("score desc, solved desc, last_submission asc nulls last, users.id asc").
@@ -2581,9 +2606,6 @@ func (s Server) canReadProblemAsset(user models.User, problem models.Problem, as
 		}
 		return s.problemInVisibleClass(user, problem.ID)
 	}
-	if exam, ok := s.activeLockedExamForStudent(user.ID); ok {
-		return s.examContainsProblem(exam.ID, problem.ID)
-	}
 	return s.canStudentAccessProblemRelation(user.ID, problem.ID) || s.studentHasProblemInAccessibleWork(user.ID, problem.ID)
 }
 
@@ -2647,7 +2669,7 @@ func (s Server) examContainsProblem(examID uint, problemID uint) bool {
 	return count > 0
 }
 
-func (s Server) activeLockedExamForStudent(userID uint) (models.Exam, bool) {
+func (s Server) activeStartedExamAttemptForStudent(userID uint) (models.Exam, bool) {
 	var attempts []models.ExamAttempt
 	if err := s.DB.Where("user_id = ? AND finished_at IS NULL", userID).Order("updated_at desc, id desc").Limit(20).Find(&attempts).Error; err != nil {
 		return models.Exam{}, false
@@ -2669,23 +2691,18 @@ func (s Server) activeLockedExamForStudent(userID uint) (models.Exam, bool) {
 	return models.Exam{}, false
 }
 
-func (s Server) blockedByActiveLockedExam(c *gin.Context, user models.User, allowedExamID *uint) bool {
-	if user.Role != models.RoleStudent {
-		return false
-	}
-	exam, ok := s.activeLockedExamForStudent(user.ID)
-	if !ok {
-		return false
-	}
-	if allowedExamID != nil && *allowedExamID == exam.ID {
-		return false
-	}
-	c.JSON(http.StatusLocked, gin.H{
-		"error":   "active exam must be finished before leaving",
-		"exam_id": exam.ID,
-		"title":   exam.Title,
-	})
-	return true
+func (s Server) activeExamIDsForStudent(userID uint) []uint {
+	now := time.Now()
+	var ids []uint
+	s.DB.Table("exams").
+		Select("exams.id").
+		Joins("join class_memberships on class_memberships.class_id = exams.class_id").
+		Joins("left join exam_attempts on exam_attempts.exam_id = exams.id and exam_attempts.user_id = ?", userID).
+		Where("class_memberships.user_id = ? AND exams.deleted_at IS NULL", userID).
+		Where("(exams.starts_at IS NULL OR exams.starts_at <= ?) AND (exams.ends_at IS NULL OR exams.ends_at > ?)", now, now).
+		Where("exam_attempts.finished_at IS NULL").
+		Pluck("exams.id", &ids)
+	return ids
 }
 
 func (s Server) canStudentSubmitAssignment(userID uint, assignmentID uint, problemID uint) (bool, string) {

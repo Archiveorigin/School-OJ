@@ -275,12 +275,6 @@ async function leavePage() {
     await handleDeadlineReached()
     return
   }
-  if (examLocked.value) {
-    const stillLocked = await validateExamLock()
-    if (!stillLocked) return
-    ElMessage.warning(examLock.message)
-    return
-  }
   router.push('/exams')
 }
 
@@ -350,12 +344,6 @@ function defaultProblemLabel(index: number) {
   return label
 }
 
-function beforeUnload(event: BeforeUnloadEvent) {
-  if (!examLocked.value) return
-  event.preventDefault()
-  event.returnValue = ''
-}
-
 function scheduleDeadlineCheck() {
   clearDeadlineTimers()
   if (canManage.value || !detail.value?.exam?.ends_at || detail.value.closed || detail.value.finished_at) return
@@ -422,23 +410,6 @@ function isInvalidExamError(err: any) {
   return message.includes('forbidden') || message.includes('not available') || message.includes('not found')
 }
 
-async function validateExamLock() {
-  if (!detail.value?.exam?.id) return false
-  try {
-    const { data } = await client.get(`/exams/${detail.value.exam.id}`)
-    detail.value = data
-    if (!data.closed && !data.finished_at) {
-      scheduleDeadlineCheck()
-      return true
-    }
-    exitClosedExam()
-    return false
-  } catch (err: any) {
-    if (handleInvalidExamError(err)) return false
-    return true
-  }
-}
-
 function forceExitExam(message: string) {
   forceLeavingExam = true
   clearExamRuntimeState(currentExamID())
@@ -486,7 +457,7 @@ watch(
   examLocked,
   (locked) => {
     if (locked) {
-      examLock.lock(detail.value?.exam?.id)
+      examLock.lock(detail.value?.exam?.id, undefined, detail.value?.exam?.title)
       return
     }
     if (detail.value?.exam?.id === examLock.examId) examLock.unlock()
@@ -497,22 +468,17 @@ watch(() => route.params.id, loadDetail)
 
 onBeforeRouteLeave(() => {
   if (forceLeavingExam) return true
-  if (examLocked.value) {
-    ElMessage.warning(examLock.message)
-    return false
-  }
-  if (detail.value?.exam?.id === examLock.examId) examLock.unlock()
+  if (!examLocked.value && detail.value?.exam?.id === examLock.examId) examLock.unlock()
+  return true
 })
 
 onBeforeUnmount(() => {
   clearDeadlineTimers()
   closeLiveStreams()
-  window.removeEventListener('beforeunload', beforeUnload)
 })
 
 onMounted(async () => {
   examLock.hydrate()
-  window.addEventListener('beforeunload', beforeUnload)
   await loadDetail()
 })
 </script>
