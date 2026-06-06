@@ -37,6 +37,7 @@ services:
       MINIO_ROOT_PASSWORD: "${MINIO_ROOT_PASSWORD:-minioadmin}"
     volumes:
       - minio-data:/data
+
   api:
     restart: unless-stopped
     build:
