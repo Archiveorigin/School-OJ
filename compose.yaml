@@ -8,6 +8,8 @@ services:
       POSTGRES_DB: "${POSTGRES_DB:-oj}"
       POSTGRES_USER: "${POSTGRES_USER:-oj}"
       POSTGRES_PASSWORD: "${POSTGRES_PASSWORD:-ojpass}"
+    ports:
+      - "0.0.0.0:5432:5432"
     volumes:
       - postgres-data:/var/lib/postgresql/data
     healthcheck:
