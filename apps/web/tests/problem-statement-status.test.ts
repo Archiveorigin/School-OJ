@@ -11,6 +11,14 @@ const problem = {
   tags: ''
 }
 
+const globalStubs = {
+  MarkdownRenderer: true,
+  ElButton: true,
+  ElTag: {
+    template: '<span class="el-tag-stub"><slot /></span>'
+  }
+}
+
 describe('ProblemStatementView status icon', () => {
   it('renders accepted status as inline svg', () => {
     const wrapper = mount(ProblemStatementView, {
@@ -19,17 +27,14 @@ describe('ProblemStatementView status icon', () => {
         statusImage: 'ac'
       },
       global: {
-        stubs: {
-          MarkdownRenderer: true,
-          ElButton: true,
-          ElTag: true
-        }
+        stubs: globalStubs
       }
     })
 
     expect(wrapper.find('img').exists()).toBe(false)
     expect(wrapper.find('svg.status-icon').exists()).toBe(true)
     expect(wrapper.find('[role="img"]').attributes('aria-label')).toBe('通过')
+    expect(wrapper.text()).toContain('Accepted')
     expect(wrapper.html()).toContain('#22c55e')
   })
 
@@ -40,17 +45,28 @@ describe('ProblemStatementView status icon', () => {
         statusImage: 'uac'
       },
       global: {
-        stubs: {
-          MarkdownRenderer: true,
-          ElButton: true,
-          ElTag: true
-        }
+        stubs: globalStubs
       }
     })
 
     expect(wrapper.find('img').exists()).toBe(false)
     expect(wrapper.find('svg.status-icon').exists()).toBe(true)
     expect(wrapper.find('[role="img"]').attributes('aria-label')).toBe('未通过')
+    expect(wrapper.text()).toContain('Unaccepted')
     expect(wrapper.html()).toContain('#ef4444')
+  })
+
+  it('keeps the original unsubmitted fallback without an svg', () => {
+    const wrapper = mount(ProblemStatementView, {
+      props: {
+        problem
+      },
+      global: {
+        stubs: globalStubs
+      }
+    })
+
+    expect(wrapper.find('svg.status-icon').exists()).toBe(false)
+    expect(wrapper.text()).toContain('未提交')
   })
 })

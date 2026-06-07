@@ -22,7 +22,7 @@
         >
           结束考试
         </el-button>
-        <el-button @click="leavePage">返回列表</el-button>
+        <el-button v-if="canManage" @click="leavePage">返回列表</el-button>
       </div>
     </div>
 

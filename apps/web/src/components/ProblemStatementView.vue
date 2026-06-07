@@ -45,41 +45,47 @@
             v-if="statusImage === 'ac'"
             class="status-icon"
             xmlns="http://www.w3.org/2000/svg"
-            viewBox="0 0 24 24"
-            width="64"
-            height="64"
+            viewBox="0 0 156 48"
+            width="156"
+            height="48"
             fill="none"
             aria-hidden="true"
           >
-            <circle cx="12" cy="12" r="10" fill="#22c55e" opacity="0.2" />
-            <circle cx="12" cy="12" r="8" fill="#22c55e" />
-            <path
-              d="M9 12.5L11 14.5L15 9.5"
-              stroke="white"
-              stroke-width="2"
-              stroke-linecap="round"
-              stroke-linejoin="round"
-            />
+            <rect x="0" y="0" width="156" height="48" rx="14" fill="#22c55e" />
+            <text
+              x="78"
+              y="30"
+              fill="white"
+              text-anchor="middle"
+              font-size="17"
+              font-weight="800"
+              font-family="Inter, Arial, sans-serif"
+            >
+              Accepted
+            </text>
           </svg>
           <svg
             v-else-if="statusImage === 'uac'"
             class="status-icon"
             xmlns="http://www.w3.org/2000/svg"
-            viewBox="0 0 24 24"
-            width="64"
-            height="64"
+            viewBox="0 0 156 48"
+            width="156"
+            height="48"
             fill="none"
             aria-hidden="true"
           >
-            <circle cx="12" cy="12" r="10" fill="#ef4444" opacity="0.2" />
-            <circle cx="12" cy="12" r="8" fill="#ef4444" />
-            <path
-              d="M10 10L14 14M14 10L10 14"
-              stroke="white"
-              stroke-width="2"
-              stroke-linecap="round"
-              stroke-linejoin="round"
-            />
+            <rect x="0" y="0" width="156" height="48" rx="14" fill="#ef4444" />
+            <text
+              x="78"
+              y="30"
+              fill="white"
+              text-anchor="middle"
+              font-size="17"
+              font-weight="800"
+              font-family="Inter, Arial, sans-serif"
+            >
+              Unaccepted
+            </text>
           </svg>
         </div>
         <el-tag v-else :type="statusType || 'info'" effect="light">{{ statusText || '未提交' }}</el-tag>
@@ -249,12 +255,12 @@ async function copyText(value: string) {
 .status-image-wrap {
   display: flex;
   align-items: center;
-  min-height: 44px;
+  min-height: 48px;
 }
 
 .status-icon {
-  width: 64px;
-  height: 64px;
+  width: min(156px, 100%);
+  height: auto;
   flex: 0 0 auto;
   transition: transform 0.2s ease-in-out;
 }
