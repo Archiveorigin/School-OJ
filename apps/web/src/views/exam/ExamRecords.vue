@@ -19,7 +19,7 @@
         <template #default="{ row }">{{ row.error_point || '-' }}</template>
       </el-table-column>
       <el-table-column label="时间" min-width="160">
-        <template #default="{ row }">{{ formatRecordTime(row.created_at) }}</template>
+        <template #default="{ row }">{{ formatDateTime(row.created_at) }}</template>
       </el-table-column>
     </el-table>
   </section>
@@ -28,6 +28,7 @@
 <script setup lang="ts">
 import type { Problem, Submission } from '../../api/client'
 import StatusBadge from '../../components/StatusBadge.vue'
+import { formatDateTime } from '../../features/time'
 
 const props = defineProps<{
   detail: any
@@ -39,7 +40,7 @@ const emit = defineEmits<{
 }>()
 
 function problemTitle(problemID: number) {
-  return props.detail?.problems?.find((entry: { problem: Problem }) => entry.problem.id === problemID)?.problem.title || String(problemID)
+  return props.detail?.problems?.find((entry: { problem: Problem }) => entry.problem.id === problemID)?.problem.title || '-'
 }
 
 function problemLabel(problemID: number) {
@@ -47,14 +48,6 @@ function problemLabel(problemID: number) {
   const entry = props.detail?.problems?.[index] as { problem: Problem; label?: string } | undefined
   if (entry?.label?.trim()) return entry.label.trim()
   return index >= 0 ? defaultProblemLabel(index) : '-'
-}
-
-function formatRecordTime(value?: string) {
-  if (!value) return '-'
-  const date = new Date(value)
-  if (Number.isNaN(date.getTime())) return value
-  const pad = (item: number) => String(item).padStart(2, '0')
-  return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())} ${pad(date.getHours())}:${pad(date.getMinutes())}:${pad(date.getSeconds())}`
 }
 
 function defaultProblemLabel(index: number) {

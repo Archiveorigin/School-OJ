@@ -11,6 +11,7 @@ import (
 	"mime/multipart"
 	"net/http"
 	"path/filepath"
+	"sort"
 	"strconv"
 	"strings"
 	"time"
@@ -45,6 +46,42 @@ type leaderboardRow struct {
 	Score          int        `json:"score"`
 	LastSubmission *time.Time `json:"last_submission"`
 	Rank           int        `json:"rank"`
+}
+
+type courseClassFields struct {
+	CourseCode string `json:"course_code"`
+	CourseName string `json:"course_name"`
+	ClassName  string `json:"class_name"`
+	JoinCode   string `json:"join_code,omitempty"`
+}
+
+type classListView struct {
+	models.Class
+	CourseCode string `json:"course_code"`
+	CourseName string `json:"course_name"`
+}
+
+type assignmentListView struct {
+	models.Assignment
+	CourseCode string `json:"course_code"`
+	CourseName string `json:"course_name"`
+	ClassName  string `json:"class_name"`
+	WorkStatus string `json:"work_status,omitempty"`
+	TotalScore int    `json:"total_score,omitempty"`
+	MaxScore   int    `json:"max_score,omitempty"`
+	ScoreReady bool   `json:"score_ready,omitempty"`
+}
+
+type examListView struct {
+	models.Exam
+	CourseCode string     `json:"course_code"`
+	CourseName string     `json:"course_name"`
+	ClassName  string     `json:"class_name"`
+	WorkStatus string     `json:"work_status,omitempty"`
+	TotalScore int        `json:"total_score,omitempty"`
+	MaxScore   int        `json:"max_score,omitempty"`
+	ScoreReady bool       `json:"score_ready,omitempty"`
+	FinishedAt *time.Time `json:"finished_at,omitempty"`
 }
 
 type preparedProblemInput struct {
@@ -102,7 +139,65 @@ type workSummary struct {
 
 type submissionListView struct {
 	models.Submission
-	ErrorPoint string `json:"error_point,omitempty"`
+	UserName        string `json:"user_name,omitempty"`
+	StudentNo       string `json:"student_no,omitempty"`
+	ProblemCode     string `json:"problem_code,omitempty"`
+	ProblemTitle    string `json:"problem_title,omitempty"`
+	AssignmentTitle string `json:"assignment_title,omitempty"`
+	ExamTitle       string `json:"exam_title,omitempty"`
+	ErrorPoint      string `json:"error_point,omitempty"`
+}
+
+type plagiarismJobView struct {
+	models.PlagiarismJob
+	CourseCode      string `json:"course_code,omitempty"`
+	CourseName      string `json:"course_name,omitempty"`
+	AssignmentTitle string `json:"assignment_title,omitempty"`
+	ExamTitle       string `json:"exam_title,omitempty"`
+	CreatedByName   string `json:"created_by_name,omitempty"`
+}
+
+type auditLogView struct {
+	models.AuditLog
+	ActorName     string `json:"actor_name,omitempty"`
+	ResourceLabel string `json:"resource_label,omitempty"`
+}
+
+type examRankingProblem struct {
+	ProblemID   uint   `json:"problem_id"`
+	Label       string `json:"label"`
+	DisplayCode string `json:"display_code"`
+	Title       string `json:"title"`
+	Score       int    `json:"score"`
+}
+
+type examRankingCell struct {
+	ProblemID   uint                    `json:"problem_id"`
+	Label       string                  `json:"label"`
+	BestScore   int                     `json:"best_score"`
+	MaxScore    int                     `json:"max_score"`
+	Status      models.SubmissionStatus `json:"status,omitempty"`
+	ScoreReady  bool                    `json:"score_ready"`
+	Pending     bool                    `json:"pending"`
+	SubmittedAt *time.Time              `json:"submitted_at,omitempty"`
+}
+
+type examRankingRow struct {
+	Rank            int               `json:"rank"`
+	UserID          uint              `json:"user_id"`
+	Name            string            `json:"name"`
+	StudentNo       string            `json:"student_no"`
+	TotalScore      int               `json:"total_score"`
+	MaxScore        int               `json:"max_score"`
+	Solved          int               `json:"solved"`
+	Attempted       int               `json:"attempted"`
+	SubmissionCount int               `json:"submission_count"`
+	PendingCount    int               `json:"pending_count"`
+	ScoreReady      bool              `json:"score_ready"`
+	WorkStatus      string            `json:"work_status"`
+	LastSubmission  *time.Time        `json:"last_submission"`
+	FinishedAt      *time.Time        `json:"finished_at"`
+	Problems        []examRankingCell `json:"problems"`
 }
 
 func (req preparedProblemInput) draft() services.ProblemPackageDraft {
@@ -152,6 +247,7 @@ func (s Server) Router() *gin.Engine {
 	auth.POST("/courses/:id/members", middleware.RequireRoles(models.RoleAdmin, models.RoleTeacher), s.addCourseMember)
 	auth.GET("/classes", s.listClasses)
 	auth.GET("/me/classes", s.myClasses)
+	auth.POST("/classes/join", middleware.RequireRoles(models.RoleStudent), s.joinClassByCode)
 	auth.POST("/classes/:id/join", middleware.RequireRoles(models.RoleStudent), s.joinClass)
 	auth.POST("/classes/:id/leave", middleware.RequireRoles(models.RoleStudent), s.leaveClass)
 	auth.GET("/problems", s.listProblems)
@@ -181,6 +277,7 @@ func (s Server) Router() *gin.Engine {
 	auth.POST("/exams", middleware.RequireRoles(models.RoleAdmin, models.RoleTeacher), s.createExam)
 	auth.GET("/exams/:id/report/export", middleware.RequireRoles(models.RoleAdmin, models.RoleTeacher), s.exportExamReport)
 	auth.GET("/exams/:id/report", middleware.RequireRoles(models.RoleAdmin, models.RoleTeacher), s.examReport)
+	auth.GET("/exams/:id/ranking", middleware.RequireRoles(models.RoleAdmin), s.examRanking)
 	auth.DELETE("/exams/:id", middleware.RequireRoles(models.RoleAdmin, models.RoleTeacher), s.deleteExam)
 	auth.POST("/exams/:id/submissions/:submission_id/judge", middleware.RequireRoles(models.RoleAdmin, models.RoleTeacher), s.judgeManualExamSubmission)
 	auth.PUT("/exams/:id/submissions/:submission_id/grade", middleware.RequireRoles(models.RoleAdmin, models.RoleTeacher), s.gradeManualExamSubmission)
@@ -380,6 +477,11 @@ func (s Server) createClass(c *gin.Context) {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 		return
 	}
+	class.JoinCode = models.FormatClassJoinCode(class.ID)
+	if err := s.DB.Model(&models.Class{}).Where("id = ?", class.ID).Update("join_code", class.JoinCode).Error; err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
 	_ = s.DB.Where("class_id = ? AND user_id = ?", class.ID, user.ID).FirstOrCreate(&models.ClassMembership{ClassID: class.ID, UserID: user.ID}).Error
 	services.Audit(c, s.DB, "class.create", "class", class.ID, datatypes.JSONMap{"course_id": courseID})
 	c.JSON(http.StatusCreated, class)
@@ -438,7 +540,7 @@ func (s Server) listClasses(c *gin.Context) {
 		q = q.Where("id IN (?)", s.DB.Model(&models.ClassMembership{}).Select("class_id").Where("user_id = ?", user.ID))
 	}
 	q.Find(&classes)
-	c.JSON(http.StatusOK, classes)
+	c.JSON(http.StatusOK, s.classListViews(classes))
 }
 
 func (s Server) myClasses(c *gin.Context) {
@@ -447,6 +549,7 @@ func (s Server) myClasses(c *gin.Context) {
 		ID         uint   `json:"id"`
 		ClassID    uint   `json:"class_id"`
 		ClassName  string `json:"class_name"`
+		JoinCode   string `json:"join_code"`
 		CourseID   uint   `json:"course_id"`
 		CourseCode string `json:"course_code"`
 		CourseName string `json:"course_name"`
@@ -454,7 +557,7 @@ func (s Server) myClasses(c *gin.Context) {
 	}
 	rows := []classView{}
 	q := s.DB.Table("classes").
-		Select("classes.id as id, classes.id as class_id, classes.name as class_name, courses.id as course_id, courses.code as course_code, courses.name as course_name, courses.term as term").
+		Select("classes.id as id, classes.id as class_id, classes.name as class_name, classes.join_code as join_code, courses.id as course_id, courses.code as course_code, courses.name as course_name, courses.term as term").
 		Joins("join courses on courses.id = classes.course_id").
 		Order("courses.id desc, classes.id desc")
 	switch user.Role {
@@ -468,6 +571,125 @@ func (s Server) myClasses(c *gin.Context) {
 	c.JSON(http.StatusOK, rows)
 }
 
+func (s Server) classListViews(classes []models.Class) []classListView {
+	courseIDs := make([]uint, 0, len(classes))
+	for _, class := range classes {
+		courseIDs = append(courseIDs, class.CourseID)
+	}
+	courses := s.courseMap(courseIDs)
+	views := make([]classListView, 0, len(classes))
+	for _, class := range classes {
+		view := classListView{Class: class}
+		if course, ok := courses[class.CourseID]; ok {
+			view.CourseCode = course.Code
+			view.CourseName = course.Name
+		}
+		views = append(views, view)
+	}
+	return views
+}
+
+func (s Server) assignmentListViews(items []models.Assignment) []assignmentListView {
+	courseIDs := make([]uint, 0, len(items))
+	classIDs := make([]uint, 0, len(items))
+	for _, item := range items {
+		courseIDs = append(courseIDs, item.CourseID)
+		if item.ClassID != nil {
+			classIDs = append(classIDs, *item.ClassID)
+		}
+	}
+	courses := s.courseMap(courseIDs)
+	classes := s.classMap(classIDs)
+	views := make([]assignmentListView, 0, len(items))
+	for _, item := range items {
+		view := assignmentListView{Assignment: item}
+		if course, ok := courses[item.CourseID]; ok {
+			view.CourseCode = course.Code
+			view.CourseName = course.Name
+		}
+		if item.ClassID != nil {
+			if class, ok := classes[*item.ClassID]; ok {
+				view.ClassName = class.Name
+			}
+		}
+		views = append(views, view)
+	}
+	return views
+}
+
+func (s Server) examListViews(items []models.Exam) []examListView {
+	courseIDs := make([]uint, 0, len(items))
+	classIDs := make([]uint, 0, len(items))
+	for _, item := range items {
+		courseIDs = append(courseIDs, item.CourseID)
+		if item.ClassID != nil {
+			classIDs = append(classIDs, *item.ClassID)
+		}
+	}
+	courses := s.courseMap(courseIDs)
+	classes := s.classMap(classIDs)
+	views := make([]examListView, 0, len(items))
+	for _, item := range items {
+		view := examListView{Exam: item}
+		if course, ok := courses[item.CourseID]; ok {
+			view.CourseCode = course.Code
+			view.CourseName = course.Name
+		}
+		if item.ClassID != nil {
+			if class, ok := classes[*item.ClassID]; ok {
+				view.ClassName = class.Name
+			}
+		}
+		views = append(views, view)
+	}
+	return views
+}
+
+func (s Server) courseMap(ids []uint) map[uint]models.Course {
+	out := map[uint]models.Course{}
+	ids = dedupeUint(ids)
+	if len(ids) == 0 {
+		return out
+	}
+	var courses []models.Course
+	s.DB.Where("id IN ?", ids).Find(&courses)
+	for _, course := range courses {
+		out[course.ID] = course
+	}
+	return out
+}
+
+func (s Server) classMap(ids []uint) map[uint]models.Class {
+	out := map[uint]models.Class{}
+	ids = dedupeUint(ids)
+	if len(ids) == 0 {
+		return out
+	}
+	var classes []models.Class
+	s.DB.Where("id IN ?", ids).Find(&classes)
+	for _, class := range classes {
+		out[class.ID] = class
+	}
+	return out
+}
+
+func (s Server) joinClassByCode(c *gin.Context) {
+	user, _ := middleware.CurrentUser(c)
+	var req struct {
+		JoinCode string `json:"join_code" binding:"required"`
+	}
+	if !bind(c, &req) {
+		return
+	}
+	code := strings.ToUpper(strings.TrimSpace(req.JoinCode))
+	var class models.Class
+	if err := s.DB.Where("upper(join_code) = ?", code).First(&class).Error; err != nil {
+		c.JSON(http.StatusNotFound, gin.H{"error": "class not found"})
+		return
+	}
+	s.joinStudentToClass(c, user, class)
+}
+
 func (s Server) joinClass(c *gin.Context) {
 	user, _ := middleware.CurrentUser(c)
 	classID, ok := idParam(c, "id")
@@ -479,13 +701,17 @@ func (s Server) joinClass(c *gin.Context) {
 		c.JSON(http.StatusNotFound, gin.H{"error": "class not found"})
 		return
 	}
-	if err := s.DB.Where("class_id = ? AND user_id = ?", classID, user.ID).FirstOrCreate(&models.ClassMembership{ClassID: classID, UserID: user.ID}).Error; err != nil {
+	s.joinStudentToClass(c, user, class)
+}
+
+func (s Server) joinStudentToClass(c *gin.Context, user models.User, class models.Class) {
+	if err := s.DB.Where("class_id = ? AND user_id = ?", class.ID, user.ID).FirstOrCreate(&models.ClassMembership{ClassID: class.ID, UserID: user.ID}).Error; err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 		return
 	}
 	_ = s.DB.Where("course_id = ? AND user_id = ?", class.CourseID, user.ID).FirstOrCreate(&models.CourseMembership{CourseID: class.CourseID, UserID: user.ID, Role: models.RoleStudent}).Error
-	services.Audit(c, s.DB, "class.join", "class", classID, nil)
-	c.JSON(http.StatusCreated, gin.H{"joined": true, "class_id": classID})
+	services.Audit(c, s.DB, "class.join", "class", class.ID, nil)
+	c.JSON(http.StatusCreated, gin.H{"joined": true, "class_id": class.ID, "join_code": class.JoinCode})
 }
 
 func (s Server) leaveClass(c *gin.Context) {
@@ -1585,27 +1811,23 @@ func (s Server) listAssignments(c *gin.Context) {
 		}
 	}
 	q.Find(&items)
+	views := s.assignmentListViews(items)
 	if user.Role != models.RoleStudent {
-		c.JSON(http.StatusOK, items)
+		c.JSON(http.StatusOK, views)
 		return
 	}
-	type assignmentListView struct {
-		models.Assignment
-		WorkStatus string `json:"work_status"`
-		TotalScore int    `json:"total_score"`
-		MaxScore   int    `json:"max_score"`
-		ScoreReady bool   `json:"score_ready"`
-	}
-	views := make([]assignmentListView, 0, len(items))
 	for _, item := range items {
 		summary := s.assignmentSummary(item.ID, user.ID, false)
-		views = append(views, assignmentListView{
-			Assignment: item,
-			WorkStatus: summary.WorkStatus,
-			TotalScore: summary.TotalScore,
-			MaxScore:   summary.MaxScore,
-			ScoreReady: summary.ScoreReady,
-		})
+		for i := range views {
+			if views[i].ID != item.ID {
+				continue
+			}
+			views[i].WorkStatus = summary.WorkStatus
+			views[i].TotalScore = summary.TotalScore
+			views[i].MaxScore = summary.MaxScore
+			views[i].ScoreReady = summary.ScoreReady
+			break
+		}
 	}
 	c.JSON(http.StatusOK, views)
 }
@@ -1795,30 +2017,25 @@ func (s Server) listExams(c *gin.Context) {
 		}
 	}
 	q.Find(&items)
+	views := s.examListViews(items)
 	if user.Role != models.RoleStudent {
-		c.JSON(http.StatusOK, items)
+		c.JSON(http.StatusOK, views)
 		return
 	}
-	type examListView struct {
-		models.Exam
-		WorkStatus string     `json:"work_status"`
-		TotalScore int        `json:"total_score"`
-		MaxScore   int        `json:"max_score"`
-		ScoreReady bool       `json:"score_ready"`
-		FinishedAt *time.Time `json:"finished_at"`
-	}
 	finished := s.examFinishedAtMap(user.ID, modelIDs(items))
-	views := make([]examListView, 0, len(items))
 	for _, item := range items {
 		summary := s.examSummary(item.ID, user.ID, false)
-		views = append(views, examListView{
-			Exam:       item,
-			WorkStatus: summary.WorkStatus,
-			TotalScore: summary.TotalScore,
-			MaxScore:   summary.MaxScore,
-			ScoreReady: summary.ScoreReady,
-			FinishedAt: finished[item.ID],
-		})
+		for i := range views {
+			if views[i].ID != item.ID {
+				continue
+			}
+			views[i].WorkStatus = summary.WorkStatus
+			views[i].TotalScore = summary.TotalScore
+			views[i].MaxScore = summary.MaxScore
+			views[i].ScoreReady = summary.ScoreReady
+			views[i].FinishedAt = finished[item.ID]
+			break
+		}
 	}
 	c.JSON(http.StatusOK, views)
 }
@@ -2008,6 +2225,206 @@ func (s Server) examReport(c *gin.Context) {
 		rows = append(rows, gin.H{"user": student, "work_status": summary.WorkStatus, "total_score": summary.TotalScore, "max_score": summary.MaxScore, "score_ready": summary.ScoreReady, "problem_scores": summary.Problems})
 	}
 	c.JSON(http.StatusOK, gin.H{"exam": item, "manual_review": examManualReview(item), "problems": examProblemViews(item), "rows": rows})
+}
+
+func (s Server) examRanking(c *gin.Context) {
+	id, ok := idParam(c, "id")
+	if !ok {
+		return
+	}
+	var item models.Exam
+	if err := s.DB.Preload("Problems", func(db *gorm.DB) *gorm.DB { return db.Order("exam_problems.sort_order asc") }).
+		Preload("Problems.Problem").
+		Where("exams.deleted_at IS NULL").
+		First(&item, id).Error; err != nil {
+		c.JSON(http.StatusNotFound, gin.H{"error": "exam not found"})
+		return
+	}
+	examViews := s.examListViews([]models.Exam{item})
+	examView := examListView{Exam: item}
+	if len(examViews) > 0 {
+		examView = examViews[0]
+	}
+	problems := make([]examRankingProblem, 0, len(item.Problems))
+	maxScore := 0
+	for index, problem := range item.Problems {
+		label := strings.TrimSpace(problem.Label)
+		if label == "" {
+			label = defaultProblemLabel(index)
+		}
+		problems = append(problems, examRankingProblem{
+			ProblemID:   problem.ProblemID,
+			Label:       label,
+			DisplayCode: problem.Problem.DisplayCode,
+			Title:       problem.Problem.Title,
+			Score:       problem.Score,
+		})
+		maxScore += problem.Score
+	}
+	now := time.Now()
+	status := "进行中"
+	if item.StartsAt != nil && now.Before(*item.StartsAt) {
+		status = "未开始"
+	}
+	if item.EndsAt != nil && now.After(*item.EndsAt) {
+		status = "已结束"
+	}
+	if item.ClassID == nil {
+		c.JSON(http.StatusOK, gin.H{
+			"exam": gin.H{
+				"id":          item.ID,
+				"title":       item.Title,
+				"description": item.Description,
+				"starts_at":   item.StartsAt,
+				"ends_at":     item.EndsAt,
+				"course_code": examView.CourseCode,
+				"course_name": examView.CourseName,
+				"class_name":  examView.ClassName,
+				"status":      status,
+			},
+			"has_class":     false,
+			"manual_review": examManualReview(item),
+			"problems":      problems,
+			"rows":          []examRankingRow{},
+			"stats":         gin.H{"total_students": 0, "max_score": maxScore, "updated_at": now},
+			"now":           now,
+		})
+		return
+	}
+	rows := make([]examRankingRow, 0)
+	pendingRows := 0
+	finishedRows := 0
+	for _, student := range s.classStudents(item.ClassID) {
+		summary := s.examSummary(item.ID, student.ID, true)
+		row := examRankingRow{
+			UserID:     student.ID,
+			Name:       student.Name,
+			StudentNo:  student.StudentNo,
+			TotalScore: summary.TotalScore,
+			MaxScore:   summary.MaxScore,
+			ScoreReady: summary.ScoreReady,
+			WorkStatus: summary.WorkStatus,
+			FinishedAt: s.examFinishedAt(item.ID, student.ID),
+			Problems:   make([]examRankingCell, 0, len(summary.Problems)),
+		}
+		row.SubmissionCount, row.LastSubmission = s.examSubmissionStats(item.ID, student.ID)
+		if row.FinishedAt != nil {
+			finishedRows++
+		}
+		for _, problemScore := range summary.Problems {
+			if problemScore.SubmissionID != nil {
+				row.Attempted++
+			}
+			if problemScore.ScoreReady && problemScore.Score > 0 && problemScore.BestScore >= problemScore.Score {
+				row.Solved++
+			}
+			pending := problemScore.PendingReview || (problemScore.SubmissionID != nil && !problemScore.ScoreReady)
+			if pending {
+				row.PendingCount++
+			}
+			row.Problems = append(row.Problems, examRankingCell{
+				ProblemID:   problemScore.Problem.ID,
+				Label:       problemScore.Label,
+				BestScore:   problemScore.BestScore,
+				MaxScore:    problemScore.Score,
+				Status:      problemScore.SubmissionStatus,
+				ScoreReady:  problemScore.ScoreReady,
+				Pending:     pending,
+				SubmittedAt: problemScore.SubmittedAt,
+			})
+		}
+		if row.PendingCount > 0 {
+			pendingRows++
+		}
+		rows = append(rows, row)
+	}
+	sortExamRankingRows(rows)
+	for i := range rows {
+		rows[i].Rank = i + 1
+	}
+	c.JSON(http.StatusOK, gin.H{
+		"exam": gin.H{
+			"id":          item.ID,
+			"title":       item.Title,
+			"description": item.Description,
+			"starts_at":   item.StartsAt,
+			"ends_at":     item.EndsAt,
+			"course_code": examView.CourseCode,
+			"course_name": examView.CourseName,
+			"class_name":  examView.ClassName,
+			"status":      status,
+		},
+		"has_class":     true,
+		"manual_review": examManualReview(item),
+		"problems":      problems,
+		"rows":          rows,
+		"stats": gin.H{
+			"total_students": len(rows),
+			"finished":       finishedRows,
+			"pending":        pendingRows,
+			"max_score":      maxScore,
+			"updated_at":     now,
+		},
+		"now": now,
+	})
+}
+
+func (s Server) examSubmissionStats(examID uint, userID uint) (int, *time.Time) {
+	var count int64
+	s.DB.Model(&models.Submission{}).Where("exam_id = ? AND user_id = ?", examID, userID).Count(&count)
+	var row struct {
+		LastSubmission *time.Time
+	}
+	s.DB.Model(&models.Submission{}).
+		Select("max(created_at) as last_submission").
+		Where("exam_id = ? AND user_id = ?", examID, userID).
+		Scan(&row)
+	return int(count), row.LastSubmission
+}
+
+func sortExamRankingRows(rows []examRankingRow) {
+	sort.SliceStable(rows, func(i, j int) bool {
+		left := rows[i]
+		right := rows[j]
+		if left.TotalScore != right.TotalScore {
+			return left.TotalScore > right.TotalScore
+		}
+		if left.Solved != right.Solved {
+			return left.Solved > right.Solved
+		}
+		if cmp := compareTimePtr(left.LastSubmission, right.LastSubmission); cmp != 0 {
+			return cmp < 0
+		}
+		if cmp := compareTimePtr(left.FinishedAt, right.FinishedAt); cmp != 0 {
+			return cmp < 0
+		}
+		if left.StudentNo != right.StudentNo {
+			return left.StudentNo < right.StudentNo
+		}
+		if left.Name != right.Name {
+			return left.Name < right.Name
+		}
+		return left.UserID < right.UserID
+	})
+}
+
+func compareTimePtr(left *time.Time, right *time.Time) int {
+	if left == nil && right == nil {
+		return 0
+	}
+	if left == nil {
+		return 1
+	}
+	if right == nil {
+		return -1
+	}
+	if left.Before(*right) {
+		return -1
+	}
+	if left.After(*right) {
+		return 1
+	}
+	return 0
 }
 
 func (s Server) exportExamReport(c *gin.Context) {
@@ -2277,6 +2694,75 @@ func (s Server) submissionListViews(items []models.Submission) []submissionListV
 		}
 		views = append(views, view)
 	}
+	return s.enrichSubmissionViews(views)
+}
+
+func (s Server) enrichSubmissionViews(views []submissionListView) []submissionListView {
+	if len(views) == 0 {
+		return views
+	}
+	userIDs := make([]uint, 0, len(views))
+	problemIDs := make([]uint, 0, len(views))
+	assignmentIDs := []uint{}
+	examIDs := []uint{}
+	for _, view := range views {
+		userIDs = append(userIDs, view.UserID)
+		problemIDs = append(problemIDs, view.ProblemID)
+		if view.AssignmentID != nil {
+			assignmentIDs = append(assignmentIDs, *view.AssignmentID)
+		}
+		if view.ExamID != nil {
+			examIDs = append(examIDs, *view.ExamID)
+		}
+	}
+	users := map[uint]models.User{}
+	var userRows []models.User
+	s.DB.Where("id IN ?", dedupeUint(userIDs)).Find(&userRows)
+	for _, user := range userRows {
+		users[user.ID] = user
+	}
+	problems := map[uint]models.Problem{}
+	var problemRows []models.Problem
+	s.DB.Where("id IN ?", dedupeUint(problemIDs)).Find(&problemRows)
+	for _, problem := range problemRows {
+		problems[problem.ID] = problem
+	}
+	assignments := map[uint]models.Assignment{}
+	if assignmentIDs = dedupeUint(assignmentIDs); len(assignmentIDs) > 0 {
+		var rows []models.Assignment
+		s.DB.Where("id IN ?", assignmentIDs).Find(&rows)
+		for _, item := range rows {
+			assignments[item.ID] = item
+		}
+	}
+	exams := map[uint]models.Exam{}
+	if examIDs = dedupeUint(examIDs); len(examIDs) > 0 {
+		var rows []models.Exam
+		s.DB.Where("id IN ?", examIDs).Find(&rows)
+		for _, item := range rows {
+			exams[item.ID] = item
+		}
+	}
+	for i := range views {
+		if user, ok := users[views[i].UserID]; ok {
+			views[i].UserName = user.Name
+			views[i].StudentNo = user.StudentNo
+		}
+		if problem, ok := problems[views[i].ProblemID]; ok {
+			views[i].ProblemCode = problem.DisplayCode
+			views[i].ProblemTitle = problem.Title
+		}
+		if views[i].AssignmentID != nil {
+			if assignment, ok := assignments[*views[i].AssignmentID]; ok {
+				views[i].AssignmentTitle = assignment.Title
+			}
+		}
+		if views[i].ExamID != nil {
+			if exam, ok := exams[*views[i].ExamID]; ok {
+				views[i].ExamTitle = exam.Title
+			}
+		}
+	}
 	return views
 }
 
@@ -2322,7 +2808,8 @@ func (s Server) getSubmission(c *gin.Context) {
 	if user.Role != models.RoleStudent {
 		s.DB.Where("submission_id = ?", sub.ID).Order("id asc").Find(&results)
 	}
-	c.JSON(http.StatusOK, gin.H{"submission": sub, "results": results})
+	submission := s.enrichSubmissionViews([]submissionListView{{Submission: sub}})
+	c.JSON(http.StatusOK, gin.H{"submission": submission[0], "results": results})
 }
 
 func (s Server) submissionEvents(c *gin.Context) {
@@ -2468,13 +2955,134 @@ func (s Server) createPlagiarismJob(c *gin.Context) {
 func (s Server) listPlagiarismJobs(c *gin.Context) {
 	var jobs []models.PlagiarismJob
 	s.DB.Order("id desc").Limit(100).Find(&jobs)
-	c.JSON(http.StatusOK, jobs)
+	c.JSON(http.StatusOK, s.plagiarismJobViews(jobs))
 }
 
 func (s Server) listAuditLogs(c *gin.Context) {
 	var logs []models.AuditLog
 	s.DB.Order("id desc").Limit(200).Find(&logs)
-	c.JSON(http.StatusOK, logs)
+	c.JSON(http.StatusOK, s.auditLogViews(logs))
+}
+
+func (s Server) plagiarismJobViews(jobs []models.PlagiarismJob) []plagiarismJobView {
+	courseIDs := []uint{}
+	assignmentIDs := []uint{}
+	examIDs := []uint{}
+	userIDs := []uint{}
+	for _, job := range jobs {
+		courseIDs = append(courseIDs, job.CourseID)
+		userIDs = append(userIDs, job.CreatedBy)
+		if job.AssignmentID != nil {
+			assignmentIDs = append(assignmentIDs, *job.AssignmentID)
+		}
+		if job.ExamID != nil {
+			examIDs = append(examIDs, *job.ExamID)
+		}
+	}
+	courses := s.courseMap(courseIDs)
+	assignments := map[uint]models.Assignment{}
+	if assignmentIDs = dedupeUint(assignmentIDs); len(assignmentIDs) > 0 {
+		var rows []models.Assignment
+		s.DB.Where("id IN ?", assignmentIDs).Find(&rows)
+		for _, item := range rows {
+			assignments[item.ID] = item
+		}
+	}
+	exams := map[uint]models.Exam{}
+	if examIDs = dedupeUint(examIDs); len(examIDs) > 0 {
+		var rows []models.Exam
+		s.DB.Where("id IN ?", examIDs).Find(&rows)
+		for _, item := range rows {
+			exams[item.ID] = item
+		}
+	}
+	users := map[uint]models.User{}
+	if userIDs = dedupeUint(userIDs); len(userIDs) > 0 {
+		var rows []models.User
+		s.DB.Where("id IN ?", userIDs).Find(&rows)
+		for _, item := range rows {
+			users[item.ID] = item
+		}
+	}
+	views := make([]plagiarismJobView, 0, len(jobs))
+	for _, job := range jobs {
+		view := plagiarismJobView{PlagiarismJob: job}
+		if course, ok := courses[job.CourseID]; ok {
+			view.CourseCode = course.Code
+			view.CourseName = course.Name
+		}
+		if job.AssignmentID != nil {
+			if assignment, ok := assignments[*job.AssignmentID]; ok {
+				view.AssignmentTitle = assignment.Title
+			}
+		}
+		if job.ExamID != nil {
+			if exam, ok := exams[*job.ExamID]; ok {
+				view.ExamTitle = exam.Title
+			}
+		}
+		if user, ok := users[job.CreatedBy]; ok {
+			view.CreatedByName = user.Name
+		}
+		views = append(views, view)
+	}
+	return views
+}
+
+func (s Server) auditLogViews(logs []models.AuditLog) []auditLogView {
+	userIDs := []uint{}
+	for _, log := range logs {
+		if log.ActorUserID != nil {
+			userIDs = append(userIDs, *log.ActorUserID)
+		}
+	}
+	users := map[uint]models.User{}
+	if userIDs = dedupeUint(userIDs); len(userIDs) > 0 {
+		var rows []models.User
+		s.DB.Where("id IN ?", userIDs).Find(&rows)
+		for _, item := range rows {
+			users[item.ID] = item
+		}
+	}
+	views := make([]auditLogView, 0, len(logs))
+	for _, log := range logs {
+		view := auditLogView{AuditLog: log, ResourceLabel: auditResourceLabel(log.ResourceType)}
+		if log.ActorUserID != nil {
+			if user, ok := users[*log.ActorUserID]; ok {
+				view.ActorName = user.Name
+			}
+		}
+		views = append(views, view)
+	}
+	return views
+}
+
+func auditResourceLabel(resourceType string) string {
+	switch resourceType {
+	case "user":
+		return "用户"
+	case "course":
+		return "课程"
+	case "class":
+		return "班级"
+	case "problem":
+		return "题目"
+	case "prepared_problem":
+		return "预备题"
+	case "assignment":
+		return "作业"
+	case "exam":
+		return "考试"
+	case "submission":
+		return "提交记录"
+	case "plagiarism_job":
+		return "查重任务"
+	default:
+		if strings.TrimSpace(resourceType) == "" {
+			return "-"
+		}
+		return resourceType
+	}
 }
 
 func bind(c *gin.Context, dest any) bool {

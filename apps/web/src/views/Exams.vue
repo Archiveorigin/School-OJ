@@ -10,12 +10,19 @@
 
     <div class="panel">
       <el-table :data="items">
-        <el-table-column prop="id" label="ID" width="80" />
-        <el-table-column prop="course_id" label="课程" width="100" />
-        <el-table-column prop="class_id" label="班级" width="100" />
+        <el-table-column label="课程" min-width="150">
+          <template #default="{ row }">{{ courseText(row) }}</template>
+        </el-table-column>
+        <el-table-column label="班级" min-width="120">
+          <template #default="{ row }">{{ row.class_name || '-' }}</template>
+        </el-table-column>
         <el-table-column prop="title" label="标题" min-width="180" />
-        <el-table-column prop="starts_at" label="开始" min-width="170" />
-        <el-table-column prop="ends_at" label="结束" min-width="170" />
+        <el-table-column label="开始" min-width="170">
+          <template #default="{ row }">{{ formatDateTime(row.starts_at) }}</template>
+        </el-table-column>
+        <el-table-column label="结束" min-width="170">
+          <template #default="{ row }">{{ formatDateTime(row.ends_at) }}</template>
+        </el-table-column>
         <el-table-column v-if="canManage" label="模式" width="130">
           <template #default="{ row }">
             <el-tag v-if="row.settings?.manual_review" type="warning" effect="light">人工阅卷</el-tag>
@@ -121,6 +128,7 @@ import { useRouter } from 'vue-router'
 import { client, type Problem } from '../api/client'
 import ProblemEditDialog from '../components/ProblemEditDialog.vue'
 import StatusBadge from '../components/StatusBadge.vue'
+import { formatDateTime } from '../features/time'
 import { useAuthStore } from '../stores/auth'
 import { useClassroomStore } from '../stores/classroom'
 
@@ -241,6 +249,10 @@ function scoreText(row: any) {
   if (row.finished_at && row.work_status !== 'submitted') return `${row.total_score || 0} / ${row.max_score || 0}`
   if (row.work_status !== 'submitted') return '-'
   return row.score_ready ? `${row.total_score} / ${row.max_score}` : '待评分'
+}
+
+function courseText(row: any) {
+  return [row.course_code, row.course_name].filter(Boolean).join(' ') || '-'
 }
 
 function examStatusLabel(row: any) {

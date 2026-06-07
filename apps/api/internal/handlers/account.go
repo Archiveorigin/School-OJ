@@ -213,7 +213,7 @@ func (s Server) getProfile(c *gin.Context) {
 		"activity":       activity,
 		"activity_label": activityLabel,
 		"activity_unit":  activityUnit,
-		"recent":         recent,
+		"recent":         s.submissionListViews(recent),
 	})
 }
 

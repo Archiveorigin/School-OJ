@@ -6,9 +6,15 @@
     </div>
     <div class="panel">
       <el-table :data="items" @row-click="open">
-        <el-table-column prop="id" label="ID" width="80" />
-        <el-table-column prop="user_id" label="用户" width="90" />
-        <el-table-column prop="problem_id" label="题目" width="90" />
+        <el-table-column label="提交人" min-width="140">
+          <template #default="{ row }">{{ submitterText(row) }}</template>
+        </el-table-column>
+        <el-table-column label="题目" min-width="220">
+          <template #default="{ row }">{{ problemText(row) }}</template>
+        </el-table-column>
+        <el-table-column label="来源" min-width="140">
+          <template #default="{ row }">{{ contextText(row) }}</template>
+        </el-table-column>
         <el-table-column prop="language" label="语言" width="110" />
         <el-table-column label="状态" width="130">
           <template #default="{ row }"><StatusBadge :status="row.status" /></template>
@@ -19,18 +25,22 @@
             <div class="message-preview">{{ row.message || '-' }}</div>
           </template>
         </el-table-column>
+        <el-table-column label="时间" min-width="170">
+          <template #default="{ row }">{{ formatDateTime(row.created_at) }}</template>
+        </el-table-column>
       </el-table>
     </div>
 
     <el-dialog v-model="visible" title="提交详情" width="900px">
       <div v-if="detail" class="submission-detail">
         <div class="summary-grid">
-          <span>ID</span><strong>#{{ detail.submission.id }}</strong>
-          <span>题目</span><strong>{{ detail.submission.problem_id }}</strong>
+          <span>提交人</span><strong>{{ submitterText(detail.submission) }}</strong>
+          <span>题目</span><strong>{{ problemText(detail.submission) }}</strong>
+          <span>来源</span><strong>{{ contextText(detail.submission) }}</strong>
           <span>语言</span><strong>{{ detail.submission.language }}</strong>
           <span>状态</span><strong><StatusBadge :status="detail.submission.status" /></strong>
           <span>分数</span><strong>{{ detail.submission.score }}</strong>
-          <span>时间</span><strong>{{ detail.submission.created_at }}</strong>
+          <span>时间</span><strong>{{ formatDateTime(detail.submission.created_at) }}</strong>
         </div>
 
         <el-collapse v-model="expandedSections">
@@ -64,6 +74,7 @@
 import { onMounted, ref } from 'vue'
 import { client, type Submission } from '../api/client'
 import StatusBadge from '../components/StatusBadge.vue'
+import { formatDateTime } from '../features/time'
 
 const items = ref<Submission[]>([])
 const detail = ref<any>(null)
@@ -78,6 +89,21 @@ async function open(row: Submission) {
   detail.value = (await client.get(`/submissions/${row.id}`)).data
   expandedSections.value = ['results']
   visible.value = true
+}
+
+function submitterText(row: Submission) {
+  return row.user_name ? `${row.user_name}${row.student_no ? `（${row.student_no}）` : ''}` : '-'
+}
+
+function problemText(row: Submission) {
+  const code = row.problem_code || '未编号'
+  return row.problem_title ? `${code} · ${row.problem_title}` : code
+}
+
+function contextText(row: Submission) {
+  if (row.exam_title) return `考试：${row.exam_title}`
+  if (row.assignment_title) return `作业：${row.assignment_title}`
+  return '题库练习'
 }
 
 onMounted(load)

@@ -390,8 +390,8 @@ async function openPreparedPublish() {
 function preparedLabel(item: PreparedProblem) {
   const tags = tagList(item.problem?.tags)
   const suffix = [item.folder, item.difficulty, tags.join('/')].filter(Boolean).join(' · ')
-  const code = item.problem ? problemDisplayCode(item.problem) : item.problem_id
-  return `${code}. ${item.problem?.title}${suffix ? `（${suffix}）` : ''}`
+  const code = item.problem ? problemDisplayCode(item.problem) : '未编号'
+  return `${code}. ${item.problem?.title || '未知题目'}${suffix ? `（${suffix}）` : ''}`
 }
 
 async function publishPrepared() {

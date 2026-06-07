@@ -16,7 +16,7 @@
     </div>
 
     <div class="panel assignment-filters">
-      <el-input v-model="filters.keyword" clearable placeholder="搜索 ID、标题、描述、课程或班级" />
+      <el-input v-model="filters.keyword" clearable placeholder="搜索标题、描述、课程或班级" />
       <el-select v-if="!canManage" v-model="filters.status" placeholder="状态">
         <el-option
           v-for="option in assignmentStatusOptions"
@@ -31,9 +31,12 @@
 
     <div class="panel">
       <el-table :data="filteredItems">
-        <el-table-column prop="id" label="ID" width="80" />
-        <el-table-column prop="course_id" label="课程" width="100" />
-        <el-table-column prop="class_id" label="班级" width="100" />
+        <el-table-column label="课程" min-width="150">
+          <template #default="{ row }">{{ courseText(row) }}</template>
+        </el-table-column>
+        <el-table-column label="班级" min-width="120">
+          <template #default="{ row }">{{ row.class_name || '-' }}</template>
+        </el-table-column>
         <el-table-column prop="title" label="标题" min-width="180" />
         <el-table-column label="截止时间" min-width="210">
           <template #default="{ row }">
@@ -80,8 +83,8 @@
         </el-form-item>
         <el-form-item label="标题"><el-input v-model="form.title" placeholder="第一次作业" /></el-form-item>
         <el-form-item label="描述"><el-input v-model="form.description" type="textarea" :rows="3" /></el-form-item>
-        <el-form-item label="开始时间"><el-date-picker v-model="form.starts_at" type="datetime" style="width: 100%" /></el-form-item>
-        <el-form-item label="截止时间"><el-date-picker v-model="form.due_at" type="datetime" style="width: 100%" /></el-form-item>
+        <el-form-item label="开始时间"><el-date-picker v-model="form.starts_at" type="datetime" format="YYYY-MM-DD HH:mm:ss" style="width: 100%" /></el-form-item>
+        <el-form-item label="截止时间"><el-date-picker v-model="form.due_at" type="datetime" format="YYYY-MM-DD HH:mm:ss" style="width: 100%" /></el-form-item>
         <el-form-item label="添加题目">
           <div class="problem-add">
             <el-radio-group v-model="problemSource" @change="problemPickID = undefined">
@@ -123,8 +126,8 @@
                 <el-table-column label="得分" width="120">
                   <template #default="{ row: item }">{{ item.score_ready ? item.best_score : '-' }}</template>
                 </el-table-column>
-                <el-table-column label="提交" width="120">
-                  <template #default="{ row: item }">{{ item.submission_id ? `#${item.submission_id}` : '-' }}</template>
+                <el-table-column label="最近提交" width="170">
+                  <template #default="{ row: item }">{{ formatDateTime(item.submitted_at) }}</template>
                 </el-table-column>
               </el-table>
             </template>
@@ -197,8 +200,8 @@ const form = reactive<any>({
 const problemOptions = computed(() => {
   if (problemSource.value === 'prepared') {
     return preparedProblems.value.map((item) => {
-      const code = item.problem ? problemDisplayCode(item.problem) : item.problem_id
-      return { value: item.problem_id, label: `[预备] ${code}. ${item.problem?.title}`, title: item.problem?.title, source: '预备' }
+      const code = item.problem ? problemDisplayCode(item.problem) : '未编号'
+      return { value: item.problem_id, label: `[预备] ${code}. ${item.problem?.title || '未知题目'}`, title: item.problem?.title, source: '预备' }
     })
   }
   return problems.value.map((problem) => ({ value: problem.id, label: `[题库] ${problemDisplayCode(problem)}. ${problem.title}`, title: problem.title, source: '题库' }))
@@ -252,6 +255,10 @@ function openDialog() {
 function resetFilters() {
   filters.keyword = ''
   filters.status = 'all'
+}
+
+function courseText(row: any) {
+  return [row.course_code, row.course_name].filter(Boolean).join(' ') || '-'
 }
 
 function syncCourseFromClass() {

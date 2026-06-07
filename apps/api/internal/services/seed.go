@@ -68,6 +68,10 @@ func Seed(ctx context.Context, db *gorm.DB, client *minio.Client, cfg config.Con
 	if err := db.Create(&class).Error; err != nil {
 		return err
 	}
+	class.JoinCode = models.FormatClassJoinCode(class.ID)
+	if err := db.Model(&models.Class{}).Where("id = ?", class.ID).Update("join_code", class.JoinCode).Error; err != nil {
+		return err
+	}
 	_ = db.Create(&models.CourseMembership{CourseID: course.ID, UserID: teacher.ID, Role: models.RoleTeacher}).Error
 	_ = db.Create(&models.CourseMembership{CourseID: course.ID, UserID: student.ID, Role: models.RoleStudent}).Error
 	_ = db.Create(&models.ClassMembership{ClassID: class.ID, UserID: student.ID}).Error

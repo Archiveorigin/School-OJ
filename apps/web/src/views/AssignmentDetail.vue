@@ -58,14 +58,13 @@
       <div class="panel history-panel">
         <div class="section-title"><h3>全部提交记录</h3></div>
         <el-table :data="history" size="small">
-          <el-table-column prop="id" label="ID" width="80" />
           <el-table-column label="题目" min-width="180">
             <template #default="{ row }">{{ problemTitle(row.problem_id) }}</template>
           </el-table-column>
           <el-table-column prop="language" label="语言" width="90" />
           <el-table-column label="状态" width="130"><template #default="{ row }"><StatusBadge :status="row.status" /></template></el-table-column>
           <el-table-column prop="score" label="原始分" width="90" />
-          <el-table-column label="时间" min-width="160"><template #default="{ row }">{{ row.created_at }}</template></el-table-column>
+          <el-table-column label="时间" min-width="170"><template #default="{ row }">{{ formatDateTime(row.created_at) }}</template></el-table-column>
         </el-table>
       </div>
     </div>
@@ -236,7 +235,7 @@ function problemStatusType(problemID: number): 'success' | 'warning' | 'info' | 
 
 function problemTitle(problemID: number) {
   const entry = detail.value?.problems?.find((item: DetailProblem) => item.problem.id === problemID)
-  return entry ? `${problemDisplayCode(entry.problem)} · ${entry.problem.title}` : String(problemID)
+  return entry ? `${problemDisplayCode(entry.problem)} · ${entry.problem.title}` : '未知题目'
 }
 
 watch(() => route.params.id, loadDetail)

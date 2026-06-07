@@ -3,7 +3,7 @@
     <el-form label-width="96px" class="problem-edit-form">
       <el-form-item label="题目">
         <div class="problem-meta">
-          <strong>{{ problem?.display_code || `#${problem?.id || ''}` }}</strong>
+          <strong>{{ problem?.display_code || '未编号' }}</strong>
           <span class="muted">{{ problem?.slug }}</span>
         </div>
       </el-form-item>

@@ -1,3 +1,5 @@
+import { formatDateTime } from '../time'
+
 export type WorkStatusFilter = 'all' | 'unattempted' | 'unsubmitted' | 'submitted'
 
 export interface AssignmentFilters {
@@ -29,12 +31,7 @@ export function scoreText(row: any) {
   return row.score_ready ? `${row.total_score} / ${row.max_score}` : '计算中'
 }
 
-export function formatDateTime(value?: string | null) {
-  if (!value) return '-'
-  const date = new Date(value)
-  if (Number.isNaN(date.getTime())) return value
-  return date.toLocaleString('zh-CN', { hour12: false })
-}
+export { formatDateTime }
 
 export function assignmentState(row: any, now = new Date()) {
   const start = row.starts_at ? new Date(row.starts_at) : null
@@ -51,7 +48,7 @@ export function assignmentProblemCount(row: any) {
 export function assignmentMatchesFilters(row: any, filters: AssignmentFilters) {
   const keyword = filters.keyword.trim().toLowerCase()
   if (keyword) {
-    const haystack = [String(row.id), String(row.course_id || ''), String(row.class_id || ''), row.title, row.description]
+    const haystack = [row.course_code, row.course_name, row.class_name, row.title, row.description]
       .join(' ')
       .toLowerCase()
     if (!haystack.includes(keyword)) return false

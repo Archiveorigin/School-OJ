@@ -72,6 +72,7 @@ export interface ClassContext {
   id: number
   class_id: number
   class_name: string
+  join_code?: string
   course_id: number
   course_code: string
   course_name: string
@@ -95,6 +96,12 @@ export interface Submission {
   memory_kb: number
   message: string
   error_point?: string
+  user_name?: string
+  student_no?: string
+  problem_code?: string
+  problem_title?: string
+  assignment_title?: string
+  exam_title?: string
   created_at: string
   updated_at: string
 }

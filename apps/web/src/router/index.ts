@@ -7,6 +7,7 @@ import Courses from '../views/Courses.vue'
 import Dashboard from '../views/Dashboard.vue'
 import ExamCreate from '../views/ExamCreate.vue'
 import ExamDetail from '../views/ExamDetail.vue'
+import ExamRankings from '../views/ExamRankings.vue'
 import ExamProblems from '../views/exam/ExamProblems.vue'
 import ExamRecords from '../views/exam/ExamRecords.vue'
 import ExamSubmit from '../views/exam/ExamSubmit.vue'
@@ -50,6 +51,7 @@ const router = createRouter({
     },
     { path: '/submissions', component: Submissions, meta: { title: '提交' } },
     { path: '/leaderboard', component: Leaderboard, meta: { title: '排行榜' } },
+    { path: '/admin/exam-rankings', component: ExamRankings, meta: { roles: ['admin'], title: '考试实时榜' } },
     { path: '/plagiarism', component: Plagiarism, meta: { roles: ['admin', 'teacher'], title: 'JPlag 查重' } },
     { path: '/audit-logs', component: AuditLogs, meta: { roles: ['admin'], title: '审计日志' } },
     { path: '/users', component: Users, meta: { roles: ['admin'], title: '用户管理' } }

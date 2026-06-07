@@ -37,6 +37,7 @@ export const navGroups: NavGroup[] = [
   {
     label: '系统',
     items: [
+      { path: '/admin/exam-rankings', label: '考试实时榜', roles: ['admin'] },
       { path: '/audit-logs', label: '审计日志', roles: ['admin'] },
       { path: '/users', label: '用户管理', roles: ['admin'] }
     ]

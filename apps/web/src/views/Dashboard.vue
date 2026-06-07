@@ -20,7 +20,7 @@
         <p class="muted">加入教师提供的班级后，题库、作业、考试和排行榜会按班级显示。</p>
       </div>
       <div class="join-inline">
-        <el-input-number v-model="joinClassID" :min="1" placeholder="班级 ID" />
+        <el-input v-model="joinClassCode" placeholder="班级邀请码" class="join-code-input" />
         <el-button type="primary" :loading="joining" @click="joinClass">加入班级</el-button>
       </div>
     </div>
@@ -66,13 +66,17 @@
       <div class="panel latest">
         <h3>最近提交</h3>
         <el-table :data="submissions" size="small" v-loading="loading">
-          <el-table-column prop="id" label="ID" width="90" />
-          <el-table-column prop="problem_id" label="题目" width="90" />
+          <el-table-column label="题目" min-width="180">
+            <template #default="{ row }">{{ submissionProblemText(row) }}</template>
+          </el-table-column>
           <el-table-column prop="language" label="语言" width="110" />
           <el-table-column label="状态">
             <template #default="{ row }"><StatusBadge :status="row.status" /></template>
           </el-table-column>
           <el-table-column prop="score" label="分数" width="90" />
+          <el-table-column label="时间" min-width="170">
+            <template #default="{ row }">{{ formatDateTime(row.created_at) }}</template>
+          </el-table-column>
         </el-table>
       </div>
     </template>
@@ -84,6 +88,7 @@ import { ElMessage } from 'element-plus'
 import { computed, onMounted, ref, watch } from 'vue'
 import { client, type Submission } from '../api/client'
 import StatusBadge from '../components/StatusBadge.vue'
+import { formatDateTime } from '../features/time'
 import { useAuthStore } from '../stores/auth'
 import { useClassroomStore } from '../stores/classroom'
 
@@ -94,7 +99,7 @@ const assignments = ref<any[]>([])
 const exams = ref<any[]>([])
 const loading = ref(false)
 const loadError = ref('')
-const joinClassID = ref<number>()
+const joinClassCode = ref('')
 const joining = ref(false)
 const auth = useAuthStore()
 const classroom = useClassroomStore()
@@ -173,15 +178,16 @@ async function refresh() {
 }
 
 async function joinClass() {
-  if (!joinClassID.value) {
-    ElMessage.error('请填写班级 ID')
+  if (!joinClassCode.value.trim()) {
+    ElMessage.error('请填写班级邀请码')
     return
   }
   joining.value = true
   try {
-    await client.post(`/classes/${joinClassID.value}/join`)
+    const { data } = await client.post('/classes/join', { join_code: joinClassCode.value.trim() })
     ElMessage.success('已加入班级')
-    classroom.setActive(joinClassID.value)
+    classroom.setActive(data.class_id)
+    joinClassCode.value = ''
     await classroom.load({ force: true })
     await load()
   } catch (err: any) {
@@ -189,6 +195,11 @@ async function joinClass() {
   } finally {
     joining.value = false
   }
+}
+
+function submissionProblemText(row: Submission) {
+  const code = row.problem_code || '未编号'
+  return row.problem_title ? `${code} · ${row.problem_title}` : code
 }
 
 watch(
@@ -250,6 +261,10 @@ onMounted(async () => {
   align-items: center;
   gap: 10px;
   flex-wrap: wrap;
+}
+
+.join-code-input {
+  width: 180px;
 }
 
 .fortune strong {

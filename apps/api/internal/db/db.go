@@ -56,7 +56,10 @@ func AutoMigrate(gdb *gorm.DB) error {
 	if err := migrateProblemSlugUniqueness(gdb); err != nil {
 		return err
 	}
-	return backfillProblemDisplayCodes(gdb)
+	if err := backfillProblemDisplayCodes(gdb); err != nil {
+		return err
+	}
+	return backfillClassJoinCodes(gdb)
 }
 
 func migrateProblemSlugUniqueness(gdb *gorm.DB) error {
@@ -94,6 +97,22 @@ func backfillProblemDisplayCodes(gdb *gorm.DB) error {
 		}
 		maxIndex += 1
 		if err := gdb.Model(&models.Problem{}).Where("id = ?", problem.ID).Update("display_code", models.FormatProblemDisplayCode(maxIndex)).Error; err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func backfillClassJoinCodes(gdb *gorm.DB) error {
+	if !gdb.Migrator().HasTable("classes") {
+		return nil
+	}
+	var classes []models.Class
+	if err := gdb.Where("join_code IS NULL OR join_code = ''").Order("id asc").Find(&classes).Error; err != nil {
+		return err
+	}
+	for _, class := range classes {
+		if err := gdb.Model(&models.Class{}).Where("id = ?", class.ID).Update("join_code", models.FormatClassJoinCode(class.ID)).Error; err != nil {
 			return err
 		}
 	}

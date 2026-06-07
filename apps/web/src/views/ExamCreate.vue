@@ -31,12 +31,12 @@
           <el-form-item label="描述">
             <el-input v-model="form.description" type="textarea" :rows="3" />
           </el-form-item>
-          <el-form-item label="开始时间">
-            <el-date-picker v-model="form.starts_at" type="datetime" style="width: 100%" />
-          </el-form-item>
-          <el-form-item label="结束时间">
-            <el-date-picker v-model="form.ends_at" type="datetime" style="width: 100%" />
-          </el-form-item>
+            <el-form-item label="开始时间">
+              <el-date-picker v-model="form.starts_at" type="datetime" format="YYYY-MM-DD HH:mm:ss" style="width: 100%" />
+            </el-form-item>
+            <el-form-item label="结束时间">
+              <el-date-picker v-model="form.ends_at" type="datetime" format="YYYY-MM-DD HH:mm:ss" style="width: 100%" />
+            </el-form-item>
           <el-form-item label="阅卷方式">
             <el-checkbox v-model="form.manual_review">提交后判题，教师人工确认分数</el-checkbox>
           </el-form-item>
@@ -309,8 +309,8 @@ const preparedProblemOptions = computed(() => {
   return preparedProblems.value.map((item) => {
     const tags = tagList(item.problem?.tags)
     const suffix = [item.folder, item.difficulty, tags.join('/')].filter(Boolean).join(' · ')
-    const code = item.problem ? problemDisplayCode(item.problem) : item.problem_id
-    return { value: item.problem_id, label: `[预备] ${code}. ${item.problem?.title}${suffix ? `（${suffix}）` : ''}`, title: item.problem?.title, source: '预备' }
+    const code = item.problem ? problemDisplayCode(item.problem) : '未编号'
+    return { value: item.problem_id, label: `[预备] ${code}. ${item.problem?.title || '未知题目'}${suffix ? `（${suffix}）` : ''}`, title: item.problem?.title, source: '预备' }
   })
 })
 

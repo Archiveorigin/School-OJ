@@ -9,11 +9,15 @@
     </div>
     <div class="panel">
       <el-table :data="users">
-        <el-table-column prop="id" label="ID" width="80" />
         <el-table-column prop="email" label="邮箱" />
         <el-table-column prop="name" label="姓名" />
-        <el-table-column prop="role" label="角色" width="120" />
+        <el-table-column label="角色" width="120">
+          <template #default="{ row }">{{ roleText(row.role) }}</template>
+        </el-table-column>
         <el-table-column prop="student_no" label="学号" width="140" />
+        <el-table-column label="创建时间" min-width="170">
+          <template #default="{ row }">{{ formatDateTime(row.created_at) }}</template>
+        </el-table-column>
       </el-table>
     </div>
     <el-dialog v-model="dialogVisible" title="新建用户" width="520px">
@@ -50,6 +54,7 @@
 import { ElMessage } from 'element-plus'
 import { onMounted, reactive, ref } from 'vue'
 import { client, type User } from '../api/client'
+import { formatDateTime } from '../features/time'
 
 const users = ref<User[]>([])
 const dialogVisible = ref(false)
@@ -106,6 +111,12 @@ function errorText(err: any) {
     return '当前请求没有管理员权限，请退出后使用管理员账号重新登录'
   }
   return err.response?.data?.error || err.message
+}
+
+function roleText(role: string) {
+  if (role === 'admin') return '管理员'
+  if (role === 'teacher') return '教师'
+  return '学生'
 }
 
 onMounted(load)

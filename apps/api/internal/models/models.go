@@ -2,6 +2,7 @@ package models
 
 import (
 	"fmt"
+	"strings"
 	"time"
 
 	"gorm.io/datatypes"
@@ -44,6 +45,7 @@ type Class struct {
 	ID        uint      `json:"id" gorm:"primaryKey"`
 	CourseID  uint      `json:"course_id" gorm:"index;not null"`
 	Name      string    `json:"name" gorm:"size:120;not null"`
+	JoinCode  string    `json:"join_code" gorm:"uniqueIndex;size:12"`
 	CreatedAt time.Time `json:"created_at"`
 	UpdatedAt time.Time `json:"updated_at"`
 }
@@ -186,6 +188,26 @@ type ExamProblem struct {
 
 func FormatProblemDisplayCode(index int) string {
 	return fmt.Sprintf("T%03d", index)
+}
+
+func FormatClassJoinCode(id uint) string {
+	const modulo = uint64(2176782336) // 36^6
+	value := (uint64(id) * 2654435761) % modulo
+	code := strings.ToUpper(strconvBase36(value))
+	return "C" + strings.Repeat("0", 6-len(code)) + code
+}
+
+func strconvBase36(value uint64) string {
+	const alphabet = "0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ"
+	if value == 0 {
+		return "0"
+	}
+	out := ""
+	for value > 0 {
+		out = string(alphabet[value%36]) + out
+		value /= 36
+	}
+	return out
 }
 
 type ExamAttempt struct {

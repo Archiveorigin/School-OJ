@@ -6,12 +6,35 @@ import (
 	"io"
 	"strings"
 	"testing"
+	"time"
 
 	"school-oj/apps/api/internal/services"
 )
 
 func TestRouterBuilds(t *testing.T) {
 	_ = (Server{}).Router()
+}
+
+func TestSortExamRankingRows(t *testing.T) {
+	base := time.Date(2026, 6, 7, 10, 0, 0, 0, time.UTC)
+	later := base.Add(time.Minute)
+	finished := base.Add(2 * time.Minute)
+	rows := []examRankingRow{
+		{Name: "Charlie", StudentNo: "S3", TotalScore: 80, Solved: 2, LastSubmission: &later},
+		{Name: "Alice", StudentNo: "S1", TotalScore: 100, Solved: 1, LastSubmission: &later},
+		{Name: "Bob", StudentNo: "S2", TotalScore: 100, Solved: 2, LastSubmission: &later, FinishedAt: &finished},
+		{Name: "Ada", StudentNo: "S0", TotalScore: 100, Solved: 2, LastSubmission: &base},
+	}
+
+	sortExamRankingRows(rows)
+
+	got := []string{rows[0].Name, rows[1].Name, rows[2].Name, rows[3].Name}
+	want := []string{"Ada", "Bob", "Alice", "Charlie"}
+	for i := range want {
+		if got[i] != want[i] {
+			t.Fatalf("rank %d = %s, want %s; full order=%v", i+1, got[i], want[i], got)
+		}
+	}
 }
 
 func TestPreparedProblemInputDraftKeepsAssets(t *testing.T) {

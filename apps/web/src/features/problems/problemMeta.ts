@@ -45,7 +45,7 @@ export function progressTag(status?: string): 'success' | 'warning' | 'info' {
 }
 
 export function problemDisplayCode(problem: Pick<Problem, 'id' | 'display_code'>) {
-  return problem.display_code || String(problem.id)
+  return problem.display_code || '未编号'
 }
 
 export function problemLimitText(problem: Pick<Problem, 'time_limit_ms' | 'memory_limit_mb' | 'output_limit_kb'>) {

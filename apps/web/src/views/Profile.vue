@@ -88,12 +88,16 @@
           <h3>近期提交</h3>
         </div>
         <el-table :data="profile?.recent || []" size="small">
-          <el-table-column prop="id" label="ID" width="70" />
+          <el-table-column label="题目" min-width="170">
+            <template #default="{ row }">{{ problemText(row) }}</template>
+          </el-table-column>
           <el-table-column prop="language" label="语言" width="90" />
-          <el-table-column prop="status" label="状态" width="130" />
+          <el-table-column label="状态" width="130">
+            <template #default="{ row }"><StatusBadge :status="row.status" /></template>
+          </el-table-column>
           <el-table-column prop="score" label="分数" width="80" />
-          <el-table-column label="时间" width="130">
-            <template #default="{ row }">{{ formatDate(row.created_at) }}</template>
+          <el-table-column label="时间" min-width="170">
+            <template #default="{ row }">{{ formatDateTime(row.created_at) }}</template>
           </el-table-column>
         </el-table>
       </div>
@@ -122,6 +126,8 @@ import { ElMessage, ElMessageBox } from 'element-plus'
 import { computed, onMounted, reactive, ref } from 'vue'
 import { useRouter } from 'vue-router'
 import { client, type Submission, type User } from '../api/client'
+import StatusBadge from '../components/StatusBadge.vue'
+import { formatDateTime } from '../features/time'
 import { useAuthStore } from '../stores/auth'
 
 interface ProfileData {
@@ -279,14 +285,9 @@ function levelClass(count: number) {
   return 'level-0'
 }
 
-function formatDate(value: string) {
-  if (!value) return ''
-  const date = new Date(value)
-  const month = String(date.getMonth() + 1).padStart(2, '0')
-  const day = String(date.getDate()).padStart(2, '0')
-  const hour = String(date.getHours()).padStart(2, '0')
-  const minute = String(date.getMinutes()).padStart(2, '0')
-  return `${month}-${day} ${hour}:${minute}`
+function problemText(row: Submission) {
+  const code = row.problem_code || '未编号'
+  return row.problem_title ? `${code} · ${row.problem_title}` : code
 }
 
 function readFile(file: File) {

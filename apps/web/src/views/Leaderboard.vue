@@ -45,6 +45,7 @@
 <script setup lang="ts">
 import { onMounted, ref, watch } from 'vue'
 import { client } from '../api/client'
+import { formatDateTime } from '../features/time'
 import { useAuthStore } from '../stores/auth'
 import { useClassroomStore } from '../stores/classroom'
 
@@ -70,8 +71,7 @@ function rowClass({ row }: any) {
 }
 
 function formatTime(value?: string) {
-  if (!value) return '暂无'
-  return new Date(value).toLocaleString()
+  return formatDateTime(value)
 }
 
 watch(
