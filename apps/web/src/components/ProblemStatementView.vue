@@ -40,8 +40,47 @@
       </div>
       <div class="meta-grid">
         <span>提交状态</span>
-        <div v-if="statusImageSrc" class="status-image-wrap">
-          <img class="status-image" :src="statusImageSrc" :alt="statusImageAlt" />
+        <div v-if="statusImageAlt" class="status-image-wrap" role="img" :aria-label="statusImageAlt">
+          <svg
+            v-if="statusImage === 'ac'"
+            class="status-icon"
+            xmlns="http://www.w3.org/2000/svg"
+            viewBox="0 0 24 24"
+            width="64"
+            height="64"
+            fill="none"
+            aria-hidden="true"
+          >
+            <circle cx="12" cy="12" r="10" fill="#22c55e" opacity="0.2" />
+            <circle cx="12" cy="12" r="8" fill="#22c55e" />
+            <path
+              d="M9 12.5L11 14.5L15 9.5"
+              stroke="white"
+              stroke-width="2"
+              stroke-linecap="round"
+              stroke-linejoin="round"
+            />
+          </svg>
+          <svg
+            v-else-if="statusImage === 'uac'"
+            class="status-icon"
+            xmlns="http://www.w3.org/2000/svg"
+            viewBox="0 0 24 24"
+            width="64"
+            height="64"
+            fill="none"
+            aria-hidden="true"
+          >
+            <circle cx="12" cy="12" r="10" fill="#ef4444" opacity="0.2" />
+            <circle cx="12" cy="12" r="8" fill="#ef4444" />
+            <path
+              d="M10 10L14 14M14 10L10 14"
+              stroke="white"
+              stroke-width="2"
+              stroke-linecap="round"
+              stroke-linejoin="round"
+            />
+          </svg>
         </div>
         <el-tag v-else :type="statusType || 'info'" effect="light">{{ statusText || '未提交' }}</el-tag>
         <span>分值</span>
@@ -70,8 +109,6 @@
 import { ElMessage } from 'element-plus'
 import { computed } from 'vue'
 import type { Problem } from '../api/client'
-import acStatusImage from '../assets/status/AC.png'
-import uacStatusImage from '../assets/status/UAC.png'
 import {
   difficultyFromTags,
   difficultyTagType,
@@ -102,12 +139,12 @@ const samples = computed(() => extractStatementSamples(props.problem.statement))
 const tags = computed(() => tagList(props.problem.tags))
 const difficulty = computed(() => difficultyFromTags(props.problem.tags))
 const displayNumber = computed(() => props.problemNumber || problemDisplayCode(props.problem))
-const statusImageSrc = computed(() => {
-  if (props.statusImage === 'ac') return acStatusImage
-  if (props.statusImage === 'uac') return uacStatusImage
+const statusImage = computed(() => props.statusImage || '')
+const statusImageAlt = computed(() => {
+  if (statusImage.value === 'ac') return '通过'
+  if (statusImage.value === 'uac') return '未通过'
   return ''
 })
-const statusImageAlt = computed(() => (props.statusImage === 'ac' ? '通过' : '未通过'))
 
 async function copyText(value: string) {
   try {
@@ -215,10 +252,15 @@ async function copyText(value: string) {
   min-height: 44px;
 }
 
-.status-image {
-  width: min(128px, 100%);
-  max-height: 64px;
-  object-fit: contain;
+.status-icon {
+  width: 64px;
+  height: 64px;
+  flex: 0 0 auto;
+  transition: transform 0.2s ease-in-out;
+}
+
+.status-icon:hover {
+  transform: scale(1.1);
 }
 
 .meta-grid span,
