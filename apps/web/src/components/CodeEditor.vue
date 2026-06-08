@@ -3,16 +3,20 @@
 </template>
 
 <script setup lang="ts">
-import * as monaco from 'monaco-editor'
+import type * as Monaco from 'monaco-editor'
 import { onBeforeUnmount, onMounted, ref, watch } from 'vue'
 
 const props = defineProps<{ modelValue: string; language: string }>()
 const emit = defineEmits<{ 'update:modelValue': [value: string] }>()
 const host = ref<HTMLElement | null>(null)
-let editor: monaco.editor.IStandaloneCodeEditor | null = null
+let monaco: typeof Monaco | null = null
+let editor: Monaco.editor.IStandaloneCodeEditor | null = null
+let disposed = false
 
-onMounted(() => {
-  editor = monaco.editor.create(host.value!, {
+onMounted(async () => {
+  monaco = await import('monaco-editor')
+  if (disposed || !host.value) return
+  editor = monaco.editor.create(host.value, {
     value: props.modelValue,
     language: lang(props.language),
     minimap: { enabled: false },
@@ -27,7 +31,7 @@ watch(
   () => props.language,
   (value) => {
     const model = editor?.getModel()
-    if (model) monaco.editor.setModelLanguage(model, lang(value))
+    if (model && monaco) monaco.editor.setModelLanguage(model, lang(value))
   }
 )
 
@@ -39,7 +43,11 @@ watch(
   }
 )
 
-onBeforeUnmount(() => editor?.dispose())
+onBeforeUnmount(() => {
+  disposed = true
+  editor?.dispose()
+  editor = null
+})
 
 async function format() {
   if (!editor) return

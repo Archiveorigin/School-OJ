@@ -1,27 +1,27 @@
 import { createRouter, createWebHistory } from 'vue-router'
 import { useAuthStore } from '../stores/auth'
-import AuditLogs from '../views/AuditLogs.vue'
-import AssignmentDetail from '../views/AssignmentDetail.vue'
-import Assignments from '../views/Assignments.vue'
-import Courses from '../views/Courses.vue'
-import Dashboard from '../views/Dashboard.vue'
-import ExamCreate from '../views/ExamCreate.vue'
-import ExamDetail from '../views/ExamDetail.vue'
-import ExamRankings from '../views/ExamRankings.vue'
-import ExamProblems from '../views/exam/ExamProblems.vue'
-import ExamRecords from '../views/exam/ExamRecords.vue'
-import ExamSubmit from '../views/exam/ExamSubmit.vue'
-import Exams from '../views/Exams.vue'
-import Leaderboard from '../views/Leaderboard.vue'
-import Login from '../views/Login.vue'
-import Plagiarism from '../views/Plagiarism.vue'
-import Problems from '../views/Problems.vue'
-import PreparedProblems from '../views/PreparedProblems.vue'
-import Profile from '../views/Profile.vue'
-import Register from '../views/Register.vue'
-import ForgotPassword from '../views/ForgotPassword.vue'
-import Submissions from '../views/Submissions.vue'
-import Users from '../views/Users.vue'
+const AuditLogs = () => import('../views/AuditLogs.vue')
+const AssignmentDetail = () => import('../views/AssignmentDetail.vue')
+const Assignments = () => import('../views/Assignments.vue')
+const Courses = () => import('../views/Courses.vue')
+const Dashboard = () => import('../views/Dashboard.vue')
+const ExamCreate = () => import('../views/ExamCreate.vue')
+const ExamDetail = () => import('../views/ExamDetail.vue')
+const ExamRankings = () => import('../views/ExamRankings.vue')
+const ExamProblems = () => import('../views/exam/ExamProblems.vue')
+const ExamRecords = () => import('../views/exam/ExamRecords.vue')
+const ExamSubmit = () => import('../views/exam/ExamSubmit.vue')
+const Exams = () => import('../views/Exams.vue')
+const Leaderboard = () => import('../views/Leaderboard.vue')
+const Login = () => import('../views/Login.vue')
+const Plagiarism = () => import('../views/Plagiarism.vue')
+const Problems = () => import('../views/Problems.vue')
+const PreparedProblems = () => import('../views/PreparedProblems.vue')
+const Profile = () => import('../views/Profile.vue')
+const Register = () => import('../views/Register.vue')
+const ForgotPassword = () => import('../views/ForgotPassword.vue')
+const Submissions = () => import('../views/Submissions.vue')
+const Users = () => import('../views/Users.vue')
 
 const router = createRouter({
   history: createWebHistory(),
