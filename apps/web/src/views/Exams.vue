@@ -9,7 +9,7 @@
     </div>
 
     <div class="panel">
-      <el-table :data="items">
+      <el-table :data="pagedItems">
         <el-table-column label="课程" min-width="150">
           <template #default="{ row }">{{ courseText(row) }}</template>
         </el-table-column>
@@ -44,6 +44,7 @@
           </template>
         </el-table-column>
       </el-table>
+      <ListPagination v-model:page="page" v-model:page-size="pageSize" :total="items.length" />
     </div>
 
     <el-drawer v-model="reportVisible" title="考试完成情况" size="86%">
@@ -126,6 +127,7 @@ import { ElMessage, ElMessageBox } from 'element-plus'
 import { computed, onMounted, ref, watch } from 'vue'
 import { useRouter } from 'vue-router'
 import { client, type Problem } from '../api/client'
+import ListPagination from '../components/ListPagination.vue'
 import ProblemEditDialog from '../components/ProblemEditDialog.vue'
 import StatusBadge from '../components/StatusBadge.vue'
 import { formatDateTime } from '../features/time'
@@ -137,6 +139,8 @@ const classroom = useClassroomStore()
 const router = useRouter()
 const canManage = computed(() => auth.role !== 'student')
 const items = ref<any[]>([])
+const page = ref(1)
+const pageSize = ref(10)
 const reportVisible = ref(false)
 const gradeVisible = ref(false)
 const grading = ref(false)
@@ -152,11 +156,13 @@ const reportEnded = computed(() => {
   if (!report.value?.exam?.ends_at) return false
   return new Date(report.value.exam.ends_at).getTime() <= Date.now()
 })
+const pagedItems = computed(() => items.value.slice((page.value - 1) * pageSize.value, page.value * pageSize.value))
 
 async function load() {
   const params = classroom.activeClassId ? { class_id: classroom.activeClassId } : {}
   const examsRes = await client.get('/exams', { params })
   items.value = examsRes.data
+  clampPage()
 }
 
 function openDetail(row: any) {
@@ -287,6 +293,13 @@ function downloadBlob(blob: Blob, filename: string) {
 }
 
 watch(() => classroom.activeClassId, load)
+watch(pageSize, clampPage)
+
+function clampPage() {
+  const maxPage = Math.max(1, Math.ceil(items.value.length / pageSize.value))
+  if (page.value > maxPage) page.value = maxPage
+  if (page.value < 1) page.value = 1
+}
 
 onMounted(async () => {
   await classroom.load()

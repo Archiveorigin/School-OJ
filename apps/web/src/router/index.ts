@@ -3,6 +3,8 @@ import { useAuthStore } from '../stores/auth'
 const AuditLogs = () => import('../views/AuditLogs.vue')
 const AssignmentDetail = () => import('../views/AssignmentDetail.vue')
 const Assignments = () => import('../views/Assignments.vue')
+const ClassList = () => import('../views/ClassList.vue')
+const CourseList = () => import('../views/CourseList.vue')
 const Courses = () => import('../views/Courses.vue')
 const Dashboard = () => import('../views/Dashboard.vue')
 const ExamCreate = () => import('../views/ExamCreate.vue')
@@ -32,6 +34,8 @@ const router = createRouter({
     { path: '/', component: Dashboard, meta: { title: '概览' } },
     { path: '/profile', component: Profile, meta: { title: 'Profile' } },
     { path: '/courses', component: Courses, meta: { title: '课程班级' } },
+    { path: '/courses/list', component: CourseList, meta: { title: '课程列表', activeMenu: '/courses' } },
+    { path: '/classes', component: ClassList, meta: { title: '班级列表', activeMenu: '/courses' } },
     { path: '/problems', component: Problems, meta: { title: '题库' } },
     { path: '/prepared-problems', component: PreparedProblems, meta: { roles: ['admin', 'teacher'], title: '预备题库' } },
     { path: '/assignments', component: Assignments, meta: { title: '作业' } },

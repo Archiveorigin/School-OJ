@@ -5,7 +5,7 @@
       <el-button @click="load">刷新</el-button>
     </div>
     <div class="panel">
-      <el-table :data="items" @row-click="open">
+      <el-table :data="pagedItems" @row-click="open">
         <el-table-column label="提交人" min-width="140">
           <template #default="{ row }">{{ submitterText(row) }}</template>
         </el-table-column>
@@ -29,6 +29,7 @@
           <template #default="{ row }">{{ formatDateTime(row.created_at) }}</template>
         </el-table-column>
       </el-table>
+      <ListPagination v-model:page="page" v-model:page-size="pageSize" :total="items.length" />
     </div>
 
     <el-dialog v-model="visible" title="提交详情" width="900px">
@@ -71,8 +72,9 @@
 </template>
 
 <script setup lang="ts">
-import { onMounted, ref } from 'vue'
+import { computed, onMounted, ref, watch } from 'vue'
 import { client, type Submission } from '../api/client'
+import ListPagination from '../components/ListPagination.vue'
 import StatusBadge from '../components/StatusBadge.vue'
 import { formatDateTime } from '../features/time'
 
@@ -80,9 +82,13 @@ const items = ref<Submission[]>([])
 const detail = ref<any>(null)
 const expandedSections = ref<string[]>(['results'])
 const visible = ref(false)
+const page = ref(1)
+const pageSize = ref(10)
+const pagedItems = computed(() => items.value.slice((page.value - 1) * pageSize.value, page.value * pageSize.value))
 
 async function load() {
   items.value = (await client.get('/submissions')).data
+  clampPage()
 }
 
 async function open(row: Submission) {
@@ -107,6 +113,13 @@ function contextText(row: Submission) {
 }
 
 onMounted(load)
+watch(pageSize, clampPage)
+
+function clampPage() {
+  const maxPage = Math.max(1, Math.ceil(items.value.length / pageSize.value))
+  if (page.value > maxPage) page.value = maxPage
+  if (page.value < 1) page.value = 1
+}
 </script>
 
 <style scoped>

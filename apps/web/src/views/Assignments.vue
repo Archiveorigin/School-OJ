@@ -30,7 +30,7 @@
     </div>
 
     <div class="panel">
-      <el-table :data="filteredItems">
+      <el-table :data="pagedItems">
         <el-table-column label="课程" min-width="150">
           <template #default="{ row }">{{ courseText(row) }}</template>
         </el-table-column>
@@ -67,6 +67,7 @@
           </template>
         </el-table-column>
       </el-table>
+      <ListPagination v-model:page="page" v-model:page-size="pageSize" :total="filteredItems.length" />
     </div>
 
     <el-dialog v-model="dialogVisible" title="新建作业" width="860px">
@@ -151,6 +152,7 @@ import { ElMessage, ElMessageBox } from 'element-plus'
 import { computed, onMounted, reactive, ref, watch } from 'vue'
 import { useRouter } from 'vue-router'
 import { client, type PreparedProblem, type Problem } from '../api/client'
+import ListPagination from '../components/ListPagination.vue'
 import {
   assignmentMatchesFilters,
   assignmentProblemCount,
@@ -180,6 +182,8 @@ const filters = reactive<AssignmentFilters>({
   keyword: '',
   status: 'all'
 })
+const page = ref(1)
+const pageSize = ref(10)
 const dialogVisible = ref(false)
 const reportVisible = ref(false)
 const saving = ref(false)
@@ -208,6 +212,7 @@ const problemOptions = computed(() => {
 })
 const selectedTotalScore = computed(() => selectedProblems.value.reduce((sum, item) => sum + Number(item.score || 0), 0))
 const filteredItems = computed(() => items.value.filter((item) => assignmentMatchesFilters(item, filters)))
+const pagedItems = computed(() => filteredItems.value.slice((page.value - 1) * pageSize.value, page.value * pageSize.value))
 const assignmentStats = computed(() => {
   const active = items.value.filter((item) => assignmentState(item).label === '进行中').length
   const problemCount = items.value.reduce((sum, item) => sum + assignmentProblemCount(item), 0)
@@ -229,6 +234,7 @@ async function load() {
   const params = classroom.activeClassId ? { class_id: classroom.activeClassId } : {}
   const assignmentsRes = await client.get('/assignments', { params })
   items.value = assignmentsRes.data
+  clampPage()
   if (canManage.value) {
     const [coursesRes, problemsRes, preparedRes] = await Promise.all([
       client.get('/courses'),
@@ -255,6 +261,7 @@ function openDialog() {
 function resetFilters() {
   filters.keyword = ''
   filters.status = 'all'
+  page.value = 1
 }
 
 function courseText(row: any) {
@@ -342,6 +349,16 @@ function reset() {
 }
 
 watch(() => classroom.activeClassId, load)
+watch(
+  () => [filters.keyword, filters.status, pageSize.value, items.value.length],
+  clampPage
+)
+
+function clampPage() {
+  const maxPage = Math.max(1, Math.ceil(filteredItems.value.length / pageSize.value))
+  if (page.value > maxPage) page.value = maxPage
+  if (page.value < 1) page.value = 1
+}
 
 onMounted(async () => {
   await classroom.load()

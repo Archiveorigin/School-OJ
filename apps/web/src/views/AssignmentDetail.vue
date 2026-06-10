@@ -57,7 +57,7 @@
 
       <div class="panel history-panel">
         <div class="section-title"><h3>全部提交记录</h3></div>
-        <el-table :data="history" size="small">
+        <el-table :data="pagedHistory" size="small">
           <el-table-column label="题目" min-width="180">
             <template #default="{ row }">{{ problemTitle(row.problem_id) }}</template>
           </el-table-column>
@@ -66,6 +66,7 @@
           <el-table-column prop="score" label="原始分" width="90" />
           <el-table-column label="时间" min-width="170"><template #default="{ row }">{{ formatDateTime(row.created_at) }}</template></el-table-column>
         </el-table>
+        <ListPagination v-model:page="historyPage" v-model:page-size="historyPageSize" :total="history.length" />
       </div>
     </div>
   </section>
@@ -77,6 +78,7 @@ import { computed, onMounted, reactive, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { client, sseUrl, type Problem, type Submission } from '../api/client'
 import CodeEditor from '../components/CodeEditor.vue'
+import ListPagination from '../components/ListPagination.vue'
 import ProblemStatementView from '../components/ProblemStatementView.vue'
 import StatusBadge from '../components/StatusBadge.vue'
 import { formatDateTime, workStatusLabel } from '../features/assignments/assignmentMeta'
@@ -91,6 +93,8 @@ const detail = ref<any>(null)
 const activeEntry = ref<DetailProblem | null>(null)
 const activeProblem = computed(() => activeEntry.value?.problem || null)
 const history = ref<Submission[]>([])
+const historyPage = ref(1)
+const historyPageSize = ref(10)
 const submitting = ref(false)
 const editorRef = ref<InstanceType<typeof CodeEditor> | null>(null)
 const editorStates = reactive<Record<number, EditorState>>({})
@@ -117,6 +121,7 @@ const source = computed({
   }
 })
 const live = computed(() => activeState.value?.live)
+const pagedHistory = computed(() => history.value.slice((historyPage.value - 1) * historyPageSize.value, historyPage.value * historyPageSize.value))
 
 async function loadDetail() {
   const id = Number(route.params.id)
@@ -179,6 +184,7 @@ async function refreshDetail() {
 async function loadHistory() {
   if (!detail.value) return
   history.value = (await client.get('/submissions', { params: { assignment_id: detail.value.assignment.id } })).data
+  clampHistoryPage()
 }
 
 function ensureEditorState(problemID: number) {
@@ -239,6 +245,13 @@ function problemTitle(problemID: number) {
 }
 
 watch(() => route.params.id, loadDetail)
+watch(historyPageSize, clampHistoryPage)
+
+function clampHistoryPage() {
+  const maxPage = Math.max(1, Math.ceil(history.value.length / historyPageSize.value))
+  if (historyPage.value > maxPage) historyPage.value = maxPage
+  if (historyPage.value < 1) historyPage.value = 1
+}
 
 onMounted(loadDetail)
 </script>

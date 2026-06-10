@@ -4,7 +4,7 @@
       <h3>提交记录</h3>
       <el-button @click="emit('refresh-history')">刷新</el-button>
     </div>
-    <el-table :data="history" size="small">
+    <el-table :data="pagedHistory" size="small">
       <el-table-column label="题号" width="80">
         <template #default="{ row }">{{ problemLabel(row.problem_id) }}</template>
       </el-table-column>
@@ -22,11 +22,14 @@
         <template #default="{ row }">{{ formatDateTime(row.created_at) }}</template>
       </el-table-column>
     </el-table>
+    <ListPagination v-model:page="page" v-model:page-size="pageSize" :total="history.length" />
   </section>
 </template>
 
 <script setup lang="ts">
+import { computed, ref, watch } from 'vue'
 import type { Problem, Submission } from '../../api/client'
+import ListPagination from '../../components/ListPagination.vue'
 import StatusBadge from '../../components/StatusBadge.vue'
 import { formatDateTime } from '../../features/time'
 
@@ -38,6 +41,10 @@ const props = defineProps<{
 const emit = defineEmits<{
   'refresh-history': []
 }>()
+
+const page = ref(1)
+const pageSize = ref(10)
+const pagedHistory = computed(() => props.history.slice((page.value - 1) * pageSize.value, page.value * pageSize.value))
 
 function problemTitle(problemID: number) {
   return props.detail?.problems?.find((entry: { problem: Problem }) => entry.problem.id === problemID)?.problem.title || '-'
@@ -60,6 +67,15 @@ function defaultProblemLabel(index: number) {
   }
   return label
 }
+
+function clampPage() {
+  const maxPage = Math.max(1, Math.ceil(props.history.length / pageSize.value))
+  if (page.value > maxPage) page.value = maxPage
+  if (page.value < 1) page.value = 1
+}
+
+watch(() => props.history.length, clampPage)
+watch(pageSize, clampPage)
 </script>
 
 <style scoped>

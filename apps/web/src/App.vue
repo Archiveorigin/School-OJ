@@ -14,7 +14,7 @@
           <el-option
             v-for="item in classroom.classes"
             :key="item.class_id"
-            :label="`${item.course_code} / ${item.class_name}`"
+            :label="classOptionLabel(item)"
             :value="item.class_id"
           />
         </el-select>
@@ -49,6 +49,7 @@ import AppSidebar from './components/AppSidebar.vue'
 import { useAuthStore } from './stores/auth'
 import { useClassroomStore } from './stores/classroom'
 import { useExamLockStore } from './stores/examLock'
+import type { ClassContext } from './api/client'
 
 const auth = useAuthStore()
 const classroom = useClassroomStore()
@@ -78,6 +79,10 @@ function logout() {
 
 function setClass(value: number) {
   classroom.setActive(value)
+}
+
+function classOptionLabel(item: ClassContext) {
+  return auth.role === 'student' ? item.class_name : `${item.course_code} / ${item.class_name}`
 }
 
 function handleCommand(command: string) {
