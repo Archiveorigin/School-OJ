@@ -4,6 +4,7 @@ import (
 	"archive/zip"
 	"bytes"
 	"context"
+	"encoding/csv"
 	"encoding/json"
 	"encoding/xml"
 	"fmt"
@@ -59,6 +60,46 @@ type classListView struct {
 	models.Class
 	CourseCode string `json:"course_code"`
 	CourseName string `json:"course_name"`
+	Term       string `json:"term"`
+}
+
+type courseMemberView struct {
+	ID         uint        `json:"id"`
+	CourseID   uint        `json:"course_id"`
+	UserID     uint        `json:"user_id"`
+	Role       models.Role `json:"role"`
+	UserRole   models.Role `json:"user_role"`
+	Email      string      `json:"email"`
+	Name       string      `json:"name"`
+	StudentNo  string      `json:"student_no"`
+	ClassCount int64       `json:"class_count"`
+	CreatedAt  time.Time   `json:"created_at"`
+}
+
+type classStudentView struct {
+	MembershipID uint      `json:"membership_id"`
+	UserID       uint      `json:"user_id"`
+	Email        string    `json:"email"`
+	Name         string    `json:"name"`
+	StudentNo    string    `json:"student_no"`
+	JoinedAt     time.Time `json:"joined_at"`
+}
+
+type studentImportInput struct {
+	StudentNo string `json:"student_no"`
+	Name      string `json:"name"`
+	Email     string `json:"email"`
+	Password  string `json:"password"`
+}
+
+type studentImportResult struct {
+	Email     string `json:"email"`
+	StudentNo string `json:"student_no"`
+	Name      string `json:"name"`
+	UserID    uint   `json:"user_id,omitempty"`
+	Created   bool   `json:"created"`
+	Joined    bool   `json:"joined"`
+	Error     string `json:"error,omitempty"`
 }
 
 type assignmentListView struct {
@@ -243,13 +284,25 @@ func (s Server) Router() *gin.Engine {
 	auth.POST("/feedback", s.createFeedback)
 	auth.GET("/courses", s.listCourses)
 	auth.POST("/courses", middleware.RequireRoles(models.RoleAdmin, models.RoleTeacher), s.createCourse)
+	auth.PUT("/courses/:id", middleware.RequireRoles(models.RoleAdmin, models.RoleTeacher), s.updateCourse)
+	auth.DELETE("/courses/:id", middleware.RequireRoles(models.RoleAdmin, models.RoleTeacher), s.archiveCourse)
+	auth.POST("/courses/:id/archive", middleware.RequireRoles(models.RoleAdmin, models.RoleTeacher), s.archiveCourse)
 	auth.POST("/courses/:id/classes", middleware.RequireRoles(models.RoleAdmin, models.RoleTeacher), s.createClass)
+	auth.GET("/courses/:id/members", middleware.RequireRoles(models.RoleAdmin, models.RoleTeacher), s.listCourseMembers)
 	auth.POST("/courses/:id/members", middleware.RequireRoles(models.RoleAdmin, models.RoleTeacher), s.addCourseMember)
+	auth.DELETE("/courses/:id/members/:user_id", middleware.RequireRoles(models.RoleAdmin, models.RoleTeacher), s.removeCourseMember)
 	auth.GET("/classes", s.listClasses)
+	auth.GET("/classes/join-preview", middleware.RequireRoles(models.RoleStudent), s.previewClassJoin)
 	auth.GET("/me/classes", s.myClasses)
 	auth.POST("/classes/join", middleware.RequireRoles(models.RoleStudent), s.joinClassByCode)
 	auth.POST("/classes/:id/join", middleware.RequireRoles(models.RoleStudent), s.joinClass)
 	auth.POST("/classes/:id/leave", middleware.RequireRoles(models.RoleStudent), s.leaveClass)
+	auth.PUT("/classes/:id", middleware.RequireRoles(models.RoleAdmin, models.RoleTeacher), s.updateClass)
+	auth.DELETE("/classes/:id", middleware.RequireRoles(models.RoleAdmin, models.RoleTeacher), s.archiveClass)
+	auth.POST("/classes/:id/archive", middleware.RequireRoles(models.RoleAdmin, models.RoleTeacher), s.archiveClass)
+	auth.GET("/classes/:id/students", middleware.RequireRoles(models.RoleAdmin, models.RoleTeacher), s.listClassStudents)
+	auth.DELETE("/classes/:id/students/:user_id", middleware.RequireRoles(models.RoleAdmin, models.RoleTeacher), s.removeClassStudent)
+	auth.POST("/classes/:id/students/import", middleware.RequireRoles(models.RoleAdmin, models.RoleTeacher), s.importClassStudents)
 	auth.GET("/problems", s.listProblems)
 	auth.POST("/problems", middleware.RequireRoles(models.RoleAdmin, models.RoleTeacher), s.createProblem)
 	auth.POST("/problems/upload", middleware.RequireRoles(models.RoleAdmin, models.RoleTeacher), s.uploadProblem)
@@ -424,10 +477,16 @@ func (s Server) listCourses(c *gin.Context) {
 	user, _ := middleware.CurrentUser(c)
 	var courses []models.Course
 	q := s.DB.Order("id desc")
+	if !includeArchived(c) {
+		q = q.Where("archived = false")
+	}
+	if term := strings.TrimSpace(c.Query("term")); term != "" {
+		q = q.Where("term = ?", term)
+	}
 	switch user.Role {
 	case models.RoleAdmin:
 	case models.RoleTeacher:
-		q = q.Where("teacher_id = ? OR id IN (?)", user.ID, s.DB.Model(&models.CourseMembership{}).Select("course_id").Where("user_id = ? AND role IN ?", user.ID, []models.Role{models.RoleTeacher, models.RoleAdmin}))
+		q = q.Where("teacher_id = ? OR id IN (?)", user.ID, s.DB.Model(&models.CourseMembership{}).Select("course_id").Where("user_id = ? AND role IN ?", user.ID, courseTeachingRoles()))
 	default:
 		q = q.Where("id IN (?)", s.DB.Model(&models.CourseMembership{}).Select("course_id").Where("user_id = ?", user.ID))
 	}
@@ -441,19 +500,107 @@ func (s Server) createCourse(c *gin.Context) {
 	if !bind(c, &req) {
 		return
 	}
+	req.ID = 0
+	req.Code = strings.TrimSpace(req.Code)
+	req.Name = strings.TrimSpace(req.Name)
+	req.Term = strings.TrimSpace(req.Term)
+	req.Description = strings.TrimSpace(req.Description)
 	if req.TeacherID == 0 {
 		req.TeacherID = user.ID
 	}
 	if user.Role == models.RoleTeacher {
 		req.TeacherID = user.ID
 	}
+	if req.Code == "" || req.Name == "" {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "course code and name are required"})
+		return
+	}
 	if err := s.DB.Create(&req).Error; err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 		return
 	}
-	_ = s.DB.Create(&models.CourseMembership{CourseID: req.ID, UserID: req.TeacherID, Role: models.RoleTeacher}).Error
+	_ = s.DB.Create(&models.CourseMembership{CourseID: req.ID, UserID: req.TeacherID, Role: models.RoleCourseAdmin}).Error
 	services.Audit(c, s.DB, "course.create", "course", req.ID, nil)
 	c.JSON(http.StatusCreated, req)
+}
+
+func (s Server) updateCourse(c *gin.Context) {
+	user, _ := middleware.CurrentUser(c)
+	courseID, ok := idParam(c, "id")
+	if !ok {
+		return
+	}
+	if !s.canAdminCourse(user, courseID) {
+		c.JSON(http.StatusForbidden, gin.H{"error": "forbidden"})
+		return
+	}
+	var course models.Course
+	if err := s.DB.First(&course, courseID).Error; err != nil {
+		c.JSON(http.StatusNotFound, gin.H{"error": "course not found"})
+		return
+	}
+	var req struct {
+		Code        string `json:"code"`
+		Name        string `json:"name"`
+		Term        string `json:"term"`
+		Description string `json:"description"`
+		Archived    *bool  `json:"archived"`
+	}
+	if !bind(c, &req) {
+		return
+	}
+	code := strings.TrimSpace(req.Code)
+	name := strings.TrimSpace(req.Name)
+	if code == "" || name == "" {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "course code and name are required"})
+		return
+	}
+	updates := map[string]any{
+		"code":        code,
+		"name":        name,
+		"term":        strings.TrimSpace(req.Term),
+		"description": strings.TrimSpace(req.Description),
+	}
+	if req.Archived != nil {
+		updates["archived"] = *req.Archived
+	}
+	if err := s.DB.Model(&course).Updates(updates).Error; err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+	services.Audit(c, s.DB, "course.update", "course", courseID, nil)
+	_ = s.DB.First(&course, courseID).Error
+	c.JSON(http.StatusOK, course)
+}
+
+func (s Server) archiveCourse(c *gin.Context) {
+	user, _ := middleware.CurrentUser(c)
+	courseID, ok := idParam(c, "id")
+	if !ok {
+		return
+	}
+	if !s.canAdminCourse(user, courseID) {
+		c.JSON(http.StatusForbidden, gin.H{"error": "forbidden"})
+		return
+	}
+	archived := true
+	if c.Request.Method == http.MethodPost {
+		var req struct {
+			Archived *bool `json:"archived"`
+		}
+		if !bind(c, &req) {
+			return
+		}
+		if req.Archived != nil {
+			archived = *req.Archived
+		}
+	}
+	if err := s.DB.Model(&models.Course{}).Where("id = ?", courseID).Update("archived", archived).Error; err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+	services.Audit(c, s.DB, "course.archive", "course", courseID, datatypes.JSONMap{"archived": archived})
+	c.JSON(http.StatusOK, gin.H{"id": courseID, "archived": archived})
 }
 
 func (s Server) createClass(c *gin.Context) {
@@ -462,14 +609,28 @@ func (s Server) createClass(c *gin.Context) {
 	if !ok {
 		return
 	}
-	if !s.canManageCourse(user, courseID) {
+	if !s.canAdminCourse(user, courseID) {
 		c.JSON(http.StatusForbidden, gin.H{"error": "forbidden"})
+		return
+	}
+	var course models.Course
+	if err := s.DB.First(&course, courseID).Error; err != nil {
+		c.JSON(http.StatusNotFound, gin.H{"error": "course not found"})
+		return
+	}
+	if course.Archived {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "cannot add members to archived course"})
 		return
 	}
 	var req struct {
 		Name string `json:"name" binding:"required"`
 	}
 	if !bind(c, &req) {
+		return
+	}
+	req.Name = strings.TrimSpace(req.Name)
+	if req.Name == "" {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "class name is required"})
 		return
 	}
 	class := models.Class{CourseID: courseID, Name: req.Name}
@@ -487,7 +648,7 @@ func (s Server) createClass(c *gin.Context) {
 	c.JSON(http.StatusCreated, class)
 }
 
-func (s Server) addCourseMember(c *gin.Context) {
+func (s Server) listCourseMembers(c *gin.Context) {
 	user, _ := middleware.CurrentUser(c)
 	courseID, ok := idParam(c, "id")
 	if !ok {
@@ -497,22 +658,132 @@ func (s Server) addCourseMember(c *gin.Context) {
 		c.JSON(http.StatusForbidden, gin.H{"error": "forbidden"})
 		return
 	}
+	var memberships []models.CourseMembership
+	if err := s.DB.Where("course_id = ?", courseID).Order("id asc").Find(&memberships).Error; err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+	userIDs := make([]uint, 0, len(memberships))
+	for _, membership := range memberships {
+		userIDs = append(userIDs, membership.UserID)
+	}
+	users := map[uint]models.User{}
+	if ids := dedupeUint(userIDs); len(ids) > 0 {
+		var rows []models.User
+		s.DB.Where("id IN ?", ids).Find(&rows)
+		for _, row := range rows {
+			users[row.ID] = row
+		}
+	}
+	classCounts := map[uint]int64{}
+	var countRows []struct {
+		UserID uint
+		Count  int64
+	}
+	s.DB.Table("class_memberships").
+		Select("class_memberships.user_id as user_id, count(*) as count").
+		Joins("join classes on classes.id = class_memberships.class_id").
+		Where("classes.course_id = ? AND classes.archived = false", courseID).
+		Group("class_memberships.user_id").
+		Scan(&countRows)
+	for _, row := range countRows {
+		classCounts[row.UserID] = row.Count
+	}
+	out := make([]courseMemberView, 0, len(memberships))
+	for _, membership := range memberships {
+		view := courseMemberView{
+			ID:         membership.ID,
+			CourseID:   membership.CourseID,
+			UserID:     membership.UserID,
+			Role:       membership.Role,
+			ClassCount: classCounts[membership.UserID],
+			CreatedAt:  membership.CreatedAt,
+		}
+		if memberUser, ok := users[membership.UserID]; ok {
+			view.UserRole = memberUser.Role
+			view.Email = memberUser.Email
+			view.Name = memberUser.Name
+			view.StudentNo = memberUser.StudentNo
+		}
+		out = append(out, view)
+	}
+	c.JSON(http.StatusOK, out)
+}
+
+func (s Server) addCourseMember(c *gin.Context) {
+	user, _ := middleware.CurrentUser(c)
+	courseID, ok := idParam(c, "id")
+	if !ok {
+		return
+	}
+	if !s.canAdminCourse(user, courseID) {
+		c.JSON(http.StatusForbidden, gin.H{"error": "forbidden"})
+		return
+	}
+	var course models.Course
+	if err := s.DB.First(&course, courseID).Error; err != nil {
+		c.JSON(http.StatusNotFound, gin.H{"error": "course not found"})
+		return
+	}
+	if course.Archived {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "cannot create class in archived course"})
+		return
+	}
 	var req struct {
-		UserID  uint        `json:"user_id" binding:"required"`
+		UserID  uint        `json:"user_id"`
+		Email   string      `json:"email"`
 		Role    models.Role `json:"role" binding:"required"`
 		ClassID *uint       `json:"class_id"`
 	}
 	if !bind(c, &req) {
 		return
 	}
-	member := models.CourseMembership{CourseID: courseID, UserID: req.UserID, Role: req.Role}
-	if err := s.DB.Where("course_id = ? AND user_id = ?", courseID, req.UserID).FirstOrCreate(&member).Error; err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+	if !validCourseMemberRole(req.Role) {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "role must be one of student, teacher, admin, course_admin, course_assistant"})
 		return
+	}
+	if req.UserID == 0 {
+		req.Email = strings.ToLower(strings.TrimSpace(req.Email))
+		if req.Email == "" {
+			c.JSON(http.StatusBadRequest, gin.H{"error": "user_id or email is required"})
+			return
+		}
+		var memberUser models.User
+		if err := s.DB.Where("email = ? AND account_deleted = false", req.Email).First(&memberUser).Error; err != nil {
+			c.JSON(http.StatusNotFound, gin.H{"error": "user not found"})
+			return
+		}
+		req.UserID = memberUser.ID
+	}
+	var memberUser models.User
+	if err := s.DB.Where("id = ? AND account_deleted = false", req.UserID).First(&memberUser).Error; err != nil {
+		c.JSON(http.StatusNotFound, gin.H{"error": "user not found"})
+		return
+	}
+	if req.Role == models.RoleStudent && memberUser.Role != models.RoleStudent {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "student member must use a student account"})
+		return
+	}
+	if (req.Role == models.RoleTeacher || req.Role == models.RoleAdmin || req.Role == models.RoleCourseAdmin || req.Role == models.RoleCourseAssistant) && memberUser.Role == models.RoleStudent {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "teacher member must use a teacher or admin account"})
+		return
+	}
+	member := models.CourseMembership{CourseID: courseID, UserID: req.UserID, Role: req.Role}
+	if err := s.DB.Where("course_id = ? AND user_id = ?", courseID, req.UserID).First(&member).Error; err != nil {
+		if err := s.DB.Create(&member).Error; err != nil {
+			c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+			return
+		}
+	} else if member.Role != req.Role {
+		member.Role = req.Role
+		if err := s.DB.Save(&member).Error; err != nil {
+			c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+			return
+		}
 	}
 	if req.ClassID != nil {
 		var class models.Class
-		if err := s.DB.First(&class, *req.ClassID).Error; err != nil || class.CourseID != courseID {
+		if err := s.DB.First(&class, *req.ClassID).Error; err != nil || class.CourseID != courseID || class.Archived {
 			c.JSON(http.StatusBadRequest, gin.H{"error": "class not found in course"})
 			return
 		}
@@ -522,10 +793,52 @@ func (s Server) addCourseMember(c *gin.Context) {
 	c.JSON(http.StatusCreated, member)
 }
 
+func (s Server) removeCourseMember(c *gin.Context) {
+	user, _ := middleware.CurrentUser(c)
+	courseID, ok := idParam(c, "id")
+	if !ok {
+		return
+	}
+	memberUserID, ok := idParam(c, "user_id")
+	if !ok {
+		return
+	}
+	if !s.canAdminCourse(user, courseID) {
+		c.JSON(http.StatusForbidden, gin.H{"error": "forbidden"})
+		return
+	}
+	var course models.Course
+	if err := s.DB.First(&course, courseID).Error; err != nil {
+		c.JSON(http.StatusNotFound, gin.H{"error": "course not found"})
+		return
+	}
+	if course.TeacherID == memberUserID {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "cannot remove primary teacher"})
+		return
+	}
+	if err := s.DB.Transaction(func(tx *gorm.DB) error {
+		if err := tx.Where("course_id = ? AND user_id = ?", courseID, memberUserID).Delete(&models.CourseMembership{}).Error; err != nil {
+			return err
+		}
+		if err := tx.Where("user_id = ? AND class_id IN (?)", memberUserID, tx.Model(&models.Class{}).Select("id").Where("course_id = ?", courseID)).Delete(&models.ClassMembership{}).Error; err != nil {
+			return err
+		}
+		return nil
+	}); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+	services.Audit(c, s.DB, "course.member.remove", "course", courseID, datatypes.JSONMap{"user_id": memberUserID})
+	c.JSON(http.StatusOK, gin.H{"removed": true, "course_id": courseID, "user_id": memberUserID})
+}
+
 func (s Server) listClasses(c *gin.Context) {
 	user, _ := middleware.CurrentUser(c)
 	classes := []models.Class{}
 	q := s.DB.Order("id desc")
+	if !includeArchived(c) {
+		q = q.Where("archived = false").Where("course_id IN (?)", s.DB.Model(&models.Course{}).Select("id").Where("archived = false"))
+	}
 	if courseID := c.Query("course_id"); courseID != "" {
 		q = q.Where("course_id = ?", courseID)
 	}
@@ -534,13 +847,180 @@ func (s Server) listClasses(c *gin.Context) {
 	case models.RoleTeacher:
 		q = q.Where("course_id IN (?) OR course_id IN (?)",
 			s.DB.Model(&models.Course{}).Select("id").Where("teacher_id = ?", user.ID),
-			s.DB.Model(&models.CourseMembership{}).Select("course_id").Where("user_id = ? AND role IN ?", user.ID, []models.Role{models.RoleTeacher, models.RoleAdmin}),
+			s.DB.Model(&models.CourseMembership{}).Select("course_id").Where("user_id = ? AND role IN ?", user.ID, courseTeachingRoles()),
 		)
 	default:
 		q = q.Where("id IN (?)", s.DB.Model(&models.ClassMembership{}).Select("class_id").Where("user_id = ?", user.ID))
 	}
 	q.Find(&classes)
 	c.JSON(http.StatusOK, s.classListViews(classes))
+}
+
+func (s Server) updateClass(c *gin.Context) {
+	user, _ := middleware.CurrentUser(c)
+	classID, ok := idParam(c, "id")
+	if !ok {
+		return
+	}
+	var class models.Class
+	if err := s.DB.First(&class, classID).Error; err != nil {
+		c.JSON(http.StatusNotFound, gin.H{"error": "class not found"})
+		return
+	}
+	if !s.canAdminCourse(user, class.CourseID) {
+		c.JSON(http.StatusForbidden, gin.H{"error": "forbidden"})
+		return
+	}
+	var req struct {
+		Name     string `json:"name"`
+		Archived *bool  `json:"archived"`
+	}
+	if !bind(c, &req) {
+		return
+	}
+	req.Name = strings.TrimSpace(req.Name)
+	if req.Name == "" {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "class name is required"})
+		return
+	}
+	updates := map[string]any{"name": req.Name}
+	if req.Archived != nil {
+		updates["archived"] = *req.Archived
+	}
+	if err := s.DB.Model(&class).Updates(updates).Error; err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+	services.Audit(c, s.DB, "class.update", "class", classID, datatypes.JSONMap{"course_id": class.CourseID})
+	_ = s.DB.First(&class, classID).Error
+	c.JSON(http.StatusOK, class)
+}
+
+func (s Server) archiveClass(c *gin.Context) {
+	user, _ := middleware.CurrentUser(c)
+	classID, ok := idParam(c, "id")
+	if !ok {
+		return
+	}
+	var class models.Class
+	if err := s.DB.First(&class, classID).Error; err != nil {
+		c.JSON(http.StatusNotFound, gin.H{"error": "class not found"})
+		return
+	}
+	if !s.canAdminCourse(user, class.CourseID) {
+		c.JSON(http.StatusForbidden, gin.H{"error": "forbidden"})
+		return
+	}
+	archived := true
+	if c.Request.Method == http.MethodPost {
+		var req struct {
+			Archived *bool `json:"archived"`
+		}
+		if !bind(c, &req) {
+			return
+		}
+		if req.Archived != nil {
+			archived = *req.Archived
+		}
+	}
+	if err := s.DB.Model(&class).Update("archived", archived).Error; err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+	services.Audit(c, s.DB, "class.archive", "class", classID, datatypes.JSONMap{"course_id": class.CourseID, "archived": archived})
+	c.JSON(http.StatusOK, gin.H{"id": classID, "archived": archived})
+}
+
+func (s Server) listClassStudents(c *gin.Context) {
+	user, _ := middleware.CurrentUser(c)
+	classID, ok := idParam(c, "id")
+	if !ok {
+		return
+	}
+	if !s.canManageClass(user, classID) {
+		c.JSON(http.StatusForbidden, gin.H{"error": "forbidden"})
+		return
+	}
+	rows := []classStudentView{}
+	if err := s.DB.Table("class_memberships").
+		Select("class_memberships.id as membership_id, users.id as user_id, users.email as email, users.name as name, users.student_no as student_no, class_memberships.created_at as joined_at").
+		Joins("join users on users.id = class_memberships.user_id").
+		Where("class_memberships.class_id = ? AND users.role = ? AND users.account_deleted = false", classID, models.RoleStudent).
+		Order("class_memberships.created_at asc, users.id asc").
+		Scan(&rows).Error; err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+	c.JSON(http.StatusOK, rows)
+}
+
+func (s Server) removeClassStudent(c *gin.Context) {
+	user, _ := middleware.CurrentUser(c)
+	classID, ok := idParam(c, "id")
+	if !ok {
+		return
+	}
+	studentID, ok := idParam(c, "user_id")
+	if !ok {
+		return
+	}
+	var class models.Class
+	if err := s.DB.First(&class, classID).Error; err != nil {
+		c.JSON(http.StatusNotFound, gin.H{"error": "class not found"})
+		return
+	}
+	if !s.canAdminCourse(user, class.CourseID) {
+		c.JSON(http.StatusForbidden, gin.H{"error": "forbidden"})
+		return
+	}
+	if err := s.removeStudentFromClass(class, studentID); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+	services.Audit(c, s.DB, "class.student.remove", "class", classID, datatypes.JSONMap{"user_id": studentID})
+	c.JSON(http.StatusOK, gin.H{"removed": true, "class_id": classID, "user_id": studentID})
+}
+
+func (s Server) importClassStudents(c *gin.Context) {
+	user, _ := middleware.CurrentUser(c)
+	classID, ok := idParam(c, "id")
+	if !ok {
+		return
+	}
+	var class models.Class
+	if err := s.DB.First(&class, classID).Error; err != nil {
+		c.JSON(http.StatusNotFound, gin.H{"error": "class not found"})
+		return
+	}
+	if class.Archived {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "cannot import into archived class"})
+		return
+	}
+	if !s.canAdminCourse(user, class.CourseID) {
+		c.JSON(http.StatusForbidden, gin.H{"error": "forbidden"})
+		return
+	}
+	students, defaultPassword, ok := parseStudentImportRequest(c)
+	if !ok {
+		return
+	}
+	results := s.importStudentsIntoClass(class, students, defaultPassword)
+	created := 0
+	joined := 0
+	failed := 0
+	for _, result := range results {
+		if result.Created {
+			created++
+		}
+		if result.Joined {
+			joined++
+		}
+		if result.Error != "" {
+			failed++
+		}
+	}
+	services.Audit(c, s.DB, "class.student.import", "class", classID, datatypes.JSONMap{"created": created, "joined": joined, "failed": failed})
+	c.JSON(http.StatusOK, gin.H{"created": created, "joined": joined, "failed": failed, "results": results})
 }
 
 func (s Server) myClasses(c *gin.Context) {
@@ -559,11 +1039,12 @@ func (s Server) myClasses(c *gin.Context) {
 	q := s.DB.Table("classes").
 		Select("classes.id as id, classes.id as class_id, classes.name as class_name, classes.join_code as join_code, courses.id as course_id, courses.code as course_code, courses.name as course_name, courses.term as term").
 		Joins("join courses on courses.id = classes.course_id").
+		Where("classes.archived = false AND courses.archived = false").
 		Order("courses.id desc, classes.id desc")
 	switch user.Role {
 	case models.RoleAdmin:
 	case models.RoleTeacher:
-		q = q.Where("courses.teacher_id = ? OR courses.id IN (?)", user.ID, s.DB.Model(&models.CourseMembership{}).Select("course_id").Where("user_id = ? AND role IN ?", user.ID, []models.Role{models.RoleTeacher, models.RoleAdmin}))
+		q = q.Where("courses.teacher_id = ? OR courses.id IN (?)", user.ID, s.DB.Model(&models.CourseMembership{}).Select("course_id").Where("user_id = ? AND role IN ?", user.ID, courseTeachingRoles()))
 	default:
 		q = q.Joins("join class_memberships on class_memberships.class_id = classes.id").Where("class_memberships.user_id = ?", user.ID)
 	}
@@ -583,6 +1064,7 @@ func (s Server) classListViews(classes []models.Class) []classListView {
 		if course, ok := courses[class.CourseID]; ok {
 			view.CourseCode = course.Code
 			view.CourseName = course.Name
+			view.Term = course.Term
 		}
 		views = append(views, view)
 	}
@@ -673,6 +1155,37 @@ func (s Server) classMap(ids []uint) map[uint]models.Class {
 	return out
 }
 
+func (s Server) previewClassJoin(c *gin.Context) {
+	code := strings.ToUpper(strings.TrimSpace(c.Query("join_code")))
+	if code == "" {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "join_code is required"})
+		return
+	}
+	var class models.Class
+	if err := s.DB.Where("upper(join_code) = ? AND archived = false", code).First(&class).Error; err != nil {
+		c.JSON(http.StatusNotFound, gin.H{"error": "class not found"})
+		return
+	}
+	var course models.Course
+	if err := s.DB.Where("id = ? AND archived = false", class.CourseID).First(&course).Error; err != nil {
+		c.JSON(http.StatusNotFound, gin.H{"error": "course not found"})
+		return
+	}
+	var teacher models.User
+	_ = s.DB.Select("id", "email", "name", "role").Where("id = ? AND account_deleted = false", course.TeacherID).First(&teacher).Error
+	c.JSON(http.StatusOK, gin.H{
+		"class_id":           class.ID,
+		"class_name":         class.Name,
+		"course_id":          course.ID,
+		"course_code":        course.Code,
+		"course_name":        course.Name,
+		"course_description": course.Description,
+		"term":               course.Term,
+		"teacher_id":         teacher.ID,
+		"teacher_name":       teacher.Name,
+	})
+}
+
 func (s Server) joinClassByCode(c *gin.Context) {
 	user, _ := middleware.CurrentUser(c)
 	var req struct {
@@ -683,7 +1196,7 @@ func (s Server) joinClassByCode(c *gin.Context) {
 	}
 	code := strings.ToUpper(strings.TrimSpace(req.JoinCode))
 	var class models.Class
-	if err := s.DB.Where("upper(join_code) = ?", code).First(&class).Error; err != nil {
+	if err := s.DB.Where("upper(join_code) = ? AND archived = false", code).First(&class).Error; err != nil {
 		c.JSON(http.StatusNotFound, gin.H{"error": "class not found"})
 		return
 	}
@@ -697,7 +1210,7 @@ func (s Server) joinClass(c *gin.Context) {
 		return
 	}
 	var class models.Class
-	if err := s.DB.First(&class, classID).Error; err != nil {
+	if err := s.DB.Where("id = ? AND archived = false", classID).First(&class).Error; err != nil {
 		c.JSON(http.StatusNotFound, gin.H{"error": "class not found"})
 		return
 	}
@@ -705,6 +1218,11 @@ func (s Server) joinClass(c *gin.Context) {
 }
 
 func (s Server) joinStudentToClass(c *gin.Context, user models.User, class models.Class) {
+	var course models.Course
+	if err := s.DB.Where("id = ? AND archived = false", class.CourseID).First(&course).Error; err != nil {
+		c.JSON(http.StatusNotFound, gin.H{"error": "course not found"})
+		return
+	}
 	if err := s.DB.Where("class_id = ? AND user_id = ?", class.ID, user.ID).FirstOrCreate(&models.ClassMembership{ClassID: class.ID, UserID: user.ID}).Error; err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 		return
@@ -1804,7 +2322,7 @@ func (s Server) listAssignments(c *gin.Context) {
 		case models.RoleTeacher:
 			q = q.Where("course_id IN (?) OR course_id IN (?)",
 				s.DB.Model(&models.Course{}).Select("id").Where("teacher_id = ?", user.ID),
-				s.DB.Model(&models.CourseMembership{}).Select("course_id").Where("user_id = ? AND role IN ?", user.ID, []models.Role{models.RoleTeacher, models.RoleAdmin}),
+				s.DB.Model(&models.CourseMembership{}).Select("course_id").Where("user_id = ? AND role IN ?", user.ID, courseTeachingRoles()),
 			)
 		default:
 			q = q.Where("class_id IN (?)", s.DB.Model(&models.ClassMembership{}).Select("class_id").Where("user_id = ?", user.ID))
@@ -2010,7 +2528,7 @@ func (s Server) listExams(c *gin.Context) {
 		case models.RoleTeacher:
 			q = q.Where("course_id IN (?) OR course_id IN (?)",
 				s.DB.Model(&models.Course{}).Select("id").Where("teacher_id = ?", user.ID),
-				s.DB.Model(&models.CourseMembership{}).Select("course_id").Where("user_id = ? AND role IN ?", user.ID, []models.Role{models.RoleTeacher, models.RoleAdmin}),
+				s.DB.Model(&models.CourseMembership{}).Select("course_id").Where("user_id = ? AND role IN ?", user.ID, courseTeachingRoles()),
 			)
 		default:
 			q = q.Where("class_id IN (?)", s.DB.Model(&models.ClassMembership{}).Select("class_id").Where("user_id = ?", user.ID))
@@ -3127,7 +3645,23 @@ func (s Server) canManageCourse(user models.User, courseID uint) bool {
 	if count > 0 {
 		return true
 	}
-	s.DB.Model(&models.CourseMembership{}).Where("course_id = ? AND user_id = ? AND role IN ?", courseID, user.ID, []models.Role{models.RoleTeacher, models.RoleAdmin}).Count(&count)
+	s.DB.Model(&models.CourseMembership{}).Where("course_id = ? AND user_id = ? AND role IN ?", courseID, user.ID, courseTeachingRoles()).Count(&count)
+	return count > 0
+}
+
+func (s Server) canAdminCourse(user models.User, courseID uint) bool {
+	if user.Role == models.RoleAdmin {
+		return true
+	}
+	if user.Role != models.RoleTeacher {
+		return false
+	}
+	var count int64
+	s.DB.Model(&models.Course{}).Where("id = ? AND teacher_id = ?", courseID, user.ID).Count(&count)
+	if count > 0 {
+		return true
+	}
+	s.DB.Model(&models.CourseMembership{}).Where("course_id = ? AND user_id = ? AND role IN ?", courseID, user.ID, courseAdminRoles()).Count(&count)
 	return count > 0
 }
 
@@ -3158,16 +3692,21 @@ func (s Server) visibleClassIDs(user models.User) []uint {
 	var ids []uint
 	switch user.Role {
 	case models.RoleAdmin:
-		s.DB.Model(&models.Class{}).Order("id desc").Pluck("id", &ids)
+		s.DB.Model(&models.Class{}).Where("archived = false").Order("id desc").Pluck("id", &ids)
 	case models.RoleTeacher:
 		s.DB.Model(&models.Class{}).
+			Where("archived = false").
 			Where("course_id IN (?) OR course_id IN (?)",
 				s.DB.Model(&models.Course{}).Select("id").Where("teacher_id = ?", user.ID),
-				s.DB.Model(&models.CourseMembership{}).Select("course_id").Where("user_id = ? AND role IN ?", user.ID, []models.Role{models.RoleTeacher, models.RoleAdmin}),
+				s.DB.Model(&models.CourseMembership{}).Select("course_id").Where("user_id = ? AND role IN ?", user.ID, courseTeachingRoles()),
 			).
 			Order("id desc").Pluck("id", &ids)
 	default:
-		s.DB.Model(&models.ClassMembership{}).Where("user_id = ?", user.ID).Order("class_id desc").Pluck("class_id", &ids)
+		s.DB.Model(&models.ClassMembership{}).
+			Joins("join classes on classes.id = class_memberships.class_id").
+			Joins("join courses on courses.id = classes.course_id").
+			Where("class_memberships.user_id = ? AND classes.archived = false AND courses.archived = false", user.ID).
+			Order("class_id desc").Pluck("class_id", &ids)
 	}
 	return ids
 }
@@ -4046,6 +4585,446 @@ func (s Server) linkProblemToClass(tx *gorm.DB, classID uint, problemID uint, re
 		return tx.Model(&item).Update("release_at", releaseAt).Error
 	}
 	return nil
+}
+
+func includeArchived(c *gin.Context) bool {
+	value := strings.ToLower(strings.TrimSpace(c.Query("include_archived")))
+	if value == "true" || value == "1" || value == "yes" {
+		return true
+	}
+	return strings.ToLower(strings.TrimSpace(c.Query("archived"))) == "all"
+}
+
+func courseTeachingRoles() []models.Role {
+	return []models.Role{models.RoleTeacher, models.RoleAdmin, models.RoleCourseAdmin, models.RoleCourseAssistant}
+}
+
+func courseAdminRoles() []models.Role {
+	return []models.Role{models.RoleTeacher, models.RoleAdmin, models.RoleCourseAdmin}
+}
+
+func validCourseMemberRole(role models.Role) bool {
+	switch role {
+	case models.RoleStudent, models.RoleTeacher, models.RoleAdmin, models.RoleCourseAdmin, models.RoleCourseAssistant:
+		return true
+	default:
+		return false
+	}
+}
+
+func parseStudentImportRequest(c *gin.Context) ([]studentImportInput, string, bool) {
+	contentType := strings.ToLower(c.ContentType())
+	if strings.HasPrefix(contentType, "multipart/") {
+		defaultPassword := strings.TrimSpace(c.PostForm("default_password"))
+		if text := strings.TrimSpace(c.PostForm("text")); text != "" {
+			students, err := parseStudentRows([]byte(text), ".csv")
+			if err != nil {
+				c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+				return nil, "", false
+			}
+			return students, defaultPassword, true
+		}
+		file, err := c.FormFile("file")
+		if err != nil {
+			c.JSON(http.StatusBadRequest, gin.H{"error": "file or text is required"})
+			return nil, "", false
+		}
+		src, err := file.Open()
+		if err != nil {
+			c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+			return nil, "", false
+		}
+		defer src.Close()
+		raw, err := io.ReadAll(src)
+		if err != nil {
+			c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+			return nil, "", false
+		}
+		students, err := parseStudentRows(raw, filepath.Ext(file.Filename))
+		if err != nil {
+			c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+			return nil, "", false
+		}
+		return students, defaultPassword, true
+	}
+	var req struct {
+		Students        []studentImportInput `json:"students"`
+		Text            string               `json:"text"`
+		DefaultPassword string               `json:"default_password"`
+	}
+	if !bind(c, &req) {
+		return nil, "", false
+	}
+	if len(req.Students) > 0 {
+		return req.Students, strings.TrimSpace(req.DefaultPassword), true
+	}
+	if strings.TrimSpace(req.Text) == "" {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "students or text is required"})
+		return nil, "", false
+	}
+	students, err := parseStudentRows([]byte(req.Text), ".csv")
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return nil, "", false
+	}
+	return students, strings.TrimSpace(req.DefaultPassword), true
+}
+
+func parseStudentRows(raw []byte, ext string) ([]studentImportInput, error) {
+	ext = strings.ToLower(strings.TrimSpace(ext))
+	var rows [][]string
+	var err error
+	if ext == ".xlsx" {
+		rows, err = parseSimpleXLSXRows(raw)
+	} else {
+		rows, err = parseCSVRows(raw)
+	}
+	if err != nil {
+		return nil, err
+	}
+	return studentInputsFromRows(rows), nil
+}
+
+func parseCSVRows(raw []byte) ([][]string, error) {
+	reader := csv.NewReader(bytes.NewReader(raw))
+	reader.FieldsPerRecord = -1
+	reader.TrimLeadingSpace = true
+	records, err := reader.ReadAll()
+	if err != nil {
+		return nil, fmt.Errorf("invalid csv: %w", err)
+	}
+	return records, nil
+}
+
+func studentInputsFromRows(rows [][]string) []studentImportInput {
+	cleanRows := make([][]string, 0, len(rows))
+	for _, row := range rows {
+		clean := make([]string, len(row))
+		nonEmpty := false
+		for i, cell := range row {
+			clean[i] = cleanStudentCell(cell)
+			if clean[i] != "" {
+				nonEmpty = true
+			}
+		}
+		if nonEmpty {
+			cleanRows = append(cleanRows, clean)
+		}
+	}
+	if len(cleanRows) == 0 {
+		return []studentImportInput{}
+	}
+	indexes := map[string]int{"student_no": 0, "name": 1, "email": 2, "password": 3}
+	start := 0
+	if rowLooksLikeHeader(cleanRows[0]) {
+		indexes = map[string]int{}
+		for i, cell := range cleanRows[0] {
+			if key := studentImportHeaderKey(cell); key != "" {
+				indexes[key] = i
+			}
+		}
+		start = 1
+	}
+	out := make([]studentImportInput, 0, len(cleanRows)-start)
+	for _, row := range cleanRows[start:] {
+		out = append(out, studentImportInput{
+			StudentNo: studentRowValue(row, studentColumnIndex(indexes, "student_no")),
+			Name:      studentRowValue(row, studentColumnIndex(indexes, "name")),
+			Email:     studentRowValue(row, studentColumnIndex(indexes, "email")),
+			Password:  studentRowValue(row, studentColumnIndex(indexes, "password")),
+		})
+	}
+	return out
+}
+
+func studentColumnIndex(indexes map[string]int, key string) int {
+	index, ok := indexes[key]
+	if !ok {
+		return -1
+	}
+	return index
+}
+
+func rowLooksLikeHeader(row []string) bool {
+	for _, cell := range row {
+		if studentImportHeaderKey(cell) != "" {
+			return true
+		}
+	}
+	return false
+}
+
+func studentImportHeaderKey(value string) string {
+	key := strings.ToLower(strings.TrimSpace(value))
+	key = strings.ReplaceAll(key, " ", "_")
+	key = strings.ReplaceAll(key, "-", "_")
+	switch key {
+	case "student_no", "student_number", "student_id", "学号":
+		return "student_no"
+	case "name", "student_name", "姓名", "学生姓名":
+		return "name"
+	case "email", "mail", "邮箱", "电子邮箱":
+		return "email"
+	case "password", "密码", "初始密码":
+		return "password"
+	default:
+		return ""
+	}
+}
+
+func cleanStudentCell(value string) string {
+	return strings.TrimSpace(strings.TrimPrefix(value, "\ufeff"))
+}
+
+func studentRowValue(row []string, index int) string {
+	if index < 0 || index >= len(row) {
+		return ""
+	}
+	return cleanStudentCell(row[index])
+}
+
+func parseSimpleXLSXRows(raw []byte) ([][]string, error) {
+	reader, err := zip.NewReader(bytes.NewReader(raw), int64(len(raw)))
+	if err != nil {
+		return nil, fmt.Errorf("invalid xlsx: %w", err)
+	}
+	files := map[string]*zip.File{}
+	for _, file := range reader.File {
+		files[file.Name] = file
+	}
+	shared := []string{}
+	if file := files["xl/sharedStrings.xml"]; file != nil {
+		body, err := readZipFile(file)
+		if err != nil {
+			return nil, err
+		}
+		shared = parseSharedStrings(body)
+	}
+	sheet := files["xl/worksheets/sheet1.xml"]
+	if sheet == nil {
+		return nil, fmt.Errorf("xlsx sheet1.xml not found")
+	}
+	body, err := readZipFile(sheet)
+	if err != nil {
+		return nil, err
+	}
+	return parseWorksheetRows(body, shared)
+}
+
+func readZipFile(file *zip.File) ([]byte, error) {
+	rc, err := file.Open()
+	if err != nil {
+		return nil, err
+	}
+	defer rc.Close()
+	return io.ReadAll(rc)
+}
+
+func parseSharedStrings(raw []byte) []string {
+	decoder := xml.NewDecoder(bytes.NewReader(raw))
+	out := []string{}
+	var current strings.Builder
+	inItem := false
+	inText := false
+	for {
+		token, err := decoder.Token()
+		if err == io.EOF {
+			break
+		}
+		if err != nil {
+			return out
+		}
+		switch item := token.(type) {
+		case xml.StartElement:
+			if item.Name.Local == "si" {
+				inItem = true
+				current.Reset()
+			}
+			if inItem && item.Name.Local == "t" {
+				inText = true
+			}
+		case xml.EndElement:
+			if item.Name.Local == "t" {
+				inText = false
+			}
+			if item.Name.Local == "si" {
+				out = append(out, current.String())
+				inItem = false
+			}
+		case xml.CharData:
+			if inItem && inText {
+				current.Write([]byte(item))
+			}
+		}
+	}
+	return out
+}
+
+type xlsxWorksheetXML struct {
+	Rows []xlsxRowXML `xml:"sheetData>row"`
+}
+
+type xlsxRowXML struct {
+	Cells []xlsxCellXML `xml:"c"`
+}
+
+type xlsxCellXML struct {
+	Ref       string        `xml:"r,attr"`
+	Type      string        `xml:"t,attr"`
+	Value     string        `xml:"v"`
+	InlineStr xlsxInlineXML `xml:"is"`
+}
+
+type xlsxInlineXML struct {
+	Text string `xml:"t"`
+}
+
+func parseWorksheetRows(raw []byte, shared []string) ([][]string, error) {
+	var sheet xlsxWorksheetXML
+	if err := xml.Unmarshal(raw, &sheet); err != nil {
+		return nil, fmt.Errorf("invalid xlsx sheet: %w", err)
+	}
+	rows := make([][]string, 0, len(sheet.Rows))
+	for _, row := range sheet.Rows {
+		values := []string{}
+		for i, cell := range row.Cells {
+			index := xlsxCellColumnIndex(cell.Ref)
+			if index <= 0 {
+				index = i + 1
+			}
+			for len(values) < index {
+				values = append(values, "")
+			}
+			values[index-1] = xlsxCellText(cell, shared)
+		}
+		rows = append(rows, values)
+	}
+	return rows, nil
+}
+
+func xlsxCellText(cell xlsxCellXML, shared []string) string {
+	if cell.Type == "s" {
+		index, err := strconv.Atoi(strings.TrimSpace(cell.Value))
+		if err == nil && index >= 0 && index < len(shared) {
+			return shared[index]
+		}
+		return ""
+	}
+	if cell.Type == "inlineStr" {
+		return cell.InlineStr.Text
+	}
+	return cell.Value
+}
+
+func xlsxCellColumnIndex(ref string) int {
+	index := 0
+	for _, r := range strings.ToUpper(ref) {
+		if r < 'A' || r > 'Z' {
+			break
+		}
+		index = index*26 + int(r-'A'+1)
+	}
+	return index
+}
+
+func (s Server) importStudentsIntoClass(class models.Class, students []studentImportInput, defaultPassword string) []studentImportResult {
+	if defaultPassword == "" {
+		defaultPassword = "Aa123456"
+	}
+	seen := map[string]bool{}
+	results := make([]studentImportResult, 0, len(students))
+	for _, input := range students {
+		input.StudentNo = strings.TrimSpace(input.StudentNo)
+		input.Name = strings.TrimSpace(input.Name)
+		input.Email = strings.ToLower(strings.TrimSpace(input.Email))
+		input.Password = strings.TrimSpace(input.Password)
+		result := studentImportResult{Email: input.Email, StudentNo: input.StudentNo, Name: input.Name}
+		if input.Email == "" || input.Name == "" {
+			result.Error = "name and email are required"
+			results = append(results, result)
+			continue
+		}
+		if seen[input.Email] {
+			result.Error = "duplicate email in import"
+			results = append(results, result)
+			continue
+		}
+		seen[input.Email] = true
+		err := s.DB.Transaction(func(tx *gorm.DB) error {
+			var student models.User
+			if err := tx.Where("email = ? AND account_deleted = false", input.Email).First(&student).Error; err != nil {
+				if err != gorm.ErrRecordNotFound {
+					return err
+				}
+				password := input.Password
+				if password == "" {
+					password = defaultPassword
+				}
+				hash, err := bcrypt.GenerateFromPassword([]byte(password), bcrypt.DefaultCost)
+				if err != nil {
+					return err
+				}
+				student = models.User{Email: input.Email, Name: input.Name, Role: models.RoleStudent, StudentNo: input.StudentNo, PasswordHash: string(hash), EmailVerified: true}
+				if err := tx.Create(&student).Error; err != nil {
+					return err
+				}
+				result.Created = true
+			} else if student.Role != models.RoleStudent {
+				return fmt.Errorf("email belongs to a non-student account")
+			} else {
+				updates := map[string]any{}
+				if student.Name == "" && input.Name != "" {
+					updates["name"] = input.Name
+				}
+				if student.StudentNo == "" && input.StudentNo != "" {
+					updates["student_no"] = input.StudentNo
+				}
+				if len(updates) > 0 {
+					if err := tx.Model(&student).Updates(updates).Error; err != nil {
+						return err
+					}
+				}
+			}
+			result.UserID = student.ID
+			var existingClass int64
+			if err := tx.Model(&models.ClassMembership{}).Where("class_id = ? AND user_id = ?", class.ID, student.ID).Count(&existingClass).Error; err != nil {
+				return err
+			}
+			if err := tx.Where("class_id = ? AND user_id = ?", class.ID, student.ID).FirstOrCreate(&models.ClassMembership{ClassID: class.ID, UserID: student.ID}).Error; err != nil {
+				return err
+			}
+			result.Joined = existingClass == 0
+			return tx.Where("course_id = ? AND user_id = ?", class.CourseID, student.ID).FirstOrCreate(&models.CourseMembership{CourseID: class.CourseID, UserID: student.ID, Role: models.RoleStudent}).Error
+		})
+		if err != nil {
+			result.Error = err.Error()
+		}
+		results = append(results, result)
+	}
+	return results
+}
+
+func (s Server) removeStudentFromClass(class models.Class, studentID uint) error {
+	return s.DB.Transaction(func(tx *gorm.DB) error {
+		res := tx.Where("class_id = ? AND user_id = ?", class.ID, studentID).Delete(&models.ClassMembership{})
+		if res.Error != nil {
+			return res.Error
+		}
+		if res.RowsAffected == 0 {
+			return fmt.Errorf("class membership not found")
+		}
+		var remaining int64
+		if err := tx.Table("class_memberships").
+			Joins("join classes on classes.id = class_memberships.class_id").
+			Where("class_memberships.user_id = ? AND classes.course_id = ?", studentID, class.CourseID).
+			Count(&remaining).Error; err != nil {
+			return err
+		}
+		if remaining == 0 {
+			return tx.Where("course_id = ? AND user_id = ? AND role = ?", class.CourseID, studentID, models.RoleStudent).Delete(&models.CourseMembership{}).Error
+		}
+		return nil
+	})
 }
 
 func dedupeUint(values []uint) []uint {

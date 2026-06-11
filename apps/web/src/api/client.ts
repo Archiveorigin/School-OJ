@@ -73,6 +73,7 @@ export interface ClassContext {
   class_id: number
   class_name: string
   join_code?: string
+  archived?: boolean
   course_id: number
   course_code: string
   course_name: string

@@ -11,9 +11,11 @@ import (
 type Role string
 
 const (
-	RoleStudent Role = "student"
-	RoleTeacher Role = "teacher"
-	RoleAdmin   Role = "admin"
+	RoleStudent         Role = "student"
+	RoleTeacher         Role = "teacher"
+	RoleAdmin           Role = "admin"
+	RoleCourseAdmin     Role = "course_admin"
+	RoleCourseAssistant Role = "course_assistant"
 )
 
 type User struct {
@@ -37,6 +39,7 @@ type Course struct {
 	Term        string    `json:"term" gorm:"size:64;index"`
 	TeacherID   uint      `json:"teacher_id" gorm:"index;not null"`
 	Description string    `json:"description"`
+	Archived    bool      `json:"archived" gorm:"not null;default:false;index"`
 	CreatedAt   time.Time `json:"created_at"`
 	UpdatedAt   time.Time `json:"updated_at"`
 }
@@ -46,6 +49,7 @@ type Class struct {
 	CourseID  uint      `json:"course_id" gorm:"index;not null"`
 	Name      string    `json:"name" gorm:"size:120;not null"`
 	JoinCode  string    `json:"join_code" gorm:"uniqueIndex;size:12"`
+	Archived  bool      `json:"archived" gorm:"not null;default:false;index"`
 	CreatedAt time.Time `json:"created_at"`
 	UpdatedAt time.Time `json:"updated_at"`
 }
