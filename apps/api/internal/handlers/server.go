@@ -5584,4 +5584,3 @@ func (s Server) listCourseStudents(c *gin.Context) {
 	}
 	c.JSON(http.StatusOK, out)
 }
-
