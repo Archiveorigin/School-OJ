@@ -3,240 +3,436 @@
     <div class="page-header">
       <div>
         <h2>新建考试</h2>
-        <p class="muted">组卷时可从题库选题，也可以直接创建仅本场考试使用的 Markdown 题目。</p>
+        <p class="muted">组卷时可从题库选题，也可以创建仅本场考试使用的 Markdown 题目。</p>
       </div>
       <div class="toolbar">
         <el-button @click="router.push('/exams')">返回考试</el-button>
-        <el-button type="primary" :loading="saving" @click="submitCreate">创建考试</el-button>
       </div>
     </div>
 
-    <div class="exam-create-grid">
-      <section class="panel">
-        <div class="section-title"><h3>考试信息</h3></div>
-        <el-form :model="form" label-width="92px">
-          <el-form-item label="课程">
-            <el-select v-model="form.course_id" style="width: 100%" disabled>
-              <el-option v-for="course in courses" :key="course.id" :label="`${course.code} ${course.name}`" :value="course.id" />
-            </el-select>
-          </el-form-item>
-          <el-form-item label="班级">
-            <el-select v-model="form.class_id" style="width: 100%" @change="syncCourseFromClass">
-              <el-option v-for="item in classroom.classes" :key="item.class_id" :label="`${item.course_code} / ${item.class_name}`" :value="item.class_id" />
-            </el-select>
-          </el-form-item>
-          <el-form-item label="标题">
-            <el-input v-model="form.title" placeholder="期中考试" />
-          </el-form-item>
-          <el-form-item label="描述">
-            <el-input v-model="form.description" type="textarea" :rows="3" />
-          </el-form-item>
-            <el-form-item label="开始时间">
-              <el-date-picker v-model="form.starts_at" type="datetime" format="YYYY-MM-DD HH:mm:ss" style="width: 100%" />
-            </el-form-item>
-            <el-form-item label="结束时间">
-              <el-date-picker v-model="form.ends_at" type="datetime" format="YYYY-MM-DD HH:mm:ss" style="width: 100%" />
-            </el-form-item>
-          <el-form-item label="阅卷方式">
-            <el-checkbox v-model="form.manual_review">提交后判题，教师人工确认分数</el-checkbox>
-          </el-form-item>
-          <el-form-item label="考试退出">
-            <span class="muted">学生进入考试后必须点击“结束考试”才能退出，结束后不能再次进入。</span>
-          </el-form-item>
-        </el-form>
-      </section>
-
-      <section class="panel">
-        <div class="section-title">
-          <h3>已选题目</h3>
-          <strong>总分：{{ selectedTotalScore }}</strong>
-        </div>
-        <el-table :data="selectedProblems" size="small" class="selected-table">
-          <el-table-column label="题号" width="110">
-            <template #default="{ row }">
-              <el-input v-model="row.label" maxlength="16" />
-            </template>
-          </el-table-column>
-          <el-table-column prop="source" label="来源" width="90" />
-          <el-table-column prop="title" label="题目" min-width="180" />
-          <el-table-column label="分值" width="150">
-            <template #default="{ row }">
-              <el-input-number v-model="row.score" :min="1" :max="1000" />
-            </template>
-          </el-table-column>
-          <el-table-column label="发布" width="130">
-            <template #default="{ row }">
-              <el-tag v-if="row.release_after_exam" type="warning" effect="light">结束后同步</el-tag>
-              <span v-else class="muted">已在题库</span>
-            </template>
-          </el-table-column>
-          <el-table-column label="操作" width="90">
-            <template #default="{ $index }">
-              <el-button size="small" text type="danger" @click="selectedProblems.splice($index, 1)">移除</el-button>
-            </template>
-          </el-table-column>
-        </el-table>
-      </section>
+    <div class="steps-bar">
+      <el-steps :active="step" align-center finish-status="success">
+        <el-step title="考试信息" description="课程班级与时间设置" />
+        <el-step title="选题组卷" description="添加题目并分配分值" />
+        <el-step title="确认创建" description="检查信息并创建考试" />
+      </el-steps>
     </div>
 
-    <section class="panel">
-      <div class="section-title"><h3>添加题目</h3></div>
-      <el-tabs v-model="problemSource">
-        <el-tab-pane label="班级题库" name="class">
-          <div class="problem-add">
-            <el-select v-model="problemPickID" filterable placeholder="选择题目">
-              <el-option v-for="option in classProblemOptions" :key="option.value" :label="option.label" :value="option.value" />
-            </el-select>
-            <el-button @click="addSelectedProblem('class')">添加</el-button>
-          </div>
-        </el-tab-pane>
-        <el-tab-pane label="预备题库" name="prepared">
-          <div class="problem-add">
-            <el-select v-model="problemPickID" filterable placeholder="选择预备题">
-              <el-option v-for="option in preparedProblemOptions" :key="option.value" :label="option.label" :value="option.value" />
-            </el-select>
-            <el-button @click="addSelectedProblem('prepared')">添加</el-button>
-          </div>
-          <p class="muted form-note">预备题会在考试结束时间后自动同步到当前班级题库。</p>
-        </el-tab-pane>
-        <el-tab-pane label="Markdown 出题" name="markdown">
-          <el-form label-width="92px" class="problem-form">
-            <el-row :gutter="12">
-              <el-col :span="6">
-                <el-form-item label="题号">
-                  <el-input v-model="problemForm.label" maxlength="16" />
-                </el-form-item>
-              </el-col>
-              <el-col :span="6">
-                <el-form-item label="分值">
-                  <el-input-number v-model="problemForm.score" :min="1" :max="1000" />
-                </el-form-item>
-              </el-col>
-              <el-col :span="12">
-                <el-form-item label="Slug">
-                  <el-input v-model="problemForm.slug" placeholder="exam-problem-a" @input="slugManuallyEdited = true" />
-                </el-form-item>
-              </el-col>
-            </el-row>
+    <!-- Step 0: Exam Info -->
+    <div v-show="step === 0" class="step-panel">
+      <div class="exam-info-grid">
+        <section class="panel info-panel">
+          <div class="section-title"><h3>基本信息</h3></div>
+          <el-form :model="form" label-width="88px" class="info-form">
+            <el-form-item label="班级">
+              <el-select v-model="form.class_id" style="width: 100%" @change="syncCourseFromClass">
+                <el-option
+                  v-for="item in classroom.classes"
+                  :key="item.class_id"
+                  :label="`${item.course_code} / ${item.class_name}`"
+                  :value="item.class_id"
+                />
+              </el-select>
+            </el-form-item>
+            <el-form-item label="课程">
+              <el-input :model-value="courseLabel" disabled />
+            </el-form-item>
             <el-form-item label="标题">
-              <el-input v-model="problemForm.title" placeholder="两数之和" @input="syncSlugFromTitle" />
+              <el-input v-model="form.title" placeholder="期中考试" maxlength="120" />
             </el-form-item>
-            <el-form-item label="题面">
-              <el-input
-                v-model="problemForm.statement"
-                type="textarea"
-                :rows="9"
-                placeholder="支持 Markdown、LaTeX 和图片。例如：![示意图](assets/example.png)"
+            <el-form-item label="描述">
+              <el-input v-model="form.description" type="textarea" :rows="3" placeholder="可选，学生端可见" />
+            </el-form-item>
+          </el-form>
+        </section>
+
+        <section class="panel info-panel">
+          <div class="section-title"><h3>时间与规则</h3></div>
+          <el-form :model="form" label-width="88px" class="info-form">
+            <el-form-item label="开始时间">
+              <el-date-picker
+                v-model="form.starts_at"
+                type="datetime"
+                format="YYYY-MM-DD HH:mm:ss"
+                placeholder="留空则创建后立即开始"
+                style="width: 100%"
               />
-              <div class="statement-tools">
-                <el-upload
-                  action="#"
-                  :auto-upload="false"
-                  :show-file-list="false"
-                  multiple
-                  accept="image/png,image/jpeg,image/gif,image/webp"
-                  :on-change="addProblemImage"
-                >
-                  <el-button>插入图片</el-button>
-                </el-upload>
-                <span class="muted">图片会自动写入题面 Markdown，单张不超过 5 MB。</span>
-              </div>
-              <div v-if="problemForm.assets.length" class="asset-row">
-                <el-tag v-for="asset in problemForm.assets" :key="asset.path" closable @close="removeProblemImage(asset.path)">
-                  {{ asset.name }}
-                </el-tag>
-              </div>
-              <div class="statement-preview">
-                <div class="muted">题面预览</div>
-                <MarkdownRenderer :source="problemForm.statement || '支持 **Markdown** 和 $a+b$。'" :asset-urls="problemAssetPreviewUrls" />
-                <div v-if="statementSamples.length" class="preview-samples">
-                  <div v-for="sample in statementSamples" :key="sample.index" class="preview-sample-pair">
-                    <div class="preview-sample">
-                      <div class="sample-head">
-                        <strong>输入样例 {{ sample.index }}</strong>
-                        <el-button size="small" text @click="copyText(sample.input)">复制</el-button>
-                      </div>
-                      <pre>{{ sample.input }}</pre>
-                    </div>
-                    <div class="preview-sample">
-                      <div class="sample-head">
-                        <strong>输出样例 {{ sample.index }}</strong>
-                        <el-button size="small" text @click="copyText(sample.output)">复制</el-button>
-                      </div>
-                      <pre>{{ sample.output }}</pre>
-                    </div>
-                  </div>
-                </div>
-              </div>
             </el-form-item>
-            <el-row :gutter="12">
-              <el-col :span="8">
-                <el-form-item label="时间限制">
-                  <el-input-number v-model="problemForm.time_limit_ms" :min="100" :step="100" />
-                  <span class="unit">ms</span>
-                </el-form-item>
-              </el-col>
-              <el-col :span="8">
-                <el-form-item label="内存限制">
-                  <el-input-number v-model="problemForm.memory_limit_mb" :min="16" :step="16" />
-                  <span class="unit">MB</span>
-                </el-form-item>
-              </el-col>
-              <el-col :span="8">
-                <el-form-item label="输出限制">
-                  <el-input-number v-model="problemForm.output_limit_kb" :min="1" :step="64" />
-                  <span class="unit">KB</span>
-                </el-form-item>
-              </el-col>
-            </el-row>
-            <el-form-item label="隐藏测试点">
-              <div class="test-file-panel">
-                <el-upload
-                  :key="testPointUploadKey"
-                  drag
-                  action="#"
-                  multiple
-                  accept=".zip,.in,.out"
-                  :auto-upload="false"
-                  :file-list="testPointUploadFiles"
-                  :on-change="syncTestPointFiles"
-                  :on-remove="syncTestPointFiles"
+            <el-form-item label="结束时间">
+              <el-date-picker
+                v-model="form.ends_at"
+                type="datetime"
+                format="YYYY-MM-DD HH:mm:ss"
+                placeholder="留空则手动结束"
+                style="width: 100%"
+              />
+            </el-form-item>
+            <el-form-item label="阅卷方式">
+              <el-checkbox v-model="form.manual_review">
+                提交后判题，教师人工确认分数
+              </el-checkbox>
+            </el-form-item>
+            <el-divider />
+            <el-form-item label="考试规则">
+              <ul class="rule-list">
+                <li>学生进入考试后必须点击"结束考试"才能退出</li>
+                <li>结束后不能再次进入</li>
+                <li v-if="form.manual_review">教师需人工确认每道题的最终分数</li>
+              </ul>
+            </el-form-item>
+          </el-form>
+        </section>
+      </div>
+
+      <div class="step-actions">
+        <el-button @click="router.push('/exams')">取消</el-button>
+        <el-button type="primary" :disabled="!canProceedStep0" @click="step = 1">
+          下一步：选题组卷
+        </el-button>
+      </div>
+    </div>
+
+    <!-- Step 1: Select Problems -->
+    <div v-show="step === 1" class="step-panel">
+      <div class="problem-workspace">
+        <section class="panel problem-source-panel">
+          <div class="section-title"><h3>添加题目</h3></div>
+          <el-tabs v-model="problemSource">
+            <el-tab-pane label="班级题库" name="class">
+              <div class="source-select-row">
+                <el-select
+                  v-model="problemPickID"
+                  filterable
+                  placeholder="搜索并选择题库题目"
+                  style="flex:1"
                 >
-                  <div class="upload-text">选择或拖入 .zip / .in / .out 测试点文件</div>
-                  <div class="muted">按文件名中的数字序号配对，例如 data1.in 与 answer1.out；ZIP 会在上传后解析，这些文件不会展示给考生。</div>
-                </el-upload>
-                <div v-if="testPointErrors.length" class="test-errors">
-                  <el-alert
-                    v-for="error in testPointErrors"
-                    :key="error"
-                    type="error"
-                    :title="error"
-                    show-icon
-                    :closable="false"
+                  <el-option
+                    v-for="option in classProblemOptions"
+                    :key="option.value"
+                    :label="option.label"
+                    :value="option.value"
+                  />
+                </el-select>
+                <el-button type="primary" plain @click="addSelectedProblem('class')">
+                  加入考试
+                </el-button>
+              </div>
+            </el-tab-pane>
+            <el-tab-pane label="预备题库" name="prepared">
+              <div class="source-select-row">
+                <el-select
+                  v-model="problemPickID"
+                  filterable
+                  placeholder="搜索并选择预备题"
+                  style="flex:1"
+                >
+                  <el-option
+                    v-for="option in preparedProblemOptions"
+                    :key="option.value"
+                    :label="option.label"
+                    :value="option.value"
+                  />
+                </el-select>
+                <el-button type="primary" plain @click="addSelectedProblem('prepared')">
+                  加入考试
+                </el-button>
+              </div>
+              <p class="muted form-note">
+                预备题会在考试结束时间后自动同步到当前班级题库。
+              </p>
+            </el-tab-pane>
+            <el-tab-pane label="新建题目" name="markdown">
+              <div class="create-problem-card">
+                <div class="create-problem-info">
+                  <p>创建仅本场考试使用的 Markdown 题目，考试结束后自动发布到班级题库。</p>
+                  <p class="muted">支持 Markdown、LaTeX 公式和图片。需上传隐藏测试点。</p>
+                </div>
+                <el-button type="primary" @click="openMarkdownDialog">
+                  新建 Markdown 题目
+                </el-button>
+              </div>
+            </el-tab-pane>
+          </el-tabs>
+        </section>
+
+        <section class="panel selected-panel">
+          <div class="section-title">
+            <h3>已选题目</h3>
+            <div class="selected-stats">
+              <el-tag type="info" effect="plain">{{ selectedProblems.length }} 题</el-tag>
+              <el-tag type="warning" effect="plain">总分 {{ selectedTotalScore }}</el-tag>
+            </div>
+          </div>
+
+          <div v-if="selectedProblems.length === 0" class="empty-state">
+            <p class="muted">尚未添加题目，请从左侧题库中选择或新建题目。</p>
+          </div>
+
+          <div v-else class="selected-list">
+            <div
+              v-for="(item, index) in selectedProblems"
+              :key="item.problem_id"
+              class="selected-card"
+            >
+              <div class="selected-card-body">
+                <div class="selected-card-label">
+                  <el-input
+                    v-model="item.label"
+                    maxlength="16"
+                    size="small"
+                    class="label-input"
+                    placeholder="题号"
                   />
                 </div>
-                <el-table v-if="problemForm.cases.length" :data="problemForm.cases" size="small" class="test-case-table">
-                  <el-table-column prop="name" label="测试点" min-width="120" />
-                  <el-table-column label="输入文件" min-width="180">
-                    <template #default="{ row }">{{ row.inputName }} · {{ formatBytes(row.inputSize) }}</template>
-                  </el-table-column>
-                  <el-table-column label="输出文件" min-width="180">
-                    <template #default="{ row }">{{ row.outputName }} · {{ formatBytes(row.outputSize) }}</template>
-                  </el-table-column>
-                  <el-table-column prop="weight" label="权重" width="80" />
-                </el-table>
-                <p v-else-if="testPointUploadFiles.length" class="muted form-note">已选择 ZIP 文件，上传后将由后端解析并按数字序号配对。</p>
-                <p v-else class="muted form-note">请至少上传一组完整的 .in / .out 测试点文件，或上传一个测试点 ZIP。</p>
+                <div class="selected-card-info">
+                  <el-tag size="small" :type="item.release_after_exam ? 'warning' : ''" effect="light">
+                    {{ item.source }}
+                  </el-tag>
+                  <span class="selected-card-title">{{ item.title }}</span>
+                  <span v-if="item.release_after_exam" class="release-note muted">结束后同步</span>
+                </div>
+                <div class="selected-card-score">
+                  <span class="muted">分值</span>
+                  <el-input-number
+                    v-model="item.score"
+                    :min="1"
+                    :max="1000"
+                    size="small"
+                  />
+                </div>
+                <div class="selected-card-action">
+                  <el-button
+                    size="small"
+                    text
+                    type="danger"
+                    @click="selectedProblems.splice(index, 1)"
+                  >
+                    移除
+                  </el-button>
+                </div>
               </div>
-            </el-form-item>
-            <div class="toolbar form-actions">
-              <el-button @click="resetProblemForm">重置出题表单</el-button>
-              <el-button type="primary" :loading="creatingProblem" @click="createMarkdownProblem">创建并加入考试</el-button>
             </div>
-          </el-form>
-        </el-tab-pane>
-      </el-tabs>
-    </section>
+          </div>
+        </section>
+      </div>
+
+      <div class="step-actions">
+        <el-button @click="step = 0">上一步</el-button>
+        <el-button type="primary" :disabled="selectedProblems.length === 0" @click="step = 2">
+          下一步：确认创建
+        </el-button>
+      </div>
+    </div>
+
+    <!-- Step 2: Review & Create -->
+    <div v-show="step === 2" class="step-panel">
+      <div class="review-grid">
+        <section class="panel">
+          <div class="section-title"><h3>考试信息确认</h3></div>
+          <el-descriptions :column="2" border size="small">
+            <el-descriptions-item label="班级">
+              {{ classLabel }}
+            </el-descriptions-item>
+            <el-descriptions-item label="课程">{{ courseLabel }}</el-descriptions-item>
+            <el-descriptions-item label="标题">{{ form.title }}</el-descriptions-item>
+            <el-descriptions-item label="阅卷">
+              {{ form.manual_review ? '人工阅卷' : '自动阅卷' }}
+            </el-descriptions-item>
+            <el-descriptions-item label="开始时间">
+              {{ form.starts_at ? formatDate(form.starts_at) : '立即开始' }}
+            </el-descriptions-item>
+            <el-descriptions-item label="结束时间">
+              {{ form.ends_at ? formatDate(form.ends_at) : '手动结束' }}
+            </el-descriptions-item>
+            <el-descriptions-item v-if="form.description" label="描述" :span="2">
+              {{ form.description }}
+            </el-descriptions-item>
+          </el-descriptions>
+        </section>
+
+        <section class="panel">
+          <div class="section-title">
+            <h3>题目列表</h3>
+            <strong>共 {{ selectedProblems.length }} 题，总分 {{ selectedTotalScore }}</strong>
+          </div>
+          <el-table :data="selectedProblems" size="small">
+            <el-table-column prop="label" label="题号" width="80" />
+            <el-table-column prop="title" label="题目" min-width="200" />
+            <el-table-column label="分值" width="100">
+              <template #default="{ row }">{{ row.score }}</template>
+            </el-table-column>
+            <el-table-column label="来源" width="100">
+              <template #default="{ row }">
+                <el-tag size="small" :type="row.release_after_exam ? 'warning' : ''" effect="light">
+                  {{ row.source }}
+                </el-tag>
+              </template>
+            </el-table-column>
+          </el-table>
+        </section>
+      </div>
+
+      <div class="step-actions">
+        <el-button @click="step = 1">上一步</el-button>
+        <el-button type="primary" :loading="saving" size="large" @click="submitCreate">
+          创建考试
+        </el-button>
+      </div>
+    </div>
+
+    <!-- Markdown Problem Dialog -->
+    <el-dialog
+      v-model="markdownDialogVisible"
+      title="新建 Markdown 题目"
+      width="960px"
+      destroy-on-close
+      :close-on-click-modal="false"
+    >
+      <el-form label-width="92px" class="problem-form">
+        <el-row :gutter="12">
+          <el-col :span="8">
+            <el-form-item label="题号">
+              <el-input v-model="problemForm.label" maxlength="16" />
+            </el-form-item>
+          </el-col>
+          <el-col :span="8">
+            <el-form-item label="分值">
+              <el-input-number v-model="problemForm.score" :min="1" :max="1000" />
+            </el-form-item>
+          </el-col>
+          <el-col :span="8">
+            <el-form-item label="Slug">
+              <el-input v-model="problemForm.slug" placeholder="exam-problem-a" @input="slugManuallyEdited = true" />
+            </el-form-item>
+          </el-col>
+        </el-row>
+        <el-form-item label="标题">
+          <el-input v-model="problemForm.title" placeholder="两数之和" @input="syncSlugFromTitle" />
+        </el-form-item>
+        <el-form-item label="题面">
+          <el-input
+            v-model="problemForm.statement"
+            type="textarea"
+            :rows="8"
+            placeholder="支持 Markdown、LaTeX 和图片。例如：![示意图](assets/example.png)"
+          />
+          <div class="statement-tools">
+            <el-upload
+              action="#"
+              :auto-upload="false"
+              :show-file-list="false"
+              multiple
+              accept="image/png,image/jpeg,image/gif,image/webp"
+              :on-change="addProblemImage"
+            >
+              <el-button>插入图片</el-button>
+            </el-upload>
+            <span class="muted">图片会自动写入题面 Markdown，单张不超过 5 MB。</span>
+          </div>
+          <div v-if="problemForm.assets.length" class="asset-row">
+            <el-tag
+              v-for="asset in problemForm.assets"
+              :key="asset.path"
+              closable
+              @close="removeProblemImage(asset.path)"
+            >
+              {{ asset.name }}
+            </el-tag>
+          </div>
+          <div class="statement-preview">
+            <div class="muted">题面预览</div>
+            <MarkdownRenderer
+              :source="problemForm.statement || '支持 **Markdown** 和 $a+b$。'"
+              :asset-urls="problemAssetPreviewUrls"
+            />
+            <div v-if="statementSamples.length" class="preview-samples">
+              <div v-for="sample in statementSamples" :key="sample.index" class="preview-sample-pair">
+                <div class="preview-sample">
+                  <div class="sample-head">
+                    <strong>输入样例 {{ sample.index }}</strong>
+                    <el-button size="small" text @click="copyText(sample.input)">复制</el-button>
+                  </div>
+                  <pre>{{ sample.input }}</pre>
+                </div>
+                <div class="preview-sample">
+                  <div class="sample-head">
+                    <strong>输出样例 {{ sample.index }}</strong>
+                    <el-button size="small" text @click="copyText(sample.output)">复制</el-button>
+                  </div>
+                  <pre>{{ sample.output }}</pre>
+                </div>
+              </div>
+            </div>
+          </div>
+        </el-form-item>
+        <el-row :gutter="12">
+          <el-col :span="8">
+            <el-form-item label="时间限制">
+              <el-input-number v-model="problemForm.time_limit_ms" :min="100" :step="100" />
+              <span class="unit">ms</span>
+            </el-form-item>
+          </el-col>
+          <el-col :span="8">
+            <el-form-item label="内存限制">
+              <el-input-number v-model="problemForm.memory_limit_mb" :min="16" :step="16" />
+              <span class="unit">MB</span>
+            </el-form-item>
+          </el-col>
+          <el-col :span="8">
+            <el-form-item label="输出限制">
+              <el-input-number v-model="problemForm.output_limit_kb" :min="1" :step="64" />
+              <span class="unit">KB</span>
+            </el-form-item>
+          </el-col>
+        </el-row>
+        <el-form-item label="隐藏测试点">
+          <div class="test-file-panel">
+            <el-upload
+              :key="testPointUploadKey"
+              drag
+              action="#"
+              multiple
+              accept=".zip,.in,.out"
+              :auto-upload="false"
+              :file-list="testPointUploadFiles"
+              :on-change="syncTestPointFiles"
+              :on-remove="syncTestPointFiles"
+            >
+              <div class="upload-text">选择或拖入 .zip / .in / .out 测试点文件</div>
+              <div class="muted">按文件名中的数字序号配对，例如 data1.in 与 answer1.out；ZIP 会在上传后解析，这些文件不会展示给考生。</div>
+            </el-upload>
+            <div v-if="testPointErrors.length" class="test-errors">
+              <el-alert
+                v-for="error in testPointErrors"
+                :key="error"
+                type="error"
+                :title="error"
+                show-icon
+                :closable="false"
+              />
+            </div>
+            <el-table v-if="problemForm.cases.length" :data="problemForm.cases" size="small" class="test-case-table">
+              <el-table-column prop="name" label="测试点" min-width="120" />
+              <el-table-column label="输入文件" min-width="180">
+                <template #default="{ row }">{{ row.inputName }} · {{ formatBytes(row.inputSize) }}</template>
+              </el-table-column>
+              <el-table-column label="输出文件" min-width="180">
+                <template #default="{ row }">{{ row.outputName }} · {{ formatBytes(row.outputSize) }}</template>
+              </el-table-column>
+              <el-table-column prop="weight" label="权重" width="80" />
+            </el-table>
+            <p v-else-if="testPointUploadFiles.length" class="muted form-note">已选择 ZIP 文件，上传后将由后端解析并按数字序号配对。</p>
+            <p v-else class="muted form-note">请至少上传一组完整的 .in / .out 测试点文件，或上传一个测试点 ZIP。</p>
+          </div>
+        </el-form-item>
+      </el-form>
+      <template #footer>
+        <el-button @click="markdownDialogVisible = false">取消</el-button>
+        <el-button type="primary" :loading="creatingProblem" @click="createMarkdownProblem">
+          创建并加入考试
+        </el-button>
+      </template>
+    </el-dialog>
   </section>
 </template>
 
@@ -266,11 +462,13 @@ const courses = ref<any[]>([])
 const problems = ref<Problem[]>([])
 const preparedProblems = ref<PreparedProblem[]>([])
 const selectedProblems = ref<SelectedProblem[]>([])
+const step = ref(0)
 const saving = ref(false)
 const creatingProblem = ref(false)
 const problemSource = ref<'class' | 'prepared' | 'markdown'>('class')
 const problemPickID = ref<number>()
 const slugManuallyEdited = ref(false)
+const markdownDialogVisible = ref(false)
 const testPointUploadFiles = ref<any[]>([])
 const testPointUploadKey = ref(0)
 const testPointErrors = ref<string[]>([])
@@ -302,17 +500,48 @@ const problemForm = reactive({
 const selectedTotalScore = computed(() => selectedProblems.value.reduce((sum, item) => sum + Number(item.score || 0), 0))
 const problemAssetPreviewUrls = computed(() => Object.fromEntries(problemForm.assets.map((asset) => [asset.path, asset.preview_url])))
 const statementSamples = computed(() => extractStatementSamples(problemForm.statement))
-const classProblemOptions = computed(() => {
-  return problems.value.map((problem) => ({ value: problem.id, label: `[题库] ${problemDisplayCode(problem)}. ${problem.title}`, title: problem.title, source: '题库' }))
+
+const courseLabel = computed(() => {
+  const course = courses.value.find((c: any) => c.id === form.course_id)
+  return course ? `${course.code} ${course.name}` : ''
 })
-const preparedProblemOptions = computed(() => {
-  return preparedProblems.value.map((item) => {
+
+const classLabel = computed(() => {
+  const item = classroom.classes.find((c) => c.class_id === form.class_id)
+  return item ? `${item.course_code} / ${item.class_name}` : ''
+})
+
+const canProceedStep0 = computed(() => form.class_id && form.title.trim())
+
+const classProblemOptions = computed(() =>
+  problems.value.map((problem) => ({
+    value: problem.id,
+    label: `[题库] ${problemDisplayCode(problem)}. ${problem.title}`,
+    title: problem.title,
+    source: '题库'
+  }))
+)
+
+const preparedProblemOptions = computed(() =>
+  preparedProblems.value.map((item) => {
     const tags = tagList(item.problem?.tags)
     const suffix = [item.folder, item.difficulty, tags.join('/')].filter(Boolean).join(' · ')
     const code = item.problem ? problemDisplayCode(item.problem) : '未编号'
-    return { value: item.problem_id, label: `[预备] ${code}. ${item.problem?.title || '未知题目'}${suffix ? `（${suffix}）` : ''}`, title: item.problem?.title, source: '预备' }
+    return {
+      value: item.problem_id,
+      label: `[预备] ${code}. ${item.problem?.title || '未知题目'}${suffix ? `（${suffix}）` : ''}`,
+      title: item.problem?.title,
+      source: '预备'
+    }
   })
-})
+)
+
+function formatDate(value: any) {
+  if (!value) return ''
+  const d = value instanceof Date ? value : new Date(value)
+  const pad = (n: number) => String(n).padStart(2, '0')
+  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())} ${pad(d.getHours())}:${pad(d.getMinutes())}:${pad(d.getSeconds())}`
+}
 
 async function load() {
   const params = classroom.activeClassId ? { class_id: classroom.activeClassId } : {}
@@ -339,6 +568,13 @@ async function loadClassProblems() {
   problems.value = (await client.get('/problems', { params: { class_id: form.class_id } })).data
 }
 
+function openMarkdownDialog() {
+  problemForm.label = nextAvailableLabel()
+  problemForm.slug = `exam-problem-${Date.now()}`
+  slugManuallyEdited.value = false
+  markdownDialogVisible.value = true
+}
+
 function addSelectedProblem(source: 'class' | 'prepared') {
   const options = source === 'prepared' ? preparedProblemOptions.value : classProblemOptions.value
   const option = options.find((item) => item.value === problemPickID.value)
@@ -356,7 +592,6 @@ function addSelectedProblem(source: 'class' | 'prepared') {
     release_after_exam: source === 'prepared'
   })
   problemPickID.value = undefined
-  problemForm.label = nextAvailableLabel()
 }
 
 async function createMarkdownProblem() {
@@ -407,6 +642,7 @@ async function createMarkdownProblem() {
       release_after_exam: true
     })
     ElMessage.success('题目已加入考试，考试结束后同步到题库')
+    markdownDialogVisible.value = false
     resetProblemForm()
   } catch (err: any) {
     ElMessage.error(err.response?.data?.error || err.message)
@@ -534,9 +770,7 @@ async function rebuildTestCasesFromFiles(uploadFiles: any[]) {
     for (const item of uploadFiles) {
       const file = item.raw as File | undefined
       if (!file) continue
-      if (file.name.toLowerCase().endsWith('.zip')) {
-        continue
-      }
+      if (file.name.toLowerCase().endsWith('.zip')) continue
       const ext = file.name.toLowerCase().endsWith('.in') ? '.in' : file.name.toLowerCase().endsWith('.out') ? '.out' : ''
       if (!ext) {
         errors.push(`${file.name} 不是 .zip、.in 或 .out 文件`)
@@ -684,49 +918,203 @@ onMounted(async () => {
 </script>
 
 <style scoped>
-.exam-create-grid {
+.steps-bar {
+  margin-bottom: 22px;
+  padding: 18px 28px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+}
+
+.step-panel {
+  animation: step-in 0.22s ease-out;
+}
+
+@keyframes step-in {
+  from { opacity: 0; transform: translateX(10px); }
+  to   { opacity: 1; transform: translateX(0); }
+}
+
+.exam-info-grid {
   display: grid;
-  grid-template-columns: minmax(320px, 0.8fr) minmax(420px, 1.2fr);
+  grid-template-columns: 1fr 1fr;
   gap: 14px;
   align-items: start;
-  margin-bottom: 14px;
+  margin-bottom: 18px;
 }
 
-.selected-table {
-  width: 100%;
+.info-panel {
+  padding: 20px;
 }
 
-.problem-add {
+.info-form {
+  padding-top: 4px;
+}
+
+.rule-list {
+  margin: 0;
+  padding-left: 18px;
+  color: var(--muted);
+  font-size: 13px;
+  line-height: 1.8;
+}
+
+.problem-workspace {
   display: grid;
-  grid-template-columns: minmax(240px, 1fr) auto;
+  grid-template-columns: minmax(320px, 1fr) minmax(380px, 1.2fr);
+  gap: 14px;
+  align-items: start;
+  margin-bottom: 18px;
+}
+
+.source-select-row {
+  display: flex;
   gap: 10px;
   align-items: center;
 }
 
-.problem-form {
-  padding-top: 4px;
+.create-problem-card {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 14px 0;
+}
+
+.create-problem-info p {
+  margin: 0 0 4px;
+  font-size: 14px;
 }
 
 .form-note {
   margin: 10px 0 0;
 }
 
-.form-actions {
-  justify-content: flex-end;
+.selected-stats {
+  display: flex;
+  gap: 8px;
 }
 
-.unit {
-  margin-left: 8px;
-  color: #6b7280;
+.empty-state {
+  text-align: center;
+  padding: 40px 16px;
+}
+
+.selected-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin-top: 4px;
+}
+
+.selected-card {
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 10px 14px;
+  background: var(--surface-strong);
+  transition: border-color 0.2s, box-shadow 0.2s;
+}
+
+.selected-card:hover {
+  border-color: var(--accent);
+  box-shadow: 0 4px 14px rgba(10, 94, 166, 0.08);
+}
+
+.selected-card-body {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.selected-card-label {
+  flex: 0 0 64px;
+}
+
+.label-input {
+  width: 100%;
+}
+
+.selected-card-info {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.selected-card-title {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-weight: 500;
+}
+
+.release-note {
+  font-size: 12px;
+  white-space: nowrap;
+}
+
+.selected-card-score {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-shrink: 0;
+}
+
+.selected-card-score :deep(.el-input-number) {
+  width: 100px;
+}
+
+.selected-card-action {
+  flex-shrink: 0;
+}
+
+.review-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 14px;
+  align-items: start;
+  margin-bottom: 18px;
+}
+
+.step-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 10px;
+  padding-top: 8px;
+}
+
+.problem-form {
+  max-height: 68vh;
+  overflow-y: auto;
+  padding-right: 4px;
+}
+
+.statement-tools {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+  margin-top: 10px;
+}
+
+.asset-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 8px;
 }
 
 .statement-preview {
-  width: 100%;
   margin-top: 10px;
   padding: 12px;
   border: 1px solid var(--border);
   border-radius: 8px;
   background: rgba(15, 23, 42, 0.03);
+}
+
+:root.dark .statement-preview {
+  background: rgba(255, 255, 255, 0.03);
 }
 
 .preview-samples,
@@ -777,35 +1165,43 @@ onMounted(async () => {
   width: 100%;
 }
 
-.statement-tools {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  flex-wrap: wrap;
-  width: 100%;
-  margin-top: 10px;
-}
-
-.asset-row {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 8px;
-  width: 100%;
-  margin-top: 8px;
+.unit {
+  margin-left: 8px;
+  color: var(--muted);
 }
 
 @media (max-width: 980px) {
-  .exam-create-grid {
-    grid-template-columns: 1fr;
-  }
-
-  .preview-sample-pair {
+  .exam-info-grid,
+  .problem-workspace,
+  .review-grid {
     grid-template-columns: 1fr;
   }
 }
 
 @media (max-width: 760px) {
-  .problem-add {
+  .steps-bar {
+    padding: 14px 8px;
+  }
+
+  .selected-card-body {
+    flex-wrap: wrap;
+  }
+
+  .selected-card-label {
+    flex: 0 0 56px;
+  }
+
+  .selected-card-score {
+    width: 100%;
+    justify-content: flex-end;
+  }
+
+  .create-problem-card {
+    flex-direction: column;
+    align-items: flex-start;
+  }
+
+  .preview-sample-pair {
     grid-template-columns: 1fr;
   }
 }
