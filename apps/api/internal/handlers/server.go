@@ -951,13 +951,16 @@ func (s Server) addCourseMember(c *gin.Context) {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "teacher member must use a teacher or admin account"})
 		return
 	}
-	member := models.CourseMembership{CourseID: courseID, UserID: req.UserID, Role: req.Role}
-	if err := s.DB.Where("course_id = ? AND user_id = ?", courseID, req.UserID).First(&member).Error; err != nil {
-		if err := s.DB.Create(&member).Error; err != nil {
-			c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
-			return
-		}
-	} else if member.Role != req.Role {
+	member := models.CourseMembership{CourseID: courseID, UserID: req.UserID}
+	result := s.DB.
+		Where("course_id = ? AND user_id = ?", courseID, req.UserID).
+		Attrs(models.CourseMembership{CourseID: courseID, UserID: req.UserID, Role: req.Role}).
+		FirstOrCreate(&member)
+	if result.Error != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": result.Error.Error()})
+		return
+	}
+	if result.RowsAffected == 0 && member.Role != req.Role {
 		member.Role = req.Role
 		if err := s.DB.Save(&member).Error; err != nil {
 			c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
