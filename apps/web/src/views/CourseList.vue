@@ -1,55 +1,85 @@
 <template>
-  <section class="page">
-    <div class="page-header">
-      <div>
-        <h2>{{ canManage ? '课程列表' : '我的课程' }}</h2>
-        <p class="muted">{{ canManage ? '管理课程资料、班级和协作成员。' : '这里仅显示你所属班级对应的课程。' }}</p>
-      </div>
-      <div class="toolbar">
-        <el-button v-if="canManage" type="primary" @click="openCourseDialog()">新建课程</el-button>
-        <el-button @click="router.push('/courses')">返回入口</el-button>
-        <el-button @click="load">刷新</el-button>
+  <section class="page sub-page">
+    <div class="sub-hero">
+      <div class="sub-hero-inner">
+        <div class="sub-hero-text">
+          <h1 class="sub-hero-title">{{ canManage ? '课程列表' : '我的课程' }}</h1>
+          <p class="sub-hero-sub">{{ canManage ? '管理课程资料、班级和协作成员' : '这里仅显示你所属班级对应的课程' }}</p>
+        </div>
+        <div class="sub-hero-stats">
+          <div class="sub-hero-stat">
+            <span class="sub-hero-stat-val">{{ courses.length }}</span>
+            <span class="sub-hero-stat-label">课程总数</span>
+          </div>
+          <div class="sub-hero-stat">
+            <span class="sub-hero-stat-val">{{ activeCourseCount }}</span>
+            <span class="sub-hero-stat-label">进行中</span>
+          </div>
+          <div class="sub-hero-stat">
+            <span class="sub-hero-stat-val">{{ totalClassCount }}</span>
+            <span class="sub-hero-stat-label">下属班级</span>
+          </div>
+        </div>
       </div>
     </div>
 
-    <div class="panel">
-      <div class="list-tools">
-        <el-select v-model="termFilter" clearable placeholder="全部学期" class="term-filter">
-          <el-option v-for="term in termOptions" :key="term" :label="term" :value="term" />
-        </el-select>
-        <el-switch v-if="canManage" v-model="showArchived" active-text="显示归档" />
+    <div class="sub-content">
+      <div class="panel-header">
+        <div class="toolbar">
+          <el-button v-if="canManage" type="primary" @click="openCourseDialog()">新建课程</el-button>
+          <el-button @click="router.push('/courses')">返回入口</el-button>
+          <el-button @click="load">刷新</el-button>
+        </div>
       </div>
 
-      <el-table :data="pagedCourses" v-loading="loading">
-        <el-table-column v-if="canManage" prop="code" label="课程代码" width="150" />
-        <el-table-column prop="name" label="课程名称" min-width="180">
-          <template #default="{ row }">
-            <button class="link-button" type="button" @click="openClasses(row)">{{ row.name }}</button>
-          </template>
-        </el-table-column>
-        <el-table-column prop="term" label="学期" width="140" />
-        <el-table-column label="状态" width="100">
-          <template #default="{ row }">
-            <el-tag :type="row.archived ? 'info' : 'success'" effect="plain">{{ row.archived ? '已归档' : '进行中' }}</el-tag>
-          </template>
-        </el-table-column>
-        <el-table-column prop="description" label="描述" min-width="220" show-overflow-tooltip />
-        <el-table-column label="班级" width="100">
-          <template #default="{ row }">{{ courseClassCount(row.id) }}</template>
-        </el-table-column>
-        <el-table-column label="操作" width="420" fixed="right">
-          <template #default="{ row }">
-            <el-button size="small" type="primary" @click="openClasses(row)">班级</el-button>
-            <el-button v-if="canManage" size="small" @click="openMembers(row)">成员</el-button>
-            <el-button v-if="canManage" size="small" @click="openCourseDialog(row)">编辑</el-button>
-            <el-button v-if="canManage && !row.archived" size="small" @click="openClassDialog(row.id)">加班级</el-button>
-            <el-button v-if="canManage" size="small" :type="row.archived ? 'success' : 'warning'" plain @click="setCourseArchived(row, !row.archived)">
-              {{ row.archived ? '恢复' : '归档' }}
-            </el-button>
-          </template>
-        </el-table-column>
-      </el-table>
-      <ListPagination v-model:page="page" v-model:page-size="pageSize" :total="filteredCourses.length" />
+      <div class="panel">
+        <div class="list-tools">
+          <el-select v-model="termFilter" clearable placeholder="全部学期" class="term-filter">
+            <el-option v-for="term in termOptions" :key="term" :label="term" :value="term" />
+          </el-select>
+          <el-switch v-if="canManage" v-model="showArchived" active-text="显示归档" />
+        </div>
+
+        <el-table :data="pagedCourses" v-loading="loading">
+          <el-table-column v-if="canManage" prop="code" label="课程代码" width="150" />
+          <el-table-column v-if="canManage" label="邀请码" width="120">
+            <template #default="{ row }">
+              <span v-if="row.join_code" class="join-code" @click="copyJoinCode(row.join_code)" :title="'点击复制: ' + row.join_code">
+                {{ row.join_code }}
+              </span>
+              <span v-else class="muted">-</span>
+            </template>
+          </el-table-column>
+          <el-table-column prop="name" label="课程名称" min-width="180">
+            <template #default="{ row }">
+              <button class="link-button" type="button" @click="openClasses(row)">{{ row.name }}</button>
+            </template>
+          </el-table-column>
+          <el-table-column prop="term" label="学期" width="140" />
+          <el-table-column label="状态" width="100">
+            <template #default="{ row }">
+              <el-tag :type="row.archived ? 'info' : 'success'" effect="plain">{{ row.archived ? '已归档' : '进行中' }}</el-tag>
+            </template>
+          </el-table-column>
+          <el-table-column prop="description" label="描述" min-width="220" show-overflow-tooltip />
+          <el-table-column label="班级" width="100">
+            <template #default="{ row }">{{ courseClassCount(row.id) }}</template>
+          </el-table-column>
+          <el-table-column label="操作" width="420" fixed="right">
+            <template #default="{ row }">
+              <el-button size="small" type="primary" @click="openClasses(row)">班级</el-button>
+              <el-button size="small" type="success" @click="router.push(`/courses/${row.id}/students`)">学生</el-button>
+              <el-button v-if="canManage" size="small" @click="openMembers(row)">成员</el-button>
+              <el-button v-if="canManage" size="small" @click="openCourseDialog(row)">编辑</el-button>
+              <el-button v-if="canManage && !row.archived" size="small" @click="openClassDialog(row.id)">加班级</el-button>
+              <el-button v-if="canManage" size="small" :type="row.archived ? 'success' : 'warning'" plain @click="setCourseArchived(row, !row.archived)">
+                {{ row.archived ? '恢复' : '归档' }}
+              </el-button>
+            </template>
+          </el-table-column>
+        </el-table>
+        <ListPagination v-model:page="page" v-model:page-size="pageSize" :total="filteredCourses.length" />
+      </div>
     </div>
 
     <el-dialog v-model="courseDialogVisible" :title="editingCourseId ? '编辑课程' : '新建课程'" width="560px">
@@ -181,6 +211,8 @@ const memberForm = reactive<{ email: string; role: CourseMemberRole; class_id?: 
 
 const termOptions = computed(() => Array.from(new Set(courses.value.map((course) => course.term).filter(Boolean) as string[])))
 const activeCourses = computed(() => courses.value.filter((course) => !course.archived))
+const activeCourseCount = computed(() => courses.value.filter((c) => !c.archived).length)
+const totalClassCount = computed(() => classroom.classes.length)
 const filteredCourses = computed(() => {
   if (!termFilter.value) return courses.value
   return courses.value.filter((course) => course.term === termFilter.value)
@@ -378,6 +410,10 @@ async function removeMember(member: CourseMember) {
 watch([pageSize, termFilter], clampPage)
 watch(showArchived, load)
 
+function copyJoinCode(code: string) {
+  navigator.clipboard.writeText(code).then(() => ElMessage.success('邀请码已复制: ' + code))
+}
+
 onMounted(load)
 
 function clampPage() {
@@ -388,8 +424,85 @@ function clampPage() {
 </script>
 
 <style scoped>
-.page-header p {
-  margin: 6px 0 0;
+.sub-page {
+  padding: 0;
+  overflow-x: hidden;
+}
+
+.sub-hero {
+  background: linear-gradient(135deg, #0f172a 0%, #1e293b 50%, #0a5ea6 100%);
+}
+
+.sub-hero-inner {
+  max-width: 1200px;
+  margin: 0 auto;
+  padding: 32px 36px 40px;
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+}
+
+.sub-hero-text {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.sub-hero-title {
+  margin: 0;
+  font-size: 26px;
+  font-weight: 700;
+  color: #f8fafc;
+}
+
+.sub-hero-sub {
+  margin: 0;
+  font-size: 14px;
+  color: rgba(248, 250, 252, 0.6);
+}
+
+.sub-hero-stats {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+}
+
+.sub-hero-stat {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: 10px 20px;
+  background: rgba(255, 255, 255, 0.1);
+  border: 1px solid rgba(255, 255, 255, 0.15);
+  border-radius: 10px;
+  min-width: 80px;
+  text-align: center;
+  transition: background 0.2s;
+}
+
+.sub-hero-stat:hover {
+  background: rgba(255, 255, 255, 0.18);
+}
+
+.sub-hero-stat-val {
+  font-size: 22px;
+  font-weight: 700;
+  color: #fff;
+}
+
+.sub-hero-stat-label {
+  font-size: 12px;
+  color: rgba(248, 250, 252, 0.55);
+}
+
+.sub-content {
+  max-width: 1200px;
+  margin: 0 auto;
+  padding: 20px 20px 32px;
+}
+
+.panel-header {
+  margin-bottom: 14px;
 }
 
 .list-tools,
@@ -424,5 +537,25 @@ function clampPage() {
 
 .link-button:hover {
   color: var(--accent-strong);
+}
+
+.join-code {
+  font-family: 'Courier New', monospace;
+  font-weight: 600;
+  color: var(--accent);
+  cursor: pointer;
+  user-select: all;
+}
+
+.join-code:hover {
+  color: var(--accent-strong);
+  text-decoration: underline;
+}
+
+@media (max-width: 760px) {
+  .sub-hero-inner {
+    padding: 24px 20px 32px;
+    gap: 16px;
+  }
 }
 </style>

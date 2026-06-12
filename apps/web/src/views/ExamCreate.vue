@@ -26,6 +26,7 @@
           <el-form :model="form" label-width="88px" class="info-form">
             <el-form-item label="班级">
               <el-select v-model="form.class_id" style="width: 100%" @change="syncCourseFromClass">
+                <el-option label="全课程（不限班级）" :value="-1" />
                 <el-option
                   v-for="item in classroom.classes"
                   :key="item.class_id"
@@ -35,7 +36,15 @@
               </el-select>
             </el-form-item>
             <el-form-item label="课程">
-              <el-input :model-value="courseLabel" disabled />
+              <el-select v-if="form.class_id === -1" v-model="form.course_id" style="width: 100%" @change="onCourseWideSelect">
+                <el-option
+                  v-for="c in courses"
+                  :key="c.id"
+                  :label="`${c.code} ${c.name}`"
+                  :value="c.id"
+                />
+              </el-select>
+              <el-input v-else :model-value="courseLabel" disabled />
             </el-form-item>
             <el-form-item label="标题">
               <el-input v-model="form.title" placeholder="期中考试" maxlength="120" />
@@ -149,6 +158,9 @@
                 </div>
                 <el-button type="primary" @click="openMarkdownDialog">
                   新建 Markdown 题目
+                </el-button>
+                <el-button type="success" plain @click="openBatchDialog">
+                  批量导入 Markdown
                 </el-button>
               </div>
             </el-tab-pane>
@@ -279,6 +291,91 @@
         </el-button>
       </div>
     </div>
+
+    <!-- Batch Markdown Import Dialog -->
+    <el-dialog
+      v-model="batchDialogVisible"
+      title="批量导入 Markdown 题目"
+      width="960px"
+      destroy-on-close
+      :close-on-click-modal="false"
+    >
+      <div v-if="!batchParsed.length" class="batch-upload-area">
+        <div class="batch-upload-hint">
+          <p>上传一个包含多道题目的 <code>.md</code> 文件。</p>
+          <p class="muted">每道题目由 <code>---</code> 分隔，支持 YAML 头信息（slug、title 等）和嵌入式测试点。</p>
+        </div>
+        <el-upload
+          drag
+          action="#"
+          :auto-upload="false"
+          :show-file-list="true"
+          :file-list="batchFileList"
+          accept=".md"
+          :on-change="handleBatchFile"
+          :on-remove="() => { batchFileList = []; batchParsed = []; }"
+          :limit="1"
+        >
+          <div class="upload-text">选择或拖入 .md 文件</div>
+          <div class="muted">文件最大 32 MB</div>
+        </el-upload>
+        <el-button
+          type="primary"
+          :loading="batchParsing"
+          :disabled="!batchFileList.length"
+          style="margin-top: 14px"
+          @click="previewBatch"
+        >
+          解析预览
+        </el-button>
+      </div>
+
+      <div v-else class="batch-preview">
+        <div class="batch-preview-header">
+          <span>解析到 <strong>{{ batchParsed.length }}</strong> 道题目</span>
+          <el-tag v-if="batchWarnings.length" type="warning" effect="plain">
+            {{ batchWarnings.length }} 条提醒
+          </el-tag>
+        </div>
+        <div v-if="batchWarnings.length" class="batch-warnings">
+          <el-alert
+            v-for="(w, i) in batchWarnings"
+            :key="i"
+            :title="w"
+            type="warning"
+            show-icon
+            :closable="false"
+            style="margin-bottom: 4px"
+          />
+        </div>
+        <el-table :data="batchParsed" max-height="420" size="small" style="margin-top: 12px">
+          <el-table-column prop="label" label="题号" width="70" />
+          <el-table-column prop="title" label="标题" min-width="180" />
+          <el-table-column prop="slug" label="Slug" width="140" />
+          <el-table-column label="测试点" width="80">
+            <template #default="{ row }">
+              <el-tag :type="(row.cases || []).length > 0 ? 'success' : 'danger'" effect="plain" size="small">
+                {{ (row.cases || []).length || 0 }}
+              </el-tag>
+            </template>
+          </el-table-column>
+          <el-table-column label="限制" width="160">
+            <template #default="{ row }">
+              <span class="muted" style="font-size:12px">
+                {{ row.time_limit_ms || 1000 }}ms / {{ row.memory_limit_mb || 256 }}MB / {{ row.output_limit_kb || 1024 }}KB
+              </span>
+            </template>
+          </el-table-column>
+          <el-table-column prop="score" label="分值" width="70" />
+        </el-table>
+        <div class="batch-actions">
+          <el-button @click="batchParsed = []; batchFileList = []">重新选择</el-button>
+          <el-button type="primary" :loading="batchImporting" @click="importBatch">
+            导入全部题目
+          </el-button>
+        </div>
+      </div>
+    </el-dialog>
 
     <!-- Markdown Problem Dialog -->
     <el-dialog
@@ -469,6 +566,12 @@ const problemSource = ref<'class' | 'prepared' | 'markdown'>('class')
 const problemPickID = ref<number>()
 const slugManuallyEdited = ref(false)
 const markdownDialogVisible = ref(false)
+const batchDialogVisible = ref(false)
+const batchFileList = ref<any[]>([])
+const batchParsed = ref<any[]>([])
+const batchWarnings = ref<string[]>([])
+const batchParsing = ref(false)
+const batchImporting = ref(false)
 const testPointUploadFiles = ref<any[]>([])
 const testPointUploadKey = ref(0)
 const testPointErrors = ref<string[]>([])
@@ -507,11 +610,16 @@ const courseLabel = computed(() => {
 })
 
 const classLabel = computed(() => {
+  if (form.class_id === -1) return '全课程'
   const item = classroom.classes.find((c) => c.class_id === form.class_id)
   return item ? `${item.course_code} / ${item.class_name}` : ''
 })
 
-const canProceedStep0 = computed(() => form.class_id && form.title.trim())
+const isCourseWide = computed(() => form.class_id === -1)
+const canProceedStep0 = computed(() => {
+  const hasScope = isCourseWide.value ? !!form.course_id : !!form.class_id
+  return hasScope && form.title.trim()
+})
 
 const classProblemOptions = computed(() =>
   problems.value.map((problem) => ({
@@ -556,11 +664,22 @@ async function load() {
 }
 
 function syncCourseFromClass() {
+  if (form.class_id === -1) {
+    form.course_id = undefined
+    selectedProblems.value = []
+    problemPickID.value = undefined
+    return
+  }
   const item = classroom.classes.find((entry) => entry.class_id === form.class_id)
   form.course_id = item?.course_id
   selectedProblems.value = []
   problemPickID.value = undefined
   loadClassProblems()
+}
+
+function onCourseWideSelect() {
+  selectedProblems.value = []
+  problemPickID.value = undefined
 }
 
 async function loadClassProblems() {
@@ -652,8 +771,16 @@ async function createMarkdownProblem() {
 }
 
 async function submitCreate() {
-  if (!form.class_id || !form.course_id || !form.title || selectedProblems.value.length === 0) {
-    ElMessage.error('请选择班级、填写标题并选择题目')
+  if (isCourseWide.value && !form.course_id) {
+    ElMessage.error('请选择课程')
+    return
+  }
+  if (!isCourseWide.value && !form.class_id) {
+    ElMessage.error('请选择班级')
+    return
+  }
+  if (!form.title || selectedProblems.value.length === 0) {
+    ElMessage.error('请填写标题并选择题目')
     return
   }
   if (selectedProblems.value.some((item) => !item.label.trim())) {
@@ -672,7 +799,7 @@ async function submitCreate() {
   try {
     const { data } = await client.post('/exams', {
       course_id: form.course_id,
-      class_id: form.class_id,
+      class_id: form.class_id === -1 ? null : form.class_id,
       title: form.title,
       description: form.description,
       starts_at: form.starts_at,
@@ -722,6 +849,96 @@ function defaultProblemLabel(index: number) {
     index = Math.floor(index / 26)
   }
   return label
+}
+
+function openBatchDialog() {
+  batchFileList.value = []
+  batchParsed.value = []
+  batchWarnings.value = []
+  batchDialogVisible.value = true
+}
+
+function handleBatchFile(uploadFile: any) {
+  batchFileList.value = [uploadFile]
+  batchParsed.value = []
+}
+
+async function previewBatch() {
+  if (!batchFileList.value.length) return
+  const file = batchFileList.value[0].raw as File
+  if (!file) {
+    ElMessage.error('请先选择文件')
+    return
+  }
+  batchParsing.value = true
+  try {
+    const fd = new FormData()
+    fd.append('file', file)
+    const { data } = await client.post('/problems/parse-markdown', fd, { timeout: 60000 })
+    batchParsed.value = data.problems || []
+    batchWarnings.value = data.warnings || []
+    if (batchParsed.value.length === 0) {
+      ElMessage.warning('未解析到任何题目，请检查文件格式')
+    } else {
+      ElMessage.success(`解析到 ${batchParsed.value.length} 道题目`)
+    }
+  } catch (err: any) {
+    ElMessage.error(err.response?.data?.error || err.message)
+  } finally {
+    batchParsing.value = false
+  }
+}
+
+async function importBatch() {
+  if (!batchParsed.value.length) return
+  batchImporting.value = true
+  let created = 0
+  try {
+    for (const problem of batchParsed.value) {
+      // Generate unique slug if needed
+      const slug = problem.slug || `exam-problem-${Date.now()}-${created}`
+      const cases = (problem.cases || []).map((c: any, i: number) => ({
+        name: c.name || `case-${String(i + 1).padStart(2, '0')}`,
+        input: c.input || '',
+        output: c.output || '',
+        weight: c.weight || 0
+      }))
+      // If no embedded test cases, skip this problem
+      if (cases.length === 0) {
+        ElMessage.warning(`题目「${problem.title}」没有测试点，跳过`)
+        continue
+      }
+      const { data } = await client.post('/problems', {
+        slug: slug,
+        title: problem.title,
+        statement: problem.statement || '',
+        time_limit_ms: problem.time_limit_ms || 1000,
+        memory_limit_mb: problem.memory_limit_mb || 256,
+        output_limit_kb: problem.output_limit_kb || 1024,
+        class_ids: [],
+        cases: cases
+      })
+      selectedProblems.value.push({
+        problem_id: data.id,
+        title: data.title,
+        source: '出题',
+        score: problem.score || 100,
+        label: problem.label || nextAvailableLabel(),
+        release_after_exam: true
+      })
+      created++
+    }
+    if (created > 0) {
+      ElMessage.success(`已导入 ${created} 道题目`)
+    }
+    batchDialogVisible.value = false
+    batchFileList.value = []
+    batchParsed.value = []
+  } catch (err: any) {
+    ElMessage.error(err.response?.data?.error || err.message)
+  } finally {
+    batchImporting.value = false
+  }
 }
 
 function syncSlugFromTitle() {
@@ -1205,4 +1422,38 @@ onMounted(async () => {
     grid-template-columns: 1fr;
   }
 }
+.batch-upload-area {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+}
+
+.batch-upload-hint {
+  text-align: center;
+  margin-bottom: 16px;
+}
+
+.batch-upload-hint p {
+  margin: 0 0 6px;
+}
+
+.batch-preview-header {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 8px;
+}
+
+.batch-warnings {
+  max-height: 150px;
+  overflow-y: auto;
+}
+
+.batch-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 10px;
+  margin-top: 16px;
+}
+
 </style>

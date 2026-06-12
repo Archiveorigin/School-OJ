@@ -23,7 +23,7 @@ export const navGroups: NavGroup[] = [
       { path: '/assignments', label: '作业' },
       { path: '/exams', label: '考试' },
       { path: '/submissions', label: '提交' },
-      { path: '/leaderboard', label: '排行榜' }
+      // leaderboard disabled: { path: '/leaderboard', label: '排行榜' }
     ]
   },
   {

@@ -1,36 +1,59 @@
 <template>
-  <section class="page">
-    <div class="page-header">
-      <h2>预备题库</h2>
-      <div class="toolbar">
-        <el-button type="primary" @click="openCreateDialog">上传预备题</el-button>
-        <el-button @click="load">刷新</el-button>
+  <section class="page sub-page">
+    <div class="sub-hero">
+      <div class="sub-hero-inner">
+        <div class="sub-hero-text">
+          <h1 class="sub-hero-title">预备题库</h1>
+          <p class="sub-hero-sub">管理未发布的预备题目，按文件夹和难度分类</p>
+        </div>
+        <div class="sub-hero-stats">
+          <div class="sub-hero-stat">
+            <span class="sub-hero-stat-val">{{ items.length }}</span>
+            <span class="sub-hero-stat-label">预备题总数</span>
+          </div>
+          <div class="sub-hero-stat">
+            <span class="sub-hero-stat-val">{{ folderOptions.length }}</span>
+            <span class="sub-hero-stat-label">文件夹数</span>
+          </div>
+          <div class="sub-hero-stat">
+            <span class="sub-hero-stat-val">{{ availableCount }}</span>
+            <span class="sub-hero-stat-label">可发布</span>
+          </div>
+        </div>
       </div>
     </div>
 
-    <div class="panel filters">
-      <el-input v-model="filters.q" clearable placeholder="搜索题目、文件夹、来源" />
-      <el-select v-model="filters.folder" clearable filterable placeholder="文件夹">
-        <el-option v-for="folder in folderOptions" :key="folder" :label="folder" :value="folder" />
-      </el-select>
-      <el-input v-model="filters.tag" clearable placeholder="标签" />
-      <el-select v-model="filters.difficulty" clearable placeholder="难度">
-        <el-option label="入门" value="入门" />
-        <el-option label="简单" value="简单" />
-        <el-option label="中等" value="中等" />
-        <el-option label="困难" value="困难" />
-        <el-option label="挑战" value="挑战" />
-      </el-select>
-      <el-select v-model="filters.archived" placeholder="归档">
-        <el-option label="未归档" value="false" />
-        <el-option label="已归档" value="true" />
-        <el-option label="全部" value="all" />
-      </el-select>
-      <el-button @click="load">筛选</el-button>
-    </div>
+    <div class="sub-content">
+      <div class="panel-header">
+        <div class="toolbar">
+          <el-button type="primary" @click="openCreateDialog">上传预备题</el-button>
+          <el-button @click="load">刷新</el-button>
+        </div>
+      </div>
 
-    <div class="prepared-layout">
-      <section class="panel prepared-list-panel">
+      <div class="panel filters">
+        <el-input v-model="filters.q" clearable placeholder="搜索题目、文件夹、来源" />
+        <el-select v-model="filters.folder" clearable filterable placeholder="文件夹">
+          <el-option v-for="folder in folderOptions" :key="folder" :label="folder" :value="folder" />
+        </el-select>
+        <el-input v-model="filters.tag" clearable placeholder="标签" />
+        <el-select v-model="filters.difficulty" clearable placeholder="难度">
+          <el-option label="入门" value="入门" />
+          <el-option label="简单" value="简单" />
+          <el-option label="中等" value="中等" />
+          <el-option label="困难" value="困难" />
+          <el-option label="挑战" value="挑战" />
+        </el-select>
+        <el-select v-model="filters.archived" placeholder="归档">
+          <el-option label="未归档" value="false" />
+          <el-option label="已归档" value="true" />
+          <el-option label="全部" value="all" />
+        </el-select>
+        <el-button @click="load">筛选</el-button>
+      </div>
+
+      <div class="prepared-layout">
+        <section class="panel prepared-list-panel">
           <el-table :data="items" highlight-current-row @current-change="selectItem">
             <el-table-column label="编号" width="88">
               <template #default="{ row }">{{ problemDisplayCode(row.problem) }}</template>
@@ -68,8 +91,8 @@
               </template>
             </el-table-column>
           </el-table>
-      </section>
-      <aside v-if="selected" class="panel detail">
+        </section>
+        <aside v-if="selected" class="panel detail">
           <div class="detail-head">
             <div>
               <h3>{{ selected.problem.title }}</h3>
@@ -98,7 +121,8 @@
             <el-tag v-for="tag in tagList(selected.problem.tags)" :key="tag" size="small">{{ tag }}</el-tag>
           </div>
           <p v-if="selected.notes" class="notes">{{ selected.notes }}</p>
-      </aside>
+        </aside>
+      </div>
     </div>
 
     <el-dialog v-model="createVisible" title="上传预备题" width="940px">
@@ -166,7 +190,7 @@
                 v-model="problemForm.statement"
                 type="textarea"
                 :rows="8"
-                placeholder="支持 Markdown 和 LaTeX，例如：**加粗**、`代码`、$a+b$、$$\\sum_i a_i$$"
+                placeholder="支持 Markdown 和 LaTeX"
               />
               <div class="statement-tools">
                 <el-upload
@@ -179,7 +203,7 @@
                 >
                   <el-button>插入图片</el-button>
                 </el-upload>
-                <span class="muted">支持 PNG、JPG、GIF、WebP，图片会自动写入题面 Markdown。</span>
+                <span class="muted">支持 PNG、JPG、GIF、WebP</span>
               </div>
               <div v-if="problemForm.assets.length" class="asset-row">
                 <el-tag v-for="asset in problemForm.assets" :key="asset.path" closable @close="removeProblemImage(asset.path)">
@@ -392,6 +416,8 @@ const folderOptions = computed(() => {
   const set = new Set(items.value.map((item) => item.folder).filter(Boolean) as string[])
   return [...set].sort()
 })
+
+const availableCount = computed(() => items.value.filter((item) => !item.archived).length)
 
 async function load() {
   const params: Record<string, string> = { archived: filters.archived }
@@ -631,7 +657,7 @@ async function readCaseFile(file: File): Promise<ParsedCaseFile> {
   }
   const buffer = await file.arrayBuffer()
   const text = new TextDecoder('utf-8', { fatal: true }).decode(buffer)
-  if (text.includes('\u0000')) {
+  if (text.includes(' ')) {
     throw new Error(`文件不是有效文本：${file.name}`)
   }
   return {
@@ -738,6 +764,87 @@ onMounted(async () => {
 </script>
 
 <style scoped>
+.sub-page {
+  padding: 0;
+  overflow-x: hidden;
+}
+
+.sub-hero {
+  background: linear-gradient(135deg, #0f172a 0%, #1e293b 50%, #0a5ea6 100%);
+}
+
+.sub-hero-inner {
+  max-width: 1200px;
+  margin: 0 auto;
+  padding: 32px 36px 40px;
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+}
+
+.sub-hero-text {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.sub-hero-title {
+  margin: 0;
+  font-size: 26px;
+  font-weight: 700;
+  color: #f8fafc;
+}
+
+.sub-hero-sub {
+  margin: 0;
+  font-size: 14px;
+  color: rgba(248, 250, 252, 0.6);
+}
+
+.sub-hero-stats {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+}
+
+.sub-hero-stat {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: 10px 20px;
+  background: rgba(255, 255, 255, 0.1);
+  border: 1px solid rgba(255, 255, 255, 0.15);
+  border-radius: 10px;
+  min-width: 80px;
+  text-align: center;
+  transition: background 0.2s;
+}
+
+.sub-hero-stat:hover {
+  background: rgba(255, 255, 255, 0.18);
+}
+
+.sub-hero-stat-val {
+  font-size: 22px;
+  font-weight: 700;
+  color: #fff;
+}
+
+.sub-hero-stat-label {
+  font-size: 12px;
+  color: rgba(248, 250, 252, 0.55);
+}
+
+.sub-content {
+  max-width: 1200px;
+  margin: 0 auto;
+  padding: 20px 20px 32px;
+}
+
+.panel-header {
+  margin-bottom: 14px;
+}
+
 .filters {
   display: grid;
   grid-template-columns: minmax(220px, 2fr) 160px 150px 130px 120px auto;
@@ -790,11 +897,6 @@ onMounted(async () => {
 
 .meta-grid span {
   color: #6b7280;
-}
-
-.statement {
-  white-space: pre-wrap;
-  line-height: 1.7;
 }
 
 .statement-preview {
@@ -910,6 +1012,11 @@ onMounted(async () => {
 }
 
 @media (max-width: 900px) {
+  .sub-hero-inner {
+    padding: 24px 20px 32px;
+    gap: 16px;
+  }
+
   .filters {
     grid-template-columns: 1fr;
   }

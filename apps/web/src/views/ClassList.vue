@@ -1,74 +1,95 @@
 <template>
-  <section class="page">
-    <div class="page-header">
-      <div>
-        <h2>{{ canManage ? '班级列表' : '我的班级' }}</h2>
-        <p class="muted">{{ canManage ? '查看课程下的班级，管理学生名单和导入。' : '这里仅显示你已加入的班级。' }}</p>
-      </div>
-      <div class="toolbar">
-        <el-button v-if="canManage" type="primary" @click="openClassDialog()">新建班级</el-button>
-        <el-button @click="router.push('/courses')">返回入口</el-button>
-        <el-button @click="load">刷新</el-button>
-      </div>
-    </div>
-
-    <div v-if="auth.role === 'student'" class="panel join-strip">
-      <el-input v-model="joinClassCode" placeholder="班级邀请码" class="join-code-input" @input="joinPreview = undefined" />
-      <el-button :loading="previewing" @click="previewClass">预览</el-button>
-      <el-button type="primary" :disabled="!joinPreview" :loading="joining" @click="joinClass">确认加入</el-button>
-      <div v-if="joinPreview" class="join-preview">
-        <strong>{{ joinPreview.course_name }} / {{ joinPreview.class_name }}</strong>
-        <span class="muted">{{ joinPreview.term || '未设置学期' }} · {{ joinPreview.teacher_name || '未设置教师' }}</span>
-        <span class="muted">{{ joinPreview.course_description || '暂无课程描述' }}</span>
-      </div>
-    </div>
-
-    <div class="panel">
-      <div class="list-tools">
-        <div v-if="selectedCourseName" class="filtered-course">
-          <span class="muted">当前课程：</span>
-          <strong>{{ selectedCourseName }}</strong>
-          <el-button text type="primary" @click="clearCourseFilter">查看全部班级</el-button>
+  <section class="page sub-page">
+    <div class="sub-hero">
+      <div class="sub-hero-inner">
+        <div class="sub-hero-text">
+          <h1 class="sub-hero-title">{{ canManage ? '班级列表' : '我的班级' }}</h1>
+          <p class="sub-hero-sub">{{ canManage ? '查看课程下的班级，管理学生名单和导入' : '这里仅显示你已加入的班级' }}</p>
         </div>
-        <el-switch v-if="canManage" v-model="showArchived" active-text="显示归档" />
+        <div class="sub-hero-stats">
+          <div class="sub-hero-stat">
+            <span class="sub-hero-stat-val">{{ filteredClasses.length }}</span>
+            <span class="sub-hero-stat-label">班级总数</span>
+          </div>
+          <div class="sub-hero-stat">
+            <span class="sub-hero-stat-val">{{ activeClassCount }}</span>
+            <span class="sub-hero-stat-label">进行中</span>
+          </div>
+          <div class="sub-hero-stat">
+            <span class="sub-hero-stat-val">{{ courses.length }}</span>
+            <span class="sub-hero-stat-label">关联课程</span>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div class="sub-content">
+      <div v-if="auth.role === 'student'" class="panel join-strip">
+        <el-input v-model="joinClassCode" placeholder="班级邀请码" class="join-code-input" @input="joinPreview = undefined" />
+        <el-button :loading="previewing" @click="previewClass">预览</el-button>
+        <el-button type="primary" :disabled="!joinPreview" :loading="joining" @click="joinClass">确认加入</el-button>
+        <div v-if="joinPreview" class="join-preview">
+          <strong>{{ joinPreview.course_name }} / {{ joinPreview.class_name }}</strong>
+          <span class="muted">{{ joinPreview.term || '未设置学期' }} · {{ joinPreview.teacher_name || '未设置教师' }}</span>
+          <span class="muted">{{ joinPreview.course_description || '暂无课程描述' }}</span>
+        </div>
       </div>
 
-      <el-table :data="pagedClasses" v-loading="loading">
-        <el-table-column v-if="canManage" prop="class_id" label="班级 ID" width="100" />
-        <el-table-column prop="class_name" label="班级名称" min-width="170" />
-        <el-table-column label="所属课程" min-width="210">
-          <template #default="{ row }">{{ classCourseLabel(row) }}</template>
-        </el-table-column>
-        <el-table-column prop="term" label="学期" width="130" />
-        <el-table-column v-if="canManage" prop="join_code" label="邀请码" width="120" />
-        <el-table-column label="状态" width="100">
-          <template #default="{ row }">
-            <el-tag :type="row.archived ? 'info' : 'success'" effect="plain">{{ row.archived ? '已归档' : '进行中' }}</el-tag>
-          </template>
-        </el-table-column>
-        <el-table-column label="操作" width="430" fixed="right">
-          <template #default="{ row }">
-            <el-button size="small" type="primary" @click="activate(row.class_id)">切换</el-button>
-            <el-button v-if="canManage" size="small" @click="openStudents(row)">学生</el-button>
-            <el-button v-if="canManage" size="small" @click="openImport(row)">导入</el-button>
-            <el-button v-if="canManage" size="small" @click="openClassDialog(row)">编辑</el-button>
-            <el-button v-if="canManage" size="small" :type="row.archived ? 'success' : 'warning'" plain @click="setClassArchived(row, !row.archived)">
-              {{ row.archived ? '恢复' : '归档' }}
-            </el-button>
-            <el-button
-              v-if="auth.role === 'student'"
-              size="small"
-              type="danger"
-              plain
-              :loading="leavingClassId === row.class_id"
-              @click="leaveClass(row)"
-            >
-              退出
-            </el-button>
-          </template>
-        </el-table-column>
-      </el-table>
-      <ListPagination v-model:page="page" v-model:page-size="pageSize" :total="filteredClasses.length" />
+      <div class="panel-header">
+        <div class="toolbar">
+          <el-button v-if="canManage" type="primary" @click="openClassDialog()">新建班级</el-button>
+          <el-button @click="router.push('/courses')">返回入口</el-button>
+          <el-button @click="load">刷新</el-button>
+        </div>
+      </div>
+
+      <div class="panel">
+        <div class="list-tools">
+          <div v-if="selectedCourseName" class="filtered-course">
+            <span class="muted">当前课程：</span>
+            <strong>{{ selectedCourseName }}</strong>
+            <el-button text type="primary" @click="clearCourseFilter">查看全部班级</el-button>
+          </div>
+          <el-switch v-if="canManage" v-model="showArchived" active-text="显示归档" />
+        </div>
+
+        <el-table :data="pagedClasses" v-loading="loading">
+          <el-table-column v-if="canManage" prop="class_id" label="班级 ID" width="100" />
+          <el-table-column prop="class_name" label="班级名称" min-width="170" />
+          <el-table-column label="所属课程" min-width="210">
+            <template #default="{ row }">{{ classCourseLabel(row) }}</template>
+          </el-table-column>
+          <el-table-column prop="term" label="学期" width="130" />
+          <el-table-column v-if="canManage" prop="join_code" label="邀请码" width="120" />
+          <el-table-column label="状态" width="100">
+            <template #default="{ row }">
+              <el-tag :type="row.archived ? 'info' : 'success'" effect="plain">{{ row.archived ? '已归档' : '进行中' }}</el-tag>
+            </template>
+          </el-table-column>
+          <el-table-column label="操作" width="430" fixed="right">
+            <template #default="{ row }">
+              <el-button size="small" type="primary" @click="activate(row.class_id)">切换</el-button>
+              <el-button v-if="canManage" size="small" @click="openStudents(row)">学生</el-button>
+              <el-button v-if="canManage" size="small" @click="openImport(row)">导入</el-button>
+              <el-button v-if="canManage" size="small" @click="openClassDialog(row)">编辑</el-button>
+              <el-button v-if="canManage" size="small" :type="row.archived ? 'success' : 'warning'" plain @click="setClassArchived(row, !row.archived)">
+                {{ row.archived ? '恢复' : '归档' }}
+              </el-button>
+              <el-button
+                v-if="auth.role === 'student'"
+                size="small"
+                type="danger"
+                plain
+                :loading="leavingClassId === row.class_id"
+                @click="leaveClass(row)"
+              >
+                退出
+              </el-button>
+            </template>
+          </el-table-column>
+        </el-table>
+        <ListPagination v-model:page="page" v-model:page-size="pageSize" :total="filteredClasses.length" />
+      </div>
     </div>
 
     <el-dialog v-model="classDialogVisible" :title="editingClassId ? '编辑班级' : '新建班级'" width="520px">
@@ -106,7 +127,7 @@
 
     <el-drawer v-model="importDrawerVisible" size="720px" :title="selectedClass ? `批量导入：${selectedClass.class_name}` : '批量导入'">
       <div class="import-stack">
-        <el-alert type="info" show-icon :closable="false" title="支持 CSV 或 Excel，列名可为：学号、姓名、邮箱、初始密码。无表头时按“学号, 姓名, 邮箱”读取。" />
+        <el-alert type="info" show-icon :closable="false" title="支持 CSV 或 Excel，列名可为：学号、姓名、邮箱、初始密码。无表头时按「学号, 姓名, 邮箱」读取。" />
         <el-input v-model="defaultPassword" placeholder="默认初始密码：Aa123456" />
         <el-upload drag :auto-upload="false" :limit="1" accept=".csv,.xlsx" :on-change="selectImportFile" :on-remove="clearImportFile">
           <div class="upload-text">拖入 CSV / Excel，或点击选择文件</div>
@@ -219,6 +240,7 @@ const filteredClasses = computed(() => {
   if (!courseIDFilter.value) return classes.value
   return classes.value.filter((item) => item.course_id === courseIDFilter.value)
 })
+const activeClassCount = computed(() => filteredClasses.value.filter((c) => !c.archived).length)
 const selectedCourseName = computed(() => {
   if (!courseIDFilter.value) return ''
   return courses.value.find((course) => course.id === courseIDFilter.value)?.name || filteredClasses.value[0]?.course_name || ''
@@ -494,8 +516,85 @@ function clampPage() {
 </script>
 
 <style scoped>
-.page-header p {
-  margin: 6px 0 0;
+.sub-page {
+  padding: 0;
+  overflow-x: hidden;
+}
+
+.sub-hero {
+  background: linear-gradient(135deg, #0f172a 0%, #1e293b 50%, #0a5ea6 100%);
+}
+
+.sub-hero-inner {
+  max-width: 1200px;
+  margin: 0 auto;
+  padding: 32px 36px 40px;
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+}
+
+.sub-hero-text {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.sub-hero-title {
+  margin: 0;
+  font-size: 26px;
+  font-weight: 700;
+  color: #f8fafc;
+}
+
+.sub-hero-sub {
+  margin: 0;
+  font-size: 14px;
+  color: rgba(248, 250, 252, 0.6);
+}
+
+.sub-hero-stats {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+}
+
+.sub-hero-stat {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: 10px 20px;
+  background: rgba(255, 255, 255, 0.1);
+  border: 1px solid rgba(255, 255, 255, 0.15);
+  border-radius: 10px;
+  min-width: 80px;
+  text-align: center;
+  transition: background 0.2s;
+}
+
+.sub-hero-stat:hover {
+  background: rgba(255, 255, 255, 0.18);
+}
+
+.sub-hero-stat-val {
+  font-size: 22px;
+  font-weight: 700;
+  color: #fff;
+}
+
+.sub-hero-stat-label {
+  font-size: 12px;
+  color: rgba(248, 250, 252, 0.55);
+}
+
+.sub-content {
+  max-width: 1200px;
+  margin: 0 auto;
+  padding: 20px 20px 32px;
+}
+
+.panel-header {
+  margin-bottom: 14px;
 }
 
 .join-strip,
@@ -531,5 +630,12 @@ function clampPage() {
 .upload-text {
   padding: 12px;
   color: var(--muted);
+}
+
+@media (max-width: 760px) {
+  .sub-hero-inner {
+    padding: 24px 20px 32px;
+    gap: 16px;
+  }
 }
 </style>

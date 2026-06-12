@@ -14,7 +14,8 @@ const ExamProblems = () => import('../views/exam/ExamProblems.vue')
 const ExamRecords = () => import('../views/exam/ExamRecords.vue')
 const ExamSubmit = () => import('../views/exam/ExamSubmit.vue')
 const Exams = () => import('../views/Exams.vue')
-const Leaderboard = () => import('../views/Leaderboard.vue')
+// leaderboard disabled: const Leaderboard = () => import('../views/Leaderboard.vue')
+const CourseStudents = () => import('../views/CourseStudents.vue')
 const Login = () => import('../views/Login.vue')
 const Plagiarism = () => import('../views/Plagiarism.vue')
 const Problems = () => import('../views/Problems.vue')
@@ -36,6 +37,7 @@ const router = createRouter({
     { path: '/courses', component: Courses, meta: { title: '课程班级' } },
     { path: '/courses/list', component: CourseList, meta: { title: '课程列表', activeMenu: '/courses' } },
     { path: '/classes', component: ClassList, meta: { title: '班级列表', activeMenu: '/courses' } },
+    { path: '/courses/:id/students', component: CourseStudents, meta: { roles: ['admin', 'teacher'], title: '课程学生', activeMenu: '/courses' } },
     { path: '/problems', component: Problems, meta: { title: '题库' } },
     { path: '/prepared-problems', component: PreparedProblems, meta: { roles: ['admin', 'teacher'], title: '预备题库' } },
     { path: '/assignments', component: Assignments, meta: { title: '作业' } },
@@ -54,7 +56,7 @@ const router = createRouter({
       ]
     },
     { path: '/submissions', component: Submissions, meta: { title: '提交' } },
-    { path: '/leaderboard', component: Leaderboard, meta: { title: '排行榜' } },
+    // leaderboard disabled: { path: '/leaderboard', component: Leaderboard, meta: { title: '排行榜' } },
     { path: '/admin/exam-rankings', component: ExamRankings, meta: { roles: ['admin'], title: '考试实时榜' } },
     { path: '/plagiarism', component: Plagiarism, meta: { roles: ['admin', 'teacher'], title: 'JPlag 查重' } },
     { path: '/audit-logs', component: AuditLogs, meta: { roles: ['admin'], title: '审计日志' } },

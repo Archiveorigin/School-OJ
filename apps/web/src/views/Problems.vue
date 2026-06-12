@@ -1,32 +1,57 @@
 <template>
-  <section class="page">
-    <div class="page-header">
-      <h2>题库</h2>
-      <div class="toolbar">
-        <el-button v-if="canManage" type="primary" @click="openProblemDialog">上传题目包</el-button>
-        <el-button v-if="canManage" @click="openPreparedPublish">从预备题库发布</el-button>
-        <el-button @click="load">刷新</el-button>
+  <section class="page sub-page">
+    <div class="sub-hero">
+      <div class="sub-hero-inner">
+        <div class="sub-hero-text">
+          <h1 class="sub-hero-title">题库</h1>
+          <p class="sub-hero-sub">{{ canManage ? '管理题目、上传题目包、发布预备题' : '浏览题目并提交代码' }}</p>
+        </div>
+        <div class="sub-hero-stats">
+          <div class="sub-hero-stat">
+            <span class="sub-hero-stat-val">{{ problems.length }}</span>
+            <span class="sub-hero-stat-label">题目总数</span>
+          </div>
+          <div class="sub-hero-stat">
+            <span class="sub-hero-stat-val">{{ tagOptions.length }}</span>
+            <span class="sub-hero-stat-label">标签数</span>
+          </div>
+          <div v-if="!canManage" class="sub-hero-stat">
+            <span class="sub-hero-stat-val">{{ solvedCount }}</span>
+            <span class="sub-hero-stat-label">已解决</span>
+          </div>
+        </div>
       </div>
     </div>
-    <div class="panel problem-filters">
-      <el-input v-model="filters.keyword" clearable placeholder="搜索编号、标题、Slug、标签" />
-      <el-select v-model="filters.tag" clearable filterable placeholder="标签">
-        <el-option v-for="tag in tagOptions" :key="tag" :label="tag" :value="tag" />
-      </el-select>
-      <el-select v-if="auth.role === 'student'" v-model="filters.status" placeholder="状态">
-        <el-option
-          v-for="option in problemStatusOptions"
-          :key="option.value"
-          :label="option.label"
-          :value="option.value"
-        />
-      </el-select>
-      <el-button @click="resetFilters">重置</el-button>
-      <span class="muted filter-count">{{ filteredProblems.length }} / {{ problems.length }}</span>
-    </div>
-    <div class="problem-layout">
-      <aside class="panel problem-list-panel">
-          <el-table :data="filteredProblems" highlight-current-row @current-change="selectProblem" height="calc(100vh - 232px)">
+
+    <div class="sub-content">
+      <div class="panel-header">
+        <div class="toolbar">
+          <el-button v-if="canManage" type="primary" @click="openProblemDialog">上传题目包</el-button>
+          <el-button v-if="canManage" @click="openPreparedPublish">从预备题库发布</el-button>
+          <el-button @click="load">刷新</el-button>
+        </div>
+      </div>
+
+      <div class="panel problem-filters">
+        <el-input v-model="filters.keyword" clearable placeholder="搜索编号、标题、Slug、标签" />
+        <el-select v-model="filters.tag" clearable filterable placeholder="标签">
+          <el-option v-for="tag in tagOptions" :key="tag" :label="tag" :value="tag" />
+        </el-select>
+        <el-select v-if="auth.role === 'student'" v-model="filters.status" placeholder="状态">
+          <el-option
+            v-for="option in problemStatusOptions"
+            :key="option.value"
+            :label="option.label"
+            :value="option.value"
+          />
+        </el-select>
+        <el-button @click="resetFilters">重置</el-button>
+        <span class="muted filter-count">{{ filteredProblems.length }} / {{ problems.length }}</span>
+      </div>
+
+      <div class="problem-layout">
+        <aside class="panel problem-list-panel">
+          <el-table :data="filteredProblems" highlight-current-row @current-change="selectProblem" height="calc(100vh - 320px)">
             <el-table-column label="编号" width="88">
               <template #default="{ row }">{{ problemDisplayCode(row) }}</template>
             </el-table-column>
@@ -49,8 +74,8 @@
               </template>
             </el-table-column>
           </el-table>
-      </aside>
-      <main class="panel problem-detail-panel" v-if="selected">
+        </aside>
+        <main class="panel problem-detail-panel" v-if="selected">
           <div class="detail-head">
             <div>
               <h3>{{ selected.title }}</h3>
@@ -85,8 +110,9 @@
           <div v-if="live" class="live">
             <StatusBadge :status="live.status" /> 分数 {{ live.score }}，{{ live.message }}
           </div>
-      </main>
-      <main v-else class="panel empty-detail muted">请选择题目</main>
+        </main>
+        <main v-else class="panel empty-detail muted">请选择题目</main>
+      </div>
     </div>
 
     <el-dialog v-model="problemDialogVisible" title="上传题目包" width="920px">
@@ -144,7 +170,7 @@
                 v-model="problemForm.statement"
                 type="textarea"
                 :rows="8"
-                placeholder="支持 Markdown 和 LaTeX，例如：**加粗**、`代码`、$a+b$、$$\\sum_i a_i$$"
+                placeholder="支持 Markdown 和 LaTeX"
               />
               <div class="statement-tools">
                 <el-upload
@@ -157,7 +183,7 @@
                 >
                   <el-button>插入图片</el-button>
                 </el-upload>
-                <span class="muted">支持 PNG、JPG、GIF、WebP，图片会自动写入题面 Markdown。</span>
+                <span class="muted">支持 PNG、JPG、GIF、WebP</span>
               </div>
               <div v-if="problemForm.assets.length" class="asset-row">
                 <el-tag v-for="asset in problemForm.assets" :key="asset.path" closable @close="removeProblemImage(asset.path)">
@@ -332,6 +358,7 @@ const tagOptions = computed(() => {
   return [...set].sort((a, b) => a.localeCompare(b, 'zh-CN'))
 })
 const filteredProblems = computed(() => problems.value.filter((problem) => problemMatchesFilters(problem, filters)))
+const solvedCount = computed(() => problems.value.filter((p) => p.progress_status === 'accepted').length)
 const source = ref(`#include <bits/stdc++.h>
 using namespace std;
 int main() {
@@ -593,6 +620,87 @@ onMounted(async () => {
 </script>
 
 <style scoped>
+.sub-page {
+  padding: 0;
+  overflow-x: hidden;
+}
+
+.sub-hero {
+  background: linear-gradient(135deg, #0f172a 0%, #1e293b 50%, #0a5ea6 100%);
+}
+
+.sub-hero-inner {
+  max-width: 1200px;
+  margin: 0 auto;
+  padding: 32px 36px 40px;
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+}
+
+.sub-hero-text {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.sub-hero-title {
+  margin: 0;
+  font-size: 26px;
+  font-weight: 700;
+  color: #f8fafc;
+}
+
+.sub-hero-sub {
+  margin: 0;
+  font-size: 14px;
+  color: rgba(248, 250, 252, 0.6);
+}
+
+.sub-hero-stats {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+}
+
+.sub-hero-stat {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: 10px 20px;
+  background: rgba(255, 255, 255, 0.1);
+  border: 1px solid rgba(255, 255, 255, 0.15);
+  border-radius: 10px;
+  min-width: 80px;
+  text-align: center;
+  transition: background 0.2s;
+}
+
+.sub-hero-stat:hover {
+  background: rgba(255, 255, 255, 0.18);
+}
+
+.sub-hero-stat-val {
+  font-size: 22px;
+  font-weight: 700;
+  color: #fff;
+}
+
+.sub-hero-stat-label {
+  font-size: 12px;
+  color: rgba(248, 250, 252, 0.55);
+}
+
+.sub-content {
+  max-width: 1200px;
+  margin: 0 auto;
+  padding: 20px 20px 32px;
+}
+
+.panel-header {
+  margin-bottom: 14px;
+}
+
 .live {
   margin-top: 12px;
   display: flex;
@@ -643,7 +751,7 @@ onMounted(async () => {
 .problem-list-panel,
 .problem-detail-panel,
 .empty-detail {
-  min-height: calc(100vh - 150px);
+  min-height: calc(100vh - 380px);
 }
 
 .problem-list-panel {
@@ -760,6 +868,11 @@ onMounted(async () => {
 }
 
 @media (max-width: 760px) {
+  .sub-hero-inner {
+    padding: 24px 20px 32px;
+    gap: 16px;
+  }
+
   .problem-filters {
     grid-template-columns: 1fr;
   }

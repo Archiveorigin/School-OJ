@@ -1,84 +1,100 @@
 <template>
-  <section class="page">
-    <div class="page-header">
-      <h2>作业</h2>
-      <div class="toolbar">
-        <el-button v-if="canManage" type="primary" @click="openDialog">新建作业</el-button>
-        <el-button @click="load">刷新</el-button>
+  <section class="page sub-page">
+    <div class="sub-hero">
+      <div class="sub-hero-inner">
+        <div class="sub-hero-text">
+          <h1 class="sub-hero-title">{{ canManage ? '作业管理' : '我的作业' }}</h1>
+          <p class="sub-hero-sub">{{ canManage ? '创建作业、查看完成情况' : '查看已布置的作业任务与提交状态' }}</p>
+        </div>
+        <div class="sub-hero-stats">
+          <div class="sub-hero-stat" v-for="s in assignmentStats" :key="s.label">
+            <span class="sub-hero-stat-val">{{ s.value }}</span>
+            <span class="sub-hero-stat-label">{{ s.label }}</span>
+          </div>
+        </div>
       </div>
     </div>
 
-    <div class="assignment-summary">
-      <div v-for="item in assignmentStats" :key="item.label" class="panel assignment-stat">
-        <strong>{{ item.value }}</strong>
-        <span class="muted">{{ item.label }}</span>
+    <div class="sub-content">
+      <div class="panel-header">
+        <div class="toolbar">
+          <el-button v-if="canManage" type="primary" @click="openDialog">新建作业</el-button>
+          <el-button @click="load">刷新</el-button>
+        </div>
       </div>
-    </div>
 
-    <div class="panel assignment-filters">
-      <el-input v-model="filters.keyword" clearable placeholder="搜索标题、描述、课程或班级" />
-      <el-select v-if="!canManage" v-model="filters.status" placeholder="状态">
-        <el-option
-          v-for="option in assignmentStatusOptions"
-          :key="option.value"
-          :label="option.label"
-          :value="option.value"
-        />
-      </el-select>
-      <el-button @click="resetFilters">重置</el-button>
-      <span class="muted filter-count">{{ filteredItems.length }} / {{ items.length }}</span>
-    </div>
+      <div class="panel assignment-filters">
+        <el-input v-model="filters.keyword" clearable placeholder="搜索标题、描述、课程或班级" />
+        <el-select v-if="!canManage" v-model="filters.status" placeholder="状态">
+          <el-option
+            v-for="option in assignmentStatusOptions"
+            :key="option.value"
+            :label="option.label"
+            :value="option.value"
+          />
+        </el-select>
+        <el-button @click="resetFilters">重置</el-button>
+        <span class="muted filter-count">{{ filteredItems.length }} / {{ items.length }}</span>
+      </div>
 
-    <div class="panel">
-      <el-table :data="pagedItems">
-        <el-table-column label="课程" min-width="150">
-          <template #default="{ row }">{{ courseText(row) }}</template>
-        </el-table-column>
-        <el-table-column label="班级" min-width="120">
-          <template #default="{ row }">{{ row.class_name || '-' }}</template>
-        </el-table-column>
-        <el-table-column prop="title" label="标题" min-width="180" />
-        <el-table-column label="截止时间" min-width="210">
-          <template #default="{ row }">
-            <div class="due-cell">
-              <span>{{ formatDateTime(row.due_at) }}</span>
-              <el-tag size="small" :type="assignmentState(row).type">
-                {{ assignmentState(row).label }}
-              </el-tag>
-            </div>
-          </template>
-        </el-table-column>
-        <el-table-column label="题量" width="90">
-          <template #default="{ row }">{{ assignmentProblemCount(row) }}</template>
-        </el-table-column>
-        <el-table-column v-if="!canManage" label="状态" width="110">
-          <template #default="{ row }">
-            <el-tag :type="workStatusType(row.work_status)">{{ workStatusLabel(row.work_status) }}</el-tag>
-          </template>
-        </el-table-column>
-        <el-table-column v-if="!canManage" label="分数" width="120">
-          <template #default="{ row }">{{ scoreText(row) }}</template>
-        </el-table-column>
-        <el-table-column label="操作" width="260">
-          <template #default="{ row }">
-            <el-button size="small" type="primary" @click="openDetail(row)">进入</el-button>
-            <el-button v-if="canManage" size="small" @click="openReport(row)">完成情况</el-button>
-            <el-button v-if="canManage" size="small" type="danger" plain @click="removeAssignment(row)">删除</el-button>
-          </template>
-        </el-table-column>
-      </el-table>
-      <ListPagination v-model:page="page" v-model:page-size="pageSize" :total="filteredItems.length" />
+      <div class="panel">
+        <el-table :data="pagedItems">
+          <el-table-column label="课程" min-width="150">
+            <template #default="{ row }">{{ courseText(row) }}</template>
+          </el-table-column>
+          <el-table-column label="班级" min-width="120">
+            <template #default="{ row }">
+              <el-tag v-if="!row.class_name" type="success" effect="plain" size="small">全课程</el-tag>
+              <span v-else>{{ row.class_name }}</span>
+            </template>
+          </el-table-column>
+          <el-table-column prop="title" label="标题" min-width="180" />
+          <el-table-column label="截止时间" min-width="210">
+            <template #default="{ row }">
+              <div class="due-cell">
+                <span>{{ formatDateTime(row.due_at) }}</span>
+                <el-tag size="small" :type="assignmentState(row).type">
+                  {{ assignmentState(row).label }}
+                </el-tag>
+              </div>
+            </template>
+          </el-table-column>
+          <el-table-column label="题量" width="90">
+            <template #default="{ row }">{{ assignmentProblemCount(row) }}</template>
+          </el-table-column>
+          <el-table-column v-if="!canManage" label="状态" width="110">
+            <template #default="{ row }">
+              <el-tag :type="workStatusType(row.work_status)">{{ workStatusLabel(row.work_status) }}</el-tag>
+            </template>
+          </el-table-column>
+          <el-table-column v-if="!canManage" label="分数" width="120">
+            <template #default="{ row }">{{ scoreText(row) }}</template>
+          </el-table-column>
+          <el-table-column label="操作" width="260">
+            <template #default="{ row }">
+              <el-button size="small" type="primary" @click="openDetail(row)">进入</el-button>
+              <el-button v-if="canManage" size="small" @click="openReport(row)">完成情况</el-button>
+              <el-button v-if="canManage" size="small" type="danger" plain @click="removeAssignment(row)">删除</el-button>
+            </template>
+          </el-table-column>
+        </el-table>
+        <ListPagination v-model:page="page" v-model:page-size="pageSize" :total="filteredItems.length" />
+      </div>
     </div>
 
     <el-dialog v-model="dialogVisible" title="新建作业" width="860px">
       <el-form :model="form" label-width="90px">
         <el-form-item label="课程">
-          <el-select v-model="form.course_id" style="width: 100%" disabled>
+          <el-select v-if="form.class_id === -1" v-model="form.course_id" style="width: 100%" @change="onAssignmentCourseChange">
+            <el-option v-for="course in courses" :key="course.id" :label="`${course.code} ${course.name}`" :value="course.id" />
+          </el-select>
+          <el-select v-else v-model="form.course_id" style="width: 100%" disabled>
             <el-option v-for="course in courses" :key="course.id" :label="`${course.code} ${course.name}`" :value="course.id" />
           </el-select>
         </el-form-item>
         <el-form-item label="班级">
           <el-select v-model="form.class_id" style="width: 100%" @change="syncCourseFromClass">
+            <el-option label="全课程（不限班级）" :value="-1" />
             <el-option v-for="item in classroom.classes" :key="item.class_id" :label="`${item.course_code} / ${item.class_name}`" :value="item.class_id" />
           </el-select>
         </el-form-item>
@@ -269,10 +285,19 @@ function courseText(row: any) {
 }
 
 function syncCourseFromClass() {
+  if (form.class_id === -1) {
+    form.course_id = undefined
+    selectedProblems.value = []
+    return
+  }
   const item = classroom.classes.find((entry) => entry.class_id === form.class_id)
   form.course_id = item?.course_id
   selectedProblems.value = []
   loadClassProblems()
+}
+
+function onAssignmentCourseChange() {
+  selectedProblems.value = []
 }
 
 async function loadClassProblems() {
@@ -288,8 +313,12 @@ function addSelectedProblem() {
 }
 
 async function submitCreate() {
-  if (!form.class_id || !form.course_id || !form.title || selectedProblems.value.length === 0) {
-    ElMessage.error('请选择班级、填写标题并选择题目')
+  if ((form.class_id === undefined || form.class_id === null || form.class_id === '') && !form.course_id) {
+    ElMessage.error('请选择班级或课程')
+    return
+  }
+  if (!form.title || selectedProblems.value.length === 0) {
+    ElMessage.error('请填写标题并选择题目')
     return
   }
   if (selectedProblems.value.some((item) => item.source === '预备') && !form.due_at) {
@@ -300,7 +329,7 @@ async function submitCreate() {
   try {
     await client.post('/assignments', {
       course_id: form.course_id,
-      class_id: form.class_id,
+      class_id: form.class_id === -1 ? null : form.class_id,
       title: form.title,
       description: form.description,
       starts_at: form.starts_at,
@@ -367,21 +396,85 @@ onMounted(async () => {
 </script>
 
 <style scoped>
-.assignment-summary {
-  display: grid;
-  grid-template-columns: repeat(3, minmax(120px, 1fr));
-  gap: 12px;
-  margin-bottom: 16px;
+.sub-page {
+  padding: 0;
+  overflow-x: hidden;
 }
 
-.assignment-stat {
-  display: grid;
-  gap: 6px;
+.sub-hero {
+  background: linear-gradient(135deg, #0f172a 0%, #1e293b 50%, #0a5ea6 100%);
 }
 
-.assignment-stat strong {
-  color: var(--text);
+.sub-hero-inner {
+  max-width: 1200px;
+  margin: 0 auto;
+  padding: 32px 36px 40px;
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+}
+
+.sub-hero-text {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.sub-hero-title {
+  margin: 0;
   font-size: 26px;
+  font-weight: 700;
+  color: #f8fafc;
+}
+
+.sub-hero-sub {
+  margin: 0;
+  font-size: 14px;
+  color: rgba(248, 250, 252, 0.6);
+}
+
+.sub-hero-stats {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+}
+
+.sub-hero-stat {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: 10px 20px;
+  background: rgba(255, 255, 255, 0.1);
+  border: 1px solid rgba(255, 255, 255, 0.15);
+  border-radius: 10px;
+  min-width: 80px;
+  text-align: center;
+  transition: background 0.2s;
+}
+
+.sub-hero-stat:hover {
+  background: rgba(255, 255, 255, 0.18);
+}
+
+.sub-hero-stat-val {
+  font-size: 22px;
+  font-weight: 700;
+  color: #fff;
+}
+
+.sub-hero-stat-label {
+  font-size: 12px;
+  color: rgba(248, 250, 252, 0.55);
+}
+
+.sub-content {
+  max-width: 1200px;
+  margin: 0 auto;
+  padding: 20px 20px 32px;
+}
+
+.panel-header {
+  margin-bottom: 14px;
 }
 
 .assignment-filters {
@@ -426,7 +519,11 @@ onMounted(async () => {
 }
 
 @media (max-width: 760px) {
-  .assignment-summary,
+  .sub-hero-inner {
+    padding: 24px 20px 32px;
+    gap: 16px;
+  }
+
   .assignment-filters,
   .problem-add {
     grid-template-columns: 1fr;

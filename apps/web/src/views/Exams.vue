@@ -1,50 +1,77 @@
 <template>
-  <section class="page">
-    <div class="page-header">
-      <h2>考试</h2>
-      <div class="toolbar">
-        <el-button v-if="canManage" type="primary" @click="router.push('/exams/new')">新建考试</el-button>
-        <el-button @click="load">刷新</el-button>
+  <section class="page sub-page">
+    <div class="sub-hero">
+      <div class="sub-hero-inner">
+        <div class="sub-hero-text">
+          <h1 class="sub-hero-title">{{ canManage ? '考试管理' : '我的考试' }}</h1>
+          <p class="sub-hero-sub">{{ canManage ? '创建考试、查看完成情况与阅卷' : '查看进行中的考试与成绩' }}</p>
+        </div>
+        <div class="sub-hero-stats">
+          <div class="sub-hero-stat">
+            <span class="sub-hero-stat-val">{{ items.length }}</span>
+            <span class="sub-hero-stat-label">考试总数</span>
+          </div>
+          <div class="sub-hero-stat">
+            <span class="sub-hero-stat-val">{{ activeExams }}</span>
+            <span class="sub-hero-stat-label">进行中</span>
+          </div>
+          <div class="sub-hero-stat">
+            <span class="sub-hero-stat-val">{{ endedExams }}</span>
+            <span class="sub-hero-stat-label">已结束</span>
+          </div>
+        </div>
       </div>
     </div>
 
-    <div class="panel">
-      <el-table :data="pagedItems">
-        <el-table-column label="课程" min-width="150">
-          <template #default="{ row }">{{ courseText(row) }}</template>
-        </el-table-column>
-        <el-table-column label="班级" min-width="120">
-          <template #default="{ row }">{{ row.class_name || '-' }}</template>
-        </el-table-column>
-        <el-table-column prop="title" label="标题" min-width="180" />
-        <el-table-column label="开始" min-width="170">
-          <template #default="{ row }">{{ formatDateTime(row.starts_at) }}</template>
-        </el-table-column>
-        <el-table-column label="结束" min-width="170">
-          <template #default="{ row }">{{ formatDateTime(row.ends_at) }}</template>
-        </el-table-column>
-        <el-table-column v-if="canManage" label="模式" width="130">
-          <template #default="{ row }">
-            <el-tag v-if="row.settings?.manual_review" type="warning" effect="light">人工阅卷</el-tag>
-          </template>
-        </el-table-column>
-        <el-table-column v-if="!canManage" label="状态" width="110">
-          <template #default="{ row }"><el-tag :type="examStatusType(row)">{{ examStatusLabel(row) }}</el-tag></template>
-        </el-table-column>
-        <el-table-column v-if="!canManage" label="分数" width="120">
-          <template #default="{ row }">{{ scoreText(row) }}</template>
-        </el-table-column>
-        <el-table-column label="操作" width="260">
-          <template #default="{ row }">
-            <el-button size="small" type="primary" :disabled="!canManage && Boolean(row.finished_at)" @click="openDetail(row)">
-              {{ !canManage && row.finished_at ? '已结束' : '进入' }}
-            </el-button>
-            <el-button v-if="canManage" size="small" @click="openReport(row)">完成情况</el-button>
-            <el-button v-if="canManage" size="small" type="danger" plain @click="removeExam(row)">删除</el-button>
-          </template>
-        </el-table-column>
-      </el-table>
-      <ListPagination v-model:page="page" v-model:page-size="pageSize" :total="items.length" />
+    <div class="sub-content">
+      <div class="panel-header">
+        <div class="toolbar">
+          <el-button v-if="canManage" type="primary" @click="router.push('/exams/new')">新建考试</el-button>
+          <el-button @click="load">刷新</el-button>
+        </div>
+      </div>
+
+      <div class="panel">
+        <el-table :data="pagedItems">
+          <el-table-column label="课程" min-width="150">
+            <template #default="{ row }">{{ courseText(row) }}</template>
+          </el-table-column>
+          <el-table-column label="班级" min-width="120">
+            <template #default="{ row }">
+              <el-tag v-if="!row.class_name" type="success" effect="plain" size="small">全课程</el-tag>
+              <span v-else>{{ row.class_name }}</span>
+            </template>
+          </el-table-column>
+          <el-table-column prop="title" label="标题" min-width="180" />
+          <el-table-column label="开始" min-width="170">
+            <template #default="{ row }">{{ formatDateTime(row.starts_at) }}</template>
+          </el-table-column>
+          <el-table-column label="结束" min-width="170">
+            <template #default="{ row }">{{ formatDateTime(row.ends_at) }}</template>
+          </el-table-column>
+          <el-table-column v-if="canManage" label="模式" width="130">
+            <template #default="{ row }">
+              <el-tag v-if="row.settings?.manual_review" type="warning" effect="light">人工阅卷</el-tag>
+            </template>
+          </el-table-column>
+          <el-table-column v-if="!canManage" label="状态" width="110">
+            <template #default="{ row }"><el-tag :type="examStatusType(row)">{{ examStatusLabel(row) }}</el-tag></template>
+          </el-table-column>
+          <el-table-column v-if="!canManage" label="分数" width="120">
+            <template #default="{ row }">{{ scoreText(row) }}</template>
+          </el-table-column>
+          <el-table-column label="操作" width="260">
+            <template #default="{ row }">
+              <el-button size="small" type="primary" :disabled="!canManage && Boolean(row.finished_at)" @click="openDetail(row)">
+                {{ !canManage && row.finished_at ? '已结束' : '进入' }}
+              </el-button>
+              <el-button v-if="canManage" size="small" @click="openReport(row)">完成情况</el-button>
+              <el-button v-if="canManage" size="small" type="danger" plain @click="removeExam(row)">删除</el-button>
+            </template>
+          </el-table-column>
+        </el-table>
+        <ListPagination v-model:page="page" v-model:page-size="pageSize" :total="items.length" />
+      </div>
     </div>
 
     <el-drawer v-model="reportVisible" title="考试完成情况" size="86%">
@@ -157,6 +184,8 @@ const reportEnded = computed(() => {
   return new Date(report.value.exam.ends_at).getTime() <= Date.now()
 })
 const pagedItems = computed(() => items.value.slice((page.value - 1) * pageSize.value, page.value * pageSize.value))
+const activeExams = computed(() => items.value.filter((e) => !e.finished_at && new Date(e.starts_at) <= new Date()).length)
+const endedExams = computed(() => items.value.filter((e) => e.finished_at || new Date(e.ends_at) < new Date()).length)
 
 async function load() {
   const params = classroom.activeClassId ? { class_id: classroom.activeClassId } : {}
@@ -308,6 +337,87 @@ onMounted(async () => {
 </script>
 
 <style scoped>
+.sub-page {
+  padding: 0;
+  overflow-x: hidden;
+}
+
+.sub-hero {
+  background: linear-gradient(135deg, #0f172a 0%, #1e293b 50%, #0a5ea6 100%);
+}
+
+.sub-hero-inner {
+  max-width: 1200px;
+  margin: 0 auto;
+  padding: 32px 36px 40px;
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+}
+
+.sub-hero-text {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.sub-hero-title {
+  margin: 0;
+  font-size: 26px;
+  font-weight: 700;
+  color: #f8fafc;
+}
+
+.sub-hero-sub {
+  margin: 0;
+  font-size: 14px;
+  color: rgba(248, 250, 252, 0.6);
+}
+
+.sub-hero-stats {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+}
+
+.sub-hero-stat {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: 10px 20px;
+  background: rgba(255, 255, 255, 0.1);
+  border: 1px solid rgba(255, 255, 255, 0.15);
+  border-radius: 10px;
+  min-width: 80px;
+  text-align: center;
+  transition: background 0.2s;
+}
+
+.sub-hero-stat:hover {
+  background: rgba(255, 255, 255, 0.18);
+}
+
+.sub-hero-stat-val {
+  font-size: 22px;
+  font-weight: 700;
+  color: #fff;
+}
+
+.sub-hero-stat-label {
+  font-size: 12px;
+  color: rgba(248, 250, 252, 0.55);
+}
+
+.sub-content {
+  max-width: 1200px;
+  margin: 0 auto;
+  padding: 20px 20px 32px;
+}
+
+.panel-header {
+  margin-bottom: 14px;
+}
+
 .report-toolbar,
 .grade-actions {
   display: flex;
@@ -332,6 +442,11 @@ onMounted(async () => {
 }
 
 @media (max-width: 900px) {
+  .sub-hero-inner {
+    padding: 24px 20px 32px;
+    gap: 16px;
+  }
+
   .grade-grid {
     grid-template-columns: 1fr;
   }

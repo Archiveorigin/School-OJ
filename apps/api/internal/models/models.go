@@ -39,6 +39,7 @@ type Course struct {
 	Term        string    `json:"term" gorm:"size:64;index"`
 	TeacherID   uint      `json:"teacher_id" gorm:"index;not null"`
 	Description string    `json:"description"`
+	JoinCode    string    `json:"join_code,omitempty" gorm:"uniqueIndex:idx_courses_join_code,where:join_code IS NOT NULL AND join_code <> '';size:12"`
 	Archived    bool      `json:"archived" gorm:"not null;default:false;index"`
 	CreatedAt   time.Time `json:"created_at"`
 	UpdatedAt   time.Time `json:"updated_at"`
@@ -199,6 +200,13 @@ func FormatClassJoinCode(id uint) string {
 	value := (uint64(id) * 2654435761) % modulo
 	code := strings.ToUpper(strconvBase36(value))
 	return "C" + strings.Repeat("0", 6-len(code)) + code
+}
+
+func FormatCourseJoinCode(id uint) string {
+	const modulo = uint64(2176782336) // 36^6
+	value := (uint64(id) * 2654435761) % modulo
+	code := strings.ToUpper(strconvBase36(value))
+	return "R" + strings.Repeat("0", 6-len(code)) + code
 }
 
 func strconvBase36(value uint64) string {
