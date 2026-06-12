@@ -32,6 +32,38 @@ func TestParsePackage(t *testing.T) {
 	}
 }
 
+func TestParsePackageRejectsEmptyCases(t *testing.T) {
+	body := testZip(t, map[string]string{
+		"problem.yaml": "slug: p\ntitle: P\ncases: []\n",
+	})
+	if _, err := ParsePackage(body); err == nil {
+		t.Fatal("expected empty cases to be rejected")
+	}
+}
+
+func TestParsePackageRejectsUnsupportedExtraFile(t *testing.T) {
+	body := testZip(t, map[string]string{
+		"problem.yaml": "slug: p\ntitle: P\ncases:\n  - name: a\n    input: tests/a.in\n    output: tests/a.out\n    weight: 100\n",
+		"tests/a.in":   "1 2\n",
+		"tests/a.out":  "3\n",
+		"tmp/junk.txt": "extra",
+	})
+	if _, err := ParsePackage(body); err == nil {
+		t.Fatal("expected unsupported extra file to be rejected")
+	}
+}
+
+func TestParsePackageRejectsWrongCaseExtension(t *testing.T) {
+	body := testZip(t, map[string]string{
+		"problem.yaml": "slug: p\ntitle: P\ncases:\n  - name: a\n    input: tests/a.out\n    output: tests/a.in\n    weight: 100\n",
+		"tests/a.in":   "1 2\n",
+		"tests/a.out":  "3\n",
+	})
+	if _, err := ParsePackage(body); err == nil {
+		t.Fatal("expected wrong case extension to be rejected")
+	}
+}
+
 func TestCaseIOAndNormalizeStripUTF8BOM(t *testing.T) {
 	var buf bytes.Buffer
 	zw := zip.NewWriter(&buf)
@@ -118,4 +150,28 @@ func TestJudgeCasesStopsAtFirstFailureAndScoresPrefix(t *testing.T) {
 	if calls != 1 || len(results) != 1 {
 		t.Fatalf("expected 1 executed case, calls=%d results=%d", calls, len(results))
 	}
+}
+
+func TestJavaRuntimeCommandUsesMemoryLimit(t *testing.T) {
+	command := runtimeCommand("java -Xmx{{JAVA_XMX_MB}}m -cp /work Main", sandboxLimits{MemoryMB: 128})
+	if command != "java -Xmx96m -cp /work Main" {
+		t.Fatalf("unexpected java command: %s", command)
+	}
+}
+
+func testZip(t *testing.T, files map[string]string) []byte {
+	t.Helper()
+	var buf bytes.Buffer
+	zw := zip.NewWriter(&buf)
+	for name, body := range files {
+		w, err := zw.Create(name)
+		if err != nil {
+			t.Fatal(err)
+		}
+		_, _ = w.Write([]byte(body))
+	}
+	if err := zw.Close(); err != nil {
+		t.Fatal(err)
+	}
+	return buf.Bytes()
 }

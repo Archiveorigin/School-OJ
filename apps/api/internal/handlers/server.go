@@ -338,7 +338,7 @@ func (s Server) Router() *gin.Engine {
 	auth.POST("/exams", middleware.RequireRoles(models.RoleAdmin, models.RoleTeacher), s.createExam)
 	auth.GET("/exams/:id/report/export", middleware.RequireRoles(models.RoleAdmin, models.RoleTeacher), s.exportExamReport)
 	auth.GET("/exams/:id/report", middleware.RequireRoles(models.RoleAdmin, models.RoleTeacher), s.examReport)
-	auth.GET("/exams/:id/ranking", middleware.RequireRoles(models.RoleAdmin), s.examRanking)
+	auth.GET("/exams/:id/ranking", middleware.RequireRoles(models.RoleAdmin, models.RoleTeacher), s.examRanking)
 	auth.DELETE("/exams/:id", middleware.RequireRoles(models.RoleAdmin, models.RoleTeacher), s.deleteExam)
 	auth.POST("/exams/:id/submissions/:submission_id/judge", middleware.RequireRoles(models.RoleAdmin, models.RoleTeacher), s.judgeManualExamSubmission)
 	auth.PUT("/exams/:id/submissions/:submission_id/grade", middleware.RequireRoles(models.RoleAdmin, models.RoleTeacher), s.gradeManualExamSubmission)
@@ -1551,7 +1551,7 @@ func (s Server) uploadProblem(c *gin.Context) {
 		return
 	}
 	defer src.Close()
-	body, err := io.ReadAll(io.LimitReader(src, 128<<20))
+	body, err := services.ReadLimited(src, services.MaxProblemPackageSize, "problem package")
 	if err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 		return
@@ -1647,7 +1647,7 @@ func (s Server) parseMarkdownBatch(c *gin.Context) {
 		return
 	}
 
-	raw, err := io.ReadAll(io.LimitReader(file, 32<<20))
+	raw, err := services.ReadLimited(file, 32<<20, "markdown file")
 	if err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "read file: " + err.Error()})
 		return
@@ -1674,7 +1674,7 @@ func testPointUploadsFromMultipart(form *multipart.Form) ([]services.TestPointUp
 			if err != nil {
 				return nil, err
 			}
-			body, err := io.ReadAll(io.LimitReader(src, services.MaxProblemTestFilesSize+1))
+			body, err := services.ReadLimited(src, services.MaxProblemTestFilesSize, "test files")
 			_ = src.Close()
 			if err != nil {
 				return nil, err
@@ -2135,7 +2135,7 @@ func (s Server) problemPackageBody(c *gin.Context, problem models.Problem) ([]by
 		return nil, false
 	}
 	defer src.Close()
-	body, err := io.ReadAll(io.LimitReader(src, 128<<20))
+	body, err := services.ReadLimited(src, services.MaxProblemPackageSize, "problem package")
 	if err != nil {
 		resp := minio.ToErrorResponse(err)
 		if resp.Code == "NoSuchKey" || resp.Code == "NoSuchBucket" {
@@ -2210,7 +2210,7 @@ func problemZipFile(body []byte, name string) ([]byte, bool, error) {
 		if err != nil {
 			return nil, false, err
 		}
-		data, err := io.ReadAll(io.LimitReader(rc, 64<<20))
+		data, err := services.ReadLimited(rc, services.MaxProblemTestFilesSize, "test file")
 		_ = rc.Close()
 		if err != nil {
 			return nil, false, err
@@ -2392,7 +2392,7 @@ func (s Server) uploadPreparedProblem(c *gin.Context) {
 		return
 	}
 	defer src.Close()
-	body, err := io.ReadAll(io.LimitReader(src, 128<<20))
+	body, err := services.ReadLimited(src, services.MaxProblemPackageSize, "problem package")
 	if err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 		return
@@ -2967,6 +2967,7 @@ func (s Server) examReport(c *gin.Context) {
 }
 
 func (s Server) examRanking(c *gin.Context) {
+	user, _ := middleware.CurrentUser(c)
 	id, ok := idParam(c, "id")
 	if !ok {
 		return
@@ -2977,6 +2978,10 @@ func (s Server) examRanking(c *gin.Context) {
 		Where("exams.deleted_at IS NULL").
 		First(&item, id).Error; err != nil {
 		c.JSON(http.StatusNotFound, gin.H{"error": "exam not found"})
+		return
+	}
+	if !s.canManageCourse(user, item.CourseID) {
+		c.JSON(http.StatusForbidden, gin.H{"error": "forbidden"})
 		return
 	}
 	examViews := s.examListViews([]models.Exam{item})
@@ -3323,47 +3328,112 @@ func (s Server) createSubmission(c *gin.Context) {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "language must be one of c, cpp, python, java"})
 		return
 	}
+	if len([]byte(req.SourceCode)) > services.MaxSubmissionSourceSize {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "source code is too large"})
+		return
+	}
 	if req.AssignmentID != nil && req.ExamID != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "assignment_id and exam_id cannot both be set"})
 		return
 	}
+	var problem models.Problem
+	if err := s.DB.Where("deleted_at IS NULL").First(&problem, req.ProblemID).Error; err != nil {
+		c.JSON(http.StatusNotFound, gin.H{"error": "problem not found"})
+		return
+	}
+	var assignmentAttempt *uint
+	var examAttempt *uint
+	var examForSubmission *models.Exam
 	if user.Role == models.RoleStudent {
 		if req.AssignmentID != nil {
 			if ok, msg := s.canStudentSubmitAssignment(user.ID, *req.AssignmentID, req.ProblemID); !ok {
 				c.JSON(http.StatusForbidden, gin.H{"error": msg})
 				return
 			}
-			_ = s.recordAssignmentAttempt(*req.AssignmentID, user.ID)
+			assignmentAttempt = req.AssignmentID
 		} else if req.ExamID != nil {
 			if ok, msg := s.canStudentSubmitExam(user.ID, *req.ExamID, req.ProblemID); !ok {
 				c.JSON(http.StatusForbidden, gin.H{"error": msg})
 				return
 			}
-			_ = s.recordExamAttempt(*req.ExamID, user.ID)
+			examAttempt = req.ExamID
 		} else if !s.canStudentAccessProblem(user.ID, req.ProblemID) {
 			c.JSON(http.StatusForbidden, gin.H{"error": "problem is not available in your classes"})
 			return
+		}
+	} else {
+		if req.AssignmentID != nil {
+			var assignment models.Assignment
+			if err := s.DB.Where("deleted_at IS NULL").First(&assignment, *req.AssignmentID).Error; err != nil {
+				c.JSON(http.StatusNotFound, gin.H{"error": "assignment not found"})
+				return
+			}
+			if !s.canManageCourse(user, assignment.CourseID) {
+				c.JSON(http.StatusForbidden, gin.H{"error": "forbidden"})
+				return
+			}
+			var count int64
+			s.DB.Model(&models.AssignmentProblem{}).Where("assignment_id = ? AND problem_id = ?", *req.AssignmentID, req.ProblemID).Count(&count)
+			if count == 0 {
+				c.JSON(http.StatusBadRequest, gin.H{"error": "problem is not part of this assignment"})
+				return
+			}
+		}
+		if req.ExamID != nil {
+			var exam models.Exam
+			if err := s.DB.Where("deleted_at IS NULL").First(&exam, *req.ExamID).Error; err != nil {
+				c.JSON(http.StatusNotFound, gin.H{"error": "exam not found"})
+				return
+			}
+			if !s.canManageCourse(user, exam.CourseID) {
+				c.JSON(http.StatusForbidden, gin.H{"error": "forbidden"})
+				return
+			}
+			if !s.examContainsProblem(exam.ID, req.ProblemID) {
+				c.JSON(http.StatusBadRequest, gin.H{"error": "problem is not part of this exam"})
+				return
+			}
+			examForSubmission = &exam
 		}
 	}
 	status := models.StatusQueued
 	manualReview := false
 	if req.ExamID != nil {
-		var exam models.Exam
-		if err := s.DB.Where("deleted_at IS NULL").First(&exam, *req.ExamID).Error; err == nil && examManualReview(exam) {
+		if examForSubmission == nil {
+			var exam models.Exam
+			if err := s.DB.Where("deleted_at IS NULL").First(&exam, *req.ExamID).Error; err == nil {
+				examForSubmission = &exam
+			}
+		}
+		if examForSubmission != nil && examManualReview(*examForSubmission) {
 			manualReview = true
 			status = models.StatusPendingReview
 		}
 	}
 	sub := models.Submission{
 		UserID:       user.ID,
-		ProblemID:    req.ProblemID,
+		ProblemID:    problem.ID,
 		AssignmentID: req.AssignmentID,
 		ExamID:       req.ExamID,
 		Language:     req.Language,
 		SourceCode:   req.SourceCode,
 		Status:       status,
 	}
-	if err := s.DB.Create(&sub).Error; err != nil {
+	if err := s.DB.Transaction(func(tx *gorm.DB) error {
+		if assignmentAttempt != nil {
+			attempt := models.AssignmentAttempt{AssignmentID: *assignmentAttempt, UserID: user.ID}
+			if err := tx.Where("assignment_id = ? AND user_id = ?", *assignmentAttempt, user.ID).FirstOrCreate(&attempt).Error; err != nil {
+				return err
+			}
+		}
+		if examAttempt != nil {
+			attempt := models.ExamAttempt{ExamID: *examAttempt, UserID: user.ID}
+			if err := tx.Where("exam_id = ? AND user_id = ?", *examAttempt, user.ID).FirstOrCreate(&attempt).Error; err != nil {
+				return err
+			}
+		}
+		return tx.Create(&sub).Error
+	}); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 		return
 	}
@@ -3388,6 +3458,20 @@ func (s Server) listSubmissions(c *gin.Context) {
 	q := s.DB.Order("id desc").Limit(200)
 	if user.Role == models.RoleStudent {
 		q = q.Where("user_id = ?", user.ID)
+	} else if user.Role == models.RoleTeacher {
+		primaryCourses := s.DB.Model(&models.Course{}).Select("id").Where("teacher_id = ?", user.ID)
+		memberCourses := s.DB.Model(&models.CourseMembership{}).Select("course_id").Where("user_id = ? AND role IN ?", user.ID, courseTeachingRoles())
+		visibleClassProblems := s.DB.Table("class_problems").
+			Select("class_problems.problem_id").
+			Joins("join classes on classes.id = class_problems.class_id").
+			Where("classes.course_id IN (?) OR classes.course_id IN (?)", primaryCourses, memberCourses)
+		q = q.Where(
+			"user_id = ? OR problem_id IN (?) OR assignment_id IN (?) OR exam_id IN (?)",
+			user.ID,
+			s.DB.Model(&models.Problem{}).Select("id").Where("owner_id = ? OR id IN (?)", user.ID, visibleClassProblems),
+			s.DB.Model(&models.Assignment{}).Select("id").Where("deleted_at IS NULL").Where("course_id IN (?) OR course_id IN (?)", primaryCourses, memberCourses),
+			s.DB.Model(&models.Exam{}).Select("id").Where("deleted_at IS NULL").Where("course_id IN (?) OR course_id IN (?)", primaryCourses, memberCourses),
+		)
 	}
 	if problemID := c.Query("problem_id"); problemID != "" {
 		q = q.Where("problem_id = ?", problemID)

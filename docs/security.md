@@ -23,4 +23,15 @@ Because the compose worker talks to the host Docker daemon through `/var/run/doc
 
 The host Docker daemon must have the judge images available: `gcc:14-bookworm`, `python:3.12-slim`, and `eclipse-temurin:21-jdk`. Run `./scripts/pull_sandbox_images.sh` before the first submission, especially on networks where automatic pulls are slow or blocked.
 
+The worker treats missing Docker images, Docker daemon connectivity, and image
+resolution failures as retryable infrastructure errors. It requeues the
+submission with a bounded retry count and also claims idle pending Redis Stream
+messages, so a worker crash or restart does not leave submissions permanently
+stuck in `queued` or `running`.
+
+Problem ZIP packages are validated by both API and worker. Accepted entries are
+limited to `problem.yaml`, `tests/*.in`, `tests/*.out`, and supported image
+assets under `assets/`; unsafe paths, unsupported files, empty test sets, and
+oversized archives are rejected before judging.
+
 For production, run workers on isolated nodes and treat Docker socket access as privileged infrastructure. The compose setup is deployable for a school lab or staging environment; a hardened production cluster should move sandbox execution to dedicated worker hosts.

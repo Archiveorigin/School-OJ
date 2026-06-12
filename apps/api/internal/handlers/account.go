@@ -1,6 +1,7 @@
 package handlers
 
 import (
+	"errors"
 	"fmt"
 	"net/http"
 	"strings"
@@ -13,7 +14,10 @@ import (
 	"github.com/gin-gonic/gin"
 	"golang.org/x/crypto/bcrypt"
 	"gorm.io/datatypes"
+	"gorm.io/gorm"
 )
+
+var errEmailNotFound = errors.New("email not found")
 
 func (s Server) sendEmailCode(c *gin.Context) {
 	var req struct {
@@ -24,6 +28,10 @@ func (s Server) sendEmailCode(c *gin.Context) {
 		return
 	}
 	email := normalizeEmail(req.Email)
+	if !validEmail(email) {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid email"})
+		return
+	}
 	if !publicVerificationPurpose(req.Purpose) {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid purpose"})
 		return
@@ -63,20 +71,39 @@ func (s Server) register(c *gin.Context) {
 		return
 	}
 	email := normalizeEmail(req.Email)
-	if err := services.ConsumeVerification(s.DB, email, services.VerificationRegister, req.Code); err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+	name := strings.TrimSpace(req.Name)
+	studentNo := strings.TrimSpace(req.StudentNo)
+	if !validEmail(email) {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid email"})
 		return
 	}
-	hash, _ := bcrypt.GenerateFromPassword([]byte(req.Password), bcrypt.DefaultCost)
+	if name == "" {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "name is required"})
+		return
+	}
+	if len(req.Password) < 6 {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "password must be at least 6 characters"})
+		return
+	}
+	hash, err := bcrypt.GenerateFromPassword([]byte(req.Password), bcrypt.DefaultCost)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		return
+	}
 	user := models.User{
 		Email:         email,
-		Name:          strings.TrimSpace(req.Name),
+		Name:          name,
 		Role:          models.RoleStudent,
 		PasswordHash:  string(hash),
-		StudentNo:     strings.TrimSpace(req.StudentNo),
+		StudentNo:     studentNo,
 		EmailVerified: true,
 	}
-	if err := s.DB.Create(&user).Error; err != nil {
+	if err := s.DB.Transaction(func(tx *gorm.DB) error {
+		if err := services.ConsumeVerification(tx, email, services.VerificationRegister, req.Code); err != nil {
+			return err
+		}
+		return tx.Create(&user).Error
+	}); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 		return
 	}
@@ -99,18 +126,37 @@ func (s Server) resetPassword(c *gin.Context) {
 		return
 	}
 	email := normalizeEmail(req.Email)
-	if err := services.ConsumeVerification(s.DB, email, services.VerificationPasswordReset, req.Code); err != nil {
+	if !validEmail(email) {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid email"})
+		return
+	}
+	if len(req.Password) < 6 {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "password must be at least 6 characters"})
+		return
+	}
+	hash, err := bcrypt.GenerateFromPassword([]byte(req.Password), bcrypt.DefaultCost)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		return
+	}
+	if err := s.DB.Transaction(func(tx *gorm.DB) error {
+		if err := services.ConsumeVerification(tx, email, services.VerificationPasswordReset, req.Code); err != nil {
+			return err
+		}
+		result := tx.Model(&models.User{}).Where("email = ? AND account_deleted = false", email).Updates(map[string]any{"password_hash": string(hash)})
+		if result.Error != nil {
+			return result.Error
+		}
+		if result.RowsAffected == 0 {
+			return errEmailNotFound
+		}
+		return nil
+	}); err != nil {
+		if errors.Is(err, errEmailNotFound) {
+			c.JSON(http.StatusNotFound, gin.H{"error": "email not found"})
+			return
+		}
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
-		return
-	}
-	hash, _ := bcrypt.GenerateFromPassword([]byte(req.Password), bcrypt.DefaultCost)
-	result := s.DB.Model(&models.User{}).Where("email = ? AND account_deleted = false", email).Updates(map[string]any{"password_hash": string(hash)})
-	if result.Error != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": result.Error.Error()})
-		return
-	}
-	if result.RowsAffected == 0 {
-		c.JSON(http.StatusNotFound, gin.H{"error": "email not found"})
 		return
 	}
 	s.clearFailedLogin(email)
@@ -126,6 +172,10 @@ func (s Server) sendProfileEmailCode(c *gin.Context) {
 		return
 	}
 	email := normalizeEmail(req.Email)
+	if !validEmail(email) {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid email"})
+		return
+	}
 	var count int64
 	s.DB.Model(&models.User{}).Where("email = ? AND account_deleted = false", email).Count(&count)
 	if count > 0 {
@@ -149,11 +199,16 @@ func (s Server) rebindEmail(c *gin.Context) {
 		return
 	}
 	email := normalizeEmail(req.Email)
-	if err := services.ConsumeVerification(s.DB, email, services.VerificationRebindEmail, req.Code); err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+	if !validEmail(email) {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid email"})
 		return
 	}
-	if err := s.DB.Model(&models.User{}).Where("id = ?", user.ID).Updates(map[string]any{"email": email, "email_verified": true}).Error; err != nil {
+	if err := s.DB.Transaction(func(tx *gorm.DB) error {
+		if err := services.ConsumeVerification(tx, email, services.VerificationRebindEmail, req.Code); err != nil {
+			return err
+		}
+		return tx.Model(&models.User{}).Where("id = ?", user.ID).Updates(map[string]any{"email": email, "email_verified": true}).Error
+	}); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 		return
 	}

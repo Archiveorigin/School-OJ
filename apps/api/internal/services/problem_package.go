@@ -93,7 +93,10 @@ type TestPointUploadFile struct {
 const (
 	MaxProblemAssetSize     = 5 << 20
 	MaxProblemAssetsSize    = 20 << 20
+	MaxProblemPackageSize   = 128 << 20
 	MaxProblemTestFilesSize = 128 << 20
+	MaxProblemManifestSize  = 1 << 20
+	MaxSubmissionSourceSize = 1 << 20
 	utf8BOM                 = "\ufeff"
 )
 
@@ -107,6 +110,17 @@ type testPointGroup struct {
 	outputName string
 	input      []byte
 	output     []byte
+}
+
+func ReadLimited(r io.Reader, maxBytes int64, label string) ([]byte, error) {
+	body, err := io.ReadAll(io.LimitReader(r, maxBytes+1))
+	if err != nil {
+		return nil, err
+	}
+	if int64(len(body)) > maxBytes {
+		return nil, fmt.Errorf("%s is too large", label)
+	}
+	return body, nil
 }
 
 func BuildProblemCasesFromTestPointFiles(files []TestPointUploadFile) ([]ProblemCaseDraft, error) {
@@ -214,7 +228,7 @@ func expandTestPointUploadFiles(files []TestPointUploadFile) ([]rawTestPointFile
 			if err != nil {
 				return nil, err
 			}
-			body, err := io.ReadAll(io.LimitReader(rc, MaxProblemTestFilesSize+1))
+			body, err := ReadLimited(rc, MaxProblemTestFilesSize, "test files")
 			_ = rc.Close()
 			if err != nil {
 				return nil, err
@@ -444,6 +458,7 @@ func packageFiles(body []byte) (map[string][]byte, error) {
 		return nil, fmt.Errorf("open zip: %w", err)
 	}
 	files := map[string][]byte{}
+	totalSize := int64(0)
 	for _, item := range reader.File {
 		rawPath := filepath.ToSlash(item.Name)
 		if unsafeZipPath(rawPath) {
@@ -453,11 +468,18 @@ func packageFiles(body []byte) (map[string][]byte, error) {
 			continue
 		}
 		clean := filepath.ToSlash(filepath.Clean(rawPath))
+		if err := validateProblemPackageFilePath(clean); err != nil {
+			return nil, err
+		}
+		totalSize += int64(item.UncompressedSize64)
+		if totalSize > MaxProblemPackageSize {
+			return nil, fmt.Errorf("problem package is too large")
+		}
 		rc, err := item.Open()
 		if err != nil {
 			return nil, err
 		}
-		data, err := io.ReadAll(io.LimitReader(rc, 128<<20))
+		data, err := ReadLimited(rc, MaxProblemPackageSize, "problem package")
 		_ = rc.Close()
 		if err != nil {
 			return nil, err
@@ -500,6 +522,7 @@ func ParseProblemPackage(body []byte) (ParsedProblemPackage, error) {
 	files := map[string]bool{}
 	assets := map[string]ParsedProblemAsset{}
 	totalAssetSize := int64(0)
+	totalPackageSize := int64(0)
 	var manifestBytes []byte
 	for _, f := range reader.File {
 		rawPath := filepath.ToSlash(f.Name)
@@ -510,13 +533,20 @@ func ParseProblemPackage(body []byte) (ParsedProblemPackage, error) {
 		if f.FileInfo().IsDir() {
 			continue
 		}
+		if err := validateProblemPackageFilePath(clean); err != nil {
+			return ParsedProblemPackage{}, err
+		}
+		totalPackageSize += int64(f.UncompressedSize64)
+		if totalPackageSize > MaxProblemPackageSize {
+			return ParsedProblemPackage{}, fmt.Errorf("problem package is too large")
+		}
 		files[clean] = true
 		if clean == "problem.yaml" {
 			rc, err := f.Open()
 			if err != nil {
 				return ParsedProblemPackage{}, err
 			}
-			manifestBytes, err = io.ReadAll(io.LimitReader(rc, 1<<20))
+			manifestBytes, err = ReadLimited(rc, MaxProblemManifestSize, "problem.yaml")
 			_ = rc.Close()
 			if err != nil {
 				return ParsedProblemPackage{}, err
@@ -539,7 +569,7 @@ func ParseProblemPackage(body []byte) (ParsedProblemPackage, error) {
 			if err != nil {
 				return ParsedProblemPackage{}, err
 			}
-			assetBody, err := io.ReadAll(io.LimitReader(rc, MaxProblemAssetSize+1))
+			assetBody, err := ReadLimited(rc, MaxProblemAssetSize, "asset "+path)
 			_ = rc.Close()
 			if err != nil {
 				return ParsedProblemPackage{}, err
@@ -617,12 +647,22 @@ func ParseProblemPackage(body []byte) (ParsedProblemPackage, error) {
 		if tc.Weight <= 0 {
 			tc.Weight = 100 / len(manifest.Cases)
 		}
-		for _, path := range []string{tc.Input, tc.Output} {
-			clean := filepath.ToSlash(filepath.Clean(path))
-			if clean == "." || strings.HasPrefix(clean, "../") || !files[clean] {
-				return ParsedProblemPackage{}, fmt.Errorf("case %s references missing file %s", tc.Name, path)
-			}
+		input, err := normalizePackageTestPath(tc.Input, ".in")
+		if err != nil {
+			return ParsedProblemPackage{}, fmt.Errorf("case %s: %w", tc.Name, err)
 		}
+		output, err := normalizePackageTestPath(tc.Output, ".out")
+		if err != nil {
+			return ParsedProblemPackage{}, fmt.Errorf("case %s: %w", tc.Name, err)
+		}
+		if !files[input] {
+			return ParsedProblemPackage{}, fmt.Errorf("case %s references missing file %s", tc.Name, tc.Input)
+		}
+		if !files[output] {
+			return ParsedProblemPackage{}, fmt.Errorf("case %s references missing file %s", tc.Name, tc.Output)
+		}
+		tc.Input = input
+		tc.Output = output
 	}
 	sum := sha256.Sum256(body)
 	return ParsedProblemPackage{
@@ -670,6 +710,39 @@ func unsafeZipPath(value string) bool {
 		}
 	}
 	return false
+}
+
+func validateProblemPackageFilePath(clean string) error {
+	if clean == "problem.yaml" {
+		return nil
+	}
+	if strings.HasPrefix(clean, "assets/") {
+		_, err := NormalizeAssetPath(clean)
+		return err
+	}
+	if strings.HasPrefix(clean, "tests/") {
+		_, err := normalizePackageTestPath(clean, "")
+		return err
+	}
+	return fmt.Errorf("unsupported problem package file: %s", clean)
+}
+
+func normalizePackageTestPath(value string, requiredExt string) (string, error) {
+	clean := filepath.ToSlash(filepath.Clean(strings.TrimSpace(value)))
+	if clean == "." || clean == "" || strings.HasPrefix(clean, "../") || strings.HasPrefix(clean, "/") || strings.Contains(clean, "\x00") {
+		return "", fmt.Errorf("unsafe test path: %s", value)
+	}
+	if !strings.HasPrefix(clean, "tests/") || strings.TrimPrefix(clean, "tests/") == "" {
+		return "", fmt.Errorf("test path must be under tests/: %s", value)
+	}
+	ext := strings.ToLower(filepath.Ext(clean))
+	if ext != ".in" && ext != ".out" {
+		return "", fmt.Errorf("test file type is not supported: %s", value)
+	}
+	if requiredExt != "" && ext != requiredExt {
+		return "", fmt.Errorf("test file must use %s: %s", requiredExt, value)
+	}
+	return clean, nil
 }
 
 func DecodeProblemAssetData(value string) ([]byte, error) {

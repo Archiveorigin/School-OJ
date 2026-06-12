@@ -25,9 +25,12 @@ cases:
 Rules:
 
 - Paths must be relative and cannot escape the ZIP root.
-- Each case must reference an input and output file that exists in the ZIP.
+- The ZIP may contain only `problem.yaml`, `tests/*.in`, `tests/*.out`, and supported image assets under `assets/`.
+- Each case must reference an input `.in` file and output `.out` file under `tests/` that exists in the ZIP.
+- At least one test case is required.
 - Supported submission languages are `c`, `cpp`, `python`, and `java`.
 - Time, memory, and output limits are enforced by the worker sandbox.
+- Oversized packages, assets, and test uploads are rejected with explicit errors instead of being silently truncated.
 
 Create a sample package:
 

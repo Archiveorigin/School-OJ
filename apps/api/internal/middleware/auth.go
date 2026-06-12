@@ -44,6 +44,9 @@ func Auth(db *gorm.DB, secret string) gin.HandlerFunc {
 			return
 		}
 		token, err := jwt.ParseWithClaims(tokenString, &Claims{}, func(token *jwt.Token) (any, error) {
+			if token.Method != jwt.SigningMethodHS256 {
+				return nil, jwt.ErrTokenSignatureInvalid
+			}
 			return []byte(secret), nil
 		})
 		if err != nil || !token.Valid {

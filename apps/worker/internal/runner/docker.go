@@ -78,7 +78,7 @@ func (r DockerRunner) Judge(ctx context.Context, req JudgeRequest) JudgeResult {
 		req.Package.CaseInput,
 		req.Package.CaseOutput,
 		func(input string) (string, models.SubmissionStatus, int) {
-			return r.runContainer(ctx, workDir, spec.Image, spec.Run, input, limit)
+			return r.runContainer(ctx, workDir, spec.Image, runtimeCommand(spec.Run, limit), input, limit)
 		},
 	)
 	message := "accepted"
@@ -153,10 +153,24 @@ func languageSpec(language string) (spec, error) {
 	case "python":
 		return spec{Source: "main.py", Image: "python:3.12-slim", Run: "python3 /work/main.py"}, nil
 	case "java":
-		return spec{Source: "Main.java", Image: "eclipse-temurin:21-jdk", Compile: "javac /work/Main.java", Run: "java -Xmx192m -cp /work Main"}, nil
+		return spec{Source: "Main.java", Image: "eclipse-temurin:21-jdk", Compile: "javac /work/Main.java", Run: "java -Xmx{{JAVA_XMX_MB}}m -cp /work Main"}, nil
 	default:
 		return spec{}, fmt.Errorf("unsupported language: %s", language)
 	}
+}
+
+func runtimeCommand(command string, limit sandboxLimits) string {
+	if !strings.Contains(command, "{{JAVA_XMX_MB}}") {
+		return command
+	}
+	heap := limit.MemoryMB * 3 / 4
+	if heap < 16 {
+		heap = 16
+	}
+	if limit.MemoryMB > 32 && heap > limit.MemoryMB-16 {
+		heap = limit.MemoryMB - 16
+	}
+	return strings.ReplaceAll(command, "{{JAVA_XMX_MB}}", strconv(heap))
 }
 
 type sandboxLimits struct {

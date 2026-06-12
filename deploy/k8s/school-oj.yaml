@@ -10,10 +10,10 @@ metadata:
   namespace: school-oj
 type: Opaque
 stringData:
-  postgres-password: ojpass
-  jwt-secret: change-me-in-production
-  minio-access-key: minioadmin
-  minio-secret-key: minioadmin
+  postgres-password: replace-with-strong-postgres-password
+  jwt-secret: replace-with-strong-random-jwt-secret
+  minio-access-key: replace-with-minio-access-key
+  minio-secret-key: replace-with-strong-minio-secret-key
 ---
 apiVersion: v1
 kind: ConfigMap
@@ -21,7 +21,7 @@ metadata:
   name: school-oj-config
   namespace: school-oj
 data:
-  database-url: host=postgres user=oj password=ojpass dbname=oj port=5432 sslmode=disable TimeZone=Asia/Shanghai
+  database-url: host=postgres user=oj password=replace-with-strong-postgres-password dbname=oj port=5432 sslmode=disable TimeZone=Asia/Shanghai
   redis-addr: redis:6379
   minio-endpoint: minio:9000
   minio-bucket: oj-artifacts
@@ -29,6 +29,8 @@ data:
   smtp-port: "1025"
   mail-from: no-reply@huanghailuoj.local
   mail-from-name: 黄海在线
+  submission-max-retries: "3"
+  submission-retry-idle-seconds: "60"
 ---
 apiVersion: v1
 kind: PersistentVolumeClaim
@@ -361,6 +363,16 @@ spec:
               value: /tmp/school-oj-worker/seccomp/oj-seccomp.json
             - name: SANDBOX_WORK_ROOT
               value: /tmp/school-oj-worker
+            - name: SUBMISSION_MAX_RETRIES
+              valueFrom:
+                configMapKeyRef:
+                  name: school-oj-config
+                  key: submission-max-retries
+            - name: SUBMISSION_RETRY_IDLE_SECONDS
+              valueFrom:
+                configMapKeyRef:
+                  name: school-oj-config
+                  key: submission-retry-idle-seconds
           volumeMounts:
             - name: docker-sock
               mountPath: /var/run/docker.sock

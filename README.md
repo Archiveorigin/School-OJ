@@ -48,6 +48,7 @@ docker compose restart worker
 - 注册与邮箱找回密码，验证码邮件发件人为“黄海在线”
 - Redis Streams judge-worker
 - Docker 沙箱：禁网、只读根、tmpfs、非 root、`cap_drop=ALL`、`no-new-privileges`、seccomp、pids/cpu/memory/time/output limit
+- 判题队列会恢复超时 pending 消息，并按 `SUBMISSION_MAX_RETRIES` 对沙箱基础设施类错误做有限重试
 
 ## 常用命令
 
@@ -88,3 +89,4 @@ make test
 ## 生产注意事项
 
 `docker compose` 版本会挂载 Docker socket 给 worker，以便启动沙箱容器。生产环境建议将 worker 放在隔离节点，限制它只能访问专用 Docker daemon，并替换默认密钥、数据库密码和 MinIO 凭据。
+默认 compose 只把 PostgreSQL 绑定到 `127.0.0.1`；如确需外部数据库访问，应显式设置 `POSTGRES_BIND` 并配置防火墙。首次判题前必须运行 `./scripts/pull_sandbox_images.sh`，确认 `gcc:14-bookworm`、`python:3.12-slim`、`eclipse-temurin:21-jdk` 已在宿主 Docker daemon 中可用。

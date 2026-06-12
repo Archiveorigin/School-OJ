@@ -3,6 +3,7 @@ package services
 import (
 	"archive/zip"
 	"bytes"
+	"strings"
 	"testing"
 )
 
@@ -316,6 +317,51 @@ func TestBuildProblemPackageRejectsUnsupportedAssetType(t *testing.T) {
 	})
 	if err == nil {
 		t.Fatal("expected unsupported asset type to be rejected")
+	}
+}
+
+func TestParseProblemPackageRejectsEmptyCases(t *testing.T) {
+	body := testZip(t, map[string]string{
+		"problem.yaml": "slug: empty\ntitle: Empty\ncases: []\n",
+	})
+	if _, err := ParseProblemPackage(body); err == nil {
+		t.Fatal("expected empty cases to be rejected")
+	}
+}
+
+func TestParseProblemPackageRejectsUnsupportedExtraFile(t *testing.T) {
+	body := testZip(t, map[string]string{
+		"problem.yaml":     "slug: extra\ntitle: Extra\ncases:\n  - input: tests/1.in\n    output: tests/1.out\n    weight: 100\n",
+		"tests/1.in":       "1\n",
+		"tests/1.out":      "1\n",
+		"notes/readme.txt": "extra",
+	})
+	if _, err := ParseProblemPackage(body); err == nil {
+		t.Fatal("expected unsupported extra file to be rejected")
+	}
+}
+
+func TestParseProblemPackageRejectsWrongCaseExtension(t *testing.T) {
+	body := testZip(t, map[string]string{
+		"problem.yaml": "slug: wrong-ext\ntitle: Wrong Ext\ncases:\n  - input: tests/1.out\n    output: tests/1.in\n    weight: 100\n",
+		"tests/1.in":   "1\n",
+		"tests/1.out":  "1\n",
+	})
+	if _, err := ParseProblemPackage(body); err == nil {
+		t.Fatal("expected wrong case extension to be rejected")
+	}
+}
+
+func TestReadLimitedRejectsOversize(t *testing.T) {
+	if _, err := ReadLimited(strings.NewReader("abcdef"), 5, "payload"); err == nil {
+		t.Fatal("expected oversize payload to be rejected")
+	}
+	body, err := ReadLimited(strings.NewReader("abcde"), 5, "payload")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if string(body) != "abcde" {
+		t.Fatalf("unexpected body %q", body)
 	}
 }
 

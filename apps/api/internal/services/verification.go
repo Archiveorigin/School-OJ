@@ -17,8 +17,19 @@ const (
 	VerificationPasswordReset = "password_reset"
 )
 
+var ErrVerificationTooFrequent = errors.New("验证码发送过于频繁，请稍后再试")
+
 func CreateVerification(db *gorm.DB, email, purpose, code string) error {
 	email = strings.ToLower(strings.TrimSpace(email))
+	var recent int64
+	if err := db.Model(&models.EmailVerification{}).
+		Where("email = ? AND purpose = ? AND created_at > ?", email, purpose, time.Now().Add(-time.Minute)).
+		Count(&recent).Error; err != nil {
+		return err
+	}
+	if recent > 0 {
+		return ErrVerificationTooFrequent
+	}
 	hash, err := bcrypt.GenerateFromPassword([]byte(code), bcrypt.DefaultCost)
 	if err != nil {
 		return err
