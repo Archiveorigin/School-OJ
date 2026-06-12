@@ -4151,7 +4151,8 @@ func (s Server) activeStartedExamAttemptForStudent(userID uint) (models.Exam, bo
 	now := time.Now()
 	for _, attempt := range attempts {
 		var exam models.Exam
-		if err := s.DB.Where("deleted_at IS NULL").First(&exam, attempt.ExamID).Error; err != nil {
+		result := s.DB.Where("deleted_at IS NULL").Limit(1).Find(&exam, attempt.ExamID)
+		if result.Error != nil || result.RowsAffected == 0 {
 			continue
 		}
 		if exam.StartsAt != nil && now.Before(*exam.StartsAt) {
@@ -4401,7 +4402,8 @@ func (s Server) finishExamAttempt(examID uint, userID uint) (models.ExamAttempt,
 
 func (s Server) examFinishedAt(examID uint, userID uint) *time.Time {
 	var attempt models.ExamAttempt
-	if err := s.DB.Where("exam_id = ? AND user_id = ? AND finished_at IS NOT NULL", examID, userID).First(&attempt).Error; err != nil {
+	result := s.DB.Where("exam_id = ? AND user_id = ? AND finished_at IS NOT NULL", examID, userID).Limit(1).Find(&attempt)
+	if result.Error != nil || result.RowsAffected == 0 {
 		return nil
 	}
 	return attempt.FinishedAt
