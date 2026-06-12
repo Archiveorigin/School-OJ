@@ -8,6 +8,7 @@ import (
 	"testing"
 	"time"
 
+	"school-oj/apps/api/internal/models"
 	"school-oj/apps/api/internal/services"
 )
 
@@ -34,6 +35,34 @@ func TestSortExamRankingRows(t *testing.T) {
 		if got[i] != want[i] {
 			t.Fatalf("rank %d = %s, want %s; full order=%v", i+1, got[i], want[i], got)
 		}
+	}
+}
+
+func TestStudentExamEntryDecisionBlocksNotStartedExam(t *testing.T) {
+	now := time.Date(2026, 6, 13, 9, 0, 0, 0, time.UTC)
+	start := now.Add(time.Hour)
+	end := now.Add(2 * time.Hour)
+
+	reason, recordAttempt := studentExamEntryDecision(models.Exam{StartsAt: &start, EndsAt: &end}, now, nil)
+	if reason != "exam has not started" {
+		t.Fatalf("reason = %q, want exam has not started", reason)
+	}
+	if recordAttempt {
+		t.Fatal("not-started exam must not record an attempt")
+	}
+}
+
+func TestStudentExamEntryDecisionRecordsStartedExam(t *testing.T) {
+	now := time.Date(2026, 6, 13, 9, 0, 0, 0, time.UTC)
+	start := now.Add(-time.Minute)
+	end := now.Add(time.Hour)
+
+	reason, recordAttempt := studentExamEntryDecision(models.Exam{StartsAt: &start, EndsAt: &end}, now, nil)
+	if reason != "" {
+		t.Fatalf("reason = %q, want empty", reason)
+	}
+	if !recordAttempt {
+		t.Fatal("started exam should record an attempt")
 	}
 }
 

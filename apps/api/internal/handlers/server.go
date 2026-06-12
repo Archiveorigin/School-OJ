@@ -2881,11 +2881,17 @@ func (s Server) getExam(c *gin.Context) {
 	var finishedAt *time.Time
 	if user.Role == models.RoleStudent {
 		finishedAt = s.examFinishedAt(item.ID, user.ID)
-		if finishedAt != nil {
-			c.JSON(http.StatusForbidden, gin.H{"error": "exam has been finished", "finished_at": finishedAt})
+		if reason, recordAttempt := studentExamEntryDecision(item, now, finishedAt); reason != "" {
+			resp := gin.H{"error": reason}
+			if finishedAt != nil {
+				resp["finished_at"] = finishedAt
+			}
+			if item.StartsAt != nil && reason == "exam has not started" {
+				resp["starts_at"] = item.StartsAt
+			}
+			c.JSON(http.StatusForbidden, resp)
 			return
-		}
-		if !closed && !notStarted {
+		} else if recordAttempt {
 			_ = s.recordExamAttempt(item.ID, user.ID)
 		}
 	}
@@ -2908,6 +2914,19 @@ func (s Server) getExam(c *gin.Context) {
 		"score_ready":    summary.ScoreReady,
 		"problem_scores": summary.Problems,
 	})
+}
+
+func studentExamEntryDecision(exam models.Exam, now time.Time, finishedAt *time.Time) (string, bool) {
+	if finishedAt != nil {
+		return "exam has been finished", false
+	}
+	if exam.StartsAt != nil && now.Before(*exam.StartsAt) {
+		return "exam has not started", false
+	}
+	if exam.EndsAt != nil && now.After(*exam.EndsAt) {
+		return "", false
+	}
+	return "", true
 }
 
 func (s Server) finishExam(c *gin.Context) {

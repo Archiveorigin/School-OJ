@@ -195,11 +195,19 @@ async function load() {
 }
 
 function openDetail(row: any) {
+  if (!canManage.value && isFutureTime(row.starts_at)) {
+    ElMessage.warning('考试未开始，不能进入')
+    return
+  }
   if (!canManage.value && row.finished_at) {
     ElMessage.warning('考试已结束，不能再次进入')
     return
   }
   router.push(`/exams/${row.id}`)
+}
+
+function isFutureTime(value?: string | null) {
+  return Boolean(value && new Date(value).getTime() > Date.now())
 }
 
 async function openReport(row: any) {

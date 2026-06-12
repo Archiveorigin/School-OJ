@@ -398,7 +398,12 @@ function exitClosedExam() {
 
 function handleInvalidExamError(err: any) {
   if (canManage.value || !isInvalidExamError(err)) return false
-  forceExitExam('考试已删除或已失效，已自动退出')
+  const message = String(err?.response?.data?.error || '').toLowerCase()
+  if (message.includes('has not started')) {
+    forceExitExam('考试未开始，不能进入')
+  } else {
+    forceExitExam('考试已删除或已失效，已自动退出')
+  }
   return true
 }
 
@@ -407,7 +412,7 @@ function isInvalidExamError(err: any) {
   if (status === 404) return true
   if (status !== 403 || err?.response?.data?.finished_at) return false
   const message = String(err?.response?.data?.error || '').toLowerCase()
-  return message.includes('forbidden') || message.includes('not available') || message.includes('not found')
+  return message.includes('forbidden') || message.includes('not available') || message.includes('not found') || message.includes('has not started')
 }
 
 function forceExitExam(message: string) {
