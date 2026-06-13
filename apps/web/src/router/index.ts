@@ -57,7 +57,7 @@ const router = createRouter({
     },
     { path: '/submissions', component: Submissions, meta: { title: '提交' } },
     // leaderboard disabled: { path: '/leaderboard', component: Leaderboard, meta: { title: '排行榜' } },
-    { path: '/admin/exam-rankings', component: ExamRankings, meta: { roles: ['admin'], title: '考试实时榜' } },
+    { path: '/admin/exam-rankings', component: ExamRankings, meta: { roles: ['admin', 'teacher'], title: '考试实时榜' } },
     { path: '/plagiarism', component: Plagiarism, meta: { roles: ['admin', 'teacher'], title: 'JPlag 查重' } },
     { path: '/audit-logs', component: AuditLogs, meta: { roles: ['admin'], title: '审计日志' } },
     { path: '/users', component: Users, meta: { roles: ['admin'], title: '用户管理' } }

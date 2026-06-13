@@ -79,7 +79,13 @@
         <div class="toolbar report-toolbar">
           <el-tag v-if="report.manual_review" type="warning">人工阅卷</el-tag>
           <span class="muted">展开学生行可查看每题提交与评分</span>
-          <el-button size="small" type="primary" :disabled="!reportEnded" :loading="exporting" @click="exportReport">导出 Excel</el-button>
+          <el-select v-model='exportFormat' size='small' class='export-format' :disabled='!reportEnded || exporting'>
+            <el-option label='Excel 成绩表' value='xlsx' />
+            <el-option label='Markdown 含代码' value='markdown' />
+          </el-select>
+          <el-button size='small' type='primary' :disabled='!reportEnded' :loading='exporting' @click='exportReport'>
+            导出
+          </el-button>
         </div>
         <el-table :data="report.rows">
           <el-table-column type="expand">
@@ -179,6 +185,7 @@ const editingProblem = ref<Problem | null>(null)
 const manualScore = ref(0)
 const gradeMaxScore = computed(() => gradeProblemScore.value?.score || 100)
 const exporting = ref(false)
+const exportFormat = ref('xlsx')
 const reportEnded = computed(() => {
   if (!report.value?.exam?.ends_at) return false
   return new Date(report.value.exam.ends_at).getTime() <= Date.now()
@@ -219,8 +226,12 @@ async function exportReport() {
   if (!report.value?.exam?.id) return
   exporting.value = true
   try {
-    const { data } = await client.get(`/exams/${report.value.exam.id}/report/export`, { responseType: 'blob' })
-    downloadBlob(data, `exam-${report.value.exam.id}-report.xlsx`)
+    const response = await client.get('/exams/' + report.value.exam.id + '/report/export', {
+      params: { format: exportFormat.value },
+      responseType: 'blob'
+    })
+    const ext = exportFormat.value === 'markdown' ? 'md' : 'xlsx'
+    downloadBlob(response.data, 'exam-' + report.value.exam.id + '-report.' + ext)
   } catch (err: any) {
     ElMessage.error(err.response?.data?.error || err.message)
   } finally {
@@ -432,6 +443,10 @@ onMounted(async () => {
   align-items: center;
   justify-content: space-between;
   gap: 12px;
+}
+
+.export-format {
+  width: 150px;
 }
 
 .grade-grid {

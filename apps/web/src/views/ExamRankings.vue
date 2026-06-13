@@ -18,6 +18,11 @@
           />
         </el-select>
         <el-switch v-model="autoRefresh" active-text="自动刷新" />
+        <el-select v-model='exportFormat' class='export-select' :disabled='exportDisabled' placeholder='导出格式'>
+          <el-option label='Excel 成绩表' value='xlsx' />
+          <el-option label='Markdown 含代码' value='markdown' />
+        </el-select>
+        <el-button :disabled='exportDisabled' :loading='exporting' @click='exportReport'>导出</el-button>
         <el-button :loading="loading" @click="loadRanking">刷新</el-button>
       </div>
     </div>
@@ -116,12 +121,29 @@ import { formatDateTime } from '../features/time'
 const exams = ref<any[]>([])
 const selectedExamID = ref<number>()
 const ranking = ref<any>(null)
+const exportFormat = ref('xlsx')
 const loading = ref(false)
+const exporting = ref(false)
 const autoRefresh = ref(true)
 const lastLoadedAt = ref<Date | null>(null)
 let refreshTimer: number | undefined
 
 const selectedExam = computed(() => exams.value.find((exam) => exam.id === selectedExamID.value))
+const reportEndedAt = computed(() => {
+  const fromRanking = ranking.value?.exam?.ends_at
+  if (fromRanking) return endTimeMs(fromRanking)
+  return endTimeMs(selectedExam.value?.ends_at)
+})
+const canExportReport = computed(() => {
+  if (!selectedExamID.value) return false
+  const endedAt = reportEndedAt.value
+  if (!endedAt) return false
+  return endedAt <= Date.now()
+})
+const exportDisabled = computed(() => {
+  if (!canExportReport.value) return true
+  return exporting.value
+})
 
 async function loadExams() {
   const { data } = await client.get('/exams')
@@ -156,6 +178,23 @@ async function loadRanking() {
   }
 }
 
+
+async function exportReport() {
+  if (!selectedExamID.value) return
+  if (!canExportReport.value) return
+  exporting.value = true
+  try {
+    const response = await client.get('/exams/' + selectedExamID.value + '/report/export', {
+      params: { format: exportFormat.value },
+      responseType: 'blob'
+    })
+    const ext = exportFormat.value === 'markdown' ? 'md' : 'xlsx'
+    downloadBlob(response.data, 'exam-' + selectedExamID.value + '-report.' + ext)
+  } finally {
+    exporting.value = false
+  }
+}
+
 function examOptionLabel(exam: any) {
   const prefix = [exam.course_code, exam.class_name].filter(Boolean).join(' / ')
   return `${prefix ? `${prefix} · ` : ''}${exam.title}`
@@ -167,6 +206,12 @@ function examStatus(exam: any) {
   if (exam.starts_at && new Date(exam.starts_at).getTime() > now) return '未开始'
   if (exam.ends_at && new Date(exam.ends_at).getTime() <= now) return '已结束'
   return '进行中'
+}
+
+
+function endTimeMs(value: any) {
+  if (!value) return 0
+  return new Date(value).getTime()
 }
 
 function problemCell(row: any, problemID: number) {
@@ -184,6 +229,16 @@ function statusText(cell: any) {
   if (!cell?.status) return '未提交'
   if (cell.pending) return '评分中'
   return String(cell.status).replace(/_/g, ' ')
+}
+
+
+function downloadBlob(blob: Blob, filename: string) {
+  const url = URL.createObjectURL(blob)
+  const link = document.createElement('a')
+  link.href = url
+  link.download = filename
+  link.click()
+  URL.revokeObjectURL(url)
 }
 
 function resetTimer() {
@@ -214,6 +269,10 @@ onBeforeUnmount(() => {
 
 .exam-select {
   width: min(420px, 48vw);
+}
+
+.export-select {
+  width: 150px;
 }
 
 .scoreboard-hero {
@@ -290,6 +349,10 @@ onBeforeUnmount(() => {
   }
 
   .exam-select {
+    width: 100%;
+  }
+
+  .export-select {
     width: 100%;
   }
 }

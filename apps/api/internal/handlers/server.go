@@ -244,6 +244,17 @@ type examRankingRow struct {
 	Problems        []examRankingCell `json:"problems"`
 }
 
+type examSubmissionLookup struct {
+	ByUserProblem map[uint]map[uint][]models.Submission
+	CountByUser   map[uint]int
+	LastByUser    map[uint]*time.Time
+}
+
+type examAttemptState struct {
+	Attempted  bool
+	FinishedAt *time.Time
+}
+
 func (req preparedProblemInput) draft() services.ProblemPackageDraft {
 	return services.ProblemPackageDraft{
 		Slug:          req.Slug,
@@ -3057,57 +3068,8 @@ func (s Server) examRanking(c *gin.Context) {
 		})
 		return
 	}
-	rows := make([]examRankingRow, 0)
-	pendingRows := 0
-	finishedRows := 0
-	for _, student := range s.classStudents(item.ClassID) {
-		summary := s.examSummary(item.ID, student.ID, true)
-		row := examRankingRow{
-			UserID:     student.ID,
-			Name:       student.Name,
-			StudentNo:  student.StudentNo,
-			TotalScore: summary.TotalScore,
-			MaxScore:   summary.MaxScore,
-			ScoreReady: summary.ScoreReady,
-			WorkStatus: summary.WorkStatus,
-			FinishedAt: s.examFinishedAt(item.ID, student.ID),
-			Problems:   make([]examRankingCell, 0, len(summary.Problems)),
-		}
-		row.SubmissionCount, row.LastSubmission = s.examSubmissionStats(item.ID, student.ID)
-		if row.FinishedAt != nil {
-			finishedRows++
-		}
-		for _, problemScore := range summary.Problems {
-			if problemScore.SubmissionID != nil {
-				row.Attempted++
-			}
-			if problemScore.ScoreReady && problemScore.Score > 0 && problemScore.BestScore >= problemScore.Score {
-				row.Solved++
-			}
-			pending := problemScore.PendingReview || (problemScore.SubmissionID != nil && !problemScore.ScoreReady)
-			if pending {
-				row.PendingCount++
-			}
-			row.Problems = append(row.Problems, examRankingCell{
-				ProblemID:   problemScore.Problem.ID,
-				Label:       problemScore.Label,
-				BestScore:   problemScore.BestScore,
-				MaxScore:    problemScore.Score,
-				Status:      problemScore.SubmissionStatus,
-				ScoreReady:  problemScore.ScoreReady,
-				Pending:     pending,
-				SubmittedAt: problemScore.SubmittedAt,
-			})
-		}
-		if row.PendingCount > 0 {
-			pendingRows++
-		}
-		rows = append(rows, row)
-	}
-	sortExamRankingRows(rows)
-	for i := range rows {
-		rows[i].Rank = i + 1
-	}
+	students := s.classStudents(item.ClassID)
+	rows, pendingRows, finishedRows := s.examRankingRows(item, students)
 	c.JSON(http.StatusOK, gin.H{
 		"exam": gin.H{
 			"id":          item.ID,
@@ -3133,6 +3095,113 @@ func (s Server) examRanking(c *gin.Context) {
 		},
 		"now": now,
 	})
+}
+
+func (s Server) examRankingRows(item models.Exam, students []models.User) ([]examRankingRow, int, int) {
+	studentIDs := userIDs(students)
+	problemIDs := examProblemIDs(item)
+	submissions := s.examSubmissionsLookup(item.ID, studentIDs, problemIDs, false)
+	attempts := s.examAttemptStates(item.ID, studentIDs)
+	manualReview := examManualReview(item)
+	rows := make([]examRankingRow, 0, len(students))
+	pendingRows := 0
+	finishedRows := 0
+	for _, student := range students {
+		attempt := attempts[student.ID]
+		summary := workSummaryForExamLinksFromSubmissions(item.Problems, submissions.ByUserProblem[student.ID], manualReview, attempt.Attempted, true)
+		row := examRankingRow{UserID: student.ID, Name: student.Name, StudentNo: student.StudentNo, TotalScore: summary.TotalScore, MaxScore: summary.MaxScore, SubmissionCount: submissions.CountByUser[student.ID], LastSubmission: submissions.LastByUser[student.ID], ScoreReady: summary.ScoreReady, WorkStatus: summary.WorkStatus, FinishedAt: attempt.FinishedAt, Problems: make([]examRankingCell, 0, len(summary.Problems))}
+		if row.FinishedAt != nil {
+			finishedRows++
+		}
+		for _, problemScore := range summary.Problems {
+			if problemScore.SubmissionID != nil {
+				row.Attempted++
+			}
+			if problemScore.ScoreReady {
+				if problemScore.Score != 0 {
+					if problemScore.BestScore == problemScore.Score {
+						row.Solved++
+					}
+				}
+			}
+			pending := problemScore.PendingReview
+			if problemScore.SubmissionID != nil {
+				if !problemScore.ScoreReady {
+					pending = true
+				}
+			}
+			if pending {
+				row.PendingCount++
+			}
+			row.Problems = append(row.Problems, examRankingCell{ProblemID: problemScore.Problem.ID, Label: problemScore.Label, BestScore: problemScore.BestScore, MaxScore: problemScore.Score, Status: problemScore.SubmissionStatus, ScoreReady: problemScore.ScoreReady, Pending: pending, SubmittedAt: problemScore.SubmittedAt})
+		}
+		if row.PendingCount != 0 {
+			pendingRows++
+		}
+		rows = append(rows, row)
+	}
+	sortExamRankingRows(rows)
+	for i := range rows {
+		rows[i].Rank = i + 1
+	}
+	return rows, pendingRows, finishedRows
+}
+
+func workSummaryForExamLinksFromSubmissions(examLinks []models.ExamProblem, userProblemSubmissions map[uint][]models.Submission, manualReview bool, attempted bool, includeProblems bool) workSummary {
+	summary := workSummary{WorkStatus: "unattempted", ScoreReady: false}
+	if attempted {
+		summary.WorkStatus = "unsubmitted"
+	}
+	hasSubmission := false
+	hasPending := false
+	for _, link := range examLinks {
+		summary.MaxScore += link.Score
+		view, submitted, pending := problemScoreFromSubmissions(link.Problem, link.Score, manualReview, userProblemSubmissions[link.ProblemID])
+		view.Label = link.Label
+		if submitted {
+			hasSubmission = true
+		}
+		if pending {
+			hasPending = true
+		}
+		summary.TotalScore += view.BestScore
+		if includeProblems {
+			summary.Problems = append(summary.Problems, view)
+		}
+	}
+	if hasSubmission {
+		summary.WorkStatus = "submitted"
+		summary.ScoreReady = !hasPending
+	}
+	return summary
+}
+
+func (s Server) examSubmissionsLookup(examID uint, studentIDs []uint, problemIDs []uint, includeSource bool) examSubmissionLookup {
+	submissions, _ := s.examSubmissionsForUsers(examID, studentIDs, problemIDs, includeSource, "user_id asc, problem_id asc, id desc")
+	return newExamSubmissionLookup(submissions)
+}
+
+func (s Server) examSubmissionsForUsers(examID uint, studentIDs []uint, problemIDs []uint, includeSource bool, order string) ([]models.Submission, error) {
+	if len(studentIDs) == 0 {
+		return []models.Submission{}, nil
+	}
+	if len(problemIDs) == 0 {
+		return []models.Submission{}, nil
+	}
+	var submissions []models.Submission
+	q := s.DB.Model(&models.Submission{}).
+		Where("exam_id = ? AND user_id IN ? AND problem_id IN ?", examID, studentIDs, problemIDs)
+	if !includeSource {
+		q = q.Select("id", "user_id", "problem_id", "assignment_id", "exam_id", "language", "status", "score", "manual_score", "manual_graded_by", "manual_graded_at", "time_ms", "memory_kb", "message", "created_at", "updated_at")
+	}
+	if order != "" {
+		q = q.Order(order)
+	}
+	err := q.Find(&submissions).Error
+	if err != nil {
+		return nil, err
+	}
+	return submissions, nil
 }
 
 func (s Server) examSubmissionStats(examID uint, userID uint) (int, *time.Time) {
@@ -3193,6 +3262,56 @@ func compareTimePtr(left *time.Time, right *time.Time) int {
 	return 0
 }
 
+func newExamSubmissionLookup(submissions []models.Submission) examSubmissionLookup {
+	lookup := examSubmissionLookup{ByUserProblem: make(map[uint]map[uint][]models.Submission), CountByUser: make(map[uint]int), LastByUser: make(map[uint]*time.Time)}
+	for _, sub := range submissions {
+		if lookup.ByUserProblem[sub.UserID] == nil {
+			lookup.ByUserProblem[sub.UserID] = make(map[uint][]models.Submission)
+		}
+		lookup.ByUserProblem[sub.UserID][sub.ProblemID] = append(lookup.ByUserProblem[sub.UserID][sub.ProblemID], sub)
+		lookup.CountByUser[sub.UserID]++
+		created := sub.CreatedAt
+		last := lookup.LastByUser[sub.UserID]
+		if last == nil {
+			lookup.LastByUser[sub.UserID] = &created
+			continue
+		}
+		if created.After(*last) {
+			lookup.LastByUser[sub.UserID] = &created
+		}
+	}
+	return lookup
+}
+
+func (s Server) examAttemptStates(examID uint, studentIDs []uint) map[uint]examAttemptState {
+	states := make(map[uint]examAttemptState)
+	if len(studentIDs) == 0 {
+		return states
+	}
+	var attempts []models.ExamAttempt
+	s.DB.Where("exam_id = ? AND user_id IN ?", examID, studentIDs).Find(&attempts)
+	for _, attempt := range attempts {
+		states[attempt.UserID] = examAttemptState{Attempted: true, FinishedAt: attempt.FinishedAt}
+	}
+	return states
+}
+
+func examProblemIDs(item models.Exam) []uint {
+	ids := make([]uint, 0, len(item.Problems))
+	for _, problem := range item.Problems {
+		ids = append(ids, problem.ProblemID)
+	}
+	return ids
+}
+
+func userIDs(users []models.User) []uint {
+	ids := make([]uint, 0, len(users))
+	for _, user := range users {
+		ids = append(ids, user.ID)
+	}
+	return ids
+}
+
 func (s Server) exportExamReport(c *gin.Context) {
 	user, _ := middleware.CurrentUser(c)
 	id, ok := idParam(c, "id")
@@ -3200,7 +3319,10 @@ func (s Server) exportExamReport(c *gin.Context) {
 		return
 	}
 	var item models.Exam
-	if err := s.DB.Where("exams.deleted_at IS NULL").First(&item, id).Error; err != nil {
+	err := s.DB.Preload("Problems", func(db *gorm.DB) *gorm.DB { return db.Order("exam_problems.sort_order asc") }).
+		Preload("Problems.Problem").
+		Where("exams.deleted_at IS NULL").First(&item, id).Error
+	if err != nil {
 		c.JSON(http.StatusNotFound, gin.H{"error": "exam not found"})
 		return
 	}
@@ -3208,40 +3330,302 @@ func (s Server) exportExamReport(c *gin.Context) {
 		c.JSON(http.StatusForbidden, gin.H{"error": "forbidden"})
 		return
 	}
-	if item.EndsAt == nil || time.Now().Before(*item.EndsAt) {
+	if item.EndsAt == nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "exam has not ended"})
 		return
 	}
-	rows := [][]xlsxCell{
-		{
-			xlsxString("学生姓名"),
-			xlsxString("学号"),
-			xlsxString("通过题目数"),
-			xlsxString("所得分数"),
-		},
+	if time.Now().Before(*item.EndsAt) {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "exam has not ended"})
+		return
 	}
-	for _, student := range s.classStudents(item.ClassID) {
-		summary := s.examSummary(item.ID, student.ID, true)
-		solved := 0
-		for _, problem := range summary.Problems {
-			if problem.ScoreReady && problem.Score > 0 && problem.BestScore >= problem.Score {
-				solved++
-			}
+	format := strings.ToLower(strings.TrimSpace(c.DefaultQuery("format", "xlsx")))
+	if format == "md" {
+		format = "markdown"
+	}
+	if format != "xlsx" {
+		if format != "markdown" {
+			c.JSON(http.StatusBadRequest, gin.H{"error": "unsupported export format"})
+			return
 		}
-		rows = append(rows, []xlsxCell{
-			xlsxString(student.Name),
-			xlsxString(student.StudentNo),
-			xlsxNumber(solved),
-			xlsxNumber(summary.TotalScore),
-		})
+	}
+	students := s.classStudents(item.ClassID)
+	if format == "markdown" {
+		body, err := s.buildExamMarkdownReport(item, students)
+		if err != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+			return
+		}
+		c.Header("Content-Disposition", fmt.Sprintf("attachment; filename=\"exam-%d-report.md\"", item.ID))
+		c.Data(http.StatusOK, "text/markdown; charset=utf-8", []byte(body))
+		return
+	}
+	rows := [][]xlsxCell{{xlsxString("学生姓名"), xlsxString("学号"), xlsxString("通过题目数"), xlsxString("所得分数")}}
+	rankingRows, _, _ := s.examRankingRows(item, students)
+	for _, row := range rankingRows {
+		rows = append(rows, []xlsxCell{xlsxString(row.Name), xlsxString(row.StudentNo), xlsxNumber(row.Solved), xlsxNumber(row.TotalScore)})
 	}
 	body, err := buildXLSX(rows)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 		return
 	}
-	c.Header("Content-Disposition", fmt.Sprintf(`attachment; filename="exam-%d-report.xlsx"`, item.ID))
+	c.Header("Content-Disposition", fmt.Sprintf("attachment; filename=\"exam-%d-report.xlsx\"", item.ID))
 	c.Data(http.StatusOK, "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", body)
+}
+
+func (s Server) buildExamMarkdownReport(item models.Exam, students []models.User) (string, error) {
+	rankingRows, _, _ := s.examRankingRows(item, students)
+	submissions, err := s.examSubmissionsForUsers(item.ID, userIDs(students), examProblemIDs(item), true, "user_id asc, problem_id asc, created_at asc, id asc")
+	if err != nil {
+		return "", err
+	}
+	return renderExamMarkdownReport(item, students, rankingRows, submissions), nil
+}
+
+func renderExamMarkdownReport(item models.Exam, students []models.User, rankingRows []examRankingRow, submissions []models.Submission) string {
+	studentByID := make(map[uint]models.User, len(students))
+	for _, student := range students {
+		studentByID[student.ID] = student
+	}
+	submissionsByUserProblem := make(map[uint]map[uint][]models.Submission)
+	for _, sub := range submissions {
+		if submissionsByUserProblem[sub.UserID] == nil {
+			submissionsByUserProblem[sub.UserID] = make(map[uint][]models.Submission)
+		}
+		submissionsByUserProblem[sub.UserID][sub.ProblemID] = append(submissionsByUserProblem[sub.UserID][sub.ProblemID], sub)
+	}
+
+	var b strings.Builder
+	fmt.Fprintf(&b, "# 考试归档：%s\n\n", markdownInlineText(item.Title))
+	fmt.Fprintf(&b, "- 考试 ID：%d\n", item.ID)
+	fmt.Fprintf(&b, "- 开始时间：%s\n", formatTimePtr(item.StartsAt))
+	fmt.Fprintf(&b, "- 结束时间：%s\n", formatTimePtr(item.EndsAt))
+	fmt.Fprintf(&b, "- 学生人数：%d\n", len(students))
+	fmt.Fprintf(&b, "- 题目数量：%d\n", len(item.Problems))
+	fmt.Fprintf(&b, "- 导出时间：%s\n\n", formatTimeValue(time.Now()))
+
+	b.WriteString("## 成绩总览\n\n")
+	if len(rankingRows) == 0 {
+		b.WriteString("暂无可导出的学生成绩。\n\n")
+	}
+	for _, row := range rankingRows {
+		fmt.Fprintf(&b, "%d. %s\n", row.Rank, markdownInlineText(studentDisplayName(studentByID[row.UserID], row)))
+		fmt.Fprintf(&b, "   - 总分：%d / %d\n", row.TotalScore, row.MaxScore)
+		fmt.Fprintf(&b, "   - 通过/尝试/提交：%d / %d / %d\n", row.Solved, row.Attempted, row.SubmissionCount)
+		fmt.Fprintf(&b, "   - 状态：%s\n", workStatusText(row.WorkStatus))
+		fmt.Fprintf(&b, "   - 最后提交：%s\n", formatTimePtr(row.LastSubmission))
+		fmt.Fprintf(&b, "   - 结束考试：%s\n\n", formatTimePtr(row.FinishedAt))
+	}
+
+	b.WriteString("## 题目列表\n\n")
+	if len(item.Problems) == 0 {
+		b.WriteString("暂无题目。\n\n")
+	}
+	for index, problem := range item.Problems {
+		label := strings.TrimSpace(problem.Label)
+		if label == "" {
+			label = defaultProblemLabel(index)
+		}
+		title := strings.TrimSpace(problem.Problem.Title)
+		if title == "" {
+			title = problem.Problem.DisplayCode
+		}
+		fmt.Fprintf(&b, "- %s · %s · %d 分\n", markdownInlineText(label), markdownInlineText(title), problem.Score)
+	}
+	b.WriteString("\n## 学生提交代码\n\n")
+	if len(rankingRows) == 0 {
+		b.WriteString("暂无可导出的学生提交。\n\n")
+	}
+	for _, row := range rankingRows {
+		student := studentByID[row.UserID]
+		fmt.Fprintf(&b, "### %d. %s\n\n", row.Rank, markdownInlineText(studentDisplayName(student, row)))
+		cellByProblem := make(map[uint]examRankingCell, len(row.Problems))
+		for _, cell := range row.Problems {
+			cellByProblem[cell.ProblemID] = cell
+		}
+		for index, examProblem := range item.Problems {
+			cell := cellByProblem[examProblem.ProblemID]
+			label := strings.TrimSpace(examProblem.Label)
+			if label == "" {
+				label = defaultProblemLabel(index)
+			}
+			titleParts := []string{label}
+			if examProblem.Problem.DisplayCode != "" {
+				titleParts = append(titleParts, examProblem.Problem.DisplayCode)
+			}
+			if strings.TrimSpace(examProblem.Problem.Title) != "" {
+				titleParts = append(titleParts, strings.TrimSpace(examProblem.Problem.Title))
+			}
+			fmt.Fprintf(&b, "#### %s\n\n", markdownInlineText(strings.Join(titleParts, " · ")))
+			fmt.Fprintf(&b, "- 得分：%s\n", rankingCellScoreText(cell))
+			fmt.Fprintf(&b, "- 状态：%s\n", rankingCellStatusText(cell))
+			fmt.Fprintf(&b, "- 提交时间：%s\n", formatTimePtr(cell.SubmittedAt))
+			problemSubmissions := submissionsByUserProblem[row.UserID][examProblem.ProblemID]
+			fmt.Fprintf(&b, "- 提交次数：%d\n\n", len(problemSubmissions))
+			if len(problemSubmissions) == 0 {
+				b.WriteString("未提交。\n\n")
+				continue
+			}
+			for _, sub := range problemSubmissions {
+				fmt.Fprintf(&b, "##### 提交 #%d\n\n", sub.ID)
+				fmt.Fprintf(&b, "- 语言：%s\n", markdownInlineText(sub.Language))
+				fmt.Fprintf(&b, "- 状态：%s\n", submissionStatusText(sub.Status))
+				fmt.Fprintf(&b, "- 判题分：%d\n", sub.Score)
+				if sub.ManualScore != nil {
+					fmt.Fprintf(&b, "- 人工分：%d\n", *sub.ManualScore)
+				}
+				fmt.Fprintf(&b, "- 用时：%d ms\n", sub.TimeMS)
+				fmt.Fprintf(&b, "- 内存：%d KB\n", sub.MemoryKB)
+				fmt.Fprintf(&b, "- 提交时间：%s\n\n", formatTimeValue(sub.CreatedAt))
+				b.WriteString(markdownCodeBlock(sub.Language, sub.SourceCode))
+				b.WriteString("\n")
+			}
+		}
+	}
+	return b.String()
+}
+
+func studentDisplayName(student models.User, row examRankingRow) string {
+	name := strings.TrimSpace(student.Name)
+	if name == "" {
+		name = strings.TrimSpace(row.Name)
+	}
+	if name == "" {
+		name = fmt.Sprintf("用户 %d", row.UserID)
+	}
+	studentNo := student.StudentNo
+	if studentNo == "" {
+		studentNo = row.StudentNo
+	}
+	if studentNo != "" {
+		return fmt.Sprintf("%s（%s）", name, studentNo)
+	}
+	return name
+}
+
+func rankingCellScoreText(cell examRankingCell) string {
+	if cell.Pending {
+		return "待评分"
+	}
+	if !cell.ScoreReady {
+		return "-"
+	}
+	return fmt.Sprintf("%d / %d", cell.BestScore, cell.MaxScore)
+}
+
+func rankingCellStatusText(cell examRankingCell) string {
+	if cell.Status == "" {
+		return "未提交"
+	}
+	if cell.Pending {
+		return "评分中"
+	}
+	return submissionStatusText(cell.Status)
+}
+
+func workStatusText(status string) string {
+	switch status {
+	case "submitted":
+		return "已提交"
+	case "unsubmitted":
+		return "未提交"
+	case "unattempted":
+		return "未尝试"
+	default:
+		return status
+	}
+}
+
+func submissionStatusText(status models.SubmissionStatus) string {
+	switch status {
+	case models.StatusQueued:
+		return "排队中"
+	case models.StatusRunning:
+		return "运行中"
+	case models.StatusPendingReview:
+		return "待人工阅卷"
+	case models.StatusManualGraded:
+		return "人工已评分"
+	case models.StatusAccepted:
+		return "通过"
+	case models.StatusWrongAnswer:
+		return "答案错误"
+	case models.StatusCompileError:
+		return "编译错误"
+	case models.StatusRuntimeError:
+		return "运行错误"
+	case models.StatusTimeLimit:
+		return "时间超限"
+	case models.StatusMemoryLimit:
+		return "内存超限"
+	case models.StatusOutputLimit:
+		return "输出超限"
+	case models.StatusSystemError:
+		return "系统错误"
+	default:
+		return string(status)
+	}
+}
+
+func markdownCodeBlock(language string, source string) string {
+	fence := markdownFence(source)
+	lang := markdownFenceLanguage(language)
+	var b strings.Builder
+	b.WriteString(fence)
+	if lang != "" {
+		b.WriteString(lang)
+	}
+	b.WriteString("\n")
+	b.WriteString(strings.TrimRight(source, "\n"))
+	b.WriteString("\n")
+	b.WriteString(fence)
+	b.WriteString("\n")
+	return b.String()
+}
+
+func markdownFence(source string) string {
+	maxRun := 0
+	current := 0
+	for _, r := range source {
+		if r == rune(96) {
+			current++
+			if current > maxRun {
+				maxRun = current
+			}
+			continue
+		}
+		current = 0
+	}
+	if maxRun > 2 {
+		return strings.Repeat(string(rune(96)), maxRun+1)
+	}
+	return strings.Repeat(string(rune(96)), 3)
+}
+
+func markdownFenceLanguage(language string) string {
+	language = strings.TrimSpace(strings.ToLower(language))
+	language = strings.ReplaceAll(language, string(rune(96)), "")
+	language = strings.ReplaceAll(language, "\n", "")
+	language = strings.ReplaceAll(language, "\r", "")
+	return language
+}
+
+func markdownInlineText(value string) string {
+	return strings.Join(strings.Fields(strings.TrimSpace(value)), " ")
+}
+
+func formatTimePtr(value *time.Time) string {
+	if value == nil {
+		return "-"
+	}
+	return formatTimeValue(*value)
+}
+
+func formatTimeValue(value time.Time) string {
+	if value.IsZero() {
+		return "-"
+	}
+	return value.Local().Format("2006-01-02 15:04:05")
 }
 
 func (s Server) deleteExam(c *gin.Context) {
@@ -4504,7 +4888,6 @@ func (s Server) workSummaryForLinks(userID uint, assignmentLinks []models.Assign
 }
 
 func (s Server) problemScore(userID uint, problemID uint, problem models.Problem, maxScore int, assignmentID *uint, examID *uint, manualReview bool) (problemScoreView, bool, bool) {
-	view := problemScoreView{Problem: problem, Score: maxScore}
 	q := s.DB.Where("user_id = ? AND problem_id = ?", userID, problemID).Order("id desc")
 	if assignmentID != nil {
 		q = q.Where("assignment_id = ?", *assignmentID)
@@ -4518,7 +4901,12 @@ func (s Server) problemScore(userID uint, problemID uint, problem models.Problem
 	}
 	var subs []models.Submission
 	q.Find(&subs)
-	submitted := len(subs) > 0
+	return problemScoreFromSubmissions(problem, maxScore, manualReview, subs)
+}
+
+func problemScoreFromSubmissions(problem models.Problem, maxScore int, manualReview bool, subs []models.Submission) (problemScoreView, bool, bool) {
+	view := problemScoreView{Problem: problem, Score: maxScore}
+	submitted := len(subs) != 0
 	pending := false
 	best := -1
 	for _, sub := range subs {
@@ -4546,7 +4934,15 @@ func (s Server) problemScore(userID uint, problemID uint, problem models.Problem
 			}
 			continue
 		}
-		if sub.Status == models.StatusQueued || sub.Status == models.StatusRunning || sub.Status == models.StatusPendingReview {
+		if sub.Status == models.StatusQueued {
+			pending = true
+			continue
+		}
+		if sub.Status == models.StatusRunning {
+			pending = true
+			continue
+		}
+		if sub.Status == models.StatusPendingReview {
 			pending = true
 			continue
 		}
@@ -4561,7 +4957,7 @@ func (s Server) problemScore(userID uint, problemID uint, problem models.Problem
 			view.RawScore = sub.Score
 		}
 	}
-	if best >= 0 {
+	if best != -1 {
 		view.BestScore = best
 		view.ScoreReady = true
 	}
