@@ -4,7 +4,7 @@
       <div class="sub-hero-inner">
         <div class="sub-hero-text">
           <h1 class="sub-hero-title">题库</h1>
-          <p class="sub-hero-sub">{{ canManage ? '管理题目、上传题目包、发布预备题' : '浏览题目并提交代码' }}</p>
+          <p class="sub-hero-sub">{{ canManage ? '管理公共题库、上传题目包、发布预备题' : '浏览公共题库并进入独立题目页面' }}</p>
         </div>
         <div class="sub-hero-stats">
           <div class="sub-hero-stat">
@@ -15,7 +15,7 @@
             <span class="sub-hero-stat-val">{{ tagOptions.length }}</span>
             <span class="sub-hero-stat-label">标签数</span>
           </div>
-          <div v-if="!canManage" class="sub-hero-stat">
+          <div v-if="auth.isAuthed && !canManage" class="sub-hero-stat">
             <span class="sub-hero-stat-val">{{ solvedCount }}</span>
             <span class="sub-hero-stat-label">已解决</span>
           </div>
@@ -37,6 +37,9 @@
         <el-select v-model="filters.tag" clearable filterable placeholder="标签">
           <el-option v-for="tag in tagOptions" :key="tag" :label="tag" :value="tag" />
         </el-select>
+        <el-select v-model="filters.difficulty" clearable placeholder="难度">
+          <el-option v-for="item in difficultyOptions" :key="item" :label="item" :value="item" />
+        </el-select>
         <el-select v-if="auth.role === 'student'" v-model="filters.status" placeholder="状态">
           <el-option
             v-for="option in problemStatusOptions"
@@ -49,87 +52,56 @@
         <span class="muted filter-count">{{ filteredProblems.length }} / {{ problems.length }}</span>
       </div>
 
-      <div class="problem-layout">
-        <aside class="panel problem-list-panel">
-          <el-table :data="filteredProblems" highlight-current-row @current-change="selectProblem" height="calc(100vh - 320px)">
-            <el-table-column label="编号" width="88">
-              <template #default="{ row }">{{ problemDisplayCode(row) }}</template>
-            </el-table-column>
-            <el-table-column label="题目" min-width="190">
-              <template #default="{ row }">
-                <div class="problem-title">{{ row.title }}</div>
-                <div class="muted">{{ row.slug }}</div>
-                <div v-if="tagList(row.tags).length" class="tag-strip">
-                  <el-tag v-for="tag in tagList(row.tags)" :key="tag" size="small">
-                    {{ tag }}
-                  </el-tag>
-                </div>
-              </template>
-            </el-table-column>
-            <el-table-column v-if="auth.role === 'student'" label="状态" width="110">
-              <template #default="{ row }">
-                <el-tag :type="progressTag(row.progress_status)" effect="light">
-                  {{ progressLabel(row.progress_status) }}
+      <section class="panel problem-list-panel">
+        <el-table :data="filteredProblems" row-key="id" @row-click="openProblem">
+          <el-table-column label="题号" width="100">
+            <template #default="{ row }">
+              <span class="problem-code">{{ problemDisplayCode(row) }}</span>
+            </template>
+          </el-table-column>
+          <el-table-column label="题目名称" min-width="240">
+            <template #default="{ row }">
+              <router-link class="problem-title-link" :to="problemPath(row)" @click.stop>
+                {{ row.title }}
+              </router-link>
+              <div class="muted problem-slug">{{ row.slug }}</div>
+            </template>
+          </el-table-column>
+          <el-table-column label="难度" width="110">
+            <template #default="{ row }">
+              <el-tag :type="difficultyTagType(problemDifficulty(row))" effect="light">
+                {{ problemDifficulty(row) || '未分级' }}
+              </el-tag>
+            </template>
+          </el-table-column>
+          <el-table-column label="标签" min-width="220">
+            <template #default="{ row }">
+              <div v-if="tagList(row.tags).length" class="tag-strip table-tags">
+                <el-tag v-for="tag in tagList(row.tags)" :key="tag" size="small" effect="plain">
+                  {{ tag }}
                 </el-tag>
-              </template>
-            </el-table-column>
-          </el-table>
-        </aside>
-        <main class="panel problem-detail-panel" v-if="selected">
-          <div class="detail-head">
-            <div>
-              <h3>{{ selected.title }}</h3>
-              <p class="muted">{{ problemDisplayCode(selected) }} · {{ selected.slug }}</p>
-            </div>
-            <div class="toolbar">
-              <el-button v-if="canManage" type="primary" plain @click="openEditProblem">修改题目</el-button>
-              <el-button v-if="canDeleteSelected" type="danger" plain @click="removeProblem">删除题目</el-button>
-            </div>
-          </div>
-          <p class="muted">{{ problemLimitText(selected) }}</p>
-          <div v-if="tagList(selected.tags).length" class="tag-strip detail-tags">
-            <el-tag v-for="tag in tagList(selected.tags)" :key="tag" size="small">
-              {{ tag }}
-            </el-tag>
-          </div>
-          <ProblemTestDownloads v-if="canManage" :problem-id="selected.id" :problem-code="selected.display_code" class="detail-tests" />
-          <el-divider v-if="canManage" />
-          <MarkdownRenderer :source="selected.statement" :problem-id="selected.id" />
-          <el-divider />
-          <div class="toolbar">
-            <el-select v-model="language" style="width: 130px">
-              <el-option label="C++17" value="cpp" />
-              <el-option label="C" value="c" />
-              <el-option label="Python" value="python" />
-              <el-option label="Java" value="java" />
-            </el-select>
-            <el-button @click="formatSource">自动格式化</el-button>
-            <el-button type="primary" :loading="submitting" @click="submit">提交</el-button>
-          </div>
-          <CodeEditor ref="editorRef" v-model="source" :language="language" />
-          <div v-if="live" class="live">
-            <StatusBadge :status="live.status" /> 分数 {{ live.score }}，{{ live.message }}
-          </div>
-        </main>
-        <main v-else class="panel empty-detail muted">请选择题目</main>
-      </div>
+              </div>
+              <span v-else class="muted">-</span>
+            </template>
+          </el-table-column>
+          <el-table-column label="运行限制" min-width="180">
+            <template #default="{ row }">{{ problemLimitText(row) }}</template>
+          </el-table-column>
+          <el-table-column v-if="auth.role === 'student'" label="状态" width="110">
+            <template #default="{ row }">
+              <el-tag :type="progressTag(row.progress_status)" effect="light">
+                {{ progressLabel(row.progress_status) }}
+              </el-tag>
+            </template>
+          </el-table-column>
+        </el-table>
+        <el-empty v-if="!filteredProblems.length" description="暂无符合条件的题目" />
+      </section>
     </div>
 
     <el-dialog v-model="problemDialogVisible" title="上传题目包" width="920px">
       <el-tabs v-model="problemDialogTab">
         <el-tab-pane label="上传现有 ZIP" name="zip">
-          <el-form label-width="110px">
-            <el-form-item label="发布班级">
-              <el-select v-model="selectedClassIDs" multiple clearable style="width: 100%">
-                <el-option
-                  v-for="item in classroom.classes"
-                  :key="item.class_id"
-                  :label="`${item.course_code} / ${item.class_name}`"
-                  :value="item.class_id"
-                />
-              </el-select>
-            </el-form-item>
-          </el-form>
           <el-upload
             drag
             :show-file-list="false"
@@ -143,16 +115,6 @@
         </el-tab-pane>
         <el-tab-pane label="表单创建题目" name="form">
           <el-form label-width="110px" class="problem-form">
-            <el-form-item label="发布班级">
-              <el-select v-model="selectedClassIDs" multiple clearable style="width: 100%">
-                <el-option
-                  v-for="item in classroom.classes"
-                  :key="item.class_id"
-                  :label="`${item.course_code} / ${item.class_name}`"
-                  :value="item.class_id"
-                />
-              </el-select>
-            </el-form-item>
             <el-row :gutter="12">
               <el-col :span="12">
                 <el-form-item label="Slug">
@@ -261,16 +223,7 @@
               :key="item.id"
               :label="preparedLabel(item)"
               :value="item.id"
-            />
-          </el-select>
-        </el-form-item>
-        <el-form-item label="班级">
-          <el-select v-model="publishClassIDs" multiple filterable style="width: 100%">
-            <el-option
-              v-for="item in classroom.classes"
-              :key="item.class_id"
-              :label="`${item.course_code} / ${item.class_name}`"
-              :value="item.class_id"
+              :disabled="Boolean(item.published_at)"
             />
           </el-select>
         </el-form-item>
@@ -288,20 +241,18 @@
         </el-button>
       </template>
     </el-dialog>
-    <ProblemEditDialog v-model="editProblemVisible" :problem="selected" @saved="handleProblemSaved" />
   </section>
 </template>
 
 <script setup lang="ts">
-import { ElMessage, ElMessageBox } from 'element-plus'
-import { computed, onMounted, reactive, ref, watch } from 'vue'
-import { client, sseUrl, type PreparedProblem, type Problem } from '../api/client'
-import CodeEditor from '../components/CodeEditor.vue'
+import { ElMessage } from 'element-plus'
+import { computed, onMounted, reactive, ref } from 'vue'
+import { useRouter } from 'vue-router'
+import { client, type PreparedProblem, type Problem } from '../api/client'
 import MarkdownRenderer from '../components/MarkdownRenderer.vue'
-import ProblemEditDialog from '../components/ProblemEditDialog.vue'
-import ProblemTestDownloads from '../components/ProblemTestDownloads.vue'
-import StatusBadge from '../components/StatusBadge.vue'
 import {
+  difficultyFromTags,
+  difficultyTagType,
   problemDisplayCode,
   problemLimitText,
   problemMatchesFilters,
@@ -312,33 +263,24 @@ import {
   type ProblemFilters
 } from '../features/problems/problemMeta'
 import { useAuthStore } from '../stores/auth'
-import { useClassroomStore } from '../stores/classroom'
 
 const auth = useAuthStore()
-const classroom = useClassroomStore()
+const router = useRouter()
 const canManage = computed(() => auth.role === 'admin' || auth.role === 'teacher')
 type ProblemAssetForm = { name: string; path: string; content_type: string; data: string; preview_url: string }
 const problems = ref<Problem[]>([])
-const selected = ref<Problem | null>(null)
 const filters = reactive<ProblemFilters>({
   keyword: '',
   tag: '',
+  difficulty: '',
   status: 'all'
 })
-const canDeleteSelected = computed(() => Boolean(selected.value && (auth.role === 'admin' || selected.value.owner_id === auth.user?.id)))
-const language = ref('cpp')
-const submitting = ref(false)
-const live = ref<any>(null)
-const editorRef = ref<InstanceType<typeof CodeEditor> | null>(null)
 const problemDialogVisible = ref(false)
 const problemDialogTab = ref('zip')
 const savingProblem = ref(false)
-const editProblemVisible = ref(false)
-const selectedClassIDs = ref<number[]>([])
 const preparedPublishVisible = ref(false)
 const preparedItems = ref<PreparedProblem[]>([])
 const preparedIDs = ref<number[]>([])
-const publishClassIDs = ref<number[]>([])
 const publishingPrepared = ref(false)
 const problemForm = reactive({
   slug: '',
@@ -357,59 +299,43 @@ const tagOptions = computed(() => {
   const set = new Set(problems.value.flatMap((problem) => tagList(problem.tags)))
   return [...set].sort((a, b) => a.localeCompare(b, 'zh-CN'))
 })
+const difficultyOptions = computed(() => {
+  const set = new Set(problems.value.map(problemDifficulty).filter(Boolean))
+  return [...set].sort((a, b) => a.localeCompare(b, 'zh-CN'))
+})
 const filteredProblems = computed(() => problems.value.filter((problem) => problemMatchesFilters(problem, filters)))
 const solvedCount = computed(() => problems.value.filter((p) => p.progress_status === 'accepted').length)
-const source = ref(`#include <bits/stdc++.h>
-using namespace std;
-int main() {
-  long long a, b;
-  cin >> a >> b;
-  cout << a + b << "\\n";
-  return 0;
-}
-`)
 
 async function load() {
-  const params = classroom.activeClassId ? { class_id: classroom.activeClassId } : {}
-  problems.value = (await client.get('/problems', { params })).data
-  selected.value ||= problems.value[0] || null
-  if (selected.value && !problems.value.some((item) => item.id === selected.value?.id)) {
-    selected.value = problems.value[0] || null
-  }
+  problems.value = (await client.get('/problems')).data
 }
 
-function selectProblem(row: Problem | null) {
-  if (!row) return
-  selected.value = row
-  live.value = null
+function problemPath(problem: Problem) {
+  return `/problems/${encodeURIComponent(problem.display_code || String(problem.id))}`
+}
+
+function openProblem(problem: Problem) {
+  router.push(problemPath(problem))
+}
+
+function problemDifficulty(problem: Problem) {
+  return difficultyFromTags(problem.tags)
 }
 
 function resetFilters() {
   filters.keyword = ''
   filters.tag = ''
+  filters.difficulty = ''
   filters.status = 'all'
 }
 
 function openProblemDialog() {
   problemDialogVisible.value = true
   problemDialogTab.value = 'zip'
-  selectedClassIDs.value = classroom.activeClassId ? [classroom.activeClassId] : []
-}
-
-function openEditProblem() {
-  if (!selected.value) return
-  editProblemVisible.value = true
-}
-
-function handleProblemSaved(problem: Problem) {
-  const index = problems.value.findIndex((item) => item.id === problem.id)
-  if (index >= 0) problems.value[index] = problem
-  selected.value = problem
 }
 
 async function openPreparedPublish() {
   preparedPublishVisible.value = true
-  publishClassIDs.value = classroom.activeClassId ? [classroom.activeClassId] : []
   preparedIDs.value = []
   preparedItems.value = (await client.get('/prepared-problems')).data
 }
@@ -422,18 +348,18 @@ function preparedLabel(item: PreparedProblem) {
 }
 
 async function publishPrepared() {
-  if (preparedIDs.value.length === 0 || publishClassIDs.value.length === 0) {
-    ElMessage.error('请选择预备题和班级')
+  if (preparedIDs.value.length === 0) {
+    ElMessage.error('请选择预备题')
     return
   }
   publishingPrepared.value = true
   try {
     await Promise.all(
       preparedIDs.value.map((id) =>
-        client.post(`/prepared-problems/${id}/publish`, { class_ids: publishClassIDs.value })
+        client.post(`/prepared-problems/${id}/publish`)
       )
     )
-    ElMessage.success('已发布到班级题库')
+    ElMessage.success('已发布到公共题库')
     preparedPublishVisible.value = false
     await load()
   } catch (err: any) {
@@ -443,24 +369,10 @@ async function publishPrepared() {
   }
 }
 
-async function removeProblem() {
-  if (!selected.value) return
-  try {
-    await ElMessageBox.confirm('删除后题目将从题库和学生端隐藏，历史提交与报表会保留。确认删除？', '删除题目', { type: 'warning' })
-    await client.delete(`/problems/${selected.value.id}`)
-    ElMessage.success('题目已下架')
-    selected.value = null
-    await load()
-  } catch (err: any) {
-    if (err !== 'cancel') ElMessage.error(err.response?.data?.error || err.message)
-  }
-}
-
 async function upload(options: any) {
   try {
     const fd = new FormData()
     fd.append('package', options.file)
-    selectedClassIDs.value.forEach((id) => fd.append('class_ids', String(id)))
     await client.post('/problems/upload', fd)
     ElMessage.success('题目包已上传')
     problemDialogVisible.value = false
@@ -482,21 +394,19 @@ function removeCase(index: number) {
 async function createFromForm() {
   savingProblem.value = true
   try {
-    const { data } = await client.post('/problems', {
+    await client.post('/problems', {
       slug: problemForm.slug,
       title: problemForm.title,
       statement: problemForm.statement,
       time_limit_ms: problemForm.time_limit_ms,
       memory_limit_mb: problemForm.memory_limit_mb,
       output_limit_kb: problemForm.output_limit_kb,
-      class_ids: selectedClassIDs.value,
       assets: problemForm.assets.map(({ name, path, content_type, data }) => ({ name, path, content_type, data })),
       cases: problemForm.cases
     })
     ElMessage.success('题目已创建')
     problemDialogVisible.value = false
     await load()
-    selected.value = data
     resetProblemForm()
   } catch (err: any) {
     ElMessage.error(err.response?.data?.error || err.message)
@@ -575,48 +485,11 @@ function uniqueAssetPath(name: string) {
   return path
 }
 
-function formatSource() {
-  editorRef.value?.format()
-}
-
 function escapeRegExp(value: string) {
   return value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
 }
 
-async function submit() {
-  if (!selected.value) return
-  submitting.value = true
-  try {
-    const { data } = await client.post('/submissions', {
-      problem_id: selected.value.id,
-      language: language.value,
-      source_code: source.value
-    })
-    watchSubmission(data.id)
-  } finally {
-    submitting.value = false
-  }
-}
-
-function watchSubmission(id: number) {
-  const es = new EventSource(sseUrl(`/submissions/${id}/events`))
-  es.addEventListener('status', (event) => {
-    live.value = JSON.parse((event as MessageEvent).data)
-    if (!['queued', 'running'].includes(live.value.status)) es.close()
-  })
-}
-
-watch(() => classroom.activeClassId, load)
-
-watch(filteredProblems, (list) => {
-  if (selected.value && list.some((item) => item.id === selected.value?.id)) return
-  selected.value = list[0] || null
-})
-
-onMounted(async () => {
-  await classroom.load()
-  await load()
-})
+onMounted(load)
 </script>
 
 <style scoped>
@@ -701,31 +574,12 @@ onMounted(async () => {
   margin-bottom: 14px;
 }
 
-.live {
-  margin-top: 12px;
-  display: flex;
-  gap: 10px;
-  align-items: center;
-}
-
-.problem-layout {
-  display: grid;
-  grid-template-columns: minmax(280px, 340px) minmax(0, 1fr);
-  gap: 16px;
-  align-items: start;
-}
-
 .problem-filters {
   display: grid;
-  grid-template-columns: minmax(220px, 1fr) 160px minmax(120px, 140px) auto auto;
+  grid-template-columns: minmax(220px, 1fr) 150px 130px minmax(120px, 140px) auto auto;
   gap: 10px;
   align-items: center;
   margin-bottom: 16px;
-}
-
-.problem-title {
-  font-weight: 700;
-  color: var(--text);
 }
 
 .tag-strip {
@@ -735,51 +589,42 @@ onMounted(async () => {
   margin-top: 6px;
 }
 
-.detail-tags {
-  margin-bottom: 12px;
-}
-
-.detail-tests {
-  margin: 12px 0;
-}
-
 .filter-count {
   justify-self: end;
   white-space: nowrap;
 }
 
-.problem-list-panel,
-.problem-detail-panel,
-.empty-detail {
-  min-height: calc(100vh - 380px);
-}
-
 .problem-list-panel {
-  padding: 10px;
+  min-height: 320px;
+  padding: 8px 12px 14px;
 }
 
-.problem-detail-panel {
-  min-width: 0;
+.problem-list-panel :deep(.el-table__row) {
+  cursor: pointer;
 }
 
-.detail-head {
-  display: flex;
-  align-items: flex-start;
-  justify-content: space-between;
-  gap: 12px;
+.problem-code {
+  color: var(--muted);
+  font-variant-numeric: tabular-nums;
+  font-weight: 700;
 }
 
-.detail-head h3 {
-  margin: 0 0 4px;
+.problem-title-link {
+  color: var(--text);
+  font-weight: 700;
 }
 
-.detail-head p {
-  margin: 0;
+.problem-title-link:hover {
+  color: var(--accent);
 }
 
-.empty-detail {
-  display: grid;
-  place-items: center;
+.problem-slug {
+  margin-top: 3px;
+  font-size: 12px;
+}
+
+.table-tags {
+  margin-top: 0;
 }
 
 .zip-upload {
@@ -853,18 +698,6 @@ onMounted(async () => {
   gap: 8px;
   width: 100%;
   margin-top: 8px;
-}
-
-@media (max-width: 1100px) {
-  .problem-layout {
-    grid-template-columns: 1fr;
-  }
-
-  .problem-list-panel,
-  .problem-detail-panel,
-  .empty-detail {
-    min-height: auto;
-  }
 }
 
 @media (max-width: 760px) {

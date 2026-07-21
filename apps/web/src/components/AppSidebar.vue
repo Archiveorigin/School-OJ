@@ -1,6 +1,6 @@
 <template>
   <nav class="top-nav">
-    <RouterLink class="brand" to="/">
+    <RouterLink class="brand" :to="brandPath">
       <img class="brand-logo" src="/logo.jpg" alt="黄海在线题测平台" />
       <span>黄海在线题测平台</span>
     </RouterLink>
@@ -22,10 +22,15 @@ import { visibleNavGroups } from '../features/navigation/menu'
 const props = defineProps<{
   activeMenu: string
   role?: Role
+  authenticated: boolean
 }>()
 
 const groups = computed(() => visibleNavGroups(props.role))
-const items = computed(() => groups.value.flatMap((group) => group.items))
+const items = computed(() => {
+  const allItems = groups.value.flatMap((group) => group.items)
+  return props.authenticated ? allItems : allItems.filter((item) => item.path === '/problems')
+})
+const brandPath = computed(() => props.authenticated ? '/' : '/problems')
 </script>
 
 <style scoped>

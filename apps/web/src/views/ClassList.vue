@@ -384,7 +384,7 @@ async function joinClass() {
 
 async function leaveClass(row: ClassContext) {
   try {
-    await ElMessageBox.confirm(`确定退出班级「${row.class_name}」吗？退出后将无法继续查看该班级题库、作业和考试。`, '退出班级', {
+    await ElMessageBox.confirm(`确定退出班级「${row.class_name}」吗？退出后将无法继续查看该班级的作业和考试。`, '退出班级', {
       confirmButtonText: '退出',
       cancelButtonText: '取消',
       type: 'warning'

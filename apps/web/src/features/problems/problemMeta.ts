@@ -11,6 +11,7 @@ export interface ProblemSample {
 export interface ProblemFilters {
   keyword: string
   tag: string
+  difficulty: string
   status: ProblemStatusFilter
 }
 
@@ -100,6 +101,7 @@ export function problemMatchesFilters(problem: Problem, filters: ProblemFilters)
     if (!haystack.includes(keyword)) return false
   }
   if (filters.tag && !tags.includes(filters.tag)) return false
+  if (filters.difficulty && difficultyFromTags(problem.tags) !== filters.difficulty) return false
   if (filters.status !== 'all' && problem.progress_status !== filters.status) return false
   return true
 }

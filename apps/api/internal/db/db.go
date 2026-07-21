@@ -59,7 +59,25 @@ func AutoMigrate(gdb *gorm.DB) error {
 	if err := backfillProblemDisplayCodes(gdb); err != nil {
 		return err
 	}
+	if err := backfillPreparedProblemPublishedAt(gdb); err != nil {
+		return err
+	}
 	return backfillClassJoinCodes(gdb)
+}
+
+func backfillPreparedProblemPublishedAt(gdb *gorm.DB) error {
+	if !gdb.Migrator().HasTable("prepared_problems") || !gdb.Migrator().HasTable("class_problems") {
+		return nil
+	}
+	return gdb.Exec(`
+UPDATE prepared_problems
+SET published_at = COALESCE(
+  (SELECT MIN(class_problems.created_at) FROM class_problems WHERE class_problems.problem_id = prepared_problems.problem_id),
+  NOW()
+)
+WHERE published_at IS NULL
+  AND EXISTS (SELECT 1 FROM class_problems WHERE class_problems.problem_id = prepared_problems.problem_id)
+`).Error
 }
 
 func migrateProblemSlugUniqueness(gdb *gorm.DB) error {

@@ -76,14 +76,16 @@
             <el-table-column prop="source" label="来源" width="130" />
             <el-table-column label="状态" width="90">
               <template #default="{ row }">
-                <el-tag :type="row.archived ? 'info' : 'success'" effect="light">
-                  {{ row.archived ? '已归档' : '可用' }}
+                <el-tag :type="row.archived ? 'info' : row.published_at ? 'success' : 'warning'" effect="light">
+                  {{ row.archived ? '已归档' : row.published_at ? '已发布' : '待发布' }}
                 </el-tag>
               </template>
             </el-table-column>
             <el-table-column label="操作" width="220" fixed="right">
               <template #default="{ row }">
-                <el-button size="small" @click.stop="openPublishDialog(row)">发布</el-button>
+                <el-button size="small" :disabled="Boolean(row.published_at)" @click.stop="openPublishDialog(row)">
+                  {{ row.published_at ? '已发布' : '发布' }}
+                </el-button>
                 <el-button size="small" @click.stop="openEditDialog(row)">分类</el-button>
                 <el-button size="small" @click.stop="toggleArchive(row)">
                   {{ row.archived ? '恢复' : '归档' }}
@@ -98,8 +100,8 @@
               <h3>{{ selected.problem.title }}</h3>
               <p class="muted">{{ problemDisplayCode(selected.problem) }} · {{ selected.problem.slug }}</p>
             </div>
-            <el-tag :type="selected.archived ? 'info' : 'success'">
-              {{ selected.archived ? '已归档' : '可发布' }}
+            <el-tag :type="selected.archived ? 'info' : selected.published_at ? 'success' : 'warning'">
+              {{ selected.archived ? '已归档' : selected.published_at ? '已发布' : '待发布' }}
             </el-tag>
           </div>
           <div class="meta-grid">
@@ -322,21 +324,12 @@
       </template>
     </el-dialog>
 
-    <el-dialog v-model="publishVisible" title="发布到班级题库" width="520px">
+    <el-dialog v-model="publishVisible" title="发布到公共题库" width="520px">
       <el-form label-width="96px">
         <el-form-item label="题目">
           <strong>{{ publishing?.problem.title }}</strong>
         </el-form-item>
-        <el-form-item label="班级">
-          <el-select v-model="publishClassIDs" multiple filterable style="width: 100%">
-            <el-option
-              v-for="item in classroom.classes"
-              :key="item.class_id"
-              :label="`${item.course_code} / ${item.class_name}`"
-              :value="item.class_id"
-            />
-          </el-select>
-        </el-form-item>
+        <el-form-item label="发布范围"><strong>公共题库</strong></el-form-item>
       </el-form>
       <template #footer>
         <el-button @click="publishVisible = false">取消</el-button>
@@ -353,9 +346,7 @@ import { client, type PreparedProblem } from '../api/client'
 import MarkdownRenderer from '../components/MarkdownRenderer.vue'
 import ProblemTestDownloads from '../components/ProblemTestDownloads.vue'
 import { problemDisplayCode } from '../features/problems/problemMeta'
-import { useClassroomStore } from '../stores/classroom'
 
-const classroom = useClassroomStore()
 type ProblemAssetForm = { name: string; path: string; content_type: string; data: string; preview_url: string }
 type CaseFilePair = { name: string; inputName: string; outputName: string; inputSize: number; outputSize: number; weight: number }
 type ParsedCaseFile = { stem: string; ext: 'in' | 'out'; name: string; size: number; text: string }
@@ -370,7 +361,6 @@ const caseFileRows = ref<CaseFilePair[]>([])
 const caseFileUploadKey = ref(0)
 const saving = ref(false)
 const publishing = ref<PreparedProblem | null>(null)
-const publishClassIDs = ref<number[]>([])
 let caseFileParseSeq = 0
 
 const filters = reactive({
@@ -417,7 +407,7 @@ const folderOptions = computed(() => {
   return [...set].sort()
 })
 
-const availableCount = computed(() => items.value.filter((item) => !item.archived).length)
+const availableCount = computed(() => items.value.filter((item) => !item.archived && !item.published_at).length)
 
 async function load() {
   const params: Record<string, string> = { archived: filters.archived }
@@ -454,7 +444,6 @@ function openEditDialog(row: PreparedProblem) {
 
 function openPublishDialog(row: PreparedProblem) {
   publishing.value = row
-  publishClassIDs.value = classroom.activeClassId ? [classroom.activeClassId] : []
   publishVisible.value = true
 }
 
@@ -548,17 +537,13 @@ async function toggleArchive(row: PreparedProblem) {
 }
 
 async function publish() {
-  if (!publishing.value || publishClassIDs.value.length === 0) {
-    ElMessage.error('请选择班级')
-    return
-  }
+  if (!publishing.value) return
   saving.value = true
   try {
-    await client.post(`/prepared-problems/${publishing.value.id}/publish`, {
-      class_ids: publishClassIDs.value
-    })
-    ElMessage.success('已发布到班级题库')
+    await client.post(`/prepared-problems/${publishing.value.id}/publish`)
+    ElMessage.success('已发布到公共题库')
     publishVisible.value = false
+    await load()
   } catch (err: any) {
     ElMessage.error(err.response?.data?.error || err.message)
   } finally {
@@ -757,10 +742,7 @@ function tagList(tags: any) {
   return []
 }
 
-onMounted(async () => {
-  await classroom.load()
-  await load()
-})
+onMounted(load)
 </script>
 
 <style scoped>

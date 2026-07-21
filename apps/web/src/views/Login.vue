@@ -30,10 +30,11 @@
 <script setup lang="ts">
 import { ElMessage } from 'element-plus'
 import { reactive, ref } from 'vue'
-import { useRouter } from 'vue-router'
+import { useRoute, useRouter } from 'vue-router'
 import { useAuthStore } from '../stores/auth'
 
 const router = useRouter()
+const route = useRoute()
 const auth = useAuthStore()
 const loading = ref(false)
 const resetAvailable = ref(false)
@@ -47,7 +48,12 @@ async function submit() {
   loading.value = true
   try {
     await auth.login(form.email, form.password)
-    router.push('/')
+    const redirect = typeof route.query.redirect === 'string'
+      && route.query.redirect.startsWith('/')
+      && !route.query.redirect.startsWith('//')
+      ? route.query.redirect
+      : '/'
+    router.push(redirect)
   } catch (err: any) {
     resetAvailable.value = Boolean(err.response?.data?.password_reset_available)
     ElMessage.error(err.response?.data?.error || err.message)

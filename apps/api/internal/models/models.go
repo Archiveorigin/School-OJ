@@ -98,17 +98,18 @@ type Problem struct {
 }
 
 type PreparedProblem struct {
-	ID         uint      `json:"id" gorm:"primaryKey"`
-	ProblemID  uint      `json:"problem_id" gorm:"uniqueIndex;not null"`
-	OwnerID    uint      `json:"owner_id" gorm:"index;not null"`
-	Folder     string    `json:"folder" gorm:"size:160;index"`
-	Difficulty string    `json:"difficulty" gorm:"size:32;index"`
-	Source     string    `json:"source" gorm:"size:160"`
-	Notes      string    `json:"notes" gorm:"type:text"`
-	Archived   bool      `json:"archived" gorm:"not null;default:false;index"`
-	Problem    Problem   `json:"problem" gorm:"foreignKey:ProblemID"`
-	CreatedAt  time.Time `json:"created_at"`
-	UpdatedAt  time.Time `json:"updated_at"`
+	ID          uint       `json:"id" gorm:"primaryKey"`
+	ProblemID   uint       `json:"problem_id" gorm:"uniqueIndex;not null"`
+	OwnerID     uint       `json:"owner_id" gorm:"index;not null"`
+	Folder      string     `json:"folder" gorm:"size:160;index"`
+	Difficulty  string     `json:"difficulty" gorm:"size:32;index"`
+	Source      string     `json:"source" gorm:"size:160"`
+	Notes       string     `json:"notes" gorm:"type:text"`
+	Archived    bool       `json:"archived" gorm:"not null;default:false;index"`
+	PublishedAt *time.Time `json:"published_at,omitempty" gorm:"index"`
+	Problem     Problem    `json:"problem" gorm:"foreignKey:ProblemID"`
+	CreatedAt   time.Time  `json:"created_at"`
+	UpdatedAt   time.Time  `json:"updated_at"`
 }
 
 type ProblemProgressStatus string

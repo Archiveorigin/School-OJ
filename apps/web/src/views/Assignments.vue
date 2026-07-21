@@ -105,7 +105,7 @@
         <el-form-item label="添加题目">
           <div class="problem-add">
             <el-radio-group v-model="problemSource" @change="problemPickID = undefined">
-              <el-radio-button label="class">班级题库</el-radio-button>
+              <el-radio-button label="class">公共题库</el-radio-button>
               <el-radio-button label="prepared">预备题库</el-radio-button>
             </el-radio-group>
             <el-select v-model="problemPickID" filterable placeholder="选择题目" class="problem-select">
@@ -254,7 +254,7 @@ async function load() {
   if (canManage.value) {
     const [coursesRes, problemsRes, preparedRes] = await Promise.all([
       client.get('/courses'),
-      client.get('/problems', { params }),
+      client.get('/problems'),
       client.get('/prepared-problems')
     ])
     courses.value = coursesRes.data
@@ -301,8 +301,7 @@ function onAssignmentCourseChange() {
 }
 
 async function loadClassProblems() {
-  if (!form.class_id) return
-  problems.value = (await client.get('/problems', { params: { class_id: form.class_id } })).data
+  problems.value = (await client.get('/problems')).data
 }
 
 function addSelectedProblem() {

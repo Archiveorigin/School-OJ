@@ -286,7 +286,7 @@ async function load() {
     const skipClassScoped = showNoClassState.value
     const [c, p, s, a, e] = await Promise.all([
       client.get('/courses'),
-      skipClassScoped ? Promise.resolve({ data: [] }) : client.get('/problems', { params }),
+      client.get('/problems'),
       client.get('/submissions'),
       skipClassScoped ? Promise.resolve({ data: [] }) : client.get('/assignments', { params }),
       skipClassScoped ? Promise.resolve({ data: [] }) : client.get('/exams', { params })
