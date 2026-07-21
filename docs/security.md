@@ -19,12 +19,14 @@ Compilation uses a separate sandbox limit of 30 seconds and at least 1024 MB mem
 
 The included seccomp profile blocks network socket calls, mount/module/keyring/BPF/perf operations, ptrace, reboot, swap, and namespace unshare calls.
 
-Because the compose worker talks to the host Docker daemon through `/var/run/docker.sock`, sandbox workspaces are created under `SANDBOX_WORK_ROOT` and that absolute path is bind-mounted into the worker at the same absolute path. The default is `/tmp/school-oj-worker`; override `OJ_WORK_ROOT` before `docker compose up` if that path is not suitable.
+Because the compose worker talks to the host Docker daemon through `/var/run/docker.sock`, sandbox workspaces are created under `SANDBOX_WORK_ROOT` and that absolute path is bind-mounted into the worker at the same absolute path. The default is `/var/lib/school-oj-worker`, which must remain present while the worker is running. Do not place it under host-managed temporary directories such as `/tmp`; their cleanup can invalidate the bind mount while leaving the worker container running. Override `OJ_WORK_ROOT` before `docker compose up` when a different persistent host path is required.
 
 The host Docker daemon must have the judge images available: `gcc:14-bookworm`, `python:3.12-slim`, and `eclipse-temurin:21-jdk`. Run `./scripts/pull_sandbox_images.sh` before the first submission, especially on networks where automatic pulls are slow or blocked.
 
-The worker treats missing Docker images, Docker daemon connectivity, and image
-resolution failures as retryable infrastructure errors. It requeues the
+The worker validates its work root and seccomp profile at startup, while the
+Compose healthcheck also validates Docker daemon access. Missing Docker images,
+Docker daemon connectivity, sandbox path/mount failures, and image resolution
+failures are retryable infrastructure errors. The worker requeues the
 submission with a bounded retry count and also claims idle pending Redis Stream
 messages, so a worker crash or restart does not leave submissions permanently
 stuck in `queued` or `running`.
