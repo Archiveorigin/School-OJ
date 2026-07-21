@@ -1,11 +1,11 @@
 <template>
-  <router-view v-if="publicPage" />
+  <router-view v-if="authPage" />
   <el-container v-else direction="vertical" class="shell" :class="{ 'exam-shell': studentExamWorkspace }">
     <el-header v-if="!studentExamWorkspace" class="topbar" height="auto">
-      <AppSidebar :active-menu="activeMenu" :role="auth.role" />
+      <AppSidebar :active-menu="activeMenu" :role="auth.role" :authenticated="auth.isAuthed" />
       <div class="topbar-actions">
         <el-select
-          v-if="auth.isAuthed && classroom.classes.length"
+          v-if="auth.isAuthed && classroom.classes.length && !route.path.startsWith('/problems')"
           :model-value="classroom.activeClassId"
           class="class-switch"
           filterable
@@ -18,7 +18,7 @@
             :value="item.class_id"
           />
         </el-select>
-        <el-dropdown trigger="click" @command="handleCommand">
+        <el-dropdown v-if="auth.isAuthed" trigger="click" @command="handleCommand">
           <button class="avatar-button" type="button">
             <img v-if="auth.user?.avatar_url" :src="auth.user.avatar_url" alt="" />
             <span v-else>{{ initials }}</span>
@@ -33,6 +33,7 @@
             </el-dropdown-menu>
           </template>
         </el-dropdown>
+        <el-button v-else type="primary" @click="goLogin">登录</el-button>
       </div>
     </el-header>
     <el-main class="main-content" :class="{ 'exam-main-content': studentExamWorkspace }">
@@ -59,7 +60,7 @@ const route = useRoute()
 let activeExamPromptOpen = false
 let lastPromptedExamId: number | undefined
 
-const publicPage = computed(() => ['/login', '/register', '/forgot-password'].includes(route.path))
+const authPage = computed(() => ['/login', '/register', '/forgot-password'].includes(route.path))
 const initials = computed(() => (auth.user?.name || auth.user?.email || 'U').trim().slice(0, 1).toUpperCase())
 const activeMenu = computed(() => String(route.meta.activeMenu || route.path))
 const currentExamRouteId = computed(() => {
@@ -81,6 +82,10 @@ function setClass(value: number) {
   classroom.setActive(value)
 }
 
+function goLogin() {
+  router.push({ path: '/login', query: { redirect: route.fullPath } })
+}
+
 function classOptionLabel(item: ClassContext) {
   return auth.role === 'student' ? item.class_name : `${item.course_code} / ${item.class_name}`
 }
@@ -100,7 +105,7 @@ function handleCommand(command: string) {
 }
 
 async function maybeShowActiveExamPrompt() {
-  if (!auth.isAuthed || auth.role !== 'student' || publicPage.value) return
+  if (!auth.isAuthed || auth.role !== 'student' || authPage.value) return
   try {
     await examLock.syncActiveExam()
   } catch {

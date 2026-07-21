@@ -107,7 +107,7 @@
         <section class="panel problem-source-panel">
           <div class="section-title"><h3>添加题目</h3></div>
           <el-tabs v-model="problemSource">
-            <el-tab-pane label="班级题库" name="class">
+            <el-tab-pane label="公共题库" name="class">
               <div class="source-select-row">
                 <el-select
                   v-model="problemPickID"
@@ -147,13 +147,13 @@
                 </el-button>
               </div>
               <p class="muted form-note">
-                预备题会在考试结束时间后自动同步到当前班级题库。
+                预备题会在考试结束时间后自动发布到公共题库。
               </p>
             </el-tab-pane>
             <el-tab-pane label="新建题目" name="markdown">
               <div class="create-problem-card">
                 <div class="create-problem-info">
-                  <p>创建仅本场考试使用的 Markdown 题目，考试结束后自动发布到班级题库。</p>
+                  <p>创建仅本场考试使用的 Markdown 题目，考试结束后自动发布到公共题库。</p>
                   <p class="muted">支持 Markdown、LaTeX 公式和图片。需上传隐藏测试点。</p>
                 </div>
                 <el-button type="primary" @click="openMarkdownDialog">
@@ -652,10 +652,9 @@ function formatDate(value: any) {
 }
 
 async function load() {
-  const params = classroom.activeClassId ? { class_id: classroom.activeClassId } : {}
   const [coursesRes, problemsRes, preparedRes] = await Promise.all([
     client.get('/courses'),
-    client.get('/problems', { params }),
+    client.get('/problems'),
     client.get('/prepared-problems')
   ])
   courses.value = coursesRes.data
@@ -683,8 +682,7 @@ function onCourseWideSelect() {
 }
 
 async function loadClassProblems() {
-  if (!form.class_id) return
-  problems.value = (await client.get('/problems', { params: { class_id: form.class_id } })).data
+  problems.value = (await client.get('/problems')).data
 }
 
 function openMarkdownDialog() {
@@ -744,7 +742,6 @@ async function createMarkdownProblem() {
       time_limit_ms: problemForm.time_limit_ms,
       memory_limit_mb: problemForm.memory_limit_mb,
       output_limit_kb: problemForm.output_limit_kb,
-      class_ids: [],
       assets: problemForm.assets.map(({ name, path, content_type, data }) => ({ name, path, content_type, data }))
     }))
     for (const item of testPointUploadFiles.value) {
@@ -915,7 +912,6 @@ async function importBatch() {
         time_limit_ms: problem.time_limit_ms || 1000,
         memory_limit_mb: problem.memory_limit_mb || 256,
         output_limit_kb: problem.output_limit_kb || 1024,
-        class_ids: [],
         cases: cases
       })
       selectedProblems.value.push({

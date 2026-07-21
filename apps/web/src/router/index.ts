@@ -19,6 +19,8 @@ const CourseStudents = () => import('../views/CourseStudents.vue')
 const Login = () => import('../views/Login.vue')
 const Plagiarism = () => import('../views/Plagiarism.vue')
 const Problems = () => import('../views/Problems.vue')
+const ProblemsLayout = () => import('../views/problems/ProblemsLayout.vue')
+const ProblemDetail = () => import('../views/problems/ProblemDetail.vue')
 const PreparedProblems = () => import('../views/PreparedProblems.vue')
 const Profile = () => import('../views/Profile.vue')
 const Register = () => import('../views/Register.vue')
@@ -38,7 +40,15 @@ const router = createRouter({
     { path: '/courses/list', component: CourseList, meta: { title: '课程列表', activeMenu: '/courses' } },
     { path: '/classes', component: ClassList, meta: { title: '班级列表', activeMenu: '/courses' } },
     { path: '/courses/:id/students', component: CourseStudents, meta: { roles: ['admin', 'teacher'], title: '课程学生', activeMenu: '/courses' } },
-    { path: '/problems', component: Problems, meta: { title: '题库' } },
+    {
+      path: '/problems',
+      component: ProblemsLayout,
+      meta: { public: true, title: '题库', activeMenu: '/problems' },
+      children: [
+        { path: '', name: 'problem-list', component: Problems },
+        { path: ':id', name: 'problem-detail', component: ProblemDetail, meta: { title: '题目详情' } }
+      ]
+    },
     { path: '/prepared-problems', component: PreparedProblems, meta: { roles: ['admin', 'teacher'], title: '预备题库' } },
     { path: '/assignments', component: Assignments, meta: { title: '作业' } },
     { path: '/assignments/:id', component: AssignmentDetail, meta: { title: '作业', activeMenu: '/assignments' } },
@@ -64,17 +74,17 @@ const router = createRouter({
   ]
 })
 
-const publicPaths = ['/login', '/register', '/forgot-password']
+const authPaths = ['/login', '/register', '/forgot-password']
 
 router.beforeEach(async (to, from) => {
   const auth = useAuthStore()
   if (auth.isAuthed && !auth.hydrated) {
     await auth.hydrate()
   }
-  if (!publicPaths.includes(to.path) && !auth.isAuthed) {
-    return '/login'
+  if (!to.meta.public && !auth.isAuthed) {
+    return { path: '/login', query: { redirect: to.fullPath } }
   }
-  if (publicPaths.includes(to.path) && auth.isAuthed) {
+  if (authPaths.includes(to.path) && auth.isAuthed) {
     return '/'
   }
   const roles = to.meta.roles as string[] | undefined

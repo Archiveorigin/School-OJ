@@ -286,6 +286,9 @@ func (s Server) Router() *gin.Engine {
 	api.POST("/auth/send-code", s.sendEmailCode)
 	api.POST("/auth/register", s.register)
 	api.POST("/auth/password-reset", s.resetPassword)
+	api.GET("/problems", middleware.OptionalAuth(s.DB, s.Cfg.JWTSecret), s.listProblems)
+	api.GET("/problems/:id/assets/*asset_path", middleware.OptionalAuth(s.DB, s.Cfg.JWTSecret), s.getProblemAsset)
+	api.GET("/problems/:id", middleware.OptionalAuth(s.DB, s.Cfg.JWTSecret), s.getProblem)
 	auth := api.Group("")
 	auth.Use(middleware.Auth(s.DB, s.Cfg.JWTSecret))
 	auth.GET("/me", s.me)
@@ -321,16 +324,13 @@ func (s Server) Router() *gin.Engine {
 	auth.GET("/classes/:id/students", middleware.RequireRoles(models.RoleAdmin, models.RoleTeacher), s.listClassStudents)
 	auth.DELETE("/classes/:id/students/:user_id", middleware.RequireRoles(models.RoleAdmin, models.RoleTeacher), s.removeClassStudent)
 	auth.POST("/classes/:id/students/import", middleware.RequireRoles(models.RoleAdmin, models.RoleTeacher), s.importClassStudents)
-	auth.GET("/problems", s.listProblems)
 	auth.POST("/problems", middleware.RequireRoles(models.RoleAdmin, models.RoleTeacher), s.createProblem)
 	auth.POST("/problems/parse-markdown", middleware.RequireRoles(models.RoleAdmin, models.RoleTeacher), s.parseMarkdownBatch)
 	auth.POST("/problems/upload", middleware.RequireRoles(models.RoleAdmin, models.RoleTeacher), s.uploadProblem)
 	auth.PUT("/problems/:id", middleware.RequireRoles(models.RoleAdmin, models.RoleTeacher), s.updateProblem)
-	auth.GET("/problems/:id/assets/*asset_path", s.getProblemAsset)
 	auth.GET("/problems/:id/tests", middleware.RequireRoles(models.RoleAdmin, models.RoleTeacher), s.listProblemTests)
 	auth.GET("/problems/:id/tests/download", middleware.RequireRoles(models.RoleAdmin, models.RoleTeacher), s.downloadProblemTests)
 	auth.GET("/problems/:id/tests/file/*file_path", middleware.RequireRoles(models.RoleAdmin, models.RoleTeacher), s.downloadProblemTestFile)
-	auth.GET("/problems/:id", s.getProblem)
 	auth.DELETE("/problems/:id", middleware.RequireRoles(models.RoleAdmin, models.RoleTeacher), s.deleteProblem)
 	auth.GET("/prepared-problems", middleware.RequireRoles(models.RoleAdmin, models.RoleTeacher), s.listPreparedProblems)
 	auth.POST("/prepared-problems", middleware.RequireRoles(models.RoleAdmin, models.RoleTeacher), s.createPreparedProblem)
@@ -1475,43 +1475,17 @@ func (s Server) leaveClass(c *gin.Context) {
 }
 
 func (s Server) listProblems(c *gin.Context) {
-	user, _ := middleware.CurrentUser(c)
+	user, authed := middleware.CurrentUser(c)
 	var problems []models.Problem
-	q := s.DB.Model(&models.Problem{}).Where("problems.deleted_at IS NULL").Order("problems.id desc")
-	if classID, ok := queryUint(c, "class_id"); ok {
-		if !s.canAccessClass(user, classID) {
-			c.JSON(http.StatusForbidden, gin.H{"error": "forbidden"})
-			return
-		}
-		q = q.Joins("join class_problems on class_problems.problem_id = problems.id").
-			Where("class_problems.class_id = ?", classID).
-			Where(releasedClassProblemSQL(), time.Now())
-	} else if user.Role == models.RoleStudent {
-		classIDs := s.visibleClassIDs(user)
-		if len(classIDs) == 0 {
-			c.JSON(http.StatusOK, []models.Problem{})
-			return
-		}
-		q = q.Joins("join class_problems on class_problems.problem_id = problems.id").
-			Where("class_problems.class_id IN ?", classIDs).
-			Where(releasedClassProblemSQL(), time.Now()).
-			Group("problems.id")
-	} else if user.Role == models.RoleAdmin {
-		released := s.DB.Model(&models.ClassProblem{}).Select("problem_id").Where(releasedClassProblemSQL(), time.Now())
-		prepared := s.DB.Model(&models.PreparedProblem{}).Select("problem_id")
-		q = q.Where("problems.id NOT IN (?) OR problems.id IN (?)", prepared, released)
-	} else if user.Role == models.RoleTeacher {
-		classIDs := s.visibleClassIDs(user)
-		prepared := s.DB.Model(&models.PreparedProblem{}).Select("problem_id")
-		if len(classIDs) > 0 {
-			released := s.DB.Model(&models.ClassProblem{}).Select("problem_id").Where("class_id IN ?", classIDs).Where(releasedClassProblemSQL(), time.Now())
-			q = q.Where("(owner_id = ? AND problems.id NOT IN (?)) OR problems.id IN (?)", user.ID, prepared, released)
-		} else {
-			q = q.Where("owner_id = ? AND problems.id NOT IN (?)", user.ID, prepared)
-		}
+	q := s.DB.Model(&models.Problem{}).
+		Where("problems.deleted_at IS NULL").
+		Where(publicProblemSQL()).
+		Order("problems.id desc")
+	if err := q.Find(&problems).Error; err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
 	}
-	q.Find(&problems)
-	if user.Role != models.RoleStudent {
+	if !authed || user.Role != models.RoleStudent {
 		c.JSON(http.StatusOK, problems)
 		return
 	}
@@ -1550,10 +1524,6 @@ func (s Server) listProblems(c *gin.Context) {
 
 func (s Server) uploadProblem(c *gin.Context) {
 	user, _ := middleware.CurrentUser(c)
-	classIDs, ok := s.parseProblemClassIDs(c, user)
-	if !ok {
-		return
-	}
 	file, err := c.FormFile("package")
 	if err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "package file is required"})
@@ -1575,7 +1545,7 @@ func (s Server) uploadProblem(c *gin.Context) {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 		return
 	}
-	problem, ok := s.saveProblemPackage(c, user, body, pkg, classIDs, nil, tagsJSONMap(parseTagFields(c.PostFormArray("tags"), c.PostForm("tags"))), "problem.upload")
+	problem, ok := s.saveProblemPackage(c, user, body, pkg, tagsJSONMap(parseTagFields(c.PostFormArray("tags"), c.PostForm("tags"))), "problem.upload")
 	if !ok {
 		return
 	}
@@ -1592,15 +1562,12 @@ func (s Server) createProblem(c *gin.Context) {
 	if !bind(c, &req) {
 		return
 	}
-	if !s.validateClassIDs(c, user, req.ClassIDs) {
-		return
-	}
 	body, pkg, err := services.BuildProblemPackage(req)
 	if err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 		return
 	}
-	problem, ok := s.saveProblemPackage(c, user, body, pkg, req.ClassIDs, nil, tagsJSONMap(req.Tags), "problem.create")
+	problem, ok := s.saveProblemPackage(c, user, body, pkg, tagsJSONMap(req.Tags), "problem.create")
 	if !ok {
 		return
 	}
@@ -1622,9 +1589,6 @@ func (s Server) createProblemMultipart(c *gin.Context, user models.User) {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "parse draft: " + err.Error()})
 		return
 	}
-	if !s.validateClassIDs(c, user, req.ClassIDs) {
-		return
-	}
 	uploads, err := testPointUploadsFromMultipart(c.Request.MultipartForm)
 	if err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
@@ -1641,7 +1605,7 @@ func (s Server) createProblemMultipart(c *gin.Context, user models.User) {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 		return
 	}
-	problem, ok := s.saveProblemPackage(c, user, body, pkg, req.ClassIDs, nil, tagsJSONMap(req.Tags), "problem.create")
+	problem, ok := s.saveProblemPackage(c, user, body, pkg, tagsJSONMap(req.Tags), "problem.create")
 	if !ok {
 		return
 	}
@@ -1738,7 +1702,7 @@ func (s Server) uploadProblemPackageArtifacts(c *gin.Context, body []byte, pkg *
 	return problemPackageArtifacts{Object: object, Checksum: pkg.SHA256, Manifest: manifest}, true
 }
 
-func (s Server) saveProblemPackage(c *gin.Context, user models.User, body []byte, pkg services.ParsedProblemPackage, classIDs []uint, releaseAt *time.Time, tags datatypes.JSONMap, action string) (models.Problem, bool) {
+func (s Server) saveProblemPackage(c *gin.Context, user models.User, body []byte, pkg services.ParsedProblemPackage, tags datatypes.JSONMap, action string) (models.Problem, bool) {
 	artifacts, ok := s.uploadProblemPackageArtifacts(c, body, &pkg)
 	if !ok {
 		return models.Problem{}, false
@@ -1765,11 +1729,6 @@ func (s Server) saveProblemPackage(c *gin.Context, user models.User, body []byte
 		problem.DisplayCode = displayCode
 		if err := tx.Create(&problem).Error; err != nil {
 			return err
-		}
-		for _, classID := range classIDs {
-			if err := s.linkProblemToClass(tx, classID, problem.ID, releaseAt); err != nil {
-				return err
-			}
 		}
 		return nil
 	}); err != nil {
@@ -1807,18 +1766,13 @@ func parseProblemDisplayCode(value string) int {
 }
 
 func (s Server) getProblem(c *gin.Context) {
-	user, _ := middleware.CurrentUser(c)
-	id, ok := idParam(c, "id")
+	user, authed := middleware.CurrentUser(c)
+	problem, ok := s.problemByRouteParam(c)
 	if !ok {
 		return
 	}
-	var problem models.Problem
-	if err := s.DB.Where("deleted_at IS NULL").First(&problem, id).Error; err != nil {
+	if !s.isProblemPublic(problem.ID) && (!authed || !s.canManageProblemData(user, problem)) {
 		c.JSON(http.StatusNotFound, gin.H{"error": "problem not found"})
-		return
-	}
-	if user.Role == models.RoleStudent && !s.canStudentAccessProblem(user.ID, problem.ID) {
-		c.JSON(http.StatusForbidden, gin.H{"error": "forbidden"})
 		return
 	}
 	c.JSON(http.StatusOK, problem)
@@ -1962,18 +1916,13 @@ func optionalTestPointUploadsFromMultipart(form *multipart.Form) ([]services.Tes
 
 func (s Server) getProblemAsset(c *gin.Context) {
 	user, _ := middleware.CurrentUser(c)
-	id, ok := idParam(c, "id")
-	if !ok {
-		return
-	}
 	assetPath, err := services.NormalizeAssetPath(strings.TrimPrefix(c.Param("asset_path"), "/"))
 	if err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 		return
 	}
-	var problem models.Problem
-	if err := s.DB.First(&problem, id).Error; err != nil {
-		c.JSON(http.StatusNotFound, gin.H{"error": "problem not found"})
+	problem, ok := s.problemByRouteParam(c)
+	if !ok {
 		return
 	}
 	if !s.canReadProblemAsset(user, problem, assetPath) {
@@ -2372,7 +2321,7 @@ func (s Server) createPreparedProblem(c *gin.Context) {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 		return
 	}
-	problem, ok := s.saveProblemPackage(c, user, body, pkg, nil, nil, tagsJSONMap(req.Tags), "prepared_problem.create")
+	problem, ok := s.saveProblemPackage(c, user, body, pkg, tagsJSONMap(req.Tags), "prepared_problem.create")
 	if !ok {
 		return
 	}
@@ -2417,7 +2366,7 @@ func (s Server) uploadPreparedProblem(c *gin.Context) {
 		return
 	}
 	tags := parseTagFields(c.PostFormArray("tags"), c.PostForm("tags"))
-	problem, ok := s.saveProblemPackage(c, user, body, pkg, nil, nil, tagsJSONMap(tags), "prepared_problem.upload")
+	problem, ok := s.saveProblemPackage(c, user, body, pkg, tagsJSONMap(tags), "prepared_problem.upload")
 	if !ok {
 		return
 	}
@@ -2498,33 +2447,13 @@ func (s Server) publishPreparedProblem(c *gin.Context) {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "archived prepared problem cannot be published"})
 		return
 	}
-	var req struct {
-		ClassIDs  []uint     `json:"class_ids"`
-		ReleaseAt *time.Time `json:"release_at"`
-	}
-	if !bind(c, &req) {
-		return
-	}
-	if len(req.ClassIDs) == 0 {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "class_ids is required"})
-		return
-	}
-	if !s.validateClassIDs(c, user, req.ClassIDs) {
-		return
-	}
-	if err := s.DB.Transaction(func(tx *gorm.DB) error {
-		for _, classID := range dedupeUint(req.ClassIDs) {
-			if err := s.linkProblemToClass(tx, classID, item.ProblemID, req.ReleaseAt); err != nil {
-				return err
-			}
-		}
-		return nil
-	}); err != nil {
+	now := time.Now()
+	if err := s.DB.Model(&models.PreparedProblem{}).Where("id = ?", item.ID).Update("published_at", now).Error; err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 		return
 	}
-	services.Audit(c, s.DB, "prepared_problem.publish", "prepared_problem", item.ID, datatypes.JSONMap{"problem_id": item.ProblemID, "class_ids": req.ClassIDs, "release_at": req.ReleaseAt})
-	c.JSON(http.StatusOK, gin.H{"published": true, "problem_id": item.ProblemID})
+	services.Audit(c, s.DB, "prepared_problem.publish", "prepared_problem", item.ID, datatypes.JSONMap{"problem_id": item.ProblemID, "published_at": now})
+	c.JSON(http.StatusOK, gin.H{"published": true, "problem_id": item.ProblemID, "published_at": now})
 }
 
 func (s Server) listAssignments(c *gin.Context) {
@@ -3763,8 +3692,8 @@ func (s Server) createSubmission(c *gin.Context) {
 				return
 			}
 			examAttempt = req.ExamID
-		} else if !s.canStudentAccessProblem(user.ID, req.ProblemID) {
-			c.JSON(http.StatusForbidden, gin.H{"error": "problem is not available in your classes"})
+		} else if !s.isProblemPublic(req.ProblemID) {
+			c.JSON(http.StatusForbidden, gin.H{"error": "problem is not publicly available"})
 			return
 		}
 	} else {
@@ -4334,6 +4263,26 @@ func queryUint(c *gin.Context, name string) (uint, bool) {
 	return uint(id), true
 }
 
+func (s Server) problemByRouteParam(c *gin.Context) (models.Problem, bool) {
+	value := strings.TrimSpace(c.Param("id"))
+	if value == "" {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid problem id"})
+		return models.Problem{}, false
+	}
+	query := s.DB.Where("deleted_at IS NULL")
+	if id, err := strconv.ParseUint(value, 10, 64); err == nil && id > 0 {
+		query = query.Where("id = ?", uint(id))
+	} else {
+		query = query.Where("upper(display_code) = ?", strings.ToUpper(value))
+	}
+	var problem models.Problem
+	if err := query.First(&problem).Error; err != nil {
+		c.JSON(http.StatusNotFound, gin.H{"error": "problem not found"})
+		return models.Problem{}, false
+	}
+	return problem, true
+}
+
 func idParam(c *gin.Context, name string) (uint, bool) {
 	raw := c.Param(name)
 	id, err := strconv.ParseUint(raw, 10, 64)
@@ -4455,6 +4404,9 @@ func (s Server) canReadProblemAsset(user models.User, problem models.Problem, as
 	if object, _ := problemAssetObject(problem.Manifest, assetPath); object == "" {
 		return false
 	}
+	if s.isProblemPublic(problem.ID) {
+		return true
+	}
 	if user.Role == models.RoleAdmin {
 		return true
 	}
@@ -4465,6 +4417,29 @@ func (s Server) canReadProblemAsset(user models.User, problem models.Problem, as
 		return s.problemInVisibleClass(user, problem.ID)
 	}
 	return s.canStudentAccessProblemRelation(user.ID, problem.ID) || s.studentHasProblemInAccessibleWork(user.ID, problem.ID)
+}
+
+func publicProblemSQL() string {
+	return `(NOT EXISTS (
+		SELECT 1 FROM prepared_problems WHERE prepared_problems.problem_id = problems.id
+	) OR EXISTS (
+		SELECT 1 FROM prepared_problems
+		WHERE prepared_problems.problem_id = problems.id
+		  AND prepared_problems.published_at IS NOT NULL
+	) OR EXISTS (
+		SELECT 1 FROM class_problems
+		WHERE class_problems.problem_id = problems.id
+		  AND (class_problems.release_at IS NULL OR class_problems.release_at <= CURRENT_TIMESTAMP)
+	))`
+}
+
+func (s Server) isProblemPublic(problemID uint) bool {
+	var count int64
+	s.DB.Model(&models.Problem{}).
+		Where("problems.id = ? AND problems.deleted_at IS NULL", problemID).
+		Where(publicProblemSQL()).
+		Count(&count)
+	return count > 0
 }
 
 func (s Server) canStudentAccessProblem(userID uint, problemID uint) bool {
@@ -5822,51 +5797,6 @@ func tagsJSONMap(tags []string) datatypes.JSONMap {
 		return nil
 	}
 	return datatypes.JSONMap{"labels": tags}
-}
-
-func (s Server) validateClassIDs(c *gin.Context, user models.User, classIDs []uint) bool {
-	seen := map[uint]bool{}
-	for _, classID := range classIDs {
-		if classID == 0 || seen[classID] {
-			continue
-		}
-		seen[classID] = true
-		if !s.canManageClass(user, classID) {
-			c.JSON(http.StatusForbidden, gin.H{"error": "cannot publish to class"})
-			return false
-		}
-	}
-	return true
-}
-
-func (s Server) parseProblemClassIDs(c *gin.Context, user models.User) ([]uint, bool) {
-	raw := append([]string{}, c.PostFormArray("class_ids")...)
-	if single := c.PostForm("class_ids"); single != "" {
-		raw = append(raw, strings.Split(single, ",")...)
-	}
-	var ids []uint
-	seen := map[uint]bool{}
-	for _, item := range raw {
-		item = strings.TrimSpace(item)
-		if item == "" {
-			continue
-		}
-		id, err := strconv.ParseUint(item, 10, 64)
-		if err != nil || id == 0 {
-			c.JSON(http.StatusBadRequest, gin.H{"error": "invalid class_ids"})
-			return nil, false
-		}
-		classID := uint(id)
-		if seen[classID] {
-			continue
-		}
-		seen[classID] = true
-		ids = append(ids, classID)
-	}
-	if !s.validateClassIDs(c, user, ids) {
-		return nil, false
-	}
-	return ids, true
 }
 
 func validLanguage(language string) bool {

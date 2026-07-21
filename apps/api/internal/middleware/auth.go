@@ -33,6 +33,14 @@ func SignToken(secret string, user models.User) (string, error) {
 }
 
 func Auth(db *gorm.DB, secret string) gin.HandlerFunc {
+	return authenticate(db, secret, true)
+}
+
+func OptionalAuth(db *gorm.DB, secret string) gin.HandlerFunc {
+	return authenticate(db, secret, false)
+}
+
+func authenticate(db *gorm.DB, secret string, required bool) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		header := c.GetHeader("Authorization")
 		tokenString := c.Query("token")
@@ -40,7 +48,11 @@ func Auth(db *gorm.DB, secret string) gin.HandlerFunc {
 			tokenString = strings.TrimPrefix(header, "Bearer ")
 		}
 		if tokenString == "" {
-			c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{"error": "missing bearer token"})
+			if required {
+				c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{"error": "missing bearer token"})
+				return
+			}
+			c.Next()
 			return
 		}
 		token, err := jwt.ParseWithClaims(tokenString, &Claims{}, func(token *jwt.Token) (any, error) {

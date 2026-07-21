@@ -63,6 +63,7 @@ export interface PreparedProblem {
   source?: string
   notes?: string
   archived?: boolean
+  published_at?: string
   problem: Problem
   created_at?: string
   updated_at?: string
