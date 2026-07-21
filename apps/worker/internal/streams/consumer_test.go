@@ -31,8 +31,11 @@ func TestRetryableErrorClassification(t *testing.T) {
 }
 
 func TestRetryableSystemMessage(t *testing.T) {
-	if !isRetryableSystemMessage("docker sandbox image or daemon is not ready") {
+	if !isRetryableSystemMessage("docker sandbox infrastructure is not ready") {
 		t.Fatal("expected docker daemon message to be retryable")
+	}
+	if !isRetryableSystemMessage("mkdir /tmp/school-oj-worker/seccomp: no such file or directory") {
+		t.Fatal("expected missing seccomp directory to be retryable")
 	}
 	if isRetryableSystemMessage("compile failed") {
 		t.Fatal("compile failure must not be retryable")

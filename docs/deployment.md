@@ -13,6 +13,11 @@ Pull judge sandbox images before the first submission:
 docker compose restart worker
 ```
 
+The compose worker uses `/var/lib/school-oj-worker` as its default host-visible
+sandbox root. Keep `OJ_WORK_ROOT` on persistent storage; do not configure it
+under `/tmp` because host cleanup can remove the path while the worker is still
+running.
+
 Open:
 
 - Web: http://localhost:3000
