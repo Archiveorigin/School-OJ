@@ -313,21 +313,7 @@ func readLimited(r io.Reader, maxBytes int64, label string) ([]byte, error) {
 }
 
 func isRetryableSystemMessage(message string) bool {
-	text := strings.ToLower(message)
-	markers := []string{
-		"docker sandbox image or daemon is not ready",
-		"cannot connect to the docker daemon",
-		"unable to find image",
-		"no such image",
-		"failed to resolve",
-		"toomanyrequests",
-	}
-	for _, marker := range markers {
-		if strings.Contains(text, marker) {
-			return true
-		}
-	}
-	return false
+	return runner.IsInfrastructureError(message)
 }
 
 func (c Consumer) updateProgress(sub *models.Submission, status models.SubmissionStatus) {

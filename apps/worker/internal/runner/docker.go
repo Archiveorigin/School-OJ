@@ -46,8 +46,10 @@ type DockerRunner struct {
 	Cfg config.Config
 }
 
+const bundledSeccompProfile = "/etc/oj-seccomp.json"
+
 func (r DockerRunner) Judge(ctx context.Context, req JudgeRequest) JudgeResult {
-	if err := r.prepareHostVisibleRoot(); err != nil {
+	if err := r.Prepare(); err != nil {
 		return systemError(err)
 	}
 	workDir, err := os.MkdirTemp(r.Cfg.SandboxWorkRoot, fmt.Sprintf("oj-%d-", req.SubmissionID))
@@ -241,7 +243,7 @@ func (r DockerRunner) runContainer(ctx context.Context, workDir, image, command,
 		return nonEmpty(combined, "output limit exceeded"), models.StatusOutputLimit, elapsed
 	}
 	if err != nil {
-		if isDockerInfraError(combined) {
+		if IsInfrastructureError(combined) {
 			return dockerInfraMessage(combined), models.StatusSystemError, elapsed
 		}
 		if strings.Contains(combined, "Killed") || strings.Contains(combined, "memory") {
@@ -307,9 +309,11 @@ func diffMessage(expected, actual string) string {
 	return fmt.Sprintf("expected %q, got %q", expected, normalize(actual))
 }
 
-func isDockerInfraError(output string) bool {
+// IsInfrastructureError reports whether Docker failed before user code could run.
+func IsInfrastructureError(output string) bool {
 	text := strings.ToLower(output)
 	markers := []string{
+		"docker sandbox infrastructure is not ready",
 		"unable to find image",
 		"no such image",
 		"pull access denied",
@@ -319,11 +323,20 @@ func isDockerInfraError(output string) bool {
 		"cannot connect to the docker daemon",
 		"permission denied while trying to connect",
 		"toomanyrequests",
+		"error while creating mount source path",
+		"bind source path does not exist",
+		"invalid mount config for type \"bind\"",
 	}
 	for _, marker := range markers {
 		if strings.Contains(text, marker) {
 			return true
 		}
+	}
+	pathFailure := strings.Contains(text, "no such file or directory") ||
+		strings.Contains(text, "permission denied") ||
+		strings.Contains(text, "invalid seccomp")
+	if pathFailure && (strings.Contains(text, "seccomp") || strings.Contains(text, "sandbox work root")) {
+		return true
 	}
 	return false
 }
@@ -333,7 +346,7 @@ func dockerInfraMessage(output string) string {
 	if len(output) > 800 {
 		output = output[:800]
 	}
-	return "docker sandbox image or daemon is not ready; run ./scripts/pull_sandbox_images.sh on the host and restart worker. Details: " + output
+	return "docker sandbox infrastructure is not ready; verify sandbox images, Docker daemon access, and the host work root. Details: " + output
 }
 
 func failureMessage(phase string, status models.SubmissionStatus, output string) string {
@@ -375,22 +388,61 @@ func systemError(err error) JudgeResult {
 	return JudgeResult{Status: models.StatusSystemError, Message: err.Error()}
 }
 
-func (r DockerRunner) prepareHostVisibleRoot() error {
-	if err := os.MkdirAll(r.Cfg.SandboxWorkRoot, 0o777); err != nil {
-		return err
+// Prepare creates the host-visible sandbox root and installs the seccomp profile.
+func (r DockerRunner) Prepare() error {
+	return r.prepareHostVisibleRoot(bundledSeccompProfile)
+}
+
+func (r DockerRunner) prepareHostVisibleRoot(seccompSource string) error {
+	workRoot := filepath.Clean(r.Cfg.SandboxWorkRoot)
+	if !filepath.IsAbs(workRoot) {
+		return fmt.Errorf("sandbox work root must be absolute: %s", r.Cfg.SandboxWorkRoot)
 	}
-	seccompDir := filepath.Dir(r.Cfg.SandboxSeccomp)
-	if err := os.MkdirAll(seccompDir, 0o777); err != nil {
-		return err
+	seccompPath := filepath.Clean(r.Cfg.SandboxSeccomp)
+	if !filepath.IsAbs(seccompPath) {
+		return fmt.Errorf("sandbox seccomp path must be absolute: %s", r.Cfg.SandboxSeccomp)
 	}
-	if _, err := os.Stat(r.Cfg.SandboxSeccomp); err == nil {
+	if err := os.MkdirAll(workRoot, 0o755); err != nil {
+		return fmt.Errorf("create sandbox work root %s: %w", workRoot, err)
+	}
+	seccompDir := filepath.Dir(seccompPath)
+	if err := os.MkdirAll(seccompDir, 0o755); err != nil {
+		return fmt.Errorf("create seccomp directory %s: %w", seccompDir, err)
+	}
+	body, err := os.ReadFile(seccompSource)
+	if err != nil {
+		return fmt.Errorf("read bundled seccomp profile %s: %w", seccompSource, err)
+	}
+	if current, err := os.ReadFile(seccompPath); err == nil && bytes.Equal(current, body) {
 		return nil
+	} else if err != nil && !os.IsNotExist(err) {
+		return fmt.Errorf("read sandbox seccomp profile %s: %w", seccompPath, err)
 	}
-	body, err := os.ReadFile("/etc/oj-seccomp.json")
+	if err := writeFileAtomic(seccompPath, body, 0o644); err != nil {
+		return fmt.Errorf("write sandbox seccomp profile %s: %w", seccompPath, err)
+	}
+	return nil
+}
+
+func writeFileAtomic(path string, body []byte, mode os.FileMode) error {
+	tmp, err := os.CreateTemp(filepath.Dir(path), ".oj-seccomp-*")
 	if err != nil {
 		return err
 	}
-	return os.WriteFile(r.Cfg.SandboxSeccomp, body, 0o644)
+	tmpPath := tmp.Name()
+	defer os.Remove(tmpPath)
+	if _, err := tmp.Write(body); err != nil {
+		_ = tmp.Close()
+		return err
+	}
+	if err := tmp.Chmod(mode); err != nil {
+		_ = tmp.Close()
+		return err
+	}
+	if err := tmp.Close(); err != nil {
+		return err
+	}
+	return os.Rename(tmpPath, path)
 }
 
 func max(a, b int) int {

@@ -16,6 +16,10 @@ import (
 func main() {
 	ctx := context.Background()
 	cfg := config.Load()
+	dockerRunner := runner.DockerRunner{Cfg: cfg}
+	if err := dockerRunner.Prepare(); err != nil {
+		log.Fatalf("sandbox: %v", err)
+	}
 	gdb, err := db.Connect(ctx, cfg)
 	if err != nil {
 		log.Fatalf("database: %v", err)
@@ -36,7 +40,7 @@ func main() {
 		Redis:  redisClient,
 		MinIO:  minioClient,
 		Cfg:    cfg,
-		Runner: runner.DockerRunner{Cfg: cfg},
+		Runner: dockerRunner,
 	}
 	log.Printf("judge-worker consumer=%s stream=%s group=%s", cfg.Consumer, cfg.Stream, cfg.Group)
 	if err := consumer.Run(ctx); err != nil {
