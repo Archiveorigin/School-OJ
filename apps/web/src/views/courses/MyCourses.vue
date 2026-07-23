@@ -10,7 +10,10 @@
     </div>
 
     <div v-if="auth.role === 'student'" class="panel join-panel">
-      <div><strong>加入新课程</strong><p class="muted">输入教师提供的课程邀请码或班级邀请码。</p></div>
+      <div>
+        <strong>{{ route.query.join_code ? '已识别课程二维码' : '加入新课程' }}</strong>
+        <p class="muted">{{ route.query.join_code ? '请核对邀请码后确认加入课程。' : '输入教师提供的课程邀请码或班级邀请码。' }}</p>
+      </div>
       <div class="join-actions">
         <el-input v-model="joinCode" placeholder="课程或班级邀请码" clearable @keyup.enter="joinCourse" />
         <el-button type="primary" :loading="joining" @click="joinCourse">加入</el-button>
@@ -22,7 +25,7 @@
         <el-input v-model="keyword" clearable placeholder="搜索课程号、课程名、学期或学院" />
         <el-button :loading="loading" @click="load">刷新</el-button>
       </div>
-      <el-table :data="filteredCourses" v-loading="loading" @row-click="openCourse">
+      <el-table :data="pagedCourses" v-loading="loading" @row-click="openCourse">
         <el-table-column prop="code" label="课程号" width="160" />
         <el-table-column prop="name" label="课程名" min-width="220" />
         <el-table-column prop="term" label="学期" width="150" />
@@ -34,29 +37,38 @@
         </el-table-column>
       </el-table>
       <el-empty v-if="!loading && !filteredCourses.length" description="暂无课程" />
+      <ListPagination v-model:page="page" v-model:page-size="pageSize" :total="filteredCourses.length" />
     </div>
   </section>
 </template>
 
 <script setup lang="ts">
 import { ElMessage } from 'element-plus'
-import { computed, onMounted, ref } from 'vue'
-import { useRouter } from 'vue-router'
+import { computed, onMounted, ref, watch } from 'vue'
+import { useRoute, useRouter } from 'vue-router'
 import { client } from '../../api/client'
+import ListPagination from '../../components/ListPagination.vue'
 import { useAuthStore } from '../../stores/auth'
 
 const auth = useAuthStore()
+const route = useRoute()
 const router = useRouter()
 const courses = ref<any[]>([])
 const keyword = ref('')
 const joinCode = ref('')
 const loading = ref(false)
 const joining = ref(false)
+const page = ref(1)
+const pageSize = ref(10)
 
 const filteredCourses = computed(() => {
   const text = keyword.value.trim().toLowerCase()
   if (!text) return courses.value
   return courses.value.filter((course) => [course.code, course.name, course.term, course.college].some((value) => String(value || '').toLowerCase().includes(text)))
+})
+const pagedCourses = computed(() => {
+  const start = (page.value - 1) * pageSize.value
+  return filteredCourses.value.slice(start, start + pageSize.value)
 })
 
 async function load() {
@@ -95,7 +107,12 @@ function openCourse(course: any) {
   router.push(`/my/courses/${course.id}`)
 }
 
-onMounted(load)
+watch([keyword, pageSize], () => { page.value = 1 })
+onMounted(() => {
+  const queryCode = typeof route.query.join_code === 'string' ? route.query.join_code : ''
+  if (queryCode) joinCode.value = queryCode
+  void load()
+})
 </script>
 
 <style scoped>

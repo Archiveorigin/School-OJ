@@ -7,7 +7,7 @@
       </RouterLink>
       <el-menu router :default-active="activeMenu" class="admin-menu" @select="mobileOpen = false">
         <el-menu-item v-for="item in visibleItems" :key="item.path" :index="item.path">
-          <span class="menu-mark">{{ item.mark }}</span><span>{{ item.label }}</span>
+          <span class="menu-dot" aria-hidden="true"></span><span>{{ item.label }}</span>
         </el-menu-item>
       </el-menu>
       <div class="admin-sidebar-footer">
@@ -42,13 +42,13 @@ const route = useRoute()
 const router = useRouter()
 const mobileOpen = ref(false)
 const items = [
-  { path: '/admin', label: '管理概览', mark: '01' },
-  { path: '/admin/courses', label: '课程管理', mark: '02' },
-  { path: '/admin/classes', label: '班级管理', mark: '03' },
-  { path: '/admin/prepared-problems', label: '预备题库', mark: '04' },
-  { path: '/admin/plagiarism', label: 'JPlag 查重', mark: '05' },
-  { path: '/admin/audit-logs', label: '审计日志', mark: '06', roles: ['admin'] },
-  { path: '/admin/users', label: '用户管理', mark: '07', roles: ['admin'] }
+  { path: '/admin', label: '管理概览' },
+  { path: '/admin/courses', label: '课程管理' },
+  { path: '/admin/classes', label: '班级管理' },
+  { path: '/admin/prepared-problems', label: '预备题库' },
+  { path: '/admin/plagiarism', label: 'JPlag 查重' },
+  { path: '/admin/audit-logs', label: '审计日志', roles: ['admin'] },
+  { path: '/admin/users', label: '用户管理', roles: ['admin'] }
 ]
 const visibleItems = computed(() => items.filter((item) => !item.roles || item.roles.includes(auth.role || '')))
 const activeMenu = computed(() => String(route.meta.adminMenu || '/admin'))
@@ -69,7 +69,8 @@ function toggleTheme() {
 .admin-menu { flex: 1; padding: 16px 10px; border-right: 0; background: transparent; }
 .admin-menu :deep(.el-menu-item) { gap: 12px; height: 48px; margin: 4px 0; color: #a9bdd2; border-radius: 9px; }
 .admin-menu :deep(.el-menu-item:hover), .admin-menu :deep(.el-menu-item.is-active) { color: #fff; background: rgba(14, 165, 233, .16); }
-.menu-mark { color: #38bdf8; font-size: 10px; font-weight: 800; }
+.menu-dot { width: 7px; height: 7px; flex: 0 0 auto; border: 1px solid #38bdf8; border-radius: 50%; }
+.admin-menu :deep(.el-menu-item.is-active) .menu-dot { background: #38bdf8; box-shadow: 0 0 0 4px rgba(56,189,248,.12); }
 .admin-sidebar-footer { display: flex; padding: 18px; border-top: 1px solid rgba(255,255,255,.08); }
 .admin-content { min-width: 0; }
 .admin-topbar { position: sticky; top: 0; z-index: 20; display: flex; align-items: center; justify-content: space-between; min-height: 72px; padding: 0 28px; border-bottom: 1px solid var(--border); background: var(--glass); backdrop-filter: blur(16px); }

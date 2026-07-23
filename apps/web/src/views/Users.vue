@@ -9,7 +9,7 @@
     </div>
 
     <div class="panel">
-      <el-table :data="users" v-loading="loading">
+      <el-table :data="pagedUsers" v-loading="loading">
         <el-table-column prop="email" label="邮箱" min-width="220" />
         <el-table-column prop="name" label="姓名" min-width="140" />
         <el-table-column label="角色" width="120">
@@ -29,6 +29,7 @@
           </template>
         </el-table-column>
       </el-table>
+      <ListPagination v-model:page="page" v-model:page-size="pageSize" :total="users.length" />
     </div>
 
     <el-dialog v-model="createVisible" title="新建用户" width="520px" @closed="resetCreateForm">
@@ -103,8 +104,9 @@
 
 <script setup lang="ts">
 import { ElMessage, ElMessageBox } from 'element-plus'
-import { onMounted, reactive, ref } from 'vue'
+import { computed, onMounted, reactive, ref, watch } from 'vue'
 import { client, type Role, type User } from '../api/client'
+import ListPagination from '../components/ListPagination.vue'
 import { formatDateTime } from '../features/time'
 import { useAuthStore } from '../stores/auth'
 
@@ -117,6 +119,9 @@ const resetVisible = ref(false)
 const savingCreate = ref(false)
 const savingEdit = ref(false)
 const savingReset = ref(false)
+const page = ref(1)
+const pageSize = ref(20)
+const pagedUsers = computed(() => users.value.slice((page.value - 1) * pageSize.value, page.value * pageSize.value))
 
 const createForm = reactive({
   email: '',
@@ -287,6 +292,7 @@ function roleText(role: string) {
   return '学生'
 }
 
+watch(pageSize, () => { page.value = 1 })
 onMounted(load)
 </script>
 

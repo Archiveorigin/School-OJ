@@ -224,31 +224,64 @@ func (s Server) getProfile(c *gin.Context) {
 		Status string `json:"status"`
 		Count  int    `json:"count"`
 	}
+	type activityProblem struct {
+		ID          uint   `json:"id"`
+		DisplayCode string `json:"display_code"`
+		Title       string `json:"title"`
+	}
 	type activityRow struct {
-		Date  string `json:"date"`
-		Count int    `json:"count"`
+		Date     string            `json:"date"`
+		Count    int               `json:"count"`
+		Problems []activityProblem `json:"problems"`
+	}
+	type activityProblemRow struct {
+		Date        string
+		ID          uint
+		DisplayCode string
+		Title       string
 	}
 	var byStatus []statusRow
 	s.DB.Table("submissions").Select("status, count(*) as count").Where("user_id = ?", user.ID).Group("status").Scan(&byStatus)
-	var activityRows []activityRow
-	activityLabel := "代码提交活跃度"
-	activityUnit := "次提交"
+	var problemRows []activityProblemRow
+	activityLabel := "解题活跃度"
+	activityUnit := "道题"
 	if user.Role == models.RoleTeacher || user.Role == models.RoleAdmin {
 		activityLabel = "题目上传活跃度"
-		activityUnit = "次上传"
-		s.DB.Raw("select to_char(created_at::date, 'YYYY-MM-DD') as date, count(*) as count from problems where owner_id = ? and created_at >= ? group by created_at::date order by date asc", user.ID, time.Now().AddDate(0, 0, -364)).Scan(&activityRows)
+		activityUnit = "道题"
+		s.DB.Raw(`
+			select to_char(created_at::date, 'YYYY-MM-DD') as date, id, display_code, title
+			from problems
+			where owner_id = ? and created_at >= ? and deleted_at is null
+			order by created_at asc
+		`, user.ID, time.Now().AddDate(0, 0, -364)).Scan(&problemRows)
 	} else {
-		s.DB.Raw("select to_char(created_at::date, 'YYYY-MM-DD') as date, count(*) as count from submissions where user_id = ? and created_at >= ? group by created_at::date order by date asc", user.ID, time.Now().AddDate(0, 0, -364)).Scan(&activityRows)
+		s.DB.Raw(`
+			select to_char(min(s.created_at)::date, 'YYYY-MM-DD') as date,
+			       p.id, p.display_code, p.title
+			from submissions s
+			join problems p on p.id = s.problem_id
+			where s.user_id = ? and s.status = ? and s.created_at >= ? and p.deleted_at is null
+			group by p.id, p.display_code, p.title
+			order by date asc, p.display_code asc
+		`, user.ID, models.StatusAccepted, time.Now().AddDate(0, 0, -364)).Scan(&problemRows)
 	}
-	counts := map[string]int{}
-	for _, item := range activityRows {
-		counts[item.Date] = item.Count
+	problemsByDate := map[string][]activityProblem{}
+	for _, item := range problemRows {
+		problemsByDate[item.Date] = append(problemsByDate[item.Date], activityProblem{
+			ID:          item.ID,
+			DisplayCode: item.DisplayCode,
+			Title:       item.Title,
+		})
 	}
 	activity := make([]activityRow, 0, 365)
 	today := time.Now()
 	for i := 364; i >= 0; i-- {
 		key := today.AddDate(0, 0, -i).Format("2006-01-02")
-		activity = append(activity, activityRow{Date: key, Count: counts[key]})
+		problems := problemsByDate[key]
+		if problems == nil {
+			problems = []activityProblem{}
+		}
+		activity = append(activity, activityRow{Date: key, Count: len(problems), Problems: problems})
 	}
 	var recent []models.Submission
 	s.DB.Where("user_id = ?", user.ID).Order("id desc").Limit(10).Find(&recent)
@@ -304,6 +337,41 @@ func (s Server) updateProfile(c *gin.Context) {
 	var updated models.User
 	s.DB.First(&updated, user.ID)
 	c.JSON(http.StatusOK, updated)
+}
+
+func (s Server) updateProfilePassword(c *gin.Context) {
+	user, _ := middleware.CurrentUser(c)
+	var req struct {
+		CurrentPassword string `json:"current_password" binding:"required"`
+		NewPassword     string `json:"new_password" binding:"required"`
+	}
+	if !bind(c, &req) {
+		return
+	}
+	if len(req.NewPassword) < 6 {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "password must be at least 6 characters"})
+		return
+	}
+	var stored models.User
+	if err := s.DB.First(&stored, user.ID).Error; err != nil {
+		c.JSON(http.StatusNotFound, gin.H{"error": "user not found"})
+		return
+	}
+	if bcrypt.CompareHashAndPassword([]byte(stored.PasswordHash), []byte(req.CurrentPassword)) != nil {
+		c.JSON(http.StatusUnauthorized, gin.H{"error": "current password is incorrect"})
+		return
+	}
+	hash, err := bcrypt.GenerateFromPassword([]byte(req.NewPassword), bcrypt.DefaultCost)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		return
+	}
+	if err := s.DB.Model(&models.User{}).Where("id = ?", user.ID).Update("password_hash", string(hash)).Error; err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+	services.Audit(c, s.DB, "profile.password_update", "user", user.ID, nil)
+	c.JSON(http.StatusOK, gin.H{"updated": true})
 }
 
 func (s Server) deleteProfile(c *gin.Context) {

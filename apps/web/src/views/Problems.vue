@@ -53,7 +53,7 @@
       </div>
 
       <section class="panel problem-list-panel">
-        <el-table :data="filteredProblems" row-key="id" @row-click="openProblem">
+        <el-table :data="pagedProblems" row-key="id" @row-click="openProblem">
           <el-table-column label="题号" width="100">
             <template #default="{ row }">
               <span class="problem-code">{{ problemDisplayCode(row) }}</span>
@@ -96,6 +96,7 @@
           </el-table-column>
         </el-table>
         <el-empty v-if="!filteredProblems.length" description="暂无符合条件的题目" />
+        <ListPagination v-model:page="page" v-model:page-size="pageSize" :total="filteredProblems.length" />
       </section>
     </div>
 
@@ -246,10 +247,11 @@
 
 <script setup lang="ts">
 import { ElMessage } from 'element-plus'
-import { computed, onMounted, reactive, ref } from 'vue'
+import { computed, onMounted, reactive, ref, watch } from 'vue'
 import { useRouter } from 'vue-router'
 import { client, type PreparedProblem, type Problem } from '../api/client'
 import MarkdownRenderer from '../components/MarkdownRenderer.vue'
+import ListPagination from '../components/ListPagination.vue'
 import {
   difficultyFromTags,
   difficultyTagType,
@@ -282,6 +284,8 @@ const preparedPublishVisible = ref(false)
 const preparedItems = ref<PreparedProblem[]>([])
 const preparedIDs = ref<number[]>([])
 const publishingPrepared = ref(false)
+const page = ref(1)
+const pageSize = ref(20)
 const problemForm = reactive({
   slug: '',
   title: '',
@@ -304,6 +308,10 @@ const difficultyOptions = computed(() => {
   return [...set].sort((a, b) => a.localeCompare(b, 'zh-CN'))
 })
 const filteredProblems = computed(() => problems.value.filter((problem) => problemMatchesFilters(problem, filters)))
+const pagedProblems = computed(() => {
+  const start = (page.value - 1) * pageSize.value
+  return filteredProblems.value.slice(start, start + pageSize.value)
+})
 const solvedCount = computed(() => problems.value.filter((p) => p.progress_status === 'accepted').length)
 
 async function load() {
@@ -328,6 +336,11 @@ function resetFilters() {
   filters.difficulty = ''
   filters.status = 'all'
 }
+
+watch(
+  () => [filters.keyword, filters.tag, filters.difficulty, filters.status, pageSize.value],
+  () => { page.value = 1 }
+)
 
 function openProblemDialog() {
   problemDialogVisible.value = true

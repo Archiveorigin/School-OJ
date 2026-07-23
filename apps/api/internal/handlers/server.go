@@ -295,6 +295,7 @@ func (s Server) Router() *gin.Engine {
 	auth.GET("/me/active-exam", s.activeExam)
 	auth.GET("/profile", s.getProfile)
 	auth.PUT("/profile", s.updateProfile)
+	auth.POST("/profile/password", s.updateProfilePassword)
 	auth.POST("/profile/email-code", s.sendProfileEmailCode)
 	auth.POST("/profile/email", s.rebindEmail)
 	auth.DELETE("/profile", s.deleteProfile)

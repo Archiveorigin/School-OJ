@@ -54,7 +54,7 @@
 
       <div class="prepared-layout">
         <section class="panel prepared-list-panel">
-          <el-table :data="items" highlight-current-row @current-change="selectItem">
+          <el-table :data="pagedItems" highlight-current-row @current-change="selectItem">
             <el-table-column label="编号" width="88">
               <template #default="{ row }">{{ problemDisplayCode(row.problem) }}</template>
             </el-table-column>
@@ -93,6 +93,7 @@
               </template>
             </el-table-column>
           </el-table>
+          <ListPagination v-model:page="page" v-model:page-size="pageSize" :total="items.length" />
         </section>
         <aside v-if="selected" class="panel detail">
           <div class="detail-head">
@@ -341,8 +342,9 @@
 
 <script setup lang="ts">
 import { ElMessage } from 'element-plus'
-import { computed, onMounted, reactive, ref } from 'vue'
+import { computed, onMounted, reactive, ref, watch } from 'vue'
 import { client, type PreparedProblem } from '../api/client'
+import ListPagination from '../components/ListPagination.vue'
 import MarkdownRenderer from '../components/MarkdownRenderer.vue'
 import ProblemTestDownloads from '../components/ProblemTestDownloads.vue'
 import { problemDisplayCode } from '../features/problems/problemMeta'
@@ -361,6 +363,8 @@ const caseFileRows = ref<CaseFilePair[]>([])
 const caseFileUploadKey = ref(0)
 const saving = ref(false)
 const publishing = ref<PreparedProblem | null>(null)
+const page = ref(1)
+const pageSize = ref(20)
 let caseFileParseSeq = 0
 
 const filters = reactive({
@@ -408,6 +412,7 @@ const folderOptions = computed(() => {
 })
 
 const availableCount = computed(() => items.value.filter((item) => !item.archived && !item.published_at).length)
+const pagedItems = computed(() => items.value.slice((page.value - 1) * pageSize.value, page.value * pageSize.value))
 
 async function load() {
   const params: Record<string, string> = { archived: filters.archived }
@@ -416,6 +421,7 @@ async function load() {
   if (filters.tag) params.tag = filters.tag
   if (filters.difficulty) params.difficulty = filters.difficulty
   items.value = (await client.get('/prepared-problems', { params })).data
+  if ((page.value - 1) * pageSize.value >= items.value.length) page.value = 1
   if (!selected.value || !items.value.some((item) => item.id === selected.value?.id)) {
     selected.value = items.value[0] || null
   }
@@ -742,6 +748,7 @@ function tagList(tags: any) {
   return []
 }
 
+watch(pageSize, () => { page.value = 1 })
 onMounted(load)
 </script>
 

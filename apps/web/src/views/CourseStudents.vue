@@ -53,7 +53,7 @@
       </div>
 
       <el-table
-        :data="filteredStudents"
+        :data="pagedStudents"
         v-loading="loading"
         empty-text="暂无学生加入此课程"
       >
@@ -106,6 +106,7 @@
           </template>
         </span>
       </div>
+      <ListPagination v-model:page="page" v-model:page-size="pageSize" :total="filteredStudents.length" />
     </section>
   </section>
 </template>
@@ -115,6 +116,7 @@ import { ElMessage, ElMessageBox } from 'element-plus'
 import { computed, onMounted, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { client } from '../api/client'
+import ListPagination from '../components/ListPagination.vue'
 
 interface CourseStudent {
   user_id: number
@@ -134,6 +136,8 @@ const loading = ref(false)
 const search = ref('')
 const classFilter = ref('')
 const removingId = ref<number | null>(null)
+const page = ref(1)
+const pageSize = ref(20)
 
 const courseId = computed(() => Number(route.params.id))
 
@@ -168,6 +172,7 @@ const filteredStudents = computed(() => {
   }
   return list
 })
+const pagedStudents = computed(() => filteredStudents.value.slice((page.value - 1) * pageSize.value, page.value * pageSize.value))
 
 function formatDate(value: string) {
   if (!value) return '-'
@@ -214,6 +219,7 @@ async function removeStudent(row: CourseStudent) {
   }
 }
 
+watch([search, classFilter, pageSize], () => { page.value = 1 })
 onMounted(load)
 </script>
 

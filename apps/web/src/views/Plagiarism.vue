@@ -20,7 +20,7 @@
       </div>
     </div>
     <div class="panel">
-      <el-table :data="jobs">
+      <el-table :data="pagedJobs">
         <el-table-column label="课程" min-width="160">
           <template #default="{ row }">{{ courseLabel(row) }}</template>
         </el-table-column>
@@ -37,21 +37,26 @@
           <template #default="{ row }">{{ formatDateTime(row.created_at) }}</template>
         </el-table-column>
       </el-table>
+      <ListPagination v-model:page="page" v-model:page-size="pageSize" :total="jobs.length" />
     </div>
   </section>
 </template>
 
 <script setup lang="ts">
 import { ElMessage } from 'element-plus'
-import { computed, onMounted, reactive, ref } from 'vue'
+import { computed, onMounted, reactive, ref, watch } from 'vue'
 import { client } from '../api/client'
+import ListPagination from '../components/ListPagination.vue'
 import { formatDateTime } from '../features/time'
 
 const jobs = ref<any[]>([])
 const courses = ref<any[]>([])
 const assignments = ref<any[]>([])
+const page = ref(1)
+const pageSize = ref(20)
 const form = reactive<{ course_id?: number; assignment_id?: number; language: string }>({ course_id: undefined, assignment_id: undefined, language: 'cpp' })
 const assignmentOptions = computed(() => assignments.value.filter((item) => !form.course_id || item.course_id === form.course_id))
+const pagedJobs = computed(() => jobs.value.slice((page.value - 1) * pageSize.value, page.value * pageSize.value))
 
 async function load() {
   const [jobsRes, coursesRes, assignmentsRes] = await Promise.all([
@@ -85,6 +90,7 @@ function courseLabel(row: any) {
   return [row.course_code || row.code, row.course_name || row.name].filter(Boolean).join(' ') || '-'
 }
 
+watch(pageSize, () => { page.value = 1 })
 onMounted(load)
 </script>
 

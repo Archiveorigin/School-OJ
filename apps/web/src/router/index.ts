@@ -51,11 +51,11 @@ const router = createRouter({
       ]
     },
     { path: '/profile', component: Profile, meta: { title: '个人中心' } },
-    { path: '/my/courses', component: MyCourses, meta: { title: '我的课程' } },
+    { path: '/my/courses', component: MyCourses, meta: { title: '我的课程', activeMenu: '/my/courses' } },
     {
       path: '/my/courses/:courseId',
       component: CourseWorkspace,
-      meta: { title: '课程空间' },
+      meta: { title: '课程空间', activeMenu: '/my/courses' },
       children: [
         { path: '', component: CourseOverview, meta: { title: '课程概况' } },
         { path: 'assignments', component: Assignments, meta: { title: '课程作业' } },

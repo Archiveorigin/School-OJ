@@ -25,7 +25,7 @@ const props = defineProps<{
   authenticated: boolean
 }>()
 
-const groups = computed(() => visibleNavGroups(props.role))
+const groups = computed(() => visibleNavGroups(props.role, props.authenticated))
 const items = computed(() => {
   const allItems = groups.value.flatMap((group) => group.items)
   return allItems

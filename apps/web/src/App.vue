@@ -1,7 +1,7 @@
 <template>
   <router-view v-if="authPage" />
-  <el-container v-else direction="vertical" class="shell" :class="{ 'exam-shell': studentExamWorkspace, 'admin-shell': adminWorkspace }">
-    <el-header v-if="!studentExamWorkspace && !adminWorkspace" class="topbar" height="auto">
+  <el-container v-else direction="vertical" class="shell" :class="{ 'exam-shell': studentExamWorkspace, 'admin-shell': adminWorkspace, 'course-shell': courseWorkspace }">
+    <el-header v-if="!studentExamWorkspace && !adminWorkspace && !courseWorkspace" class="topbar" height="auto">
       <AppSidebar :active-menu="activeMenu" :role="auth.role" :authenticated="auth.isAuthed" />
       <div class="topbar-actions">
         <el-dropdown v-if="auth.isAuthed" trigger="click" @command="handleCommand">
@@ -12,7 +12,7 @@
           <template #dropdown>
             <el-dropdown-menu>
               <el-dropdown-item command="profile">个人中心</el-dropdown-item>
-              <el-dropdown-item command="courses">我的课程</el-dropdown-item>
+              <el-dropdown-item command="update-profile">更新个人资料</el-dropdown-item>
               <el-dropdown-item v-if="auth.role === 'teacher' || auth.role === 'admin'" command="admin">后台管理</el-dropdown-item>
               <el-dropdown-item command="theme">
                 {{ auth.theme === 'dark' ? '切换明亮模式' : '切换暗黑模式' }}
@@ -24,7 +24,7 @@
         <el-button v-else type="primary" @click="goLogin">登录</el-button>
       </div>
     </el-header>
-    <el-main class="main-content" :class="{ 'exam-main-content': studentExamWorkspace, 'admin-main-content': adminWorkspace }">
+    <el-main class="main-content" :class="{ 'exam-main-content': studentExamWorkspace, 'admin-main-content': adminWorkspace, 'course-main-content': courseWorkspace }">
       <router-view />
     </el-main>
   </el-container>
@@ -54,6 +54,7 @@ const currentExamRouteId = computed(() => {
 })
 const studentExamWorkspace = computed(() => auth.role === 'student' && Boolean(currentExamRouteId.value) && route.path.startsWith('/exams/'))
 const adminWorkspace = computed(() => route.path === '/admin' || route.path.startsWith('/admin/'))
+const courseWorkspace = computed(() => /^\/my\/courses\/[^/]+/.test(route.path))
 const activeExamRoot = computed(() => (examLock.examId ? `/exams/${examLock.examId}` : ''))
 const inActiveExam = computed(() => Boolean(activeExamRoot.value) && (route.path === activeExamRoot.value || route.path.startsWith(`${activeExamRoot.value}/`)))
 
@@ -72,8 +73,8 @@ function handleCommand(command: string) {
     router.push('/profile')
     return
   }
-  if (command === 'courses') {
-    router.push('/my/courses')
+  if (command === 'update-profile') {
+    router.push({ path: '/profile', query: { edit: '1' } })
     return
   }
   if (command === 'admin') {
@@ -206,11 +207,14 @@ watch(
 }
 
 .admin-shell,
-.admin-main-content {
+.admin-main-content,
+.course-shell,
+.course-main-content {
   min-height: 100vh;
 }
 
-.admin-main-content {
+.admin-main-content,
+.course-main-content {
   padding: 0;
 }
 
