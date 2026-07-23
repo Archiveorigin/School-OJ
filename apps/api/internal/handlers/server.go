@@ -349,7 +349,7 @@ func (s Server) Router() *gin.Engine {
 	auth.POST("/exams", middleware.RequireRoles(models.RoleAdmin, models.RoleTeacher), s.createExam)
 	auth.GET("/exams/:id/report/export", middleware.RequireRoles(models.RoleAdmin, models.RoleTeacher), s.exportExamReport)
 	auth.GET("/exams/:id/report", middleware.RequireRoles(models.RoleAdmin, models.RoleTeacher), s.examReport)
-	auth.GET("/exams/:id/ranking", middleware.RequireRoles(models.RoleAdmin, models.RoleTeacher), s.examRanking)
+	auth.GET("/exams/:id/ranking", s.examRanking)
 	auth.DELETE("/exams/:id", middleware.RequireRoles(models.RoleAdmin, models.RoleTeacher), s.deleteExam)
 	auth.POST("/exams/:id/submissions/:submission_id/judge", middleware.RequireRoles(models.RoleAdmin, models.RoleTeacher), s.judgeManualExamSubmission)
 	auth.PUT("/exams/:id/submissions/:submission_id/grade", middleware.RequireRoles(models.RoleAdmin, models.RoleTeacher), s.gradeManualExamSubmission)
@@ -696,6 +696,7 @@ func (s Server) createCourse(c *gin.Context) {
 	req.Code = strings.TrimSpace(req.Code)
 	req.Name = strings.TrimSpace(req.Name)
 	req.Term = strings.TrimSpace(req.Term)
+	req.College = strings.TrimSpace(req.College)
 	req.Description = strings.TrimSpace(req.Description)
 	if req.TeacherID == 0 {
 		req.TeacherID = user.ID
@@ -737,6 +738,7 @@ func (s Server) updateCourse(c *gin.Context) {
 		Code        string `json:"code"`
 		Name        string `json:"name"`
 		Term        string `json:"term"`
+		College     string `json:"college"`
 		Description string `json:"description"`
 		Archived    *bool  `json:"archived"`
 	}
@@ -753,6 +755,7 @@ func (s Server) updateCourse(c *gin.Context) {
 		"code":        code,
 		"name":        name,
 		"term":        strings.TrimSpace(req.Term),
+		"college":     strings.TrimSpace(req.College),
 		"description": strings.TrimSpace(req.Description),
 	}
 	if req.Archived != nil {
@@ -2467,7 +2470,11 @@ func (s Server) listAssignments(c *gin.Context) {
 		}
 		q = q.Where("class_id = ?", classID)
 	}
-	if courseID := c.Query("course_id"); courseID != "" {
+	if courseID, ok := queryUint(c, "course_id"); ok {
+		if !s.canAccessCourse(user, courseID) {
+			c.JSON(http.StatusForbidden, gin.H{"error": "forbidden"})
+			return
+		}
 		q = q.Where("course_id = ?", courseID)
 	}
 	if c.Query("class_id") == "" && c.Query("course_id") == "" {
@@ -2676,7 +2683,11 @@ func (s Server) listExams(c *gin.Context) {
 		}
 		q = q.Where("class_id = ?", classID)
 	}
-	if courseID := c.Query("course_id"); courseID != "" {
+	if courseID, ok := queryUint(c, "course_id"); ok {
+		if !s.canAccessCourse(user, courseID) {
+			c.JSON(http.StatusForbidden, gin.H{"error": "forbidden"})
+			return
+		}
 		q = q.Where("course_id = ?", courseID)
 	}
 	if c.Query("class_id") == "" && c.Query("course_id") == "" {
@@ -2721,16 +2732,17 @@ func (s Server) listExams(c *gin.Context) {
 func (s Server) createExam(c *gin.Context) {
 	user, _ := middleware.CurrentUser(c)
 	var req struct {
-		CourseID     uint               `json:"course_id"`
-		ClassID      *uint              `json:"class_id"`
-		Title        string             `json:"title" binding:"required"`
-		Description  string             `json:"description"`
-		StartsAt     *time.Time         `json:"starts_at"`
-		EndsAt       *time.Time         `json:"ends_at"`
-		ProblemIDs   []uint             `json:"problem_ids"`
-		Problems     []workProblemInput `json:"problems"`
-		ManualReview bool               `json:"manual_review"`
-		LockExit     bool               `json:"lock_exit"`
+		CourseID       uint               `json:"course_id"`
+		ClassID        *uint              `json:"class_id"`
+		Title          string             `json:"title" binding:"required"`
+		Description    string             `json:"description"`
+		StartsAt       *time.Time         `json:"starts_at"`
+		EndsAt         *time.Time         `json:"ends_at"`
+		ProblemIDs     []uint             `json:"problem_ids"`
+		Problems       []workProblemInput `json:"problems"`
+		ManualReview   bool               `json:"manual_review"`
+		LockExit       bool               `json:"lock_exit"`
+		RankingVisible bool               `json:"ranking_visible"`
 	}
 	if !bind(c, &req) {
 		return
@@ -2766,6 +2778,9 @@ func (s Server) createExam(c *gin.Context) {
 	}
 	if req.LockExit {
 		settings["lock_exit"] = true
+	}
+	if req.RankingVisible {
+		settings["ranking_visible"] = true
 	}
 	item := models.Exam{CourseID: req.CourseID, ClassID: req.ClassID, Title: req.Title, Description: req.Description, StartsAt: req.StartsAt, EndsAt: req.EndsAt, Settings: settings}
 	if err := s.DB.Transaction(func(tx *gorm.DB) error {
@@ -2838,21 +2853,22 @@ func (s Server) getExam(c *gin.Context) {
 	summary := s.examSummary(item.ID, user.ID, true)
 	allSubmitted := user.Role == models.RoleStudent && s.examAllSubmitted(item.ID, user.ID)
 	c.JSON(http.StatusOK, gin.H{
-		"exam":           item,
-		"problems":       examProblemViews(item),
-		"now":            now,
-		"closed":         closed,
-		"not_started":    notStarted,
-		"can_submit":     user.Role != models.RoleStudent || (!closed && !notStarted && finishedAt == nil),
-		"manual_review":  examManualReview(item),
-		"lock_exit":      examLockExit(item),
-		"all_submitted":  allSubmitted,
-		"finished_at":    finishedAt,
-		"work_status":    summary.WorkStatus,
-		"total_score":    summary.TotalScore,
-		"max_score":      summary.MaxScore,
-		"score_ready":    summary.ScoreReady,
-		"problem_scores": summary.Problems,
+		"exam":            item,
+		"problems":        examProblemViews(item),
+		"now":             now,
+		"closed":          closed,
+		"not_started":     notStarted,
+		"can_submit":      user.Role != models.RoleStudent || (!closed && !notStarted && finishedAt == nil),
+		"manual_review":   examManualReview(item),
+		"lock_exit":       examLockExit(item),
+		"ranking_visible": examRankingVisible(item),
+		"all_submitted":   allSubmitted,
+		"finished_at":     finishedAt,
+		"work_status":     summary.WorkStatus,
+		"total_score":     summary.TotalScore,
+		"max_score":       summary.MaxScore,
+		"score_ready":     summary.ScoreReady,
+		"problem_scores":  summary.Problems,
 	})
 }
 
@@ -2942,7 +2958,8 @@ func (s Server) examRanking(c *gin.Context) {
 		c.JSON(http.StatusNotFound, gin.H{"error": "exam not found"})
 		return
 	}
-	if !s.canManageCourse(user, item.CourseID) {
+	canManage := s.canManageCourse(user, item.CourseID)
+	if !canManage && (!examRankingVisible(item) || !s.canAccessExam(user, item)) {
 		c.JSON(http.StatusForbidden, gin.H{"error": "forbidden"})
 		return
 	}
@@ -4613,6 +4630,16 @@ func (s Server) canAccessAssignment(user models.User, assignment models.Assignme
 	return s.studentInCourse(user.ID, assignment.CourseID)
 }
 
+func (s Server) canAccessCourse(user models.User, courseID uint) bool {
+	if user.Role == models.RoleAdmin {
+		return true
+	}
+	if user.Role == models.RoleTeacher {
+		return s.canManageCourse(user, courseID)
+	}
+	return s.studentInCourse(user.ID, courseID)
+}
+
 func (s Server) canAccessExam(user models.User, exam models.Exam) bool {
 	if user.Role == models.RoleAdmin {
 		return true
@@ -4721,6 +4748,20 @@ func examManualReview(exam models.Exam) bool {
 
 func examLockExit(exam models.Exam) bool {
 	value, ok := exam.Settings["lock_exit"]
+	if !ok {
+		return false
+	}
+	if enabled, ok := value.(bool); ok {
+		return enabled
+	}
+	if text, ok := value.(string); ok {
+		return text == "true" || text == "1"
+	}
+	return false
+}
+
+func examRankingVisible(exam models.Exam) bool {
+	value, ok := exam.Settings["ranking_visible"]
 	if !ok {
 		return false
 	}

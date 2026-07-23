@@ -26,7 +26,7 @@
     <div class="sub-content">
       <div class="panel-header">
         <div class="toolbar">
-          <el-button v-if="canManage" type="primary" @click="router.push('/exams/new')">新建考试</el-button>
+          <el-button v-if="canManage" type="primary" @click="createExam">新建考试</el-button>
           <el-button @click="load">刷新</el-button>
         </div>
       </div>
@@ -60,11 +60,12 @@
           <el-table-column v-if="!canManage" label="分数" width="120">
             <template #default="{ row }">{{ scoreText(row) }}</template>
           </el-table-column>
-          <el-table-column label="操作" width="260">
+          <el-table-column label="操作" width="330">
             <template #default="{ row }">
               <el-button size="small" type="primary" :disabled="!canManage && Boolean(row.finished_at)" @click="openDetail(row)">
                 {{ !canManage && row.finished_at ? '已结束' : '进入' }}
               </el-button>
+              <el-button v-if="canManage || row.settings?.ranking_visible" size="small" @click="router.push(`/exams/${row.id}/ranking`)">榜单</el-button>
               <el-button v-if="canManage" size="small" @click="openReport(row)">完成情况</el-button>
               <el-button v-if="canManage" size="small" type="danger" plain @click="removeExam(row)">删除</el-button>
             </template>
@@ -158,18 +159,18 @@
 <script setup lang="ts">
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { computed, onMounted, ref, watch } from 'vue'
-import { useRouter } from 'vue-router'
+import { useRoute, useRouter } from 'vue-router'
 import { client, type Problem } from '../api/client'
 import ListPagination from '../components/ListPagination.vue'
 import ProblemEditDialog from '../components/ProblemEditDialog.vue'
 import StatusBadge from '../components/StatusBadge.vue'
 import { formatDateTime } from '../features/time'
 import { useAuthStore } from '../stores/auth'
-import { useClassroomStore } from '../stores/classroom'
 
 const auth = useAuthStore()
-const classroom = useClassroomStore()
 const router = useRouter()
+const route = useRoute()
+const courseID = computed(() => Number(route.params.courseId) || undefined)
 const canManage = computed(() => auth.role !== 'student')
 const items = ref<any[]>([])
 const page = ref(1)
@@ -195,10 +196,14 @@ const activeExams = computed(() => items.value.filter((e) => !e.finished_at && n
 const endedExams = computed(() => items.value.filter((e) => e.finished_at || new Date(e.ends_at) < new Date()).length)
 
 async function load() {
-  const params = classroom.activeClassId ? { class_id: classroom.activeClassId } : {}
+  const params = courseID.value ? { course_id: courseID.value } : {}
   const examsRes = await client.get('/exams', { params })
   items.value = examsRes.data
   clampPage()
+}
+
+function createExam() {
+  router.push({ path: '/exams/new', query: courseID.value ? { course_id: courseID.value } : {} })
 }
 
 function openDetail(row: any) {
@@ -340,7 +345,7 @@ function downloadBlob(blob: Blob, filename: string) {
   URL.revokeObjectURL(url)
 }
 
-watch(() => classroom.activeClassId, load)
+watch(courseID, load)
 watch(pageSize, clampPage)
 
 function clampPage() {
@@ -349,10 +354,7 @@ function clampPage() {
   if (page.value < 1) page.value = 1
 }
 
-onMounted(async () => {
-  await classroom.load()
-  await load()
-})
+onMounted(load)
 </script>
 
 <style scoped>

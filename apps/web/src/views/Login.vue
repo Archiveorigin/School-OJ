@@ -2,7 +2,7 @@
   <main class="auth-page">
     <section class="auth-panel">
       <div class="auth-brand">
-        <img src="/logo.jpg" alt="黄海在线题测平台" />
+        <img src="/logo1.png" alt="黄海在线题测平台" />
         <div>
           <h1>黄海在线题测平台</h1>
           <p>面向课程、作业与考试的在线评测平台</p>

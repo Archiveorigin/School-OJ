@@ -37,6 +37,7 @@ type Course struct {
 	Code        string    `json:"code" gorm:"uniqueIndex;size:64;not null"`
 	Name        string    `json:"name" gorm:"size:160;not null"`
 	Term        string    `json:"term" gorm:"size:64;index"`
+	College     string    `json:"college" gorm:"size:160;index"`
 	TeacherID   uint      `json:"teacher_id" gorm:"index;not null"`
 	Description string    `json:"description"`
 	JoinCode    string    `json:"join_code,omitempty" gorm:"uniqueIndex:idx_courses_join_code,where:join_code IS NOT NULL AND join_code <> '';size:12"`

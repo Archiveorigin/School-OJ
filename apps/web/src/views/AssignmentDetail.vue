@@ -11,7 +11,7 @@
         <el-tag v-else-if="detail" type="success">可提交</el-tag>
         <el-tag v-if="detail">{{ workStatusLabel(detail.work_status) }}</el-tag>
         <strong v-if="detail">{{ detail.score_ready ? `${detail.total_score} / ${detail.max_score}` : '分数计算中' }}</strong>
-        <el-button @click="router.push('/assignments')">返回列表</el-button>
+        <el-button @click="router.push(assignmentListPath)">返回列表</el-button>
       </div>
     </div>
 
@@ -90,6 +90,10 @@ type EditorState = { language: string; source: string; live: any }
 const route = useRoute()
 const router = useRouter()
 const detail = ref<any>(null)
+const assignmentListPath = computed(() => {
+  const courseID = detail.value?.assignment?.course_id
+  return courseID ? `/my/courses/${courseID}/assignments` : '/my/courses'
+})
 const activeEntry = ref<DetailProblem | null>(null)
 const activeProblem = computed(() => activeEntry.value?.problem || null)
 const history = ref<Submission[]>([])
@@ -133,7 +137,7 @@ async function loadDetail() {
     await loadHistory()
   } catch (err: any) {
     ElMessage.error(err.response?.data?.error || err.message)
-    router.push('/assignments')
+    router.push(assignmentListPath.value)
   }
 }
 

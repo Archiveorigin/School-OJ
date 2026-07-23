@@ -31,9 +31,10 @@
         <el-button :type="tabType('problems')" @click="goExamTab('problems')">查看题目</el-button>
         <el-button :type="tabType('submit')" @click="goExamTab('submit')">提交代码</el-button>
         <el-button :type="tabType('records')" @click="goExamTab('records')">提交记录</el-button>
+        <el-button v-if="canManage || detail.ranking_visible" :type="tabType('ranking')" @click="goExamTab('ranking')">实时榜单</el-button>
       </div>
 
-      <div class="problem-select-row">
+      <div v-if="activeTab !== 'ranking'" class="problem-select-row">
         <span class="muted">题目选择</span>
         <el-select v-model="activeProblemID" filterable class="problem-select" placeholder="选择题目">
           <el-option
@@ -81,7 +82,7 @@ import { useExamLockStore } from '../stores/examLock'
 
 type DetailProblem = { problem: Problem; score: number; label?: string; problem_id: number }
 type EditorState = { language: string; source: string; live: any; dirty: boolean }
-type ExamTab = 'problems' | 'submit' | 'records'
+type ExamTab = 'problems' | 'submit' | 'records' | 'ranking'
 
 const auth = useAuthStore()
 const examLock = useExamLockStore()
@@ -136,7 +137,7 @@ const source = computed({
 const live = computed(() => activeState.value?.live)
 const activeTab = computed<ExamTab>(() => {
   const value = route.path.split('/').pop()
-  if (value === 'submit' || value === 'records') return value
+  if (value === 'submit' || value === 'records' || value === 'ranking') return value
   return 'problems'
 })
 const scoreSummary = computed(() => {
@@ -165,7 +166,7 @@ async function loadDetail() {
     } else {
       ElMessage.error(err.response?.data?.error || err.message)
     }
-    router.push('/exams')
+    router.push(examListPath())
   }
 }
 
@@ -262,7 +263,7 @@ async function finishExam() {
     detail.value.finished_at = data.finished_at
     examLock.unlock()
     ElMessage.success('考试已结束')
-    router.push('/exams')
+    router.push(examListPath())
   } catch (err: any) {
     ElMessage.error(err.response?.data?.error || err.message)
   } finally {
@@ -275,7 +276,12 @@ async function leavePage() {
     await handleDeadlineReached()
     return
   }
-  router.push('/exams')
+  router.push(examListPath())
+}
+
+function examListPath() {
+  const courseID = detail.value?.exam?.course_id
+  return courseID ? `/my/courses/${courseID}/exams` : '/my/courses'
 }
 
 function ensureEditorState(problemID: number) {
@@ -393,7 +399,7 @@ function exitClosedExam() {
   examLock.unlock()
   if (detail.value) detail.value.closed = true
   ElMessage.warning('考试已截止，已自动退出')
-  router.replace('/exams')
+  router.replace(examListPath())
 }
 
 function handleInvalidExamError(err: any) {
@@ -419,7 +425,7 @@ function forceExitExam(message: string) {
   forceLeavingExam = true
   clearExamRuntimeState(currentExamID())
   ElMessage.warning(message)
-  router.replace('/exams')
+  router.replace(examListPath())
 }
 
 function currentExamID() {

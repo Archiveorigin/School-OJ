@@ -66,6 +66,26 @@ func TestStudentExamEntryDecisionRecordsStartedExam(t *testing.T) {
 	}
 }
 
+func TestExamRankingVisibleReadsBooleanAndStringSettings(t *testing.T) {
+	tests := []struct {
+		name     string
+		exam     models.Exam
+		expected bool
+	}{
+		{name: "missing", exam: models.Exam{}, expected: false},
+		{name: "boolean true", exam: models.Exam{Settings: map[string]interface{}{"ranking_visible": true}}, expected: true},
+		{name: "boolean false", exam: models.Exam{Settings: map[string]interface{}{"ranking_visible": false}}, expected: false},
+		{name: "string true", exam: models.Exam{Settings: map[string]interface{}{"ranking_visible": "true"}}, expected: true},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			if actual := examRankingVisible(test.exam); actual != test.expected {
+				t.Fatalf("examRankingVisible() = %v, want %v", actual, test.expected)
+			}
+		})
+	}
+}
+
 func TestProblemScoreFromSubmissionsUsesBestCompletedSubmission(t *testing.T) {
 	base := time.Date(2026, 6, 13, 9, 0, 0, 0, time.UTC)
 	later := base.Add(time.Minute)

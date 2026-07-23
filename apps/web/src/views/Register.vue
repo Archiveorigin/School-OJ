@@ -2,7 +2,7 @@
   <main class="auth-page">
     <section class="auth-panel">
       <div class="auth-brand">
-        <img src="/logo.jpg" alt="黄海在线题测平台" />
+        <img src="/logo1.png" alt="黄海在线题测平台" />
         <div>
           <h1>创建账号</h1>
           <p>邮箱验证码通过后即可进入平台</p>

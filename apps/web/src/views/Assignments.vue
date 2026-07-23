@@ -85,7 +85,7 @@
     <el-dialog v-model="dialogVisible" title="新建作业" width="860px">
       <el-form :model="form" label-width="90px">
         <el-form-item label="课程">
-          <el-select v-if="form.class_id === -1" v-model="form.course_id" style="width: 100%" @change="onAssignmentCourseChange">
+          <el-select v-if="form.class_id === -1" v-model="form.course_id" style="width: 100%" :disabled="Boolean(courseID)" @change="onAssignmentCourseChange">
             <el-option v-for="course in courses" :key="course.id" :label="`${course.code} ${course.name}`" :value="course.id" />
           </el-select>
           <el-select v-else v-model="form.course_id" style="width: 100%" disabled>
@@ -95,7 +95,7 @@
         <el-form-item label="班级">
           <el-select v-model="form.class_id" style="width: 100%" @change="syncCourseFromClass">
             <el-option label="全课程（不限班级）" :value="-1" />
-            <el-option v-for="item in classroom.classes" :key="item.class_id" :label="`${item.course_code} / ${item.class_name}`" :value="item.class_id" />
+            <el-option v-for="item in courseClasses" :key="item.class_id" :label="`${item.course_code} / ${item.class_name}`" :value="item.class_id" />
           </el-select>
         </el-form-item>
         <el-form-item label="标题"><el-input v-model="form.title" placeholder="第一次作业" /></el-form-item>
@@ -166,7 +166,7 @@
 <script setup lang="ts">
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { computed, onMounted, reactive, ref, watch } from 'vue'
-import { useRouter } from 'vue-router'
+import { useRoute, useRouter } from 'vue-router'
 import { client, type PreparedProblem, type Problem } from '../api/client'
 import ListPagination from '../components/ListPagination.vue'
 import {
@@ -189,6 +189,8 @@ type SelectedProblem = { problem_id: number; title: string; source: string; scor
 const auth = useAuthStore()
 const classroom = useClassroomStore()
 const router = useRouter()
+const route = useRoute()
+const courseID = computed(() => Number(route.params.courseId) || undefined)
 const canManage = computed(() => auth.role !== 'student')
 const items = ref<any[]>([])
 const courses = ref<any[]>([])
@@ -207,6 +209,7 @@ const problemSource = ref<'class' | 'prepared'>('class')
 const problemPickID = ref<number>()
 const selectedProblems = ref<SelectedProblem[]>([])
 const report = ref<any>(null)
+const courseClasses = computed(() => courseID.value ? classroom.classes.filter((item) => item.course_id === courseID.value) : classroom.classes)
 
 const form = reactive<any>({
   course_id: undefined,
@@ -247,7 +250,7 @@ const assignmentStats = computed(() => {
 })
 
 async function load() {
-  const params = classroom.activeClassId ? { class_id: classroom.activeClassId } : {}
+  const params = courseID.value ? { course_id: courseID.value } : {}
   const assignmentsRes = await client.get('/assignments', { params })
   items.value = assignmentsRes.data
   clampPage()
@@ -269,8 +272,9 @@ async function load() {
 
 function openDialog() {
   reset()
-  form.class_id = classroom.activeClassId || classroom.classes[0]?.class_id
-  syncCourseFromClass()
+  form.course_id = courseID.value
+  form.class_id = courseClasses.value[0]?.class_id || -1
+  if (form.class_id !== -1) syncCourseFromClass()
   dialogVisible.value = true
 }
 
@@ -286,7 +290,7 @@ function courseText(row: any) {
 
 function syncCourseFromClass() {
   if (form.class_id === -1) {
-    form.course_id = undefined
+    form.course_id = courseID.value || form.course_id
     selectedProblems.value = []
     return
   }
@@ -376,7 +380,7 @@ function reset() {
   problemPickID.value = undefined
 }
 
-watch(() => classroom.activeClassId, load)
+watch(courseID, load)
 watch(
   () => [filters.keyword, filters.status, pageSize.value, items.value.length],
   clampPage

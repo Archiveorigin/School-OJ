@@ -6,7 +6,7 @@
         <p class="muted">组卷时可从题库选题，也可以创建仅本场考试使用的 Markdown 题目。</p>
       </div>
       <div class="toolbar">
-        <el-button @click="router.push('/exams')">返回考试</el-button>
+        <el-button @click="returnToExams">返回考试</el-button>
       </div>
     </div>
 
@@ -28,7 +28,7 @@
               <el-select v-model="form.class_id" style="width: 100%" @change="syncCourseFromClass">
                 <el-option label="全课程（不限班级）" :value="-1" />
                 <el-option
-                  v-for="item in classroom.classes"
+                  v-for="item in scopedClasses"
                   :key="item.class_id"
                   :label="`${item.course_code} / ${item.class_name}`"
                   :value="item.class_id"
@@ -81,6 +81,9 @@
                 提交后判题，教师人工确认分数
               </el-checkbox>
             </el-form-item>
+            <el-form-item label="实时榜单">
+              <el-checkbox v-model="form.ranking_visible">允许考生在考试内查看实时排名</el-checkbox>
+            </el-form-item>
             <el-divider />
             <el-form-item label="考试规则">
               <ul class="rule-list">
@@ -94,7 +97,7 @@
       </div>
 
       <div class="step-actions">
-        <el-button @click="router.push('/exams')">取消</el-button>
+        <el-button @click="returnToExams">取消</el-button>
         <el-button type="primary" :disabled="!canProceedStep0" @click="step = 1">
           下一步：选题组卷
         </el-button>
@@ -250,6 +253,7 @@
             <el-descriptions-item label="阅卷">
               {{ form.manual_review ? '人工阅卷' : '自动阅卷' }}
             </el-descriptions-item>
+            <el-descriptions-item label="实时榜单">{{ form.ranking_visible ? '考生可见' : '仅教师可见' }}</el-descriptions-item>
             <el-descriptions-item label="开始时间">
               {{ form.starts_at ? formatDate(form.starts_at) : '立即开始' }}
             </el-descriptions-item>
@@ -536,7 +540,7 @@
 <script setup lang="ts">
 import { ElMessage } from 'element-plus'
 import { computed, onMounted, reactive, ref, watch } from 'vue'
-import { useRouter } from 'vue-router'
+import { useRoute, useRouter } from 'vue-router'
 import { client, type PreparedProblem, type Problem } from '../api/client'
 import MarkdownRenderer from '../components/MarkdownRenderer.vue'
 import { extractStatementSamples, problemDisplayCode, tagList } from '../features/problems/problemMeta'
@@ -554,6 +558,7 @@ type SelectedProblem = {
 }
 
 const router = useRouter()
+const route = useRoute()
 const classroom = useClassroomStore()
 const courses = ref<any[]>([])
 const problems = ref<Problem[]>([])
@@ -584,7 +589,8 @@ const form = reactive<any>({
   description: '',
   starts_at: null,
   ends_at: null,
-  manual_review: false
+  manual_review: false,
+  ranking_visible: false
 })
 
 const problemForm = reactive({
@@ -616,6 +622,11 @@ const classLabel = computed(() => {
 })
 
 const isCourseWide = computed(() => form.class_id === -1)
+const requestedCourseID = computed(() => Number(route.query.course_id) || undefined)
+const scopedClasses = computed(() => {
+  const courseID = form.course_id || requestedCourseID.value
+  return courseID ? classroom.classes.filter((item) => item.course_id === courseID) : classroom.classes
+})
 const canProceedStep0 = computed(() => {
   const hasScope = isCourseWide.value ? !!form.course_id : !!form.class_id
   return hasScope && form.title.trim()
@@ -664,7 +675,6 @@ async function load() {
 
 function syncCourseFromClass() {
   if (form.class_id === -1) {
-    form.course_id = undefined
     selectedProblems.value = []
     problemPickID.value = undefined
     return
@@ -802,6 +812,7 @@ async function submitCreate() {
       starts_at: form.starts_at,
       ends_at: form.ends_at,
       manual_review: form.manual_review,
+      ranking_visible: form.ranking_visible,
       problems: selectedProblems.value.map((item) => ({
         problem_id: item.problem_id,
         score: item.score,
@@ -1112,22 +1123,23 @@ function escapeRegExp(value: string) {
   return value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
 }
 
-watch(
-  () => classroom.activeClassId,
-  async () => {
-    form.class_id = classroom.activeClassId || classroom.classes[0]?.class_id
-    syncCourseFromClass()
-    await load()
-  }
-)
-
 onMounted(async () => {
   await classroom.load()
-  form.class_id = classroom.activeClassId || classroom.classes[0]?.class_id
-  syncCourseFromClass()
   await load()
+  if (requestedCourseID.value) {
+    form.course_id = requestedCourseID.value
+    form.class_id = scopedClasses.value[0]?.class_id || -1
+  } else {
+    form.class_id = classroom.classes[0]?.class_id || -1
+    syncCourseFromClass()
+  }
   problemForm.label = nextAvailableLabel()
 })
+
+function returnToExams() {
+  const courseID = form.course_id || requestedCourseID.value
+  router.push(courseID ? `/my/courses/${courseID}/exams` : '/my/courses')
+}
 </script>
 
 <style scoped>

@@ -38,7 +38,7 @@
       <div class="panel-header">
         <div class="toolbar">
           <el-button v-if="canManage" type="primary" @click="openClassDialog()">新建班级</el-button>
-          <el-button @click="router.push('/courses')">返回入口</el-button>
+          <el-button @click="router.push('/admin')">返回后台</el-button>
           <el-button @click="load">刷新</el-button>
         </div>
       </div>
@@ -410,7 +410,7 @@ function activate(classID: number) {
 }
 
 function clearCourseFilter() {
-  router.push('/classes')
+  router.push('/admin/classes')
 }
 
 async function openStudents(row: ClassRow) {

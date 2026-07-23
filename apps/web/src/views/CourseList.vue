@@ -27,7 +27,7 @@
       <div class="panel-header">
         <div class="toolbar">
           <el-button v-if="canManage" type="primary" @click="openCourseDialog()">新建课程</el-button>
-          <el-button @click="router.push('/courses')">返回入口</el-button>
+          <el-button @click="router.push('/admin')">返回后台</el-button>
           <el-button @click="load">刷新</el-button>
         </div>
       </div>
@@ -56,6 +56,9 @@
             </template>
           </el-table-column>
           <el-table-column prop="term" label="学期" width="140" />
+          <el-table-column prop="college" label="所属学院" min-width="170">
+            <template #default="{ row }">{{ row.college || '-' }}</template>
+          </el-table-column>
           <el-table-column label="状态" width="100">
             <template #default="{ row }">
               <el-tag :type="row.archived ? 'info' : 'success'" effect="plain">{{ row.archived ? '已归档' : '进行中' }}</el-tag>
@@ -68,7 +71,7 @@
           <el-table-column label="操作" width="420" fixed="right">
             <template #default="{ row }">
               <el-button size="small" type="primary" @click="openClasses(row)">班级</el-button>
-              <el-button size="small" type="success" @click="router.push(`/courses/${row.id}/students`)">学生</el-button>
+              <el-button size="small" type="success" @click="router.push(`/admin/courses/${row.id}/students`)">学生</el-button>
               <el-button v-if="canManage" size="small" @click="openMembers(row)">成员</el-button>
               <el-button v-if="canManage" size="small" @click="openCourseDialog(row)">编辑</el-button>
               <el-button v-if="canManage && !row.archived" size="small" @click="openClassDialog(row.id)">加班级</el-button>
@@ -92,6 +95,9 @@
         </el-form-item>
         <el-form-item label="学期">
           <el-input v-model="courseForm.term" placeholder="2026 春" />
+        </el-form-item>
+        <el-form-item label="所属学院">
+          <el-input v-model="courseForm.college" placeholder="信息工程学院" />
         </el-form-item>
         <el-form-item label="描述">
           <el-input v-model="courseForm.description" type="textarea" :rows="3" />
@@ -166,6 +172,7 @@ type Course = {
   code?: string
   name: string
   term?: string
+  college?: string
   description?: string
   archived?: boolean
 }
@@ -205,7 +212,7 @@ const loadingMembers = ref(false)
 const editingCourseId = ref<number>()
 const memberCourse = ref<Course>()
 const members = ref<CourseMember[]>([])
-const courseForm = reactive({ code: '', name: '', term: '2026 春', description: '' })
+const courseForm = reactive({ code: '', name: '', term: '2026 春', college: '', description: '' })
 const classForm = reactive({ course_id: 0, name: '' })
 const memberForm = reactive<{ email: string; role: CourseMemberRole; class_id?: number }>({ email: '', role: 'course_assistant', class_id: undefined })
 
@@ -263,7 +270,7 @@ function courseRoleLabel(role: CourseMemberRole) {
 }
 
 function openClasses(course: Course) {
-  router.push({ path: '/classes', query: { course_id: course.id } })
+  router.push({ path: '/admin/classes', query: { course_id: course.id } })
 }
 
 function openCourseDialog(course?: Course) {
@@ -271,6 +278,7 @@ function openCourseDialog(course?: Course) {
   courseForm.code = course?.code || ''
   courseForm.name = course?.name || ''
   courseForm.term = course?.term || '2026 春'
+  courseForm.college = course?.college || ''
   courseForm.description = course?.description || ''
   courseDialogVisible.value = true
 }

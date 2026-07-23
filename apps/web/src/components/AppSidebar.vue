@@ -1,7 +1,7 @@
 <template>
   <nav class="top-nav">
     <RouterLink class="brand" :to="brandPath">
-      <img class="brand-logo" src="/logo.jpg" alt="黄海在线题测平台" />
+      <img class="brand-logo" src="/logo1.png" alt="黄海在线题测平台" />
       <span>黄海在线题测平台</span>
     </RouterLink>
     <div class="nav-scroll">
@@ -28,9 +28,9 @@ const props = defineProps<{
 const groups = computed(() => visibleNavGroups(props.role))
 const items = computed(() => {
   const allItems = groups.value.flatMap((group) => group.items)
-  return props.authenticated ? allItems : allItems.filter((item) => item.path === '/problems')
+  return allItems
 })
-const brandPath = computed(() => props.authenticated ? '/' : '/problems')
+const brandPath = computed(() => '/')
 </script>
 
 <style scoped>
@@ -55,7 +55,7 @@ const brandPath = computed(() => props.authenticated ? '/' : '/problems')
 .brand-logo {
   width: 36px;
   height: 36px;
-  object-fit: cover;
+  object-fit: contain;
   border-radius: 8px;
   background: #fff;
   box-shadow: 0 8px 20px rgba(10, 94, 166, 0.15);

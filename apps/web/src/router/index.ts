@@ -1,32 +1,38 @@
 import { createRouter, createWebHistory } from 'vue-router'
 import { useAuthStore } from '../stores/auth'
-const AuditLogs = () => import('../views/AuditLogs.vue')
+
+const AdminHome = () => import('../views/admin/AdminHome.vue')
+const AdminLayout = () => import('../views/admin/AdminLayout.vue')
 const AssignmentDetail = () => import('../views/AssignmentDetail.vue')
 const Assignments = () => import('../views/Assignments.vue')
+const AuditLogs = () => import('../views/AuditLogs.vue')
 const ClassList = () => import('../views/ClassList.vue')
 const CourseList = () => import('../views/CourseList.vue')
-const Courses = () => import('../views/Courses.vue')
+const CourseOverview = () => import('../views/courses/CourseOverview.vue')
+const CourseWorkspace = () => import('../views/courses/CourseWorkspace.vue')
+const CourseStudents = () => import('../views/CourseStudents.vue')
 const Dashboard = () => import('../views/Dashboard.vue')
 const ExamCreate = () => import('../views/ExamCreate.vue')
 const ExamDetail = () => import('../views/ExamDetail.vue')
-const ExamRankings = () => import('../views/ExamRankings.vue')
 const ExamProblems = () => import('../views/exam/ExamProblems.vue')
+const ExamRanking = () => import('../views/exam/ExamRanking.vue')
 const ExamRecords = () => import('../views/exam/ExamRecords.vue')
 const ExamSubmit = () => import('../views/exam/ExamSubmit.vue')
 const Exams = () => import('../views/Exams.vue')
-// leaderboard disabled: const Leaderboard = () => import('../views/Leaderboard.vue')
-const CourseStudents = () => import('../views/CourseStudents.vue')
+const ForgotPassword = () => import('../views/ForgotPassword.vue')
 const Login = () => import('../views/Login.vue')
+const MyCourses = () => import('../views/courses/MyCourses.vue')
 const Plagiarism = () => import('../views/Plagiarism.vue')
+const ProblemDetail = () => import('../views/problems/ProblemDetail.vue')
 const Problems = () => import('../views/Problems.vue')
 const ProblemsLayout = () => import('../views/problems/ProblemsLayout.vue')
-const ProblemDetail = () => import('../views/problems/ProblemDetail.vue')
 const PreparedProblems = () => import('../views/PreparedProblems.vue')
 const Profile = () => import('../views/Profile.vue')
 const Register = () => import('../views/Register.vue')
-const ForgotPassword = () => import('../views/ForgotPassword.vue')
 const Submissions = () => import('../views/Submissions.vue')
 const Users = () => import('../views/Users.vue')
+
+const teacherRoles = ['admin', 'teacher']
 
 const router = createRouter({
   history: createWebHistory(),
@@ -34,12 +40,7 @@ const router = createRouter({
     { path: '/login', component: Login, meta: { public: true } },
     { path: '/register', component: Register, meta: { public: true } },
     { path: '/forgot-password', component: ForgotPassword, meta: { public: true } },
-    { path: '/', component: Dashboard, meta: { title: '概览' } },
-    { path: '/profile', component: Profile, meta: { title: 'Profile' } },
-    { path: '/courses', component: Courses, meta: { title: '课程班级' } },
-    { path: '/courses/list', component: CourseList, meta: { title: '课程列表', activeMenu: '/courses' } },
-    { path: '/classes', component: ClassList, meta: { title: '班级列表', activeMenu: '/courses' } },
-    { path: '/courses/:id/students', component: CourseStudents, meta: { roles: ['admin', 'teacher'], title: '课程学生', activeMenu: '/courses' } },
+    { path: '/', component: Dashboard, meta: { public: true, title: '概览', activeMenu: '/' } },
     {
       path: '/problems',
       component: ProblemsLayout,
@@ -49,48 +50,72 @@ const router = createRouter({
         { path: ':id', name: 'problem-detail', component: ProblemDetail, meta: { title: '题目详情' } }
       ]
     },
-    { path: '/prepared-problems', component: PreparedProblems, meta: { roles: ['admin', 'teacher'], title: '预备题库' } },
-    { path: '/assignments', component: Assignments, meta: { title: '作业' } },
-    { path: '/assignments/:id', component: AssignmentDetail, meta: { title: '作业', activeMenu: '/assignments' } },
-    { path: '/exams', component: Exams, meta: { title: '考试' } },
-    { path: '/exams/new', component: ExamCreate, meta: { roles: ['admin', 'teacher'], title: '新建考试', activeMenu: '/exams' } },
+    { path: '/profile', component: Profile, meta: { title: '个人中心' } },
+    { path: '/my/courses', component: MyCourses, meta: { title: '我的课程' } },
+    {
+      path: '/my/courses/:courseId',
+      component: CourseWorkspace,
+      meta: { title: '课程空间' },
+      children: [
+        { path: '', component: CourseOverview, meta: { title: '课程概况' } },
+        { path: 'assignments', component: Assignments, meta: { title: '课程作业' } },
+        { path: 'exams', component: Exams, meta: { title: '课程考试' } }
+      ]
+    },
+    { path: '/courses', redirect: '/my/courses' },
+    { path: '/courses/list', redirect: '/admin/courses' },
+    { path: '/classes', redirect: '/admin/classes' },
+    { path: '/assignments', redirect: '/my/courses' },
+    { path: '/assignments/:id', component: AssignmentDetail, meta: { title: '作业' } },
+    { path: '/exams', redirect: '/my/courses' },
+    { path: '/exams/new', component: ExamCreate, meta: { roles: teacherRoles, title: '新建考试' } },
     {
       path: '/exams/:id',
       component: ExamDetail,
       redirect: (to) => `/exams/${to.params.id}/problems`,
-      meta: { title: '考试', activeMenu: '/exams' },
+      meta: { title: '考试' },
       children: [
-        { path: 'problems', component: ExamProblems, meta: { title: '考试', activeMenu: '/exams' } },
-        { path: 'submit', component: ExamSubmit, meta: { title: '考试', activeMenu: '/exams' } },
-        { path: 'records', component: ExamRecords, meta: { title: '考试', activeMenu: '/exams' } }
+        { path: 'problems', component: ExamProblems, meta: { title: '考试题目' } },
+        { path: 'submit', component: ExamSubmit, meta: { title: '提交代码' } },
+        { path: 'records', component: ExamRecords, meta: { title: '提交记录' } },
+        { path: 'ranking', component: ExamRanking, meta: { title: '实时榜单' } }
       ]
     },
-    { path: '/submissions', component: Submissions, meta: { title: '提交' } },
-    // leaderboard disabled: { path: '/leaderboard', component: Leaderboard, meta: { title: '排行榜' } },
-    { path: '/admin/exam-rankings', component: ExamRankings, meta: { roles: ['admin', 'teacher'], title: '考试实时榜' } },
-    { path: '/plagiarism', component: Plagiarism, meta: { roles: ['admin', 'teacher'], title: 'JPlag 查重' } },
-    { path: '/audit-logs', component: AuditLogs, meta: { roles: ['admin'], title: '审计日志' } },
-    { path: '/users', component: Users, meta: { roles: ['admin'], title: '用户管理' } }
+    { path: '/submissions', component: Submissions, meta: { title: '我的提交' } },
+    {
+      path: '/admin',
+      component: AdminLayout,
+      meta: { roles: teacherRoles, title: '后台管理' },
+      children: [
+        { path: '', component: AdminHome, meta: { title: '管理概览', adminMenu: '/admin' } },
+        { path: 'courses', component: CourseList, meta: { title: '课程管理', adminMenu: '/admin/courses' } },
+        { path: 'courses/:id/students', component: CourseStudents, meta: { title: '课程学生', adminMenu: '/admin/courses' } },
+        { path: 'classes', component: ClassList, meta: { title: '班级管理', adminMenu: '/admin/classes' } },
+        { path: 'prepared-problems', component: PreparedProblems, meta: { title: '预备题库', adminMenu: '/admin/prepared-problems' } },
+        { path: 'plagiarism', component: Plagiarism, meta: { title: 'JPlag 查重', adminMenu: '/admin/plagiarism' } },
+        { path: 'audit-logs', component: AuditLogs, meta: { roles: ['admin'], title: '审计日志', adminMenu: '/admin/audit-logs' } },
+        { path: 'users', component: Users, meta: { roles: ['admin'], title: '用户管理', adminMenu: '/admin/users' } }
+      ]
+    },
+    { path: '/prepared-problems', redirect: '/admin/prepared-problems' },
+    { path: '/plagiarism', redirect: '/admin/plagiarism' },
+    { path: '/audit-logs', redirect: '/admin/audit-logs' },
+    { path: '/users', redirect: '/admin/users' },
+    { path: '/admin/exam-rankings', redirect: '/my/courses' }
   ]
 })
 
 const authPaths = ['/login', '/register', '/forgot-password']
 
-router.beforeEach(async (to, from) => {
+router.beforeEach(async (to) => {
   const auth = useAuthStore()
-  if (auth.isAuthed && !auth.hydrated) {
-    await auth.hydrate()
-  }
+  if (auth.isAuthed && !auth.hydrated) await auth.hydrate()
   if (!to.meta.public && !auth.isAuthed) {
     return { path: '/login', query: { redirect: to.fullPath } }
   }
-  if (authPaths.includes(to.path) && auth.isAuthed) {
-    return '/'
-  }
+  if (authPaths.includes(to.path) && auth.isAuthed) return '/'
   const roles = to.meta.roles as string[] | undefined
-  if (roles && (!auth.user || !roles.includes(auth.user.role))) {
-    return '/'
-  }
+  if (roles && (!auth.user || !roles.includes(auth.user.role))) return '/'
 })
 
 export default router

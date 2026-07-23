@@ -1,23 +1,9 @@
 <template>
   <router-view v-if="authPage" />
-  <el-container v-else direction="vertical" class="shell" :class="{ 'exam-shell': studentExamWorkspace }">
-    <el-header v-if="!studentExamWorkspace" class="topbar" height="auto">
+  <el-container v-else direction="vertical" class="shell" :class="{ 'exam-shell': studentExamWorkspace, 'admin-shell': adminWorkspace }">
+    <el-header v-if="!studentExamWorkspace && !adminWorkspace" class="topbar" height="auto">
       <AppSidebar :active-menu="activeMenu" :role="auth.role" :authenticated="auth.isAuthed" />
       <div class="topbar-actions">
-        <el-select
-          v-if="auth.isAuthed && classroom.classes.length && !route.path.startsWith('/problems')"
-          :model-value="classroom.activeClassId"
-          class="class-switch"
-          filterable
-          @change="setClass"
-        >
-          <el-option
-            v-for="item in classroom.classes"
-            :key="item.class_id"
-            :label="classOptionLabel(item)"
-            :value="item.class_id"
-          />
-        </el-select>
         <el-dropdown v-if="auth.isAuthed" trigger="click" @command="handleCommand">
           <button class="avatar-button" type="button">
             <img v-if="auth.user?.avatar_url" :src="auth.user.avatar_url" alt="" />
@@ -25,7 +11,9 @@
           </button>
           <template #dropdown>
             <el-dropdown-menu>
-              <el-dropdown-item command="profile">Profile</el-dropdown-item>
+              <el-dropdown-item command="profile">个人中心</el-dropdown-item>
+              <el-dropdown-item command="courses">我的课程</el-dropdown-item>
+              <el-dropdown-item v-if="auth.role === 'teacher' || auth.role === 'admin'" command="admin">后台管理</el-dropdown-item>
               <el-dropdown-item command="theme">
                 {{ auth.theme === 'dark' ? '切换明亮模式' : '切换暗黑模式' }}
               </el-dropdown-item>
@@ -36,7 +24,7 @@
         <el-button v-else type="primary" @click="goLogin">登录</el-button>
       </div>
     </el-header>
-    <el-main class="main-content" :class="{ 'exam-main-content': studentExamWorkspace }">
+    <el-main class="main-content" :class="{ 'exam-main-content': studentExamWorkspace, 'admin-main-content': adminWorkspace }">
       <router-view />
     </el-main>
   </el-container>
@@ -44,16 +32,13 @@
 
 <script setup lang="ts">
 import { ElMessageBox } from 'element-plus'
-import { computed, onMounted, watch } from 'vue'
+import { computed, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import AppSidebar from './components/AppSidebar.vue'
 import { useAuthStore } from './stores/auth'
-import { useClassroomStore } from './stores/classroom'
 import { useExamLockStore } from './stores/examLock'
-import type { ClassContext } from './api/client'
 
 const auth = useAuthStore()
-const classroom = useClassroomStore()
 const examLock = useExamLockStore()
 const router = useRouter()
 const route = useRoute()
@@ -68,31 +53,31 @@ const currentExamRouteId = computed(() => {
   return typeof value === 'string' ? Number(value) : undefined
 })
 const studentExamWorkspace = computed(() => auth.role === 'student' && Boolean(currentExamRouteId.value) && route.path.startsWith('/exams/'))
+const adminWorkspace = computed(() => route.path === '/admin' || route.path.startsWith('/admin/'))
 const activeExamRoot = computed(() => (examLock.examId ? `/exams/${examLock.examId}` : ''))
 const inActiveExam = computed(() => Boolean(activeExamRoot.value) && (route.path === activeExamRoot.value || route.path.startsWith(`${activeExamRoot.value}/`)))
 
 function logout() {
   auth.logout()
   examLock.unlock()
-  classroom.clear()
   router.push('/login')
-}
-
-function setClass(value: number) {
-  classroom.setActive(value)
 }
 
 function goLogin() {
   router.push({ path: '/login', query: { redirect: route.fullPath } })
 }
 
-function classOptionLabel(item: ClassContext) {
-  return auth.role === 'student' ? item.class_name : `${item.course_code} / ${item.class_name}`
-}
-
 function handleCommand(command: string) {
   if (command === 'profile') {
     router.push('/profile')
+    return
+  }
+  if (command === 'courses') {
+    router.push('/my/courses')
+    return
+  }
+  if (command === 'admin') {
+    router.push('/admin')
     return
   }
   if (command === 'theme') {
@@ -139,17 +124,10 @@ async function maybeShowActiveExamPrompt() {
   }
 }
 
-onMounted(() => {
-  examLock.hydrate()
-  if (auth.isAuthed) classroom.load()
-})
-
 watch(
   () => auth.isAuthed,
   (authed) => {
-    if (authed) classroom.load()
-    else {
-      classroom.clear()
+    if (!authed) {
       examLock.unlock()
       lastPromptedExamId = undefined
     }
@@ -192,10 +170,6 @@ watch(
   flex: 0 0 auto;
 }
 
-.class-switch {
-  width: 240px;
-}
-
 .avatar-button {
   width: 40px;
   height: 40px;
@@ -231,6 +205,15 @@ watch(
   min-height: 100vh;
 }
 
+.admin-shell,
+.admin-main-content {
+  min-height: 100vh;
+}
+
+.admin-main-content {
+  padding: 0;
+}
+
 .exam-main-content :deep(.page) {
   min-height: 100vh;
 }
@@ -258,8 +241,5 @@ watch(
     padding: 10px 12px;
   }
 
-  .class-switch {
-    width: min(240px, calc(100vw - 82px));
-  }
 }
 </style>

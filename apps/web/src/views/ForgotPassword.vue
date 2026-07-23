@@ -2,7 +2,7 @@
   <main class="auth-page">
     <section class="auth-panel">
       <div class="auth-brand">
-        <img src="/logo.jpg" alt="黄海在线题测平台" />
+        <img src="/logo1.png" alt="黄海在线题测平台" />
         <div>
           <h1>找回密码</h1>
           <p>输入邮箱验证码后设置新密码</p>

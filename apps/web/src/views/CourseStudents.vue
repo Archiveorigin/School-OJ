@@ -8,7 +8,7 @@
         </p>
       </div>
       <div class="toolbar">
-        <el-button @click="router.push('/courses/list')">返回课程</el-button>
+        <el-button @click="router.push('/admin/courses')">返回课程</el-button>
         <el-button @click="load">刷新</el-button>
       </div>
     </div>

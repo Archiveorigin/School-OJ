@@ -33,6 +33,29 @@
       </div>
     </div>
 
+    <div class="personal-entry-grid">
+      <button type="button" class="panel personal-entry" @click="router.push('/my/courses')">
+        <span class="entry-mark">COURSE</span>
+        <strong>我的课程</strong>
+        <small>按课程查看班级、作业与考试</small>
+      </button>
+      <button type="button" class="panel personal-entry" @click="router.push('/submissions')">
+        <span class="entry-mark">CODE</span>
+        <strong>我的提交</strong>
+        <small>查看代码提交和评测记录</small>
+      </button>
+      <button type="button" class="panel personal-entry" @click="router.push('/problems')">
+        <span class="entry-mark">BANK</span>
+        <strong>公共题库</strong>
+        <small>继续练习全站公开题目</small>
+      </button>
+      <button v-if="auth.role === 'teacher' || auth.role === 'admin'" type="button" class="panel personal-entry management-entry" @click="router.push('/admin')">
+        <span class="entry-mark">ADMIN</span>
+        <strong>后台管理</strong>
+        <small>课程、班级与系统管理工具</small>
+      </button>
+    </div>
+
     <div class="profile-grid">
       <div class="panel">
         <div class="section-title">
@@ -301,3 +324,15 @@ function readFile(file: File) {
 
 onMounted(load)
 </script>
+
+<style scoped>
+.personal-entry-grid { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 14px; margin-bottom: 18px; }
+.personal-entry { display: grid; gap: 7px; min-height: 130px; padding: 20px; text-align: left; color: var(--text); cursor: pointer; }
+.personal-entry:hover { border-color: var(--accent); transform: translateY(-2px); }
+.personal-entry strong { font-size: 18px; }
+.personal-entry small { color: var(--muted); line-height: 1.5; }
+.entry-mark { color: var(--accent); font-size: 10px; font-weight: 800; letter-spacing: .14em; }
+.management-entry { background: linear-gradient(145deg, rgba(10, 94, 166, .12), var(--surface)); }
+@media (max-width: 1000px) { .personal-entry-grid { grid-template-columns: repeat(2, 1fr); } }
+@media (max-width: 560px) { .personal-entry-grid { grid-template-columns: 1fr; } }
+</style>
