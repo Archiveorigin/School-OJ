@@ -4,7 +4,7 @@
       测试数据
     </el-button>
 
-    <el-dialog v-model="visible" title="后台测试数据" width="920px" class="test-data-dialog" destroy-on-close>
+    <el-dialog v-model="visible" title="后台测试数据" width="min(760px, calc(100vw - 28px))" class="test-data-dialog" destroy-on-close>
       <div class="dialog-toolbar">
         <p>仅管理人员可查看。每个测试点按名称对应输入和输出。</p>
         <el-button type="primary" :loading="downloadingAll" :disabled="!tests.length" @click="downloadAll">
@@ -49,6 +49,7 @@
 import { ElMessage } from 'element-plus'
 import { ref, watch } from 'vue'
 import { client } from '../api/client'
+import { copyTextToClipboard } from '../features/clipboard'
 
 interface ProblemTestMeta {
   name: string
@@ -142,7 +143,7 @@ async function downloadAll() {
 
 async function copyText(value: string) {
   try {
-    await navigator.clipboard.writeText(value)
+    await copyTextToClipboard(value)
     ElMessage.success('已复制')
   } catch {
     ElMessage.error('复制失败，请手动选择文本')
@@ -228,7 +229,7 @@ watch(() => props.problemId, () => {
 
 .io-grid {
   display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
+  grid-template-columns: minmax(0, 1fr);
 }
 
 .io-block {
@@ -236,21 +237,21 @@ watch(() => props.problemId, () => {
 }
 
 .io-block + .io-block {
-  border-left: 1px solid var(--border);
+  border-left: 0;
 }
 
 .io-head {
-  padding: 9px 12px;
+  padding: 7px 10px;
   border-top: 1px solid var(--border);
   border-bottom: 1px solid var(--border);
 }
 
 .io-block pre {
-  min-height: 112px;
-  max-height: 300px;
+  min-height: 52px;
+  max-height: 180px;
   overflow: auto;
   margin: 0;
-  padding: 13px;
+  padding: 9px 10px;
   color: #e2e8f0;
   background: #0f172a;
   white-space: pre;
@@ -262,12 +263,5 @@ watch(() => props.problemId, () => {
     flex-direction: column;
   }
 
-  .io-grid {
-    grid-template-columns: 1fr;
-  }
-
-  .io-block + .io-block {
-    border-left: 0;
-  }
 }
 </style>

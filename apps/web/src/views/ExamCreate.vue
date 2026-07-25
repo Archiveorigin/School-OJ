@@ -543,6 +543,7 @@ import { computed, onMounted, reactive, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { client, type PreparedProblem, type Problem } from '../api/client'
 import MarkdownRenderer from '../components/MarkdownRenderer.vue'
+import { copyTextToClipboard } from '../features/clipboard'
 import { extractStatementSamples, problemDisplayCode, tagList } from '../features/problems/problemMeta'
 import { useClassroomStore } from '../stores/classroom'
 
@@ -1060,7 +1061,7 @@ function formatBytes(value: number) {
 
 async function copyText(value: string) {
   try {
-    await navigator.clipboard.writeText(value)
+    await copyTextToClipboard(value)
     ElMessage.success('已复制')
   } catch {
     ElMessage.error('复制失败，请手动选择文本')

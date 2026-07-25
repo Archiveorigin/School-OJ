@@ -58,6 +58,7 @@
 
 <script setup lang="ts">
 import { ElMessage } from 'element-plus'
+import { copyTextToClipboard } from '../features/clipboard'
 
 interface EditableProblemSample {
   name: string
@@ -90,7 +91,7 @@ function updateSample(index: number, field: keyof EditableProblemSample, value: 
 
 async function copyText(value: string) {
   try {
-    await navigator.clipboard.writeText(value)
+    await copyTextToClipboard(value)
     ElMessage.success('已复制')
   } catch {
     ElMessage.error('复制失败，请手动选择文本')

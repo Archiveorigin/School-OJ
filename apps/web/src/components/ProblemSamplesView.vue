@@ -5,8 +5,7 @@
     </div>
     <div v-for="sample in samples" :key="sample.index" class="sample-card">
       <div class="sample-name">
-        <span>样例 {{ sample.index }}</span>
-        <strong>{{ sample.name }}</strong>
+        <strong>{{ sample.name || `样例 ${sample.index}` }}</strong>
       </div>
       <div class="sample-pair">
         <div class="sample-block">
@@ -30,6 +29,7 @@
 
 <script setup lang="ts">
 import { ElMessage } from 'element-plus'
+import { copyTextToClipboard } from '../features/clipboard'
 import type { ProblemSample } from '../features/problems/problemMeta'
 
 defineProps<{
@@ -38,7 +38,7 @@ defineProps<{
 
 async function copyText(value: string) {
   try {
-    await navigator.clipboard.writeText(value)
+    await copyTextToClipboard(value)
     ElMessage.success('已复制')
   } catch {
     ElMessage.error('复制失败，请手动选择文本')
@@ -63,11 +63,7 @@ async function copyText(value: string) {
 }
 
 .sample-name {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  color: var(--muted);
-  font-size: 13px;
+  display: block;
 }
 
 .sample-name strong {
@@ -77,8 +73,8 @@ async function copyText(value: string) {
 
 .sample-pair {
   display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 12px;
+  grid-template-columns: minmax(0, 1fr);
+  gap: 8px;
 }
 
 .sample-block {
@@ -94,24 +90,19 @@ async function copyText(value: string) {
   align-items: center;
   justify-content: space-between;
   gap: 8px;
-  padding: 8px 12px;
+  padding: 6px 10px;
   border-bottom: 1px solid var(--border);
 }
 
 .sample-block pre {
-  min-height: 88px;
-  max-height: 260px;
+  min-height: 48px;
+  max-height: 160px;
   overflow: auto;
   margin: 0;
-  padding: 12px;
+  padding: 9px 10px;
   color: #e2e8f0;
   background: #0f172a;
   white-space: pre;
 }
 
-@media (max-width: 760px) {
-  .sample-pair {
-    grid-template-columns: 1fr;
-  }
-}
 </style>

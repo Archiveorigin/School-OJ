@@ -1,7 +1,7 @@
 <template>
   <section class="page problem-detail-page">
     <div class="detail-container">
-      <el-page-header class="back-to-bank" title="返回题库" @back="router.push('/problems')">
+      <el-page-header title="返回题库" @back="router.push('/problems')">
         <template #content>
           <span v-if="problem" class="page-header-title">
             {{ problemDisplayCode(problem) }} · {{ problem.title }}
@@ -222,20 +222,6 @@ onBeforeUnmount(() => submissionEvents?.close())
   color: var(--text);
   font-size: 16px;
   font-weight: 700;
-}
-
-.back-to-bank :deep(.el-page-header__left) {
-  padding: 9px 14px;
-  color: #fff;
-  border-radius: 10px;
-  background: linear-gradient(135deg, #0a5ea6, #0f766e);
-  box-shadow: 0 8px 20px rgba(10, 94, 166, 0.22);
-}
-
-.back-to-bank :deep(.el-page-header__title),
-.back-to-bank :deep(.el-page-header__icon) {
-  color: #fff;
-  font-weight: 800;
 }
 
 .loading-state {

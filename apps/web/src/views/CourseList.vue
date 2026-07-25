@@ -164,6 +164,7 @@ import { computed, onMounted, reactive, ref, watch } from 'vue'
 import { useRouter } from 'vue-router'
 import { client } from '../api/client'
 import ListPagination from '../components/ListPagination.vue'
+import { copyTextToClipboard } from '../features/clipboard'
 import { useAuthStore } from '../stores/auth'
 import { useClassroomStore } from '../stores/classroom'
 
@@ -418,8 +419,13 @@ async function removeMember(member: CourseMember) {
 watch([pageSize, termFilter], clampPage)
 watch(showArchived, load)
 
-function copyJoinCode(code: string) {
-  navigator.clipboard.writeText(code).then(() => ElMessage.success('邀请码已复制: ' + code))
+async function copyJoinCode(code: string) {
+  try {
+    await copyTextToClipboard(code)
+    ElMessage.success('邀请码已复制: ' + code)
+  } catch {
+    ElMessage.error('复制失败，请手动选择文本')
+  }
 }
 
 onMounted(load)
