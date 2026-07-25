@@ -8,29 +8,8 @@
         </div>
         <span class="muted">{{ problemLimitText(problem) }}</span>
       </div>
-      <MarkdownRenderer :source="problem.statement" :problem-id="problem.id" />
-
-      <div v-if="samples.length" class="sample-section">
-        <div class="section-title">
-          <h3>输入输出样例</h3>
-        </div>
-        <div v-for="sample in samples" :key="sample.index" class="sample-pair">
-          <div class="sample-block">
-            <div class="sample-head">
-              <strong>输入样例 {{ sample.index }}</strong>
-              <el-button size="small" @click="copyText(sample.input)">复制</el-button>
-            </div>
-            <pre>{{ sample.input }}</pre>
-          </div>
-          <div class="sample-block">
-            <div class="sample-head">
-              <strong>输出样例 {{ sample.index }}</strong>
-              <el-button size="small" @click="copyText(sample.output)">复制</el-button>
-            </div>
-            <pre>{{ sample.output }}</pre>
-          </div>
-        </div>
-      </div>
+      <MarkdownRenderer :source="statementBody" :problem-id="problem.id" />
+      <ProblemSamplesView :samples="samples" />
     </section>
 
     <aside class="panel meta-box">
@@ -112,7 +91,6 @@
 </template>
 
 <script setup lang="ts">
-import { ElMessage } from 'element-plus'
 import { computed } from 'vue'
 import type { Problem } from '../api/client'
 import {
@@ -122,9 +100,11 @@ import {
   problemDisplayCode,
   problemLimitLines,
   problemLimitText,
+  stripStatementSamples,
   tagList
 } from '../features/problems/problemMeta'
 import MarkdownRenderer from './MarkdownRenderer.vue'
+import ProblemSamplesView from './ProblemSamplesView.vue'
 
 const props = withDefaults(
   defineProps<{
@@ -142,6 +122,7 @@ const props = withDefaults(
 )
 
 const samples = computed(() => extractStatementSamples(props.problem.statement))
+const statementBody = computed(() => stripStatementSamples(props.problem.statement))
 const tags = computed(() => tagList(props.problem.tags))
 const difficulty = computed(() => difficultyFromTags(props.problem.tags))
 const displayNumber = computed(() => props.problemNumber || problemDisplayCode(props.problem))
@@ -152,14 +133,6 @@ const statusImageAlt = computed(() => {
   return ''
 })
 
-async function copyText(value: string) {
-  try {
-    await navigator.clipboard.writeText(value)
-    ElMessage.success('已复制')
-  } catch {
-    ElMessage.error('复制失败，请手动选择文本')
-  }
-}
 </script>
 
 <style scoped>
@@ -193,46 +166,6 @@ async function copyText(value: string) {
   color: var(--muted);
   font-size: 12px;
   font-weight: 700;
-}
-
-.sample-section {
-  display: grid;
-  gap: 12px;
-  margin-top: 18px;
-}
-
-.sample-pair {
-  display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 12px;
-}
-
-.sample-block {
-  min-width: 0;
-  border: 1px solid var(--border);
-  border-radius: 8px;
-  overflow: hidden;
-  background: color-mix(in srgb, var(--surface-strong) 72%, transparent);
-}
-
-.sample-head {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 8px;
-  padding: 8px 10px;
-  border-bottom: 1px solid var(--border);
-}
-
-.sample-block pre {
-  min-height: 88px;
-  max-height: 260px;
-  overflow: auto;
-  margin: 0;
-  padding: 12px;
-  color: #e2e8f0;
-  background: #0f172a;
-  white-space: pre;
 }
 
 .meta-title {
@@ -292,8 +225,7 @@ async function copyText(value: string) {
 }
 
 @media (max-width: 980px) {
-  .problem-view-grid,
-  .sample-pair {
+  .problem-view-grid {
     grid-template-columns: 1fr;
   }
 }

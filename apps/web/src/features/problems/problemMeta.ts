@@ -4,6 +4,7 @@ export type ProblemStatusFilter = 'all' | 'unattempted' | 'attempted' | 'accepte
 
 export interface ProblemSample {
   index: number
+  name: string
   input: string
   output: string
 }
@@ -72,25 +73,60 @@ export function difficultyTagType(difficulty?: string): 'success' | 'warning' | 
 }
 
 export function extractStatementSamples(source?: string | null): ProblemSample[] {
-  if (!source) return []
+  return splitStatementSamples(source).samples
+}
+
+export function stripStatementSamples(source?: string | null) {
+  return splitStatementSamples(source).statement
+}
+
+export function replaceStatementSamples(source: string | null | undefined, samples: Array<Pick<ProblemSample, 'name' | 'input' | 'output'>>) {
+  const statement = stripStatementSamples(source)
+  const rendered = samples
+    .filter((sample) => sample.input.trim() || sample.output.trim())
+    .map((sample, index) => {
+      const number = index + 1
+      const name = sample.name.trim().replace(/[\r\n（）()]/g, ' ') || `样例 ${number}`
+      return [
+        `### 输入样例 ${number}（${name}）`,
+        fencedSample(sample.input),
+        `### 输出样例 ${number}（${name}）`,
+        fencedSample(sample.output)
+      ].join('\n\n')
+    })
+    .join('\n\n')
+  return [statement, rendered].filter(Boolean).join('\n\n').trim()
+}
+
+function splitStatementSamples(source?: string | null): { statement: string; samples: ProblemSample[] } {
+  if (!source) return { statement: '', samples: [] }
   const lines = source.replace(/\r\n?/g, '\n').split('\n')
-  const inputs: string[] = []
-  const outputs: string[] = []
+  const inputs: Array<{ name: string; value: string }> = []
+  const outputs: Array<{ name: string; value: string }> = []
+  const removed = new Set<number>()
   for (let i = 0; i < lines.length; i += 1) {
-    const kind = sampleLabelKind(lines[i])
-    if (!kind) continue
+    const label = sampleLabel(lines[i])
+    if (!label) continue
     const result = nextCodeBlock(lines, i + 1)
     if (!result) continue
-    if (kind === 'input') inputs.push(result.value)
-    else outputs.push(result.value)
+    for (let line = i; line <= result.end; line += 1) removed.add(line)
+    if (label.kind === 'input') inputs.push({ name: label.name, value: result.value })
+    else outputs.push({ name: label.name, value: result.value })
     i = result.end
   }
   const count = Math.min(inputs.length, outputs.length)
-  return Array.from({ length: count }, (_, index) => ({
+  const samples = Array.from({ length: count }, (_, index) => ({
     index: index + 1,
-    input: inputs[index],
-    output: outputs[index]
+    name: inputs[index].name || outputs[index].name || `样例 ${index + 1}`,
+    input: inputs[index].value,
+    output: outputs[index].value
   }))
+  const statement = lines
+    .filter((_, index) => !removed.has(index))
+    .join('\n')
+    .replace(/\n{3,}/g, '\n\n')
+    .trim()
+  return { statement, samples }
 }
 
 export function problemMatchesFilters(problem: Problem, filters: ProblemFilters) {
@@ -106,22 +142,24 @@ export function problemMatchesFilters(problem: Problem, filters: ProblemFilters)
   return true
 }
 
-function sampleLabelKind(line: string): 'input' | 'output' | '' {
+function sampleLabel(line: string): { kind: 'input' | 'output'; name: string } | null {
   const label = line
     .trim()
     .replace(/^#{1,6}\s*/, '')
     .replace(/^(\*\*|__)(.*)(\*\*|__)$/, '$2')
     .replace(/[:：]\s*$/, '')
     .trim()
-  if (!label || label.length > 48) return ''
-  if (/^(输入样例|样例输入|输入示例|示例输入|sample\s*input)(\s*\d+)?$/i.test(label)) return 'input'
-  if (/^(输出样例|样例输出|输出示例|示例输出|sample\s*output)(\s*\d+)?$/i.test(label)) return 'output'
-  return ''
+  if (!label || label.length > 100) return null
+  const match = label.match(/^(输入样例|样例输入|输入示例|示例输入|sample\s*input|输出样例|样例输出|输出示例|示例输出|sample\s*output)(?:\s*\d+)?(?:\s*[（(]([^）)]*)[）)])?$/i)
+  if (!match) return null
+  const kind = /^(输入|样例输入|输入示例|示例输入|sample\s*input)/i.test(match[1]) ? 'input' : 'output'
+  return { kind, name: (match[2] || '').trim() }
 }
 
 function nextCodeBlock(lines: string[], start: number) {
   for (let i = start; i < lines.length; i += 1) {
     const trimmed = lines[i].trim()
+    if (trimmed && !/^(```+|~~~+)/.test(trimmed)) return null
     const fence = trimmed.match(/^(```+|~~~+)/)
     if (!fence) continue
     const marker = fence[1][0]
@@ -135,4 +173,11 @@ function nextCodeBlock(lines: string[], start: number) {
     return null
   }
   return null
+}
+
+function fencedSample(value: string) {
+  const normalized = value.replace(/\r\n?/g, '\n').replace(/\n+$/, '')
+  const longestRun = Math.max(0, ...(normalized.match(/`+/g) || []).map((run) => run.length))
+  const fence = '`'.repeat(Math.max(3, longestRun + 1))
+  return `${fence}text\n${normalized}\n${fence}`
 }

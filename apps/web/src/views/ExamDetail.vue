@@ -97,8 +97,8 @@ const submitting = ref(false)
 const finishing = ref(false)
 const problemEditorVisible = ref(false)
 const editorStates = reactive<Record<number, EditorState>>({})
-let deadlineTimer: ReturnType<typeof window.setTimeout> | null = null
-let deadlinePoller: ReturnType<typeof window.setInterval> | null = null
+let deadlineTimer: number | null = null
+let deadlinePoller: number | null = null
 let forceLeavingExam = false
 const liveStreams = new Set<EventSource>()
 

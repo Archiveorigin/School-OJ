@@ -1,5 +1,5 @@
 <template>
-  <el-dialog v-model="visible" title="修改题目" width="920px" destroy-on-close>
+  <el-dialog v-model="visible" title="修改题目" width="min(920px, calc(100vw - 28px))" destroy-on-close>
     <el-form label-width="96px" class="problem-edit-form">
       <el-form-item label="题目">
         <div class="problem-meta">
@@ -41,7 +41,10 @@
       <el-form-item label="标签">
         <el-input v-model="form.tags" placeholder="多个标签用逗号、空格或换行分隔" />
       </el-form-item>
-      <el-form-item label="隐藏测试点">
+      <el-form-item label="前台样例">
+        <ProblemSampleEditor v-model="visibleSamples" />
+      </el-form-item>
+      <el-form-item label="后台测试点">
         <div class="test-upload-panel">
           <el-upload
             drag
@@ -77,7 +80,15 @@
 import { ElMessage } from 'element-plus'
 import { computed, reactive, ref, watch } from 'vue'
 import { client, type Problem } from '../api/client'
-import { tagList } from '../features/problems/problemMeta'
+import {
+  extractStatementSamples,
+  replaceStatementSamples,
+  stripStatementSamples,
+  tagList
+} from '../features/problems/problemMeta'
+import ProblemSampleEditor from './ProblemSampleEditor.vue'
+
+type EditableProblemSample = { name: string; input: string; output: string }
 
 const props = defineProps<{
   modelValue: boolean
@@ -95,6 +106,7 @@ const visible = computed({
 })
 const saving = ref(false)
 const testFiles = ref<any[]>([])
+const visibleSamples = ref<EditableProblemSample[]>([])
 const form = reactive({
   title: '',
   statement: '',
@@ -109,12 +121,17 @@ watch(
   () => {
     if (!props.modelValue || !props.problem) return
     form.title = props.problem.title || ''
-    form.statement = props.problem.statement || ''
+    form.statement = stripStatementSamples(props.problem.statement)
     form.time_limit_ms = props.problem.time_limit_ms || 1000
     form.memory_limit_mb = props.problem.memory_limit_mb || 256
     form.output_limit_kb = props.problem.output_limit_kb || 1024
     form.tags = tagList(props.problem.tags).join(', ')
     testFiles.value = []
+    visibleSamples.value = extractStatementSamples(props.problem.statement).map(({ name, input, output }) => ({
+      name,
+      input,
+      output
+    }))
   },
   { immediate: true }
 )
@@ -143,7 +160,7 @@ async function save() {
       'draft',
       JSON.stringify({
         title: form.title,
-        statement: form.statement,
+        statement: replaceStatementSamples(form.statement, visibleSamples.value),
         time_limit_ms: form.time_limit_ms,
         memory_limit_mb: form.memory_limit_mb,
         output_limit_kb: form.output_limit_kb,

@@ -178,8 +178,31 @@
                 </el-form-item>
               </el-col>
             </el-row>
+            <el-form-item label="前台样例">
+              <ProblemSampleEditor v-model="problemForm.samples" />
+            </el-form-item>
+            <el-form-item label="测试点文件">
+              <div class="test-file-upload">
+                <el-upload
+                  drag
+                  action="#"
+                  multiple
+                  accept=".zip,.in,.out"
+                  :auto-upload="false"
+                  :file-list="problemTestFiles"
+                  :on-change="syncProblemTestFiles"
+                  :on-remove="syncProblemTestFiles"
+                >
+                  <div class="upload-text">选择或拖入 .zip / .in / .out 测试点文件</div>
+                  <div class="muted">文件名需含数字序号；上传文件后将以文件内容作为后台评测点。</div>
+                </el-upload>
+              </div>
+            </el-form-item>
             <div class="case-toolbar">
-              <h4>测试点</h4>
+              <div>
+                <h4>手动填写后台测试点</h4>
+                <span class="muted">未上传测试点文件时使用下方数据</span>
+              </div>
               <el-button size="small" @click="addCase">添加测试点</el-button>
             </div>
             <div v-for="(item, index) in problemForm.cases" :key="index" class="case-editor">
@@ -252,6 +275,7 @@ import { useRouter } from 'vue-router'
 import { client, type PreparedProblem, type Problem } from '../api/client'
 import MarkdownRenderer from '../components/MarkdownRenderer.vue'
 import ListPagination from '../components/ListPagination.vue'
+import ProblemSampleEditor from '../components/ProblemSampleEditor.vue'
 import {
   difficultyFromTags,
   difficultyTagType,
@@ -261,6 +285,7 @@ import {
   problemStatusOptions,
   progressLabel,
   progressTag,
+  replaceStatementSamples,
   tagList,
   type ProblemFilters
 } from '../features/problems/problemMeta'
@@ -280,6 +305,7 @@ const filters = reactive<ProblemFilters>({
 const problemDialogVisible = ref(false)
 const problemDialogTab = ref('zip')
 const savingProblem = ref(false)
+const problemTestFiles = ref<any[]>([])
 const preparedPublishVisible = ref(false)
 const preparedItems = ref<PreparedProblem[]>([])
 const preparedIDs = ref<number[]>([])
@@ -294,6 +320,7 @@ const problemForm = reactive({
   memory_limit_mb: 256,
   output_limit_kb: 1024,
   assets: [] as ProblemAssetForm[],
+  samples: [] as Array<{ name: string; input: string; output: string }>,
   cases: [{ name: 'case-01', input: '1 2\n', output: '3\n', weight: 100 }]
 })
 const problemAssetPreviewUrls = computed(() => {
@@ -407,16 +434,26 @@ function removeCase(index: number) {
 async function createFromForm() {
   savingProblem.value = true
   try {
-    await client.post('/problems', {
+    const draft = {
       slug: problemForm.slug,
       title: problemForm.title,
-      statement: problemForm.statement,
+      statement: replaceStatementSamples(problemForm.statement, problemForm.samples),
       time_limit_ms: problemForm.time_limit_ms,
       memory_limit_mb: problemForm.memory_limit_mb,
       output_limit_kb: problemForm.output_limit_kb,
       assets: problemForm.assets.map(({ name, path, content_type, data }) => ({ name, path, content_type, data })),
       cases: problemForm.cases
-    })
+    }
+    if (problemTestFiles.value.length) {
+      const fd = new FormData()
+      fd.append('draft', JSON.stringify(draft))
+      for (const item of problemTestFiles.value) {
+        if (item.raw) fd.append('test_files', item.raw)
+      }
+      await client.post('/problems', fd)
+    } else {
+      await client.post('/problems', draft)
+    }
     ElMessage.success('题目已创建')
     problemDialogVisible.value = false
     await load()
@@ -437,12 +474,18 @@ function resetProblemForm() {
   problemForm.memory_limit_mb = 256
   problemForm.output_limit_kb = 1024
   problemForm.assets.splice(0, problemForm.assets.length)
+  problemForm.samples.splice(0, problemForm.samples.length)
+  problemTestFiles.value = []
   problemForm.cases.splice(0, problemForm.cases.length, {
     name: 'case-01',
     input: '1 2\n',
     output: '3\n',
     weight: 100
   })
+}
+
+function syncProblemTestFiles(_file: any, fileList: any[]) {
+  problemTestFiles.value = fileList
 }
 
 function addProblemImage(uploadFile: any) {
@@ -674,6 +717,16 @@ onMounted(load)
 
 .case-toolbar h4 {
   margin: 0;
+}
+
+.case-toolbar .muted {
+  display: block;
+  margin-top: 3px;
+  font-size: 12px;
+}
+
+.test-file-upload {
+  width: 100%;
 }
 
 .case-editor {

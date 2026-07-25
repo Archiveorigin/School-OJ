@@ -40,6 +40,10 @@
         :status-type="problemStatusType(activeProblem.id)"
       />
 
+      <section v-if="activeProblem && canManage" class="panel test-data-panel">
+        <ProblemTestDownloads :problem-id="activeProblem.id" :problem-code="activeProblem.display_code" />
+      </section>
+
       <section v-if="activeProblem" class="panel editor-panel">
         <div class="toolbar editor-toolbar">
           <el-select v-model="language" style="width: 130px">
@@ -80,15 +84,19 @@ import { client, sseUrl, type Problem, type Submission } from '../api/client'
 import CodeEditor from '../components/CodeEditor.vue'
 import ListPagination from '../components/ListPagination.vue'
 import ProblemStatementView from '../components/ProblemStatementView.vue'
+import ProblemTestDownloads from '../components/ProblemTestDownloads.vue'
 import StatusBadge from '../components/StatusBadge.vue'
 import { formatDateTime, workStatusLabel } from '../features/assignments/assignmentMeta'
 import { problemDisplayCode } from '../features/problems/problemMeta'
+import { useAuthStore } from '../stores/auth'
 
 type DetailProblem = { problem: Problem; score: number; problem_id: number }
 type EditorState = { language: string; source: string; live: any }
 
 const route = useRoute()
 const router = useRouter()
+const auth = useAuthStore()
+const canManage = computed(() => auth.role === 'admin' || auth.role === 'teacher')
 const detail = ref<any>(null)
 const assignmentListPath = computed(() => {
   const courseID = detail.value?.assignment?.course_id
@@ -301,6 +309,11 @@ onMounted(loadDetail)
   display: grid;
   grid-template-rows: auto minmax(420px, 1fr) auto;
   gap: 10px;
+}
+
+.test-data-panel {
+  display: flex;
+  justify-content: flex-end;
 }
 
 .editor-toolbar {

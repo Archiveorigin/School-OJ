@@ -19,9 +19,7 @@
             <span>课程功能</span>
             <el-dropdown trigger="click" placement="bottom-end" @command="handleCourseCommand">
               <button class="qr-menu-button" type="button" aria-label="打开课程扫码功能">
-                <svg viewBox="0 0 24 24" aria-hidden="true">
-                  <path d="M4 4h6v6H4zM14 4h6v6h-6zM4 14h6v6H4zM15 14h2v2h-2zM18 14h2v5h-2zM14 18h3v2h-3z" />
-                </svg>
+                <img src="/course.jpg" alt="" />
               </button>
               <template #dropdown>
                 <el-dropdown-menu>
@@ -173,7 +171,7 @@ onMounted(loadCourse)
 .course-functions :deep(.el-button) { color: #dbeafe; }
 .qr-menu-button { width: 48px; height: 48px; display: grid; place-items: center; color: #083452; border: 1px solid rgba(255,255,255,.72); border-radius: 13px; background: #fff; box-shadow: 0 12px 30px rgba(0,0,0,.18); cursor: pointer; transition: transform .18s ease, box-shadow .18s ease; }
 .qr-menu-button:hover { transform: translateY(-2px); box-shadow: 0 16px 36px rgba(0,0,0,.24); }
-.qr-menu-button svg { width: 25px; height: 25px; fill: currentColor; }
+.qr-menu-button img { width: 38px; height: 42px; object-fit: cover; border-radius: 6px; }
 .course-tabs { position: sticky; top: 0; z-index: 15; display: flex; gap: 8px; padding: 0 max(28px, calc((100vw - 1220px) / 2)); border-bottom: 1px solid var(--border); background: color-mix(in srgb, var(--surface-strong) 92%, transparent); backdrop-filter: blur(16px); }
 .course-tabs a { padding: 19px 26px 16px; color: var(--muted); border-bottom: 3px solid transparent; }
 .course-tabs a.active { color: var(--accent); border-bottom-color: var(--accent); font-weight: 800; }

@@ -6,17 +6,18 @@
         <h1>我的课程</h1>
         <p>选择课程进入独立空间，集中查看课程信息、作业与考试。</p>
       </div>
-      <div class="course-count"><strong>{{ courses.length }}</strong><span>门课程</span></div>
-    </div>
-
-    <div v-if="auth.role === 'student'" class="panel join-panel">
-      <div>
-        <strong>{{ route.query.join_code ? '已识别课程二维码' : '加入新课程' }}</strong>
-        <p class="muted">{{ route.query.join_code ? '请核对邀请码后确认加入课程。' : '输入教师提供的课程邀请码或班级邀请码。' }}</p>
-      </div>
-      <div class="join-actions">
-        <el-input v-model="joinCode" placeholder="课程或班级邀请码" clearable @keyup.enter="joinCourse" />
-        <el-button type="primary" :loading="joining" @click="joinCourse">加入</el-button>
+      <div class="hero-side">
+        <div class="course-count"><strong>{{ courses.length }}</strong><span>门课程</span></div>
+        <div v-if="auth.role === 'student'" class="join-shortcuts">
+          <img src="/course.jpg" alt="加入新课程" />
+          <div class="join-shortcut-copy">
+            <strong>加入新课程</strong>
+            <div class="join-shortcut-actions">
+              <el-button class="scan-button" @click="joinDialogs?.openScanner()">扫码加入</el-button>
+              <el-button class="invite-button" @click="joinDialogs?.openInvite()">邀请码加入</el-button>
+            </div>
+          </div>
+        </div>
       </div>
     </div>
 
@@ -39,6 +40,8 @@
       <el-empty v-if="!loading && !filteredCourses.length" description="暂无课程" />
       <ListPagination v-model:page="page" v-model:page-size="pageSize" :total="filteredCourses.length" />
     </div>
+
+    <CourseJoinDialogs ref="joinDialogs" @joined="handleJoined" />
   </section>
 </template>
 
@@ -47,6 +50,7 @@ import { ElMessage } from 'element-plus'
 import { computed, onMounted, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { client } from '../../api/client'
+import CourseJoinDialogs from '../../components/CourseJoinDialogs.vue'
 import ListPagination from '../../components/ListPagination.vue'
 import { useAuthStore } from '../../stores/auth'
 
@@ -55,11 +59,10 @@ const route = useRoute()
 const router = useRouter()
 const courses = ref<any[]>([])
 const keyword = ref('')
-const joinCode = ref('')
 const loading = ref(false)
-const joining = ref(false)
 const page = ref(1)
 const pageSize = ref(10)
+const joinDialogs = ref<InstanceType<typeof CourseJoinDialogs> | null>(null)
 
 const filteredCourses = computed(() => {
   const text = keyword.value.trim().toLowerCase()
@@ -82,24 +85,13 @@ async function load() {
   }
 }
 
-async function joinCourse() {
-  const code = joinCode.value.trim()
-  if (!code) return
-  joining.value = true
-  try {
-    try {
-      await client.post('/courses/join', { join_code: code })
-    } catch (courseError: any) {
-      if (courseError.response?.status !== 404) throw courseError
-      await client.post('/classes/join', { join_code: code })
-    }
-    joinCode.value = ''
-    ElMessage.success('已加入课程')
-    await load()
-  } catch (err: any) {
-    ElMessage.error(err.response?.data?.error || '邀请码无效')
-  } finally {
-    joining.value = false
+async function handleJoined() {
+  await load()
+  if (route.query.join_code) {
+    const query = { ...route.query }
+    delete query.join_code
+    delete query.course
+    await router.replace({ query })
   }
 }
 
@@ -110,7 +102,7 @@ function openCourse(course: any) {
 watch([keyword, pageSize], () => { page.value = 1 })
 onMounted(() => {
   const queryCode = typeof route.query.join_code === 'string' ? route.query.join_code : ''
-  if (queryCode) joinCode.value = queryCode
+  if (queryCode) joinDialogs.value?.openInvite(queryCode)
   void load()
 })
 </script>
@@ -121,16 +113,21 @@ onMounted(() => {
 .eyebrow { color: #7dd3fc; font-size: 12px; font-weight: 800; letter-spacing: .16em; }
 .course-list-hero h1 { margin: 10px 0 6px; font-size: 38px; }
 .course-list-hero p { margin: 0; color: #dbeafe; }
+.hero-side { display: flex; align-items: center; gap: 22px; }
 .course-count { display: grid; min-width: 110px; text-align: right; }
 .course-count strong { font-size: 44px; line-height: 1; }
 .course-count span { color: #dbeafe; }
-.join-panel { display: flex; align-items: center; justify-content: space-between; gap: 24px; margin-top: 20px; padding: 22px 26px; }
-.join-panel p { margin: 6px 0 0; }
-.join-actions, .table-tools { display: flex; gap: 10px; }
-.join-actions { width: min(460px, 100%); }
+.join-shortcuts { display: flex; align-items: center; gap: 13px; padding: 10px 12px; border: 1px solid rgba(255,255,255,.28); border-radius: 16px; background: rgba(255,255,255,.1); backdrop-filter: blur(10px); }
+.join-shortcuts img { width: 54px; height: 61px; object-fit: cover; border-radius: 9px; background: #fff; }
+.join-shortcut-copy { display: grid; gap: 8px; }
+.join-shortcut-actions, .table-tools { display: flex; gap: 8px; }
+.join-shortcut-actions :deep(.el-button) { margin: 0; color: #fff; border-color: rgba(255,255,255,.54); background: rgba(255,255,255,.12); }
+.join-shortcut-actions :deep(.el-button:hover) { color: #083452; background: #fff; }
+.join-shortcut-actions .invite-button { border-color: #7dd3fc; background: rgba(14,165,233,.32); }
 .course-table-panel { margin-top: 20px; padding: 22px; }
 .table-tools { justify-content: flex-end; margin-bottom: 18px; }
 .table-tools .el-input { width: min(420px, 100%); }
 .course-table-panel :deep(.el-table__row) { cursor: pointer; }
-@media (max-width: 680px) { .course-list-page { padding: 20px 14px 48px; } .course-list-hero, .join-panel { align-items: stretch; flex-direction: column; } .course-count { text-align: left; } .join-actions, .table-tools { width: 100%; } }
+@media (max-width: 860px) { .course-list-hero { align-items: stretch; flex-direction: column; } .hero-side { justify-content: space-between; } }
+@media (max-width: 680px) { .course-list-page { padding: 20px 14px 48px; } .hero-side { align-items: stretch; flex-direction: column; } .course-count { text-align: left; } .join-shortcuts { align-items: stretch; } .join-shortcuts img { width: 48px; height: 54px; } .join-shortcut-actions, .table-tools { width: 100%; } .join-shortcut-actions { flex-wrap: wrap; } }
 </style>

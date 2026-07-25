@@ -1,7 +1,7 @@
 <template>
   <section class="page problem-detail-page">
     <div class="detail-container">
-      <el-page-header title="返回题库" @back="router.push('/problems')">
+      <el-page-header class="back-to-bank" title="返回题库" @back="router.push('/problems')">
         <template #content>
           <span v-if="problem" class="page-header-title">
             {{ problemDisplayCode(problem) }} · {{ problem.title }}
@@ -38,6 +38,10 @@
             </div>
           </div>
           <div v-if="canManage" class="toolbar manage-actions">
+            <ProblemTestDownloads
+              :problem-id="problem.id"
+              :problem-code="problem.display_code"
+            />
             <el-button type="primary" plain @click="editVisible = true">修改题目</el-button>
             <el-button v-if="canDelete" type="danger" plain @click="removeProblem">删除题目</el-button>
           </div>
@@ -45,13 +49,8 @@
 
         <main class="problem-content">
           <section class="statement-section">
-            <ProblemTestDownloads
-              v-if="canManage"
-              :problem-id="problem.id"
-              :problem-code="problem.display_code"
-              class="test-downloads"
-            />
-            <MarkdownRenderer :source="problem.statement" :problem-id="problem.id" />
+            <MarkdownRenderer :source="statementBody" :problem-id="problem.id" />
+            <ProblemSamplesView :samples="samples" />
           </section>
 
           <section class="submission-section">
@@ -89,13 +88,16 @@ import { client, sseUrl, type Problem } from '../../api/client'
 import CodeEditor from '../../components/CodeEditor.vue'
 import MarkdownRenderer from '../../components/MarkdownRenderer.vue'
 import ProblemEditDialog from '../../components/ProblemEditDialog.vue'
+import ProblemSamplesView from '../../components/ProblemSamplesView.vue'
 import ProblemTestDownloads from '../../components/ProblemTestDownloads.vue'
 import StatusBadge from '../../components/StatusBadge.vue'
 import {
   difficultyFromTags,
   difficultyTagType,
+  extractStatementSamples,
   problemDisplayCode,
   problemLimitText,
+  stripStatementSamples,
   tagList
 } from '../../features/problems/problemMeta'
 import { useAuthStore } from '../../stores/auth'
@@ -117,6 +119,8 @@ const canManage = computed(() => auth.role === 'admin' || auth.role === 'teacher
 const canDelete = computed(() => Boolean(problem.value && (auth.role === 'admin' || problem.value.owner_id === auth.user?.id)))
 const tags = computed(() => tagList(problem.value?.tags))
 const difficulty = computed(() => difficultyFromTags(problem.value?.tags))
+const samples = computed(() => extractStatementSamples(problem.value?.statement))
+const statementBody = computed(() => stripStatementSamples(problem.value?.statement))
 const source = ref(`#include <bits/stdc++.h>
 using namespace std;
 int main() {
@@ -220,6 +224,20 @@ onBeforeUnmount(() => submissionEvents?.close())
   font-weight: 700;
 }
 
+.back-to-bank :deep(.el-page-header__left) {
+  padding: 9px 14px;
+  color: #fff;
+  border-radius: 10px;
+  background: linear-gradient(135deg, #0a5ea6, #0f766e);
+  box-shadow: 0 8px 20px rgba(10, 94, 166, 0.22);
+}
+
+.back-to-bank :deep(.el-page-header__title),
+.back-to-bank :deep(.el-page-header__icon) {
+  color: #fff;
+  font-weight: 800;
+}
+
 .loading-state {
   margin-top: 28px;
 }
@@ -288,10 +306,6 @@ onBeforeUnmount(() => submissionEvents?.close())
 
 .statement-section {
   border-bottom: 1px solid var(--border);
-}
-
-.test-downloads {
-  margin-bottom: 22px;
 }
 
 .submission-toolbar {
