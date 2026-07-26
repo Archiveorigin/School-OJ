@@ -105,10 +105,11 @@ const rendered = computed(() => md.render(props.source || ''))
 function renderCodeBlock(source: string, info: string) {
   const language = info.trim().split(/\s+/)[0].replace(/[^A-Za-z0-9_-]/g, '')
   const languageClass = language ? ` class="language-${md.utils.escapeHtml(language)}"` : ''
+  const content = source.replace(/^(?:[ \t]*\r?\n)+/, '')
   return [
     '<div class="markdown-code-block">',
-    '<button type="button" class="markdown-copy-button" aria-label="复制代码">复制</button>',
-    `<pre><code${languageClass}>${md.utils.escapeHtml(source)}</code></pre>`,
+    '<div class="markdown-code-toolbar"><button type="button" class="markdown-copy-button" aria-label="复制代码">复制</button></div>',
+    `<pre><code${languageClass}>${md.utils.escapeHtml(content)}</code></pre>`,
     '</div>'
   ].join('')
 }
@@ -117,7 +118,7 @@ async function onMarkdownClick(event: MouseEvent) {
   const target = event.target as HTMLElement | null
   const button = target?.closest<HTMLButtonElement>('.markdown-copy-button')
   if (!button) return
-  const code = button.parentElement?.querySelector('pre code')?.textContent || ''
+  const code = button.closest('.markdown-code-block')?.querySelector('pre code')?.textContent || ''
   try {
     await copyTextToClipboard(code)
     button.textContent = '已复制'
@@ -169,14 +170,22 @@ function resolveImage(src: string) {
 }
 
 .markdown-body :deep(.markdown-code-block) {
-  position: relative;
+  overflow: hidden;
+  margin: 0 0 12px;
+  border-radius: 8px;
+  background: #111827;
+}
+
+.markdown-body :deep(.markdown-code-toolbar) {
+  display: flex;
+  justify-content: flex-end;
+  min-height: 30px;
+  padding: 5px 8px;
+  border-bottom: 1px solid rgba(191, 219, 254, 0.16);
+  background: rgba(15, 23, 42, 0.96);
 }
 
 .markdown-body :deep(.markdown-copy-button) {
-  position: absolute;
-  top: 8px;
-  right: 8px;
-  z-index: 1;
   padding: 4px 9px;
   color: #dbeafe;
   border: 1px solid rgba(191, 219, 254, 0.32);
@@ -187,7 +196,8 @@ function resolveImage(src: string) {
 }
 
 .markdown-body :deep(.markdown-code-block pre) {
-  padding-top: 42px;
+  margin: 0;
+  border-radius: 0;
 }
 
 .markdown-body :deep(code) {

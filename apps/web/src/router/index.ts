@@ -25,6 +25,7 @@ const MyCourses = () => import('../views/courses/MyCourses.vue')
 const Plagiarism = () => import('../views/Plagiarism.vue')
 const ProblemDetail = () => import('../views/problems/ProblemDetail.vue')
 const ProblemCreate = () => import('../views/problems/ProblemCreate.vue')
+const ProblemAuthorManagement = () => import('../views/admin/ProblemAuthorManagement.vue')
 const ProblemSubmissions = () => import('../views/problems/ProblemSubmissions.vue')
 const Problems = () => import('../views/Problems.vue')
 const ProblemsLayout = () => import('../views/problems/ProblemsLayout.vue')
@@ -35,7 +36,6 @@ const Submissions = () => import('../views/Submissions.vue')
 const Users = () => import('../views/Users.vue')
 
 const teacherRoles = ['admin', 'teacher']
-const problemAuthorRoles = ['admin', 'teacher', 'problem_setter']
 
 const router = createRouter({
   history: createWebHistory(),
@@ -50,7 +50,7 @@ const router = createRouter({
       meta: { public: true, title: '题库', activeMenu: '/problems' },
       children: [
         { path: '', name: 'problem-list', component: Problems },
-        { path: 'create', name: 'problem-create', component: ProblemCreate, meta: { public: false, roles: problemAuthorRoles, title: '创建题目', activeMenu: '/problems/create' } },
+        { path: 'create', name: 'problem-create', component: ProblemCreate, meta: { public: false, requiresAuthor: true, title: '创建题目', activeMenu: '/problems/create' } },
         { path: ':id/submissions', name: 'problem-submissions', component: ProblemSubmissions, meta: { public: false, title: '题目提交记录' } },
         { path: ':id', name: 'problem-detail', component: ProblemDetail, meta: { title: '题目详情' } }
       ]
@@ -97,6 +97,7 @@ const router = createRouter({
         { path: 'courses/:id/students', component: CourseStudents, meta: { title: '课程学生', adminMenu: '/admin/courses' } },
         { path: 'classes', component: ClassList, meta: { title: '班级管理', adminMenu: '/admin/classes' } },
         { path: 'prepared-problems', component: PreparedProblems, meta: { title: '预备题库', adminMenu: '/admin/prepared-problems' } },
+        { path: 'problem-authors', component: ProblemAuthorManagement, meta: { roles: ['admin'], title: '出题管理', adminMenu: '/admin/problem-authors' } },
         { path: 'plagiarism', component: Plagiarism, meta: { title: 'JPlag 查重', adminMenu: '/admin/plagiarism' } },
         { path: 'audit-logs', component: AuditLogs, meta: { roles: ['admin'], title: '审计日志', adminMenu: '/admin/audit-logs' } },
         { path: 'users', component: Users, meta: { roles: ['admin'], title: '用户管理', adminMenu: '/admin/users' } }
@@ -106,6 +107,7 @@ const router = createRouter({
     { path: '/plagiarism', redirect: '/admin/plagiarism' },
     { path: '/audit-logs', redirect: '/admin/audit-logs' },
     { path: '/users', redirect: '/admin/users' },
+    { path: '/problem-authors', redirect: '/admin/problem-authors' },
     { path: '/admin/exam-rankings', redirect: '/my/courses' }
   ]
 })
@@ -121,6 +123,7 @@ router.beforeEach(async (to) => {
   if (authPaths.includes(to.path) && auth.isAuthed) return '/'
   const roles = to.meta.roles as string[] | undefined
   if (roles && (!auth.user || !roles.includes(auth.user.role))) return '/'
+  if (to.meta.requiresAuthor && (!auth.user || !(auth.user.can_author || ['problem_setter', 'teacher', 'admin'].includes(auth.user.role)))) return '/'
 })
 
 export default router

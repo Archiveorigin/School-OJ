@@ -59,6 +59,9 @@ func AutoMigrate(gdb *gorm.DB) error {
 	if err := migrateAuthorApplications(gdb); err != nil {
 		return err
 	}
+	if err := migrateProblemAuthorPermissions(gdb); err != nil {
+		return err
+	}
 	if err := migrateUserRoleConstraint(gdb); err != nil {
 		return err
 	}
@@ -72,6 +75,15 @@ func AutoMigrate(gdb *gorm.DB) error {
 		return err
 	}
 	return backfillClassJoinCodes(gdb)
+}
+
+func migrateProblemAuthorPermissions(gdb *gorm.DB) error {
+	if !gdb.Migrator().HasTable("users") {
+		return nil
+	}
+	return gdb.Model(&models.User{}).
+		Where("role = ? AND can_author = false", models.RoleProblemSetter).
+		Update("can_author", true).Error
 }
 
 func migrateUserRoleConstraint(gdb *gorm.DB) error {

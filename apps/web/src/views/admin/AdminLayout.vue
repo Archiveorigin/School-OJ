@@ -46,6 +46,7 @@ const items = [
   { path: '/admin/courses', label: '课程管理' },
   { path: '/admin/classes', label: '班级管理' },
   { path: '/admin/prepared-problems', label: '预备题库' },
+  { path: '/admin/problem-authors', label: '出题管理', roles: ['admin'] },
   { path: '/admin/plagiarism', label: 'JPlag 查重' },
   { path: '/admin/audit-logs', label: '审计日志', roles: ['admin'] },
   { path: '/admin/users', label: '用户管理', roles: ['admin'] }

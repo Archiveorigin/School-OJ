@@ -30,6 +30,7 @@ export interface User {
   role: Role
   student_no?: string
   avatar_url?: string
+  can_author?: boolean
   email_verified?: boolean
   account_deleted?: boolean
   created_at?: string
@@ -118,6 +119,22 @@ export interface AuthorApplication {
   reviewed_by?: number
   reviewed_at?: string
   user?: User
+  created_at: string
+  updated_at: string
+}
+
+export interface ProblemReview {
+  id: number
+  problem_id: number
+  author_id: number
+  status: 'pending' | 'approved' | 'rejected'
+  review_note?: string
+  reviewed_by?: number
+  reviewed_at?: string
+  submitted_at: string
+  test_point_count: number
+  problem: Problem
+  author: User
   created_at: string
   updated_at: string
 }

@@ -1,10 +1,10 @@
 <template>
   <div class="test-data-entry">
     <el-button type="primary" plain class="test-data-button" @click="openDialog">
-      测试数据
+      {{ buttonLabel || '测试数据' }}
     </el-button>
 
-    <el-dialog v-model="visible" title="后台测试数据" width="min(760px, calc(100vw - 28px))" class="test-data-dialog" destroy-on-close>
+    <el-dialog v-model="visible" :title="dialogTitle || '后台测试数据'" width="min(760px, calc(100vw - 28px))" class="test-data-dialog" destroy-on-close>
       <div class="dialog-toolbar">
         <p>仅管理人员可查看。每个测试点按名称对应输入和输出。</p>
         <el-button type="primary" :loading="downloadingAll" :disabled="!tests.length" @click="downloadAll">
@@ -70,6 +70,8 @@ interface ProblemTest {
 const props = defineProps<{
   problemId: number
   problemCode?: string
+  buttonLabel?: string
+  dialogTitle?: string
 }>()
 
 const visible = ref(false)

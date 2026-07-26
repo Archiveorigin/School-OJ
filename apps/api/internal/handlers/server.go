@@ -330,14 +330,14 @@ func (s Server) Router() *gin.Engine {
 	auth.GET("/classes/:id/students", middleware.RequireRoles(models.RoleAdmin, models.RoleTeacher), s.listClassStudents)
 	auth.DELETE("/classes/:id/students/:user_id", middleware.RequireRoles(models.RoleAdmin, models.RoleTeacher), s.removeClassStudent)
 	auth.POST("/classes/:id/students/import", middleware.RequireRoles(models.RoleAdmin, models.RoleTeacher), s.importClassStudents)
-	auth.POST("/problems", middleware.RequireRoles(models.RoleAdmin, models.RoleTeacher, models.RoleProblemSetter), s.createProblem)
-	auth.POST("/problems/parse-markdown", middleware.RequireRoles(models.RoleAdmin, models.RoleTeacher, models.RoleProblemSetter), s.parseMarkdownBatch)
-	auth.POST("/problems/upload", middleware.RequireRoles(models.RoleAdmin, models.RoleTeacher, models.RoleProblemSetter), s.uploadProblem)
-	auth.PUT("/problems/:id", middleware.RequireRoles(models.RoleAdmin, models.RoleTeacher, models.RoleProblemSetter), s.updateProblem)
-	auth.GET("/problems/:id/tests", middleware.RequireRoles(models.RoleAdmin, models.RoleTeacher, models.RoleProblemSetter), s.listProblemTests)
-	auth.GET("/problems/:id/tests/download", middleware.RequireRoles(models.RoleAdmin, models.RoleTeacher, models.RoleProblemSetter), s.downloadProblemTests)
-	auth.GET("/problems/:id/tests/file/*file_path", middleware.RequireRoles(models.RoleAdmin, models.RoleTeacher, models.RoleProblemSetter), s.downloadProblemTestFile)
-	auth.DELETE("/problems/:id", middleware.RequireRoles(models.RoleAdmin, models.RoleTeacher, models.RoleProblemSetter), s.deleteProblem)
+	auth.POST("/problems", s.createProblem)
+	auth.POST("/problems/parse-markdown", s.parseMarkdownBatch)
+	auth.POST("/problems/upload", s.uploadProblem)
+	auth.PUT("/problems/:id", s.updateProblem)
+	auth.GET("/problems/:id/tests", s.listProblemTests)
+	auth.GET("/problems/:id/tests/download", s.downloadProblemTests)
+	auth.GET("/problems/:id/tests/file/*file_path", s.downloadProblemTestFile)
+	auth.DELETE("/problems/:id", s.deleteProblem)
 	auth.GET("/prepared-problems", middleware.RequireRoles(models.RoleAdmin, models.RoleTeacher), s.listPreparedProblems)
 	auth.POST("/prepared-problems", middleware.RequireRoles(models.RoleAdmin, models.RoleTeacher), s.createPreparedProblem)
 	auth.POST("/prepared-problems/upload", middleware.RequireRoles(models.RoleAdmin, models.RoleTeacher), s.uploadPreparedProblem)
@@ -375,6 +375,9 @@ func (s Server) Router() *gin.Engine {
 	auth.POST("/users/:id/reset-password", middleware.RequireRoles(models.RoleAdmin), s.resetUserPassword)
 	auth.GET("/author-applications", middleware.RequireRoles(models.RoleAdmin), s.listAuthorApplications)
 	auth.PUT("/author-applications/:id/review", middleware.RequireRoles(models.RoleAdmin), s.reviewAuthorApplication)
+	auth.GET("/problem-reviews/mine", s.listMyProblemReviews)
+	auth.GET("/problem-reviews", middleware.RequireRoles(models.RoleAdmin), s.listProblemReviews)
+	auth.PUT("/problem-reviews/:id/review", middleware.RequireRoles(models.RoleAdmin), s.reviewProblem)
 	return r
 }
 
@@ -690,7 +693,7 @@ func (s Server) getMyAuthorApplication(c *gin.Context) {
 
 func (s Server) createAuthorApplication(c *gin.Context) {
 	user, _ := middleware.CurrentUser(c)
-	if user.Role == models.RoleAdmin || user.Role == models.RoleTeacher || user.Role == models.RoleProblemSetter {
+	if canCreateProblems(user) {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "current account can already create problems"})
 		return
 	}
@@ -771,10 +774,8 @@ func (s Server) reviewAuthorApplication(c *gin.Context) {
 			if err := tx.First(&applicant, application.UserID).Error; err != nil {
 				return err
 			}
-			if applicant.Role == models.RoleStudent {
-				if err := tx.Model(&applicant).Update("role", models.RoleProblemSetter).Error; err != nil {
-					return err
-				}
+			if err := tx.Model(&applicant).Update("can_author", true).Error; err != nil {
+				return err
 			}
 		}
 		return nil
@@ -790,6 +791,109 @@ func (s Server) reviewAuthorApplication(c *gin.Context) {
 	var application models.AuthorApplication
 	_ = s.DB.Preload("User").First(&application, applicationID).Error
 	c.JSON(http.StatusOK, application)
+}
+
+type problemReviewView struct {
+	models.ProblemReview
+	TestPointCount int `json:"test_point_count"`
+}
+
+func (s Server) listMyProblemReviews(c *gin.Context) {
+	user, _ := middleware.CurrentUser(c)
+	var reviews []models.ProblemReview
+	if err := s.DB.
+		Preload("Problem").
+		Preload("Author").
+		Where("author_id = ?", user.ID).
+		Order("submitted_at desc, id desc").
+		Find(&reviews).Error; err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+	c.JSON(http.StatusOK, problemReviewViews(reviews))
+}
+
+func (s Server) listProblemReviews(c *gin.Context) {
+	var reviews []models.ProblemReview
+	q := s.DB.
+		Preload("Problem").
+		Preload("Author").
+		Order("CASE WHEN status = 'pending' THEN 0 ELSE 1 END, submitted_at DESC, id DESC")
+	if status := strings.TrimSpace(c.Query("status")); status != "" {
+		q = q.Where("status = ?", status)
+	}
+	if err := q.Find(&reviews).Error; err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+	c.JSON(http.StatusOK, problemReviewViews(reviews))
+}
+
+func problemReviewViews(reviews []models.ProblemReview) []problemReviewView {
+	views := make([]problemReviewView, 0, len(reviews))
+	for _, review := range reviews {
+		views = append(views, problemReviewView{
+			ProblemReview:  review,
+			TestPointCount: len(problemTestCases(review.Problem.Manifest)),
+		})
+	}
+	return views
+}
+
+func (s Server) reviewProblem(c *gin.Context) {
+	admin, _ := middleware.CurrentUser(c)
+	reviewID, ok := idParam(c, "id")
+	if !ok {
+		return
+	}
+	var req struct {
+		Status     models.ProblemReviewStatus `json:"status"`
+		ReviewNote string                     `json:"review_note"`
+	}
+	if !bind(c, &req) {
+		return
+	}
+	if req.Status != models.ProblemReviewApproved && req.Status != models.ProblemReviewRejected {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "status must be approved or rejected"})
+		return
+	}
+	req.ReviewNote = strings.TrimSpace(req.ReviewNote)
+	if req.Status == models.ProblemReviewRejected && req.ReviewNote == "" {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "review_note is required when rejecting a problem"})
+		return
+	}
+	now := time.Now()
+	if err := s.DB.Transaction(func(tx *gorm.DB) error {
+		var review models.ProblemReview
+		if err := tx.Clauses(clause.Locking{Strength: "UPDATE"}).First(&review, reviewID).Error; err != nil {
+			return err
+		}
+		if review.Status != models.ProblemReviewPending {
+			return fmt.Errorf("problem review has already been handled")
+		}
+		var problem models.Problem
+		if err := tx.Where("deleted_at IS NULL").First(&problem, review.ProblemID).Error; err != nil {
+			return err
+		}
+		return tx.Model(&review).Updates(map[string]any{
+			"status":      req.Status,
+			"review_note": req.ReviewNote,
+			"reviewed_by": admin.ID,
+			"reviewed_at": now,
+		}).Error
+	}); err != nil {
+		status := http.StatusBadRequest
+		if err == gorm.ErrRecordNotFound {
+			status = http.StatusNotFound
+		}
+		c.JSON(status, gin.H{"error": err.Error()})
+		return
+	}
+	services.Audit(c, s.DB, "problem_review.review", "problem_review", reviewID, datatypes.JSONMap{"status": req.Status})
+	var review models.ProblemReview
+	_ = s.DB.Preload("Problem").Preload("Author").First(&review, reviewID).Error
+	views := problemReviewViews([]models.ProblemReview{review})
+	c.JSON(http.StatusOK, views[0])
 }
 
 func (s Server) listCourses(c *gin.Context) {
@@ -1654,6 +1758,10 @@ func (s Server) listProblems(c *gin.Context) {
 
 func (s Server) uploadProblem(c *gin.Context) {
 	user, _ := middleware.CurrentUser(c)
+	if !canCreateProblems(user) {
+		c.JSON(http.StatusForbidden, gin.H{"error": "problem author permission is required"})
+		return
+	}
 	file, err := c.FormFile("package")
 	if err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "package file is required"})
@@ -1692,6 +1800,10 @@ func (s Server) uploadProblem(c *gin.Context) {
 
 func (s Server) createProblem(c *gin.Context) {
 	user, _ := middleware.CurrentUser(c)
+	if !canCreateProblems(user) {
+		c.JSON(http.StatusForbidden, gin.H{"error": "problem author permission is required"})
+		return
+	}
 	if strings.HasPrefix(strings.ToLower(c.GetHeader("Content-Type")), "multipart/form-data") {
 		s.createProblemMultipart(c, user)
 		return
@@ -1751,6 +1863,11 @@ func (s Server) createProblemMultipart(c *gin.Context, user models.User) {
 }
 
 func (s Server) parseMarkdownBatch(c *gin.Context) {
+	user, _ := middleware.CurrentUser(c)
+	if !canCreateProblems(user) {
+		c.JSON(http.StatusForbidden, gin.H{"error": "problem author permission is required"})
+		return
+	}
 	file, header, err := c.Request.FormFile("file")
 	if err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "file is required"})
@@ -1881,12 +1998,26 @@ func (s Server) saveProblemPackage(c *gin.Context, user models.User, body []byte
 		if err := tx.Create(&problem).Error; err != nil {
 			return err
 		}
+		if user.Role != models.RoleAdmin {
+			review := models.ProblemReview{
+				ProblemID:   problem.ID,
+				AuthorID:    user.ID,
+				Status:      models.ProblemReviewPending,
+				SubmittedAt: time.Now(),
+			}
+			if err := tx.Create(&review).Error; err != nil {
+				return err
+			}
+		}
 		return nil
 	}); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 		return models.Problem{}, false
 	}
-	services.Audit(c, s.DB, action, "problem", problem.ID, datatypes.JSONMap{"slug": problem.Slug})
+	services.Audit(c, s.DB, action, "problem", problem.ID, datatypes.JSONMap{
+		"slug":            problem.Slug,
+		"review_required": user.Role != models.RoleAdmin,
+	})
 	return problem, true
 }
 
@@ -2042,6 +2173,12 @@ func (s Server) updateProblem(c *gin.Context) {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 		return
 	}
+	if user.Role != models.RoleAdmin {
+		if err := s.submitProblemForReview(problem.ID, problem.OwnerID); err != nil {
+			c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+			return
+		}
+	}
 	services.Audit(c, s.DB, "problem.update", "problem", problem.ID, datatypes.JSONMap{"slug": problem.Slug, "tests_updated": testsUpdated})
 	var fresh models.Problem
 	if err := s.DB.First(&fresh, problem.ID).Error; err != nil {
@@ -2049,6 +2186,30 @@ func (s Server) updateProblem(c *gin.Context) {
 		return
 	}
 	c.JSON(http.StatusOK, fresh)
+}
+
+func (s Server) submitProblemForReview(problemID uint, authorID uint) error {
+	now := time.Now()
+	var review models.ProblemReview
+	err := s.DB.Where("problem_id = ?", problemID).First(&review).Error
+	if err == gorm.ErrRecordNotFound {
+		return s.DB.Create(&models.ProblemReview{
+			ProblemID:   problemID,
+			AuthorID:    authorID,
+			Status:      models.ProblemReviewPending,
+			SubmittedAt: now,
+		}).Error
+	}
+	if err != nil {
+		return err
+	}
+	return s.DB.Model(&review).Updates(map[string]any{
+		"status":       models.ProblemReviewPending,
+		"review_note":  "",
+		"reviewed_by":  nil,
+		"reviewed_at":  nil,
+		"submitted_at": now,
+	}).Error
 }
 
 func (s Server) parseProblemUpdateRequest(c *gin.Context) (problemUpdateInput, []services.ProblemCaseDraft, bool, bool) {
@@ -2273,13 +2434,20 @@ func (s Server) canManageProblemData(user models.User, problem models.Problem) b
 	if user.Role == models.RoleAdmin {
 		return true
 	}
-	if user.Role == models.RoleProblemSetter {
+	if canCreateProblems(user) && problem.OwnerID == user.ID {
 		return problem.OwnerID == user.ID
 	}
 	if user.Role != models.RoleTeacher {
 		return false
 	}
 	return problem.OwnerID == user.ID || s.problemInVisibleClass(user, problem.ID)
+}
+
+func canCreateProblems(user models.User) bool {
+	return user.CanAuthor ||
+		user.Role == models.RoleProblemSetter ||
+		user.Role == models.RoleTeacher ||
+		user.Role == models.RoleAdmin
 }
 
 func (s Server) problemPackageBody(c *gin.Context, problem models.Problem) ([]byte, bool) {
@@ -4484,6 +4652,10 @@ func auditResourceLabel(resourceType string) string {
 		return "考试"
 	case "submission":
 		return "提交记录"
+	case "author_application":
+		return "出题资格申请"
+	case "problem_review":
+		return "题目审批"
 	case "plagiarism_job":
 		return "查重任务"
 	default:
@@ -4661,6 +4833,9 @@ func (s Server) canReadProblemAsset(user models.User, problem models.Problem, as
 	if user.Role == models.RoleAdmin {
 		return true
 	}
+	if canCreateProblems(user) && problem.OwnerID == user.ID {
+		return true
+	}
 	if user.Role == models.RoleTeacher {
 		if problem.OwnerID == user.ID {
 			return true
@@ -4671,12 +4846,20 @@ func (s Server) canReadProblemAsset(user models.User, problem models.Problem, as
 }
 
 func publicProblemSQL() string {
-	return `(NOT EXISTS (
+	return `NOT EXISTS (
+		SELECT 1 FROM problem_reviews
+		WHERE problem_reviews.problem_id = problems.id
+		  AND problem_reviews.status <> 'approved'
+	) AND (NOT EXISTS (
 		SELECT 1 FROM prepared_problems WHERE prepared_problems.problem_id = problems.id
 	) OR EXISTS (
 		SELECT 1 FROM prepared_problems
 		WHERE prepared_problems.problem_id = problems.id
 		  AND prepared_problems.published_at IS NOT NULL
+	) OR EXISTS (
+		SELECT 1 FROM problem_reviews
+		WHERE problem_reviews.problem_id = problems.id
+		  AND problem_reviews.status = 'approved'
 	) OR EXISTS (
 		SELECT 1 FROM class_problems
 		WHERE class_problems.problem_id = problems.id
@@ -5493,7 +5676,7 @@ func (s Server) canViewSubmissionResults(user models.User, sub models.Submission
 		var exam models.Exam
 		return s.DB.First(&exam, *sub.ExamID).Error == nil && s.canManageCourse(user, exam.CourseID)
 	}
-	if user.Role != models.RoleTeacher && user.Role != models.RoleProblemSetter {
+	if !canCreateProblems(user) {
 		return false
 	}
 	var problem models.Problem

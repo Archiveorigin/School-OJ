@@ -27,6 +27,7 @@ type User struct {
 	PasswordHash   string    `json:"-" gorm:"not null"`
 	StudentNo      string    `json:"student_no" gorm:"size:64;index"`
 	AvatarURL      string    `json:"avatar_url" gorm:"type:text"`
+	CanAuthor      bool      `json:"can_author" gorm:"not null;default:false;index"`
 	EmailVerified  bool      `json:"email_verified" gorm:"not null;default:false"`
 	AccountDeleted bool      `json:"account_deleted" gorm:"not null;default:false;index"`
 	CreatedAt      time.Time `json:"created_at"`
@@ -295,6 +296,29 @@ type AuthorApplication struct {
 	UpdatedAt  time.Time               `json:"updated_at"`
 }
 
+type ProblemReviewStatus string
+
+const (
+	ProblemReviewPending  ProblemReviewStatus = "pending"
+	ProblemReviewApproved ProblemReviewStatus = "approved"
+	ProblemReviewRejected ProblemReviewStatus = "rejected"
+)
+
+type ProblemReview struct {
+	ID          uint                `json:"id" gorm:"primaryKey"`
+	ProblemID   uint                `json:"problem_id" gorm:"uniqueIndex;not null"`
+	AuthorID    uint                `json:"author_id" gorm:"index;not null"`
+	Status      ProblemReviewStatus `json:"status" gorm:"type:varchar(32);index;not null;default:'pending'"`
+	ReviewNote  string              `json:"review_note" gorm:"type:text"`
+	ReviewedBy  *uint               `json:"reviewed_by" gorm:"index"`
+	ReviewedAt  *time.Time          `json:"reviewed_at"`
+	SubmittedAt time.Time           `json:"submitted_at" gorm:"index;not null"`
+	Problem     Problem             `json:"problem" gorm:"foreignKey:ProblemID"`
+	Author      User                `json:"author" gorm:"foreignKey:AuthorID"`
+	CreatedAt   time.Time           `json:"created_at"`
+	UpdatedAt   time.Time           `json:"updated_at"`
+}
+
 type SubmissionResult struct {
 	ID           uint             `json:"id" gorm:"primaryKey"`
 	SubmissionID uint             `json:"submission_id" gorm:"index;not null"`
@@ -383,6 +407,7 @@ func AllModels() []any {
 		&Submission{},
 		&SubmissionResult{},
 		&AuthorApplication{},
+		&ProblemReview{},
 		&PlagiarismJob{},
 		&AuditLog{},
 		&EmailVerification{},

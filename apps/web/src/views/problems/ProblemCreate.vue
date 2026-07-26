@@ -8,8 +8,8 @@
       <header class="create-heading">
         <div>
           <span class="eyebrow">PROBLEM AUTHORING</span>
-          <h1>新建题库题目</h1>
-          <p>系统会自动分配内部唯一编号；题面中的输入输出代码块会直接展示并提供复制按钮。</p>
+          <h1>{{ reviewStatus === 'rejected' ? '修改退回题目' : '新建题库题目' }}</h1>
+          <p>题目内容会自动缓存；非管理员提交后需经后台审核才会进入公共题库。</p>
         </div>
         <el-upload
           action="#"
@@ -21,6 +21,22 @@
           <el-button :loading="importingMarkdown">从 MD 文档导入</el-button>
         </el-upload>
       </header>
+
+      <el-alert
+        v-if="reviewStatus === 'pending'"
+        type="warning"
+        :closable="false"
+        show-icon
+        :title="`${cachedProblemCode || '当前题目'} 已提交，正在等待管理员审核`"
+      />
+      <el-alert
+        v-else-if="reviewStatus === 'rejected'"
+        class="review-alert"
+        type="error"
+        :closable="false"
+        show-icon
+        :title="`题目已退回：${reviewNote || '请按规范修改后重新提交'}`"
+      />
 
       <el-form label-position="top" class="authoring-grid">
         <section class="panel form-panel">
@@ -49,7 +65,7 @@
 
           <div class="section-title preview-title"><h2>题面预览</h2><span>代码块右上角可复制</span></div>
           <div class="statement-preview">
-            <MarkdownRenderer :source="form.statement || '在左侧题面文本框中输入内容后，这里会实时预览。'" />
+            <MarkdownRenderer :source="form.statement || '在题面文本框中输入内容后，这里会实时预览。'" />
           </div>
         </section>
 
@@ -71,7 +87,7 @@
           </section>
 
           <section class="panel import-panel">
-            <div class="section-title"><h2>测试点压缩包</h2><span>ZIP / IN / OUT</span></div>
+            <div class="section-title"><h2>测试点文件</h2><span>ZIP / IN / OUT</span></div>
             <el-upload
               drag
               action="#"
@@ -82,66 +98,69 @@
               :on-change="syncTestFiles"
               :on-remove="syncTestFiles"
             >
-              <div class="upload-title">拖入测试样例压缩包</div>
+              <div class="upload-title">拖入测试点压缩包</div>
               <div class="muted">也可选择成对的 .in / .out 文件</div>
             </el-upload>
             <el-alert
               v-if="testFiles.length"
               type="success"
               :closable="false"
-              :title="`已选择 ${testFiles.length} 个文件，将替代下方手动测试点`"
+              :title="`已选择 ${testFiles.length} 个测试文件`"
             />
+            <el-alert
+              v-else-if="importedCases.length"
+              type="info"
+              :closable="false"
+              :title="`MD 文档中识别到 ${importedCases.length} 个测试点`"
+            />
+            <p class="cache-note">文字内容自动保存在当前浏览器。测试文件无法写入浏览器缓存，退回题目沿用服务器中已上传的测试点。</p>
           </section>
         </aside>
-
-        <section class="panel cases-panel">
-          <div class="case-toolbar">
-            <div class="section-title">
-              <h2>测试样例</h2>
-              <span>用于后台评测，不在前台单独展示</span>
-            </div>
-            <el-button @click="addCase">添加测试样例</el-button>
-          </div>
-          <div v-for="(item, index) in form.cases" :key="index" class="case-editor">
-            <div class="case-head">
-              <strong>测试点 {{ index + 1 }}</strong>
-              <el-input v-model="item.name" placeholder="测试点名称" />
-              <el-input-number v-model="item.weight" :min="1" :max="100" />
-              <el-button type="danger" plain :disabled="form.cases.length === 1" @click="removeCase(index)">删除</el-button>
-            </div>
-            <div class="two-columns">
-              <el-form-item label="输入">
-                <el-input v-model="item.input" type="textarea" :rows="7" placeholder="输入数据" />
-              </el-form-item>
-              <el-form-item label="期望输出">
-                <el-input v-model="item.output" type="textarea" :rows="7" placeholder="期望输出" />
-              </el-form-item>
-            </div>
-          </div>
-        </section>
       </el-form>
 
       <footer class="create-footer">
-        <el-button @click="router.push('/problems')">取消</el-button>
-        <el-button type="primary" size="large" :loading="saving" @click="createProblem">创建并打开题目</el-button>
+        <span class="draft-state">草稿已自动缓存</span>
+        <div>
+          <el-button v-if="reviewStatus !== 'pending'" @click="clearDraft">清除草稿</el-button>
+          <el-button @click="router.push('/problems')">取消</el-button>
+          <el-button
+            type="primary"
+            size="large"
+            :loading="saving"
+            :disabled="reviewStatus === 'pending'"
+            @click="submitProblem"
+          >
+            {{ submitLabel }}
+          </el-button>
+        </div>
       </footer>
     </div>
   </section>
 </template>
 
 <script setup lang="ts">
-import { ElMessage } from 'element-plus'
-import { reactive, ref } from 'vue'
+import { ElMessage, ElMessageBox } from 'element-plus'
+import { computed, onMounted, reactive, ref, watch } from 'vue'
 import { useRouter } from 'vue-router'
-import { client } from '../../api/client'
+import { client, type ProblemReview } from '../../api/client'
 import MarkdownRenderer from '../../components/MarkdownRenderer.vue'
 import { problemDifficultyOptions } from '../../features/problems/problemMeta'
+import { useAuthStore } from '../../stores/auth'
 
 type TestCase = { name: string; input: string; output: string; weight: number }
+type ReviewStatus = ProblemReview['status'] | ''
+
+const DRAFT_KEY = 'school-oj-problem-author-draft-v2'
 const router = useRouter()
+const auth = useAuthStore()
 const saving = ref(false)
 const importingMarkdown = ref(false)
 const testFiles = ref<any[]>([])
+const importedCases = ref<TestCase[]>([])
+const cachedProblemId = ref<number>()
+const cachedProblemCode = ref('')
+const reviewStatus = ref<ReviewStatus>('')
+const reviewNote = ref('')
 const form = reactive({
   title: '',
   statement: '',
@@ -149,21 +168,22 @@ const form = reactive({
   tags: '',
   time_limit_ms: 1000,
   memory_limit_mb: 256,
-  output_limit_kb: 1024,
-  cases: [{ name: 'case-01', input: '1 2\n', output: '3\n', weight: 100 }] as TestCase[]
+  output_limit_kb: 1024
+})
+
+const submitLabel = computed(() => {
+  if (auth.role === 'admin') return '创建并发布'
+  if (reviewStatus.value === 'pending') return '等待管理员审核'
+  if (reviewStatus.value === 'rejected') return '重新提交审核'
+  return '提交管理员审核'
 })
 
 function parseTags() {
   return form.tags.split(/[\s,，、]+/).map((item) => item.trim()).filter(Boolean)
 }
 
-function addCase() {
-  const index = form.cases.length + 1
-  form.cases.push({ name: `case-${String(index).padStart(2, '0')}`, input: '', output: '', weight: 1 })
-}
-
-function removeCase(index: number) {
-  form.cases.splice(index, 1)
+function normalizeStatement(value: string) {
+  return value.replace(/(```[^\r\n]*\r?\n)(?:[ \t]*\r?\n)+/g, '$1')
 }
 
 function syncTestFiles(_file: any, fileList: any[]) {
@@ -184,18 +204,19 @@ async function importMarkdown(uploadFile: any) {
       return
     }
     form.title = draft.title || ''
-    form.statement = draft.statement || ''
+    form.statement = normalizeStatement(draft.statement || '')
     form.time_limit_ms = draft.time_limit_ms || 1000
     form.memory_limit_mb = draft.memory_limit_mb || 256
     form.output_limit_kb = draft.output_limit_kb || 1024
-    if (Array.isArray(draft.cases) && draft.cases.length) {
-      form.cases.splice(0, form.cases.length, ...draft.cases.map((item: any, index: number) => ({
-        name: item.name || `case-${String(index + 1).padStart(2, '0')}`,
-        input: item.input || '',
-        output: item.output || '',
-        weight: item.weight || Math.max(1, Math.floor(100 / draft.cases.length))
-      })))
-    }
+    importedCases.value = Array.isArray(draft.cases)
+      ? draft.cases.map((item: any, index: number) => ({
+          name: item.name || `case-${String(index + 1).padStart(2, '0')}`,
+          input: item.input || '',
+          output: item.output || '',
+          weight: item.weight || Math.max(1, Math.floor(100 / Math.max(1, draft.cases.length)))
+        }))
+      : []
+    persistDraft()
     const extra = Math.max(0, (data.problems?.length || 1) - 1)
     ElMessage.success(extra ? `已载入第一道题，文档中另有 ${extra} 道题` : 'MD 文档已载入')
   } catch (err: any) {
@@ -205,7 +226,7 @@ async function importMarkdown(uploadFile: any) {
   }
 }
 
-async function createProblem() {
+async function submitProblem() {
   if (!form.title.trim()) {
     ElMessage.error('请输入题目名称')
     return
@@ -214,12 +235,14 @@ async function createProblem() {
     ElMessage.error('请输入题面')
     return
   }
-  if (!testFiles.value.length && !form.cases.some((item) => item.input || item.output)) {
-    ElMessage.error('请添加测试样例或导入测试点压缩包')
+  const resubmitting = reviewStatus.value === 'rejected' && Boolean(cachedProblemId.value)
+  if (!resubmitting && !testFiles.value.length && !importedCases.value.length) {
+    ElMessage.error('请导入测试点压缩包、IN/OUT 文件，或从 MD 文档载入测试点')
     return
   }
   saving.value = true
   try {
+    form.statement = normalizeStatement(form.statement)
     const draft = {
       title: form.title.trim(),
       statement: form.statement,
@@ -228,25 +251,158 @@ async function createProblem() {
       time_limit_ms: form.time_limit_ms,
       memory_limit_mb: form.memory_limit_mb,
       output_limit_kb: form.output_limit_kb,
-      cases: form.cases
+      cases: importedCases.value
     }
-    let data: any
-    if (testFiles.value.length) {
-      const payload = new FormData()
-      payload.append('draft', JSON.stringify(draft))
-      testFiles.value.forEach((item) => { if (item.raw) payload.append('test_files', item.raw) })
-      data = (await client.post('/problems', payload)).data
-    } else {
-      data = (await client.post('/problems', draft)).data
+    const endpoint = resubmitting ? `/problems/${cachedProblemId.value}` : '/problems'
+    const request = testFiles.value.length
+      ? buildMultipartRequest(endpoint, draft, resubmitting)
+      : resubmitting
+        ? client.put(endpoint, draft)
+        : client.post(endpoint, draft)
+    const { data } = await request
+    if (auth.role === 'admin') {
+      localStorage.removeItem(DRAFT_KEY)
+      ElMessage.success('题目已创建并发布')
+      await router.push(`/problems/${encodeURIComponent(data.display_code || String(data.id))}`)
+      return
     }
-    ElMessage.success('题目已创建')
-    await router.push(`/problems/${encodeURIComponent(data.display_code || String(data.id))}`)
+    cachedProblemId.value = data.id
+    cachedProblemCode.value = data.display_code || `#${data.id}`
+    reviewStatus.value = 'pending'
+    reviewNote.value = ''
+    testFiles.value = []
+    persistDraft()
+    ElMessage.success('题目已提交管理员审核，草稿会继续保留')
   } catch (err: any) {
     ElMessage.error(err.response?.data?.error || err.message)
   } finally {
     saving.value = false
   }
 }
+
+function buildMultipartRequest(endpoint: string, draft: Record<string, unknown>, updating: boolean) {
+  const payload = new FormData()
+  payload.append('draft', JSON.stringify(draft))
+  testFiles.value.forEach((item) => { if (item.raw) payload.append('test_files', item.raw) })
+  return updating ? client.put(endpoint, payload) : client.post(endpoint, payload)
+}
+
+function persistDraft() {
+  try {
+    localStorage.setItem(DRAFT_KEY, JSON.stringify({
+      ...form,
+      cases: importedCases.value,
+      problem_id: cachedProblemId.value,
+      problem_code: cachedProblemCode.value,
+      review_status: reviewStatus.value,
+      review_note: reviewNote.value
+    }))
+  } catch {
+    // A very large imported document may exceed browser storage; server data remains authoritative.
+  }
+}
+
+function restoreDraft() {
+  try {
+    const cached = JSON.parse(localStorage.getItem(DRAFT_KEY) || 'null')
+    if (!cached) return
+    form.title = cached.title || ''
+    form.statement = normalizeStatement(cached.statement || '')
+    form.difficulty = cached.difficulty || '入门'
+    form.tags = cached.tags || ''
+    form.time_limit_ms = Number(cached.time_limit_ms) || 1000
+    form.memory_limit_mb = Number(cached.memory_limit_mb) || 256
+    form.output_limit_kb = Number(cached.output_limit_kb) || 1024
+    importedCases.value = Array.isArray(cached.cases) ? cached.cases : []
+    cachedProblemId.value = cached.problem_id ? Number(cached.problem_id) : undefined
+    cachedProblemCode.value = cached.problem_code || ''
+    reviewStatus.value = cached.review_status || ''
+    reviewNote.value = cached.review_note || ''
+  } catch {
+    localStorage.removeItem(DRAFT_KEY)
+  }
+}
+
+async function loadReviewState() {
+  if (auth.role === 'admin') return
+  try {
+    const { data } = await client.get<ProblemReview[]>('/problem-reviews/mine')
+    const review = cachedProblemId.value
+      ? data.find((item) => item.problem_id === cachedProblemId.value)
+      : data.find((item) => item.status === 'rejected' || item.status === 'pending')
+    if (!review) return
+    if (review.status === 'approved') {
+      localStorage.removeItem(DRAFT_KEY)
+      form.title = ''
+      form.statement = ''
+      form.difficulty = '入门'
+      form.tags = ''
+      form.time_limit_ms = 1000
+      form.memory_limit_mb = 256
+      form.output_limit_kb = 1024
+      importedCases.value = []
+      cachedProblemId.value = undefined
+      cachedProblemCode.value = ''
+      reviewStatus.value = ''
+      reviewNote.value = ''
+      return
+    }
+    cachedProblemId.value = review.problem_id
+    cachedProblemCode.value = review.problem.display_code || `#${review.problem_id}`
+    reviewStatus.value = review.status
+    reviewNote.value = review.review_note || ''
+    if (!form.title && review.problem) {
+      form.title = review.problem.title || ''
+      form.statement = normalizeStatement(review.problem.statement || '')
+      form.difficulty = review.problem.difficulty || '入门'
+      form.tags = problemTags(review.problem.tags).join('、')
+      form.time_limit_ms = review.problem.time_limit_ms || 1000
+      form.memory_limit_mb = review.problem.memory_limit_mb || 256
+      form.output_limit_kb = review.problem.output_limit_kb || 1024
+    }
+    persistDraft()
+  } catch {
+    // The draft can still be edited offline; submission will surface authorization errors.
+  }
+}
+
+function problemTags(tags?: Record<string, unknown>) {
+  const labels = tags?.labels
+  return Array.isArray(labels) ? labels.map(String) : []
+}
+
+async function clearDraft() {
+  try {
+    await ElMessageBox.confirm('确认清除当前浏览器中的出题草稿？服务器中的待审或退回题目不会被删除。', '清除草稿', {
+      type: 'warning',
+      confirmButtonText: '清除',
+      cancelButtonText: '取消'
+    })
+  } catch {
+    return
+  }
+  localStorage.removeItem(DRAFT_KEY)
+  form.title = ''
+  form.statement = ''
+  form.difficulty = '入门'
+  form.tags = ''
+  form.time_limit_ms = 1000
+  form.memory_limit_mb = 256
+  form.output_limit_kb = 1024
+  importedCases.value = []
+  testFiles.value = []
+  cachedProblemId.value = undefined
+  cachedProblemCode.value = ''
+  reviewStatus.value = ''
+  reviewNote.value = ''
+}
+
+watch(form, persistDraft, { deep: true })
+watch(importedCases, persistDraft, { deep: true })
+onMounted(async () => {
+  restoreDraft()
+  await loadReviewState()
+})
 </script>
 
 <style scoped>
@@ -255,11 +411,11 @@ async function createProblem() {
 .create-heading { display: flex; align-items: end; justify-content: space-between; gap: 24px; padding: 34px 0 24px; }
 .create-heading h1 { margin: 6px 0; font-size: 30px; }
 .create-heading p { margin: 0; color: var(--muted); }
+.review-alert { margin-top: 12px; }
 .eyebrow { color: var(--accent); font-size: 11px; font-weight: 800; letter-spacing: .16em; }
-.authoring-grid { display: grid; grid-template-columns: minmax(0, 1.55fr) minmax(300px, .65fr); gap: 16px; }
+.authoring-grid { display: grid; grid-template-columns: minmax(0, 1.55fr) minmax(300px, .65fr); gap: 16px; margin-top: 16px; }
 .form-panel { grid-row: span 2; }
 .side-column { display: grid; align-content: start; gap: 16px; }
-.cases-panel { grid-column: 1 / -1; }
 .section-title { display: flex; align-items: baseline; justify-content: space-between; gap: 14px; margin-bottom: 16px; }
 .section-title h2 { margin: 0; font-size: 19px; }
 .section-title span { color: var(--muted); font-size: 12px; }
@@ -270,23 +426,18 @@ async function createProblem() {
 .limits-panel :deep(.el-input-number) { width: calc(100% - 38px); }
 .import-panel { display: grid; gap: 12px; }
 .upload-title { margin-bottom: 6px; font-weight: 700; }
-.case-toolbar, .case-head { display: flex; align-items: center; gap: 12px; }
-.case-toolbar { justify-content: space-between; }
-.case-toolbar .section-title { margin-bottom: 0; }
-.case-editor { display: grid; gap: 12px; margin-top: 16px; padding: 16px; border: 1px solid var(--border); border-radius: 10px; }
-.case-head strong { flex: 0 0 auto; }
-.case-head .el-input { min-width: 180px; }
-.create-footer { position: sticky; bottom: 0; z-index: 5; display: flex; justify-content: flex-end; gap: 10px; margin-top: 18px; padding: 14px; border: 1px solid var(--border); border-radius: 12px; background: var(--glass); backdrop-filter: blur(14px); }
+.cache-note { margin: 0; color: var(--muted); font-size: 12px; line-height: 1.65; }
+.create-footer { position: sticky; bottom: 0; z-index: 5; display: flex; align-items: center; justify-content: space-between; gap: 10px; margin-top: 18px; padding: 14px; border: 1px solid var(--border); border-radius: 12px; background: var(--glass); backdrop-filter: blur(14px); }
+.create-footer > div { display: flex; gap: 10px; }
+.draft-state { color: var(--muted); font-size: 12px; }
 @media (max-width: 900px) {
   .authoring-grid { grid-template-columns: 1fr; }
   .form-panel { grid-row: auto; }
-  .cases-panel { grid-column: auto; }
 }
 @media (max-width: 640px) {
   .problem-create-page { padding: 16px 12px 36px; }
-  .create-heading { align-items: stretch; flex-direction: column; }
+  .create-heading, .create-footer { align-items: stretch; flex-direction: column; }
   .two-columns { grid-template-columns: 1fr; }
-  .case-head { align-items: stretch; flex-direction: column; }
-  .case-head > * { width: 100%; }
+  .create-footer > div { flex-wrap: wrap; }
 }
 </style>

@@ -2,9 +2,9 @@
   <router-view v-if="authPage" />
   <el-container v-else direction="vertical" class="shell" :class="{ 'exam-shell': studentExamWorkspace, 'admin-shell': adminWorkspace, 'course-shell': courseWorkspace }">
     <el-header v-if="!studentExamWorkspace && !adminWorkspace && !courseWorkspace" class="topbar" height="auto">
-      <AppSidebar :active-menu="activeMenu" :role="auth.role" :authenticated="auth.isAuthed" />
+      <AppSidebar :active-menu="activeMenu" :role="auth.role" :authenticated="auth.isAuthed" :can-author="canAuthor" />
       <div class="topbar-actions">
-        <el-dropdown v-if="auth.isAuthed" trigger="click" @command="handleCommand">
+        <el-dropdown v-if="auth.isAuthed" trigger="hover" :show-timeout="120" :hide-timeout="180" @command="handleCommand">
           <button class="avatar-button" type="button">
             <img v-if="auth.user?.avatar_url" :src="auth.user.avatar_url" alt="" />
             <span v-else>{{ initials }}</span>
@@ -13,8 +13,7 @@
             <el-dropdown-menu>
               <el-dropdown-item command="profile">个人中心</el-dropdown-item>
               <el-dropdown-item command="update-profile">更新个人资料</el-dropdown-item>
-              <el-dropdown-item v-if="['problem_setter', 'teacher', 'admin'].includes(auth.role || '')" command="author">创建题目</el-dropdown-item>
-              <el-dropdown-item v-if="auth.role === 'teacher' || auth.role === 'admin'" command="admin">后台管理</el-dropdown-item>
+              <el-dropdown-item v-if="auth.role === 'admin'" command="admin">后台管理</el-dropdown-item>
               <el-dropdown-item command="theme">
                 {{ auth.theme === 'dark' ? '切换明亮模式' : '切换暗黑模式' }}
               </el-dropdown-item>
@@ -48,6 +47,7 @@ let lastPromptedExamId: number | undefined
 
 const authPage = computed(() => ['/login', '/register', '/forgot-password'].includes(route.path))
 const initials = computed(() => (auth.user?.name || auth.user?.email || 'U').trim().slice(0, 1).toUpperCase())
+const canAuthor = computed(() => Boolean(auth.user?.can_author) || ['problem_setter', 'teacher', 'admin'].includes(auth.role || ''))
 const activeMenu = computed(() => String(route.meta.activeMenu || route.path))
 const currentExamRouteId = computed(() => {
   const value = route.params.id
@@ -80,10 +80,6 @@ function handleCommand(command: string) {
   }
   if (command === 'admin') {
     router.push('/admin')
-    return
-  }
-  if (command === 'author') {
-    router.push('/problems/create')
     return
   }
   if (command === 'theme') {

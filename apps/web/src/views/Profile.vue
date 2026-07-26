@@ -12,6 +12,7 @@
           <p>{{ profile?.user.email || auth.user?.email }}</p>
           <div class="profile-tags">
             <el-tag>{{ roleLabel }}</el-tag>
+            <el-tag v-if="canAuthor" type="warning">已获出题资格</el-tag>
             <el-tag v-if="profile?.user.email_verified" type="success">邮箱已验证</el-tag>
             <el-tag v-if="profile?.user.student_no" type="info">学号 {{ profile.user.student_no }}</el-tag>
           </div>
@@ -30,7 +31,7 @@
         <span class="eyebrow">PROBLEM AUTHOR PROGRAM</span>
         <h2>{{ canAuthor ? '出题工作台已开放' : '申请成为出题者' }}</h2>
         <p v-if="canAuthor">你可以创建题目、导入 Markdown 题面和测试点压缩包，并维护自己提供的题目。</p>
-        <p v-else-if="authorApplication?.status === 'pending'">申请已提交，管理员审核通过后账号会自动转换为出题者。</p>
+        <p v-else-if="authorApplication?.status === 'pending'">申请已提交，管理员审核通过后会为当前账号开通独立出题权限，学生角色保持不变。</p>
         <p v-else>说明你的出题经验、擅长方向或计划提供的题目类型，管理员审核通过后即可开始出题。</p>
         <el-alert
           v-if="authorApplication?.status === 'rejected'"
@@ -259,7 +260,7 @@ const roleLabel = computed(() => {
   const role = profile.value?.user.role || auth.user?.role
   return role === 'admin' ? '管理员' : role === 'teacher' ? '教师' : role === 'problem_setter' ? '出题者' : '学生'
 })
-const canAuthor = computed(() => ['admin', 'teacher', 'problem_setter'].includes(profile.value?.user.role || auth.role || ''))
+const canAuthor = computed(() => Boolean(profile.value?.user.can_author || auth.user?.can_author) || ['admin', 'teacher', 'problem_setter'].includes(profile.value?.user.role || auth.role || ''))
 const joinedAt = computed(() => {
   const value = profile.value?.user.created_at
   if (!value) return '平台成员'
@@ -320,7 +321,7 @@ async function load() {
     profile.value = data
     profileForm.name = data.user.name
     auth.updateUser(data.user)
-    if (data.user.role === 'student') {
+    if (data.user.role === 'student' && !data.user.can_author) {
       authorApplication.value = (await client.get('/author-applications/me')).data.application
     } else {
       authorApplication.value = null

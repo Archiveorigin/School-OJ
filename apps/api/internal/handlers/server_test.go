@@ -10,6 +10,8 @@ import (
 
 	"school-oj/apps/api/internal/models"
 	"school-oj/apps/api/internal/services"
+
+	"gorm.io/datatypes"
 )
 
 func TestRouterBuilds(t *testing.T) {
@@ -174,6 +176,43 @@ func TestParseProblemInternalSlugRejectsNonInternalValues(t *testing.T) {
 		if got := parseProblemInternalSlug(value); got != 0 {
 			t.Fatalf("parseProblemInternalSlug(%q) = %d, want 0", value, got)
 		}
+	}
+}
+
+func TestCanCreateProblemsUsesIndependentAuthorFlag(t *testing.T) {
+	student := models.User{Role: models.RoleStudent}
+	if canCreateProblems(student) {
+		t.Fatal("plain student must not be allowed to create problems")
+	}
+	student.CanAuthor = true
+	if !canCreateProblems(student) {
+		t.Fatal("approved student should create problems without changing role")
+	}
+	if student.Role != models.RoleStudent {
+		t.Fatalf("author permission changed base role to %q", student.Role)
+	}
+}
+
+func TestPublicProblemSQLRequiresApprovedReview(t *testing.T) {
+	sql := publicProblemSQL()
+	for _, want := range []string{"problem_reviews", "status <> 'approved'", "status = 'approved'"} {
+		if !strings.Contains(sql, want) {
+			t.Fatalf("public problem SQL missing %q: %s", want, sql)
+		}
+	}
+}
+
+func TestProblemReviewViewsIncludeTestPointCount(t *testing.T) {
+	views := problemReviewViews([]models.ProblemReview{{
+		Problem: models.Problem{Manifest: datatypes.JSONMap{
+			"cases": []any{
+				map[string]any{"name": "case-01", "input": "tests/01.in", "output": "tests/01.out"},
+				map[string]any{"name": "case-02", "input": "tests/02.in", "output": "tests/02.out"},
+			},
+		}},
+	}})
+	if len(views) != 1 || views[0].TestPointCount != 2 {
+		t.Fatalf("test point count = %+v, want 2", views)
 	}
 }
 

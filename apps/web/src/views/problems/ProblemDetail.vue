@@ -53,10 +53,6 @@
 
           <section class="submission-section">
             <div class="submission-callout">
-              <div>
-                <h3>准备好提交了吗？</h3>
-                <p>在独立提交窗口中选择语言、可见范围并粘贴或导入代码文件。</p>
-              </div>
               <div class="toolbar">
                 <el-button v-if="auth.isAuthed" @click="openSubmissionRecords">查看提交记录</el-button>
                 <el-button type="primary" @click="openSubmitDialog">提交代码</el-button>
@@ -64,7 +60,7 @@
             </div>
             <div v-if="live" class="submission-result">
               <StatusBadge :status="live.status" />
-              <span>分数 {{ live.score }}，{{ live.message }}</span>
+              <span>{{ live.message }}</span>
             </div>
           </section>
         </main>
@@ -164,7 +160,10 @@ const codeFileInput = ref<HTMLInputElement>()
 const codeFileName = ref('')
 let submissionEvents: EventSource | null = null
 
-const canManage = computed(() => ['admin', 'teacher', 'problem_setter'].includes(auth.role || ''))
+const canManage = computed(() => auth.role === 'admin' || (
+  (Boolean(auth.user?.can_author) || ['teacher', 'problem_setter'].includes(auth.role || '')) &&
+  problem.value?.owner_id === auth.user?.id
+))
 const canDelete = computed(() => Boolean(problem.value && (auth.role === 'admin' || problem.value.owner_id === auth.user?.id)))
 const tags = computed(() => tagList(problem.value?.tags))
 const difficulty = computed(() => problemDifficulty(problem.value))

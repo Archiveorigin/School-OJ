@@ -5,6 +5,7 @@ export interface NavItem {
   label: string
   roles?: Role[]
   requiresAuth?: boolean
+  authorOnly?: boolean
 }
 
 export interface NavGroup {
@@ -18,17 +19,18 @@ export const navGroups: NavGroup[] = [
     items: [
       { path: '/', label: '概览' },
       { path: '/problems', label: '题库' },
-      { path: '/problems/create', label: '出题', roles: ['problem_setter', 'teacher', 'admin'], requiresAuth: true },
+      { path: '/problems/create', label: '出题', authorOnly: true, requiresAuth: true },
       { path: '/my/courses', label: '课程', requiresAuth: true }
     ]
   }
 ]
 
-export function visibleNavGroups(role?: Role, authenticated = false) {
+export function visibleNavGroups(role?: Role, authenticated = false, canAuthor = false) {
   return navGroups.map((group) => ({
     ...group,
     items: group.items.filter((item) => {
       if (item.requiresAuth && !authenticated) return false
+      if (item.authorOnly && !canAuthor) return false
       return !item.roles || (role ? item.roles.includes(role) : false)
     })
   }))

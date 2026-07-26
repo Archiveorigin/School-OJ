@@ -25,6 +25,7 @@ const cards = computed(() => [
   { path: '/admin/prepared-problems', label: '预备题库', description: '管理未公开题目并发布到公共题库', mark: 'PREP' },
   { path: '/admin/plagiarism', label: 'JPlag 查重', description: '按课程任务创建代码相似度分析', mark: 'CHECK' },
   ...(auth.role === 'admin' ? [
+    { path: '/admin/problem-authors', label: '出题管理', description: '审批出题资格与非管理员提交的题目', mark: 'AUTHOR' },
     { path: '/admin/audit-logs', label: '审计日志', description: '查看关键操作与资源变更记录', mark: 'AUDIT' },
     { path: '/admin/users', label: '用户管理', description: '管理平台账号、角色和登录凭据', mark: 'USER' }
   ] : [])
