@@ -31,7 +31,7 @@
         <span class="eyebrow">PROBLEM AUTHOR PROGRAM</span>
         <h2>{{ canAuthor ? '出题工作台已开放' : '申请成为出题者' }}</h2>
         <p v-if="canAuthor">你可以创建题目、导入 Markdown 题面和测试点压缩包，并维护自己提供的题目。</p>
-        <p v-else-if="authorApplication?.status === 'pending'">申请已提交，管理员审核通过后会为当前账号开通独立出题权限，学生角色保持不变。</p>
+        <p v-else-if="authorApplication?.status === 'pending'">申请已提交，管理员审核通过后会为当前账号开通独立出题权限，基础角色保持不变。</p>
         <p v-else>说明你的出题经验、擅长方向或计划提供的题目类型，管理员审核通过后即可开始出题。</p>
         <el-alert
           v-if="authorApplication?.status === 'rejected'"
@@ -258,9 +258,9 @@ const passwordForm = reactive({ current_password: '', new_password: '', confirm_
 const initials = computed(() => (profile.value?.user.name || auth.user?.name || 'U').trim().slice(0, 1).toUpperCase())
 const roleLabel = computed(() => {
   const role = profile.value?.user.role || auth.user?.role
-  return role === 'admin' ? '管理员' : role === 'teacher' ? '教师' : role === 'problem_setter' ? '出题者' : '学生'
+  return role === 'admin' ? '管理员' : role === 'teacher' ? '教师' : '学生'
 })
-const canAuthor = computed(() => Boolean(profile.value?.user.can_author || auth.user?.can_author) || ['admin', 'teacher', 'problem_setter'].includes(profile.value?.user.role || auth.role || ''))
+const canAuthor = computed(() => Boolean(profile.value?.user.can_author || auth.user?.can_author) || (profile.value?.user.role || auth.role) === 'admin')
 const joinedAt = computed(() => {
   const value = profile.value?.user.created_at
   if (!value) return '平台成员'
@@ -321,7 +321,7 @@ async function load() {
     profile.value = data
     profileForm.name = data.user.name
     auth.updateUser(data.user)
-    if (data.user.role === 'student' && !data.user.can_author) {
+    if (data.user.role !== 'admin' && !data.user.can_author) {
       authorApplication.value = (await client.get('/author-applications/me')).data.application
     } else {
       authorApplication.value = null

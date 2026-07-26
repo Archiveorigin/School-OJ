@@ -245,7 +245,7 @@ func (s Server) getProfile(c *gin.Context) {
 	var problemRows []activityProblemRow
 	activityLabel := "解题活跃度"
 	activityUnit := "道题"
-	if user.CanAuthor || user.Role == models.RoleTeacher || user.Role == models.RoleProblemSetter || user.Role == models.RoleAdmin {
+	if canCreateProblems(user) {
 		activityLabel = "题目上传活跃度"
 		activityUnit = "道题"
 		s.DB.Raw(`
@@ -288,7 +288,7 @@ func (s Server) getProfile(c *gin.Context) {
 	var solved int64
 	s.DB.Model(&models.Submission{}).Where("user_id = ? AND status = ?", user.ID, models.StatusAccepted).Distinct("problem_id").Count(&solved)
 	var submissions int64
-	if user.CanAuthor || user.Role == models.RoleTeacher || user.Role == models.RoleProblemSetter || user.Role == models.RoleAdmin {
+	if canCreateProblems(user) {
 		s.DB.Model(&models.Problem{}).Where("owner_id = ?", user.ID).Count(&submissions)
 	} else {
 		s.DB.Model(&models.Submission{}).Where("user_id = ?", user.ID).Count(&submissions)

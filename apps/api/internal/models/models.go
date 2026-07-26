@@ -13,7 +13,6 @@ type Role string
 const (
 	RoleStudent         Role = "student"
 	RoleTeacher         Role = "teacher"
-	RoleProblemSetter   Role = "problem_setter"
 	RoleAdmin           Role = "admin"
 	RoleCourseAdmin     Role = "course_admin"
 	RoleCourseAssistant Role = "course_assistant"
@@ -299,9 +298,10 @@ type AuthorApplication struct {
 type ProblemReviewStatus string
 
 const (
-	ProblemReviewPending  ProblemReviewStatus = "pending"
-	ProblemReviewApproved ProblemReviewStatus = "approved"
-	ProblemReviewRejected ProblemReviewStatus = "rejected"
+	ProblemReviewPending   ProblemReviewStatus = "pending"
+	ProblemReviewApproved  ProblemReviewStatus = "approved"
+	ProblemReviewRejected  ProblemReviewStatus = "rejected"
+	ProblemReviewWithdrawn ProblemReviewStatus = "withdrawn"
 )
 
 type ProblemReview struct {

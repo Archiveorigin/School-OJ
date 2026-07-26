@@ -4,7 +4,15 @@
       {{ buttonLabel || '测试数据' }}
     </el-button>
 
-    <el-dialog v-model="visible" :title="dialogTitle || '后台测试数据'" width="min(760px, calc(100vw - 28px))" class="test-data-dialog" destroy-on-close>
+    <el-dialog
+      v-model="visible"
+      :title="dialogTitle || '后台测试数据'"
+      width="min(920px, calc(100vw - 24px))"
+      class="test-data-dialog"
+      append-to-body
+      align-center
+      destroy-on-close
+    >
       <div class="dialog-toolbar">
         <p>仅管理人员可查看。每个测试点按名称对应输入和输出。</p>
         <el-button type="primary" :loading="downloadingAll" :disabled="!tests.length" @click="downloadAll">
@@ -193,13 +201,17 @@ watch(() => props.problemId, () => {
 .test-list {
   display: grid;
   gap: 16px;
-  max-height: 66vh;
-  overflow: auto;
+  max-width: 100%;
+  max-height: min(68vh, 720px);
+  overflow-x: hidden;
+  overflow-y: auto;
   padding-right: 4px;
 }
 
 .test-card {
   overflow: hidden;
+  min-width: 0;
+  max-width: 100%;
   border: 1px solid var(--border);
   border-radius: 12px;
 }
@@ -243,20 +255,32 @@ watch(() => props.problemId, () => {
 }
 
 .io-head {
+  min-width: 0;
   padding: 7px 10px;
   border-top: 1px solid var(--border);
   border-bottom: 1px solid var(--border);
 }
 
+.io-head > div {
+  min-width: 0;
+}
+
+.io-head small {
+  overflow-wrap: anywhere;
+}
+
 .io-block pre {
   min-height: 52px;
   max-height: 180px;
-  overflow: auto;
+  overflow-x: hidden;
+  overflow-y: auto;
   margin: 0;
   padding: 9px 10px;
   color: #e2e8f0;
   background: #0f172a;
-  white-space: pre;
+  overflow-wrap: anywhere;
+  white-space: pre-wrap;
+  word-break: break-all;
 }
 
 @media (max-width: 760px) {

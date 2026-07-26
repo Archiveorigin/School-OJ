@@ -5,7 +5,7 @@ CREATE INDEX IF NOT EXISTS idx_users_can_author ON users(can_author);
 
 UPDATE users
 SET can_author = true
-WHERE role = 'problem_setter';
+WHERE role IN ('problem_setter', 'teacher');
 
 CREATE TABLE IF NOT EXISTS problem_reviews (
   id bigserial PRIMARY KEY,

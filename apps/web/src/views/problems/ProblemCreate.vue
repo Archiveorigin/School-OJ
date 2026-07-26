@@ -8,7 +8,7 @@
       <header class="create-heading">
         <div>
           <span class="eyebrow">PROBLEM AUTHORING</span>
-          <h1>{{ reviewStatus === 'rejected' ? '修改退回题目' : '新建题库题目' }}</h1>
+          <h1>{{ reviewStatus === 'rejected' ? '修改退回题目' : reviewStatus === 'withdrawn' ? '修改已撤销题目' : '新建题库题目' }}</h1>
           <p>题目内容会自动缓存；非管理员提交后需经后台审核才会进入公共题库。</p>
         </div>
         <el-upload
@@ -36,6 +36,14 @@
         :closable="false"
         show-icon
         :title="`题目已退回：${reviewNote || '请按规范修改后重新提交'}`"
+      />
+      <el-alert
+        v-else-if="reviewStatus === 'withdrawn'"
+        class="review-alert"
+        type="warning"
+        :closable="false"
+        show-icon
+        :title="`题目已撤销：${reviewNote || '修改后可重新提交管理员审核'}`"
       />
 
       <el-form label-position="top" class="authoring-grid">
@@ -174,7 +182,7 @@ const form = reactive({
 const submitLabel = computed(() => {
   if (auth.role === 'admin') return '创建并发布'
   if (reviewStatus.value === 'pending') return '等待管理员审核'
-  if (reviewStatus.value === 'rejected') return '重新提交审核'
+  if (reviewStatus.value === 'rejected' || reviewStatus.value === 'withdrawn') return '重新提交审核'
   return '提交管理员审核'
 })
 
@@ -235,7 +243,7 @@ async function submitProblem() {
     ElMessage.error('请输入题面')
     return
   }
-  const resubmitting = reviewStatus.value === 'rejected' && Boolean(cachedProblemId.value)
+  const resubmitting = (reviewStatus.value === 'rejected' || reviewStatus.value === 'withdrawn') && Boolean(cachedProblemId.value)
   if (!resubmitting && !testFiles.value.length && !importedCases.value.length) {
     ElMessage.error('请导入测试点压缩包、IN/OUT 文件，或从 MD 文档载入测试点')
     return
@@ -329,7 +337,7 @@ async function loadReviewState() {
     const { data } = await client.get<ProblemReview[]>('/problem-reviews/mine')
     const review = cachedProblemId.value
       ? data.find((item) => item.problem_id === cachedProblemId.value)
-      : data.find((item) => item.status === 'rejected' || item.status === 'pending')
+      : data.find((item) => item.status === 'rejected' || item.status === 'withdrawn' || item.status === 'pending')
     if (!review) return
     if (review.status === 'approved') {
       localStorage.removeItem(DRAFT_KEY)

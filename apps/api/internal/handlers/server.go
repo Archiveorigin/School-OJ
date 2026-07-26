@@ -375,9 +375,12 @@ func (s Server) Router() *gin.Engine {
 	auth.POST("/users/:id/reset-password", middleware.RequireRoles(models.RoleAdmin), s.resetUserPassword)
 	auth.GET("/author-applications", middleware.RequireRoles(models.RoleAdmin), s.listAuthorApplications)
 	auth.PUT("/author-applications/:id/review", middleware.RequireRoles(models.RoleAdmin), s.reviewAuthorApplication)
+	auth.GET("/problem-authors", middleware.RequireRoles(models.RoleAdmin), s.listProblemAuthors)
+	auth.DELETE("/problem-authors/:id", middleware.RequireRoles(models.RoleAdmin), s.removeProblemAuthor)
 	auth.GET("/problem-reviews/mine", s.listMyProblemReviews)
 	auth.GET("/problem-reviews", middleware.RequireRoles(models.RoleAdmin), s.listProblemReviews)
 	auth.PUT("/problem-reviews/:id/review", middleware.RequireRoles(models.RoleAdmin), s.reviewProblem)
+	auth.PUT("/problem-reviews/:id/withdraw", middleware.RequireRoles(models.RoleAdmin), s.withdrawProblem)
 	return r
 }
 
@@ -491,7 +494,7 @@ func (s Server) createUser(c *gin.Context) {
 		return
 	}
 	if !validRole(req.Role) {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "role must be one of student, problem_setter, teacher, admin"})
+		c.JSON(http.StatusBadRequest, gin.H{"error": "role must be one of student, teacher, admin"})
 		return
 	}
 	req.Email = normalizeEmail(req.Email)
@@ -567,7 +570,7 @@ func (s Server) updateUser(c *gin.Context) {
 		return
 	}
 	if !validRole(req.Role) {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "role must be one of student, problem_setter, teacher, admin"})
+		c.JSON(http.StatusBadRequest, gin.H{"error": "role must be one of student, teacher, admin"})
 		return
 	}
 	if email != user.Email {
@@ -735,6 +738,47 @@ func (s Server) listAuthorApplications(c *gin.Context) {
 	c.JSON(http.StatusOK, applications)
 }
 
+func (s Server) listProblemAuthors(c *gin.Context) {
+	var users []models.User
+	if err := s.DB.
+		Select(userPublicColumns()).
+		Where("account_deleted = false").
+		Where("can_author = true OR role = ?", models.RoleAdmin).
+		Order("CASE WHEN role = 'admin' THEN 0 ELSE 1 END, name ASC, id ASC").
+		Find(&users).Error; err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+	c.JSON(http.StatusOK, users)
+}
+
+func (s Server) removeProblemAuthor(c *gin.Context) {
+	admin, _ := middleware.CurrentUser(c)
+	userID, ok := idParam(c, "id")
+	if !ok {
+		return
+	}
+	var user models.User
+	if err := s.DB.Where("id = ? AND account_deleted = false", userID).First(&user).Error; err != nil {
+		c.JSON(http.StatusNotFound, gin.H{"error": "user not found"})
+		return
+	}
+	if user.Role == models.RoleAdmin {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "administrator author permission cannot be removed"})
+		return
+	}
+	if !user.CanAuthor {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "user does not have problem author permission"})
+		return
+	}
+	if err := s.DB.Model(&user).Update("can_author", false).Error; err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+	services.Audit(c, s.DB, "problem_author.remove", "user", user.ID, datatypes.JSONMap{"removed_by": admin.ID})
+	c.JSON(http.StatusOK, gin.H{"removed": true, "user_id": user.ID})
+}
+
 func (s Server) reviewAuthorApplication(c *gin.Context) {
 	admin, _ := middleware.CurrentUser(c)
 	applicationID, ok := idParam(c, "id")
@@ -890,6 +934,46 @@ func (s Server) reviewProblem(c *gin.Context) {
 		return
 	}
 	services.Audit(c, s.DB, "problem_review.review", "problem_review", reviewID, datatypes.JSONMap{"status": req.Status})
+	var review models.ProblemReview
+	_ = s.DB.Preload("Problem").Preload("Author").First(&review, reviewID).Error
+	views := problemReviewViews([]models.ProblemReview{review})
+	c.JSON(http.StatusOK, views[0])
+}
+
+func (s Server) withdrawProblem(c *gin.Context) {
+	admin, _ := middleware.CurrentUser(c)
+	reviewID, ok := idParam(c, "id")
+	if !ok {
+		return
+	}
+	now := time.Now()
+	if err := s.DB.Transaction(func(tx *gorm.DB) error {
+		var review models.ProblemReview
+		if err := tx.Clauses(clause.Locking{Strength: "UPDATE"}).First(&review, reviewID).Error; err != nil {
+			return err
+		}
+		if review.Status != models.ProblemReviewApproved {
+			return fmt.Errorf("only an approved problem can be withdrawn")
+		}
+		var problem models.Problem
+		if err := tx.Where("deleted_at IS NULL").First(&problem, review.ProblemID).Error; err != nil {
+			return err
+		}
+		return tx.Model(&review).Updates(map[string]any{
+			"status":      models.ProblemReviewWithdrawn,
+			"review_note": "管理员已撤销该题目",
+			"reviewed_by": admin.ID,
+			"reviewed_at": now,
+		}).Error
+	}); err != nil {
+		status := http.StatusBadRequest
+		if err == gorm.ErrRecordNotFound {
+			status = http.StatusNotFound
+		}
+		c.JSON(status, gin.H{"error": err.Error()})
+		return
+	}
+	services.Audit(c, s.DB, "problem_review.withdraw", "problem_review", reviewID, nil)
 	var review models.ProblemReview
 	_ = s.DB.Preload("Problem").Preload("Author").First(&review, reviewID).Error
 	views := problemReviewViews([]models.ProblemReview{review})
@@ -2444,10 +2528,7 @@ func (s Server) canManageProblemData(user models.User, problem models.Problem) b
 }
 
 func canCreateProblems(user models.User) bool {
-	return user.CanAuthor ||
-		user.Role == models.RoleProblemSetter ||
-		user.Role == models.RoleTeacher ||
-		user.Role == models.RoleAdmin
+	return user.CanAuthor || user.Role == models.RoleAdmin
 }
 
 func (s Server) problemPackageBody(c *gin.Context, problem models.Problem) ([]byte, bool) {
@@ -2671,6 +2752,10 @@ func (s Server) getPreparedProblem(c *gin.Context) {
 
 func (s Server) createPreparedProblem(c *gin.Context) {
 	user, _ := middleware.CurrentUser(c)
+	if !canCreateProblems(user) {
+		c.JSON(http.StatusForbidden, gin.H{"error": "problem author permission is required"})
+		return
+	}
 	var req preparedProblemInput
 	if !bind(c, &req) {
 		return
@@ -2703,6 +2788,10 @@ func (s Server) createPreparedProblem(c *gin.Context) {
 
 func (s Server) uploadPreparedProblem(c *gin.Context) {
 	user, _ := middleware.CurrentUser(c)
+	if !canCreateProblems(user) {
+		c.JSON(http.StatusForbidden, gin.H{"error": "problem author permission is required"})
+		return
+	}
 	file, err := c.FormFile("package")
 	if err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "package file is required"})
@@ -4191,7 +4280,7 @@ func (s Server) listSubmissions(c *gin.Context) {
 			problemID,
 			user.ID,
 		)
-	} else if user.Role == models.RoleStudent || user.Role == models.RoleProblemSetter {
+	} else if user.Role == models.RoleStudent {
 		q = q.Where("user_id = ?", user.ID)
 	} else if user.Role == models.RoleTeacher {
 		primaryCourses := s.DB.Model(&models.Course{}).Select("id").Where("teacher_id = ?", user.ID)
@@ -5634,11 +5723,11 @@ func (s Server) canAccessSubmission(user models.User, sub models.Submission) boo
 		return true
 	}
 	if user.Role == models.RoleStudent {
-		return sub.UserID == user.ID
-	}
-	if user.Role == models.RoleProblemSetter {
 		if sub.UserID == user.ID {
 			return true
+		}
+		if !user.CanAuthor {
+			return false
 		}
 		var problem models.Problem
 		return s.DB.First(&problem, sub.ProblemID).Error == nil && problem.OwnerID == user.ID
@@ -6338,7 +6427,7 @@ func validLanguage(language string) bool {
 
 func validRole(role models.Role) bool {
 	switch role {
-	case models.RoleStudent, models.RoleProblemSetter, models.RoleTeacher, models.RoleAdmin:
+	case models.RoleStudent, models.RoleTeacher, models.RoleAdmin:
 		return true
 	default:
 		return false
@@ -6353,6 +6442,7 @@ func userPublicColumns() []string {
 		"role",
 		"student_no",
 		"avatar_url",
+		"can_author",
 		"email_verified",
 		"account_deleted",
 		"created_at",

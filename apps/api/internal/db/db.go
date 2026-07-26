@@ -81,9 +81,28 @@ func migrateProblemAuthorPermissions(gdb *gorm.DB) error {
 	if !gdb.Migrator().HasTable("users") {
 		return nil
 	}
-	return gdb.Model(&models.User{}).
-		Where("role = ? AND can_author = false", models.RoleProblemSetter).
-		Update("can_author", true).Error
+	return gdb.Transaction(func(tx *gorm.DB) error {
+		if err := tx.Exec(`
+CREATE TABLE IF NOT EXISTS app_data_migrations (
+  name VARCHAR(160) PRIMARY KEY,
+  applied_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP
+)`).Error; err != nil {
+			return err
+		}
+		result := tx.Exec(`
+INSERT INTO app_data_migrations(name)
+VALUES ('2026-07-independent-problem-author-permission')
+ON CONFLICT (name) DO NOTHING
+`)
+		if result.Error != nil || result.RowsAffected == 0 {
+			return result.Error
+		}
+		return tx.Exec(`
+UPDATE users
+SET can_author = true
+WHERE role IN ('problem_setter', 'teacher')
+`).Error
+	})
 }
 
 func migrateUserRoleConstraint(gdb *gorm.DB) error {
@@ -92,7 +111,8 @@ func migrateUserRoleConstraint(gdb *gorm.DB) error {
 	}
 	statements := []string{
 		`ALTER TABLE users DROP CONSTRAINT IF EXISTS users_role_check`,
-		`ALTER TABLE users ADD CONSTRAINT users_role_check CHECK (role IN ('student', 'problem_setter', 'teacher', 'admin'))`,
+		`UPDATE users SET role = 'student' WHERE role = 'problem_setter'`,
+		`ALTER TABLE users ADD CONSTRAINT users_role_check CHECK (role IN ('student', 'teacher', 'admin'))`,
 	}
 	for _, statement := range statements {
 		if err := gdb.Exec(statement).Error; err != nil {

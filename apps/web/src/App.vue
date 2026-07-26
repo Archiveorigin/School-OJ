@@ -47,7 +47,7 @@ let lastPromptedExamId: number | undefined
 
 const authPage = computed(() => ['/login', '/register', '/forgot-password'].includes(route.path))
 const initials = computed(() => (auth.user?.name || auth.user?.email || 'U').trim().slice(0, 1).toUpperCase())
-const canAuthor = computed(() => Boolean(auth.user?.can_author) || ['problem_setter', 'teacher', 'admin'].includes(auth.role || ''))
+const canAuthor = computed(() => Boolean(auth.user?.can_author) || auth.role === 'admin')
 const activeMenu = computed(() => String(route.meta.activeMenu || route.path))
 const currentExamRouteId = computed(() => {
   const value = route.params.id

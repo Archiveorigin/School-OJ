@@ -146,7 +146,7 @@ import { useAuthStore } from '../stores/auth'
 
 const auth = useAuthStore()
 const router = useRouter()
-const canAuthor = computed(() => Boolean(auth.user?.can_author) || ['admin', 'teacher', 'problem_setter'].includes(auth.role || ''))
+const canAuthor = computed(() => Boolean(auth.user?.can_author) || auth.role === 'admin')
 const canPublishPrepared = computed(() => auth.role === 'admin' || auth.role === 'teacher')
 const problems = ref<Problem[]>([])
 const filters = reactive<ProblemFilters>({ keyword: '', tag: '', difficulty: '', status: 'all' })

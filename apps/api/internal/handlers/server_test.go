@@ -191,6 +191,17 @@ func TestCanCreateProblemsUsesIndependentAuthorFlag(t *testing.T) {
 	if student.Role != models.RoleStudent {
 		t.Fatalf("author permission changed base role to %q", student.Role)
 	}
+	teacher := models.User{Role: models.RoleTeacher}
+	if canCreateProblems(teacher) {
+		t.Fatal("teacher without independent author permission must not create problems")
+	}
+	teacher.CanAuthor = true
+	if !canCreateProblems(teacher) {
+		t.Fatal("approved teacher should create problems")
+	}
+	if !canCreateProblems(models.User{Role: models.RoleAdmin}) {
+		t.Fatal("administrator should always create problems")
+	}
 }
 
 func TestPublicProblemSQLRequiresApprovedReview(t *testing.T) {

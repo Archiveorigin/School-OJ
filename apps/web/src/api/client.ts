@@ -21,7 +21,7 @@ client.interceptors.request.use((config) => {
   return config
 })
 
-export type Role = 'student' | 'problem_setter' | 'teacher' | 'admin'
+export type Role = 'student' | 'teacher' | 'admin'
 
 export interface User {
   id: number
@@ -127,7 +127,7 @@ export interface ProblemReview {
   id: number
   problem_id: number
   author_id: number
-  status: 'pending' | 'approved' | 'rejected'
+  status: 'pending' | 'approved' | 'rejected' | 'withdrawn'
   review_note?: string
   reviewed_by?: number
   reviewed_at?: string

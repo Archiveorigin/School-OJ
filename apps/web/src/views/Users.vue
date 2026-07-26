@@ -43,7 +43,6 @@
         <el-form-item label="角色">
           <el-select v-model="createForm.role" style="width: 100%">
             <el-option label="学生" value="student" />
-            <el-option label="出题者" value="problem_setter" />
             <el-option label="教师" value="teacher" />
             <el-option label="管理员" value="admin" />
           </el-select>
@@ -72,7 +71,6 @@
         <el-form-item label="角色">
           <el-select v-model="editForm.role" style="width: 100%">
             <el-option label="学生" value="student" />
-            <el-option label="出题者" value="problem_setter" />
             <el-option label="教师" value="teacher" />
             <el-option label="管理员" value="admin" />
           </el-select>
@@ -291,7 +289,6 @@ function errorText(err: any) {
 function roleText(role: string) {
   if (role === 'admin') return '管理员'
   if (role === 'teacher') return '教师'
-  if (role === 'problem_setter') return '出题者'
   return '学生'
 }
 

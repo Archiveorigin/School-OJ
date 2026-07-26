@@ -49,6 +49,7 @@ func Seed(ctx context.Context, db *gorm.DB, client *minio.Client, cfg config.Con
 	}
 	admin := user("admin@school.local", "系统管理员", models.RoleAdmin, "")
 	teacher := user("teacher@school.local", "任课教师", models.RoleTeacher, "")
+	teacher.CanAuthor = true
 	student := user("student@school.local", "学生账号", models.RoleStudent, "S20260001")
 	if err := db.Create(&admin).Error; err != nil {
 		return err

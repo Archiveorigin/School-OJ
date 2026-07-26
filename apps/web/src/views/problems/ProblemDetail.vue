@@ -161,7 +161,7 @@ const codeFileName = ref('')
 let submissionEvents: EventSource | null = null
 
 const canManage = computed(() => auth.role === 'admin' || (
-  (Boolean(auth.user?.can_author) || ['teacher', 'problem_setter'].includes(auth.role || '')) &&
+  Boolean(auth.user?.can_author) &&
   problem.value?.owner_id === auth.user?.id
 ))
 const canDelete = computed(() => Boolean(problem.value && (auth.role === 'admin' || problem.value.owner_id === auth.user?.id)))

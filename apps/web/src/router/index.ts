@@ -123,7 +123,7 @@ router.beforeEach(async (to) => {
   if (authPaths.includes(to.path) && auth.isAuthed) return '/'
   const roles = to.meta.roles as string[] | undefined
   if (roles && (!auth.user || !roles.includes(auth.user.role))) return '/'
-  if (to.meta.requiresAuthor && (!auth.user || !(auth.user.can_author || ['problem_setter', 'teacher', 'admin'].includes(auth.user.role)))) return '/'
+  if (to.meta.requiresAuthor && (!auth.user || !(auth.user.can_author || auth.user.role === 'admin'))) return '/'
 })
 
 export default router
