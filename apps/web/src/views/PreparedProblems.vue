@@ -61,7 +61,6 @@
             <el-table-column label="题目" min-width="210">
               <template #default="{ row }">
                 <div class="problem-title">{{ row.problem?.title }}</div>
-                <div class="muted">{{ row.problem?.slug }}</div>
               </template>
             </el-table-column>
             <el-table-column prop="folder" label="文件夹" width="140" />
@@ -99,7 +98,7 @@
           <div class="detail-head">
             <div>
               <h3>{{ selected.problem.title }}</h3>
-              <p class="muted">{{ problemDisplayCode(selected.problem) }} · {{ selected.problem.slug }}</p>
+              <p class="muted">{{ problemDisplayCode(selected.problem) }}</p>
             </div>
             <el-tag :type="selected.archived ? 'info' : selected.published_at ? 'success' : 'warning'">
               {{ selected.archived ? '已归档' : selected.published_at ? '已发布' : '待发布' }}
@@ -176,18 +175,9 @@
         </el-tab-pane>
         <el-tab-pane label="表单创建题目" name="form">
           <el-form label-width="96px" class="problem-form">
-            <el-row :gutter="12">
-              <el-col :span="12">
-                <el-form-item label="Slug">
-                  <el-input v-model="problemForm.slug" placeholder="two-sum" />
-                </el-form-item>
-              </el-col>
-              <el-col :span="12">
-                <el-form-item label="标题">
-                  <el-input v-model="problemForm.title" placeholder="两数之和" />
-                </el-form-item>
-              </el-col>
-            </el-row>
+            <el-form-item label="标题">
+              <el-input v-model="problemForm.title" placeholder="两数之和" />
+            </el-form-item>
             <el-form-item label="题面">
               <el-input
                 v-model="problemForm.statement"
@@ -393,7 +383,6 @@ const editForm = reactive({
 })
 
 const problemForm = reactive({
-  slug: '',
   title: '',
   statement: '',
   time_limit_ms: 1000,
@@ -462,7 +451,6 @@ async function createFromForm() {
   try {
     const { data } = await client.post('/prepared-problems', {
       ...metadataPayload(),
-      slug: problemForm.slug,
       title: problemForm.title,
       statement: problemForm.statement,
       time_limit_ms: problemForm.time_limit_ms,
@@ -586,7 +574,6 @@ function resetMeta() {
 
 function resetProblemForm() {
   problemForm.assets.forEach((asset) => URL.revokeObjectURL(asset.preview_url))
-  problemForm.slug = ''
   problemForm.title = ''
   problemForm.statement = ''
   problemForm.time_limit_ms = 1000

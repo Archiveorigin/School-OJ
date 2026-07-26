@@ -159,6 +159,24 @@ func TestPreparedProblemInputDraftKeepsAssets(t *testing.T) {
 	}
 }
 
+func TestFirstAvailableProblemInternalSlugReusesDeletedGap(t *testing.T) {
+	got := firstAvailableProblemInternalSlug([]string{"P000001", "legacy-title", "P000003"})
+	if got != "P000002" {
+		t.Fatalf("slug = %q, want P000002", got)
+	}
+}
+
+func TestParseProblemInternalSlugRejectsNonInternalValues(t *testing.T) {
+	if got := parseProblemInternalSlug("p000042"); got != 42 {
+		t.Fatalf("index = %d, want 42", got)
+	}
+	for _, value := range []string{"two-sum", "P42", "T000042", "P000000"} {
+		if got := parseProblemInternalSlug(value); got != 0 {
+			t.Fatalf("parseProblemInternalSlug(%q) = %d, want 0", value, got)
+		}
+	}
+}
+
 func TestBuildXLSXIncludesExamReportRows(t *testing.T) {
 	body, err := buildXLSX([][]xlsxCell{
 		{xlsxString("学生姓名"), xlsxString("学号"), xlsxString("通过题目数"), xlsxString("所得分数")},

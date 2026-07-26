@@ -56,13 +56,67 @@ func AutoMigrate(gdb *gorm.DB) error {
 	if err := migrateProblemSlugUniqueness(gdb); err != nil {
 		return err
 	}
+	if err := migrateAuthorApplications(gdb); err != nil {
+		return err
+	}
+	if err := migrateUserRoleConstraint(gdb); err != nil {
+		return err
+	}
 	if err := backfillProblemDisplayCodes(gdb); err != nil {
+		return err
+	}
+	if err := backfillProblemDifficulties(gdb); err != nil {
 		return err
 	}
 	if err := backfillPreparedProblemPublishedAt(gdb); err != nil {
 		return err
 	}
 	return backfillClassJoinCodes(gdb)
+}
+
+func migrateUserRoleConstraint(gdb *gorm.DB) error {
+	if !gdb.Migrator().HasTable("users") {
+		return nil
+	}
+	statements := []string{
+		`ALTER TABLE users DROP CONSTRAINT IF EXISTS users_role_check`,
+		`ALTER TABLE users ADD CONSTRAINT users_role_check CHECK (role IN ('student', 'problem_setter', 'teacher', 'admin'))`,
+	}
+	for _, statement := range statements {
+		if err := gdb.Exec(statement).Error; err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func migrateAuthorApplications(gdb *gorm.DB) error {
+	if !gdb.Migrator().HasTable("author_applications") {
+		return nil
+	}
+	return gdb.Exec(`
+CREATE UNIQUE INDEX IF NOT EXISTS idx_author_applications_pending_user
+ON author_applications(user_id)
+WHERE status = 'pending'
+`).Error
+}
+
+func backfillProblemDifficulties(gdb *gorm.DB) error {
+	if !gdb.Migrator().HasTable("problems") {
+		return nil
+	}
+	return gdb.Exec(`
+UPDATE problems
+SET difficulty = CASE
+  WHEN COALESCE(tags->'labels', '[]'::jsonb) ? '入门' THEN '入门'
+  WHEN COALESCE(tags->'labels', '[]'::jsonb) ? '基础' THEN '基础'
+  WHEN COALESCE(tags->'labels', '[]'::jsonb) ? '普及' THEN '普及'
+  WHEN COALESCE(tags->'labels', '[]'::jsonb) ? '提高' THEN '提高'
+  WHEN COALESCE(tags->'labels', '[]'::jsonb) ? '综合' THEN '综合'
+  ELSE ''
+END
+WHERE COALESCE(problems.difficulty, '') = ''
+`).Error
 }
 
 func backfillPreparedProblemPublishedAt(gdb *gorm.DB) error {

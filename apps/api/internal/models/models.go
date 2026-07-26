@@ -13,6 +13,7 @@ type Role string
 const (
 	RoleStudent         Role = "student"
 	RoleTeacher         Role = "teacher"
+	RoleProblemSetter   Role = "problem_setter"
 	RoleAdmin           Role = "admin"
 	RoleCourseAdmin     Role = "course_admin"
 	RoleCourseAssistant Role = "course_assistant"
@@ -83,10 +84,11 @@ type Problem struct {
 	ID              uint              `json:"id" gorm:"primaryKey"`
 	OwnerID         uint              `json:"owner_id" gorm:"index;not null"`
 	DisplayCode     string            `json:"display_code" gorm:"uniqueIndex;size:16"`
-	Slug            string            `json:"slug" gorm:"uniqueIndex:idx_problems_slug_active,where:deleted_at IS NULL;size:120;not null"`
+	Slug            string            `json:"-" gorm:"uniqueIndex:idx_problems_slug_active,where:deleted_at IS NULL;size:120;not null"`
 	Title           string            `json:"title" gorm:"size:200;not null"`
 	Statement       string            `json:"statement" gorm:"type:text"`
 	Tags            datatypes.JSONMap `json:"tags" gorm:"type:jsonb"`
+	Difficulty      string            `json:"difficulty" gorm:"size:32;index"`
 	TimeLimitMS     int               `json:"time_limit_ms" gorm:"not null;default:1000"`
 	MemoryLimitMB   int               `json:"memory_limit_mb" gorm:"not null;default:256"`
 	OutputLimitKB   int               `json:"output_limit_kb" gorm:"not null;default:1024"`
@@ -258,6 +260,7 @@ type Submission struct {
 	ExamID         *uint             `json:"exam_id" gorm:"index"`
 	Language       string            `json:"language" gorm:"size:32;index;not null"`
 	SourceCode     string            `json:"source_code" gorm:"type:text;not null"`
+	IsPublic       bool              `json:"is_public" gorm:"not null;default:false;index"`
 	Status         SubmissionStatus  `json:"status" gorm:"type:varchar(32);index;not null"`
 	Score          int               `json:"score" gorm:"not null;default:0"`
 	ManualScore    *int              `json:"manual_score"`
@@ -269,6 +272,27 @@ type Submission struct {
 	Trace          datatypes.JSONMap `json:"trace" gorm:"type:jsonb"`
 	CreatedAt      time.Time         `json:"created_at"`
 	UpdatedAt      time.Time         `json:"updated_at"`
+}
+
+type AuthorApplicationStatus string
+
+const (
+	AuthorApplicationPending  AuthorApplicationStatus = "pending"
+	AuthorApplicationApproved AuthorApplicationStatus = "approved"
+	AuthorApplicationRejected AuthorApplicationStatus = "rejected"
+)
+
+type AuthorApplication struct {
+	ID         uint                    `json:"id" gorm:"primaryKey"`
+	UserID     uint                    `json:"user_id" gorm:"index;not null"`
+	Motivation string                  `json:"motivation" gorm:"type:text;not null"`
+	Status     AuthorApplicationStatus `json:"status" gorm:"type:varchar(32);index;not null;default:'pending'"`
+	ReviewNote string                  `json:"review_note" gorm:"type:text"`
+	ReviewedBy *uint                   `json:"reviewed_by" gorm:"index"`
+	ReviewedAt *time.Time              `json:"reviewed_at"`
+	User       User                    `json:"user,omitempty" gorm:"foreignKey:UserID"`
+	CreatedAt  time.Time               `json:"created_at"`
+	UpdatedAt  time.Time               `json:"updated_at"`
 }
 
 type SubmissionResult struct {
@@ -358,6 +382,7 @@ func AllModels() []any {
 		&ExamAttempt{},
 		&Submission{},
 		&SubmissionResult{},
+		&AuthorApplication{},
 		&PlagiarismJob{},
 		&AuditLog{},
 		&EmailVerification{},

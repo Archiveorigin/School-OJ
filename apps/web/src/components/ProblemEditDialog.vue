@@ -4,7 +4,6 @@
       <el-form-item label="题目">
         <div class="problem-meta">
           <strong>{{ problem?.display_code || '未编号' }}</strong>
-          <span class="muted">{{ problem?.slug }}</span>
         </div>
       </el-form-item>
       <el-form-item label="标题">
@@ -41,8 +40,10 @@
       <el-form-item label="标签">
         <el-input v-model="form.tags" placeholder="多个标签用逗号、空格或换行分隔" />
       </el-form-item>
-      <el-form-item label="前台样例">
-        <ProblemSampleEditor v-model="visibleSamples" />
+      <el-form-item label="难度">
+        <el-select v-model="form.difficulty" placeholder="请选择难度" style="width: 100%">
+          <el-option v-for="item in problemDifficultyOptions" :key="item" :label="item" :value="item" />
+        </el-select>
       </el-form-item>
       <el-form-item label="后台测试点">
         <div class="test-upload-panel">
@@ -80,15 +81,7 @@
 import { ElMessage } from 'element-plus'
 import { computed, reactive, ref, watch } from 'vue'
 import { client, type Problem } from '../api/client'
-import {
-  extractStatementSamples,
-  replaceStatementSamples,
-  stripStatementSamples,
-  tagList
-} from '../features/problems/problemMeta'
-import ProblemSampleEditor from './ProblemSampleEditor.vue'
-
-type EditableProblemSample = { name: string; input: string; output: string }
+import { problemDifficulty, problemDifficultyOptions, tagList } from '../features/problems/problemMeta'
 
 const props = defineProps<{
   modelValue: boolean
@@ -106,14 +99,14 @@ const visible = computed({
 })
 const saving = ref(false)
 const testFiles = ref<any[]>([])
-const visibleSamples = ref<EditableProblemSample[]>([])
 const form = reactive({
   title: '',
   statement: '',
   time_limit_ms: 1000,
   memory_limit_mb: 256,
   output_limit_kb: 1024,
-  tags: ''
+  tags: '',
+  difficulty: '入门'
 })
 
 watch(
@@ -121,17 +114,13 @@ watch(
   () => {
     if (!props.modelValue || !props.problem) return
     form.title = props.problem.title || ''
-    form.statement = stripStatementSamples(props.problem.statement)
+    form.statement = props.problem.statement || ''
     form.time_limit_ms = props.problem.time_limit_ms || 1000
     form.memory_limit_mb = props.problem.memory_limit_mb || 256
     form.output_limit_kb = props.problem.output_limit_kb || 1024
     form.tags = tagList(props.problem.tags).join(', ')
+    form.difficulty = problemDifficulty(props.problem) || '入门'
     testFiles.value = []
-    visibleSamples.value = extractStatementSamples(props.problem.statement).map(({ name, input, output }) => ({
-      name,
-      input,
-      output
-    }))
   },
   { immediate: true }
 )
@@ -160,11 +149,12 @@ async function save() {
       'draft',
       JSON.stringify({
         title: form.title,
-        statement: replaceStatementSamples(form.statement, visibleSamples.value),
+        statement: form.statement,
         time_limit_ms: form.time_limit_ms,
         memory_limit_mb: form.memory_limit_mb,
         output_limit_kb: form.output_limit_kb,
-        tags: parseTags(form.tags)
+        tags: parseTags(form.tags),
+        difficulty: form.difficulty
       })
     )
     for (const item of testFiles.value) {

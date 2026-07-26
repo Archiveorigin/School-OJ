@@ -13,6 +13,7 @@
             <el-dropdown-menu>
               <el-dropdown-item command="profile">个人中心</el-dropdown-item>
               <el-dropdown-item command="update-profile">更新个人资料</el-dropdown-item>
+              <el-dropdown-item v-if="['problem_setter', 'teacher', 'admin'].includes(auth.role || '')" command="author">创建题目</el-dropdown-item>
               <el-dropdown-item v-if="auth.role === 'teacher' || auth.role === 'admin'" command="admin">后台管理</el-dropdown-item>
               <el-dropdown-item command="theme">
                 {{ auth.theme === 'dark' ? '切换明亮模式' : '切换暗黑模式' }}
@@ -79,6 +80,10 @@ function handleCommand(command: string) {
   }
   if (command === 'admin') {
     router.push('/admin')
+    return
+  }
+  if (command === 'author') {
+    router.push('/problems/create')
     return
   }
   if (command === 'theme') {

@@ -307,7 +307,7 @@
       <div v-if="!batchParsed.length" class="batch-upload-area">
         <div class="batch-upload-hint">
           <p>上传一个包含多道题目的 <code>.md</code> 文件。</p>
-          <p class="muted">每道题目由 <code>---</code> 分隔，支持 YAML 头信息（slug、title 等）和嵌入式测试点。</p>
+          <p class="muted">每道题目由 <code>---</code> 分隔，支持 YAML 头信息（title、限制等）和嵌入式测试点。</p>
         </div>
         <el-upload
           drag
@@ -355,7 +355,6 @@
         <el-table :data="batchParsed" max-height="420" size="small" style="margin-top: 12px">
           <el-table-column prop="label" label="题号" width="70" />
           <el-table-column prop="title" label="标题" min-width="180" />
-          <el-table-column prop="slug" label="Slug" width="140" />
           <el-table-column label="测试点" width="80">
             <template #default="{ row }">
               <el-tag :type="(row.cases || []).length > 0 ? 'success' : 'danger'" effect="plain" size="small">
@@ -391,24 +390,19 @@
     >
       <el-form label-width="92px" class="problem-form">
         <el-row :gutter="12">
-          <el-col :span="8">
+          <el-col :span="12">
             <el-form-item label="题号">
               <el-input v-model="problemForm.label" maxlength="16" />
             </el-form-item>
           </el-col>
-          <el-col :span="8">
+          <el-col :span="12">
             <el-form-item label="分值">
               <el-input-number v-model="problemForm.score" :min="1" :max="1000" />
             </el-form-item>
           </el-col>
-          <el-col :span="8">
-            <el-form-item label="Slug">
-              <el-input v-model="problemForm.slug" placeholder="exam-problem-a" @input="slugManuallyEdited = true" />
-            </el-form-item>
-          </el-col>
         </el-row>
         <el-form-item label="标题">
-          <el-input v-model="problemForm.title" placeholder="两数之和" @input="syncSlugFromTitle" />
+          <el-input v-model="problemForm.title" placeholder="两数之和" />
         </el-form-item>
         <el-form-item label="题面">
           <el-input
@@ -446,24 +440,6 @@
               :source="problemForm.statement || '支持 **Markdown** 和 $a+b$。'"
               :asset-urls="problemAssetPreviewUrls"
             />
-            <div v-if="statementSamples.length" class="preview-samples">
-              <div v-for="sample in statementSamples" :key="sample.index" class="preview-sample-pair">
-                <div class="preview-sample">
-                  <div class="sample-head">
-                    <strong>输入样例 {{ sample.index }}</strong>
-                    <el-button size="small" text @click="copyText(sample.input)">复制</el-button>
-                  </div>
-                  <pre>{{ sample.input }}</pre>
-                </div>
-                <div class="preview-sample">
-                  <div class="sample-head">
-                    <strong>输出样例 {{ sample.index }}</strong>
-                    <el-button size="small" text @click="copyText(sample.output)">复制</el-button>
-                  </div>
-                  <pre>{{ sample.output }}</pre>
-                </div>
-              </div>
-            </div>
           </div>
         </el-form-item>
         <el-row :gutter="12">
@@ -543,8 +519,7 @@ import { computed, onMounted, reactive, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { client, type PreparedProblem, type Problem } from '../api/client'
 import MarkdownRenderer from '../components/MarkdownRenderer.vue'
-import { copyTextToClipboard } from '../features/clipboard'
-import { extractStatementSamples, problemDisplayCode, tagList } from '../features/problems/problemMeta'
+import { problemDisplayCode, tagList } from '../features/problems/problemMeta'
 import { useClassroomStore } from '../stores/classroom'
 
 type ProblemAssetForm = { name: string; path: string; content_type: string; data: string; preview_url: string }
@@ -570,7 +545,6 @@ const saving = ref(false)
 const creatingProblem = ref(false)
 const problemSource = ref<'class' | 'prepared' | 'markdown'>('class')
 const problemPickID = ref<number>()
-const slugManuallyEdited = ref(false)
 const markdownDialogVisible = ref(false)
 const batchDialogVisible = ref(false)
 const batchFileList = ref<any[]>([])
@@ -597,7 +571,6 @@ const form = reactive<any>({
 const problemForm = reactive({
   label: 'A',
   score: 100,
-  slug: `exam-problem-${Date.now()}`,
   title: '',
   statement: '',
   time_limit_ms: 1000,
@@ -609,7 +582,6 @@ const problemForm = reactive({
 
 const selectedTotalScore = computed(() => selectedProblems.value.reduce((sum, item) => sum + Number(item.score || 0), 0))
 const problemAssetPreviewUrls = computed(() => Object.fromEntries(problemForm.assets.map((asset) => [asset.path, asset.preview_url])))
-const statementSamples = computed(() => extractStatementSamples(problemForm.statement))
 
 const courseLabel = computed(() => {
   const course = courses.value.find((c: any) => c.id === form.course_id)
@@ -698,8 +670,6 @@ async function loadClassProblems() {
 
 function openMarkdownDialog() {
   problemForm.label = nextAvailableLabel()
-  problemForm.slug = `exam-problem-${Date.now()}`
-  slugManuallyEdited.value = false
   markdownDialogVisible.value = true
 }
 
@@ -723,8 +693,8 @@ function addSelectedProblem(source: 'class' | 'prepared') {
 }
 
 async function createMarkdownProblem() {
-  if (!problemForm.label.trim() || !problemForm.title.trim() || !problemForm.slug.trim()) {
-    ElMessage.error('请填写题号、Slug 和标题')
+  if (!problemForm.label.trim() || !problemForm.title.trim()) {
+    ElMessage.error('请填写题号和标题')
     return
   }
   if (selectedProblems.value.some((item) => item.label.trim().toLowerCase() === problemForm.label.trim().toLowerCase())) {
@@ -747,7 +717,6 @@ async function createMarkdownProblem() {
   try {
     const fd = new FormData()
     fd.append('draft', JSON.stringify({
-      slug: problemForm.slug,
       title: problemForm.title,
       statement: problemForm.statement,
       time_limit_ms: problemForm.time_limit_ms,
@@ -904,8 +873,6 @@ async function importBatch() {
   let created = 0
   try {
     for (const problem of batchParsed.value) {
-      // Generate unique slug if needed
-      const slug = problem.slug || `exam-problem-${Date.now()}-${created}`
       const cases = (problem.cases || []).map((c: any, i: number) => ({
         name: c.name || `case-${String(i + 1).padStart(2, '0')}`,
         input: c.input || '',
@@ -918,7 +885,6 @@ async function importBatch() {
         continue
       }
       const { data } = await client.post('/problems', {
-        slug: slug,
         title: problem.title,
         statement: problem.statement || '',
         time_limit_ms: problem.time_limit_ms || 1000,
@@ -949,25 +915,10 @@ async function importBatch() {
   }
 }
 
-function syncSlugFromTitle() {
-  if (slugManuallyEdited.value) return
-  problemForm.slug = slugifyTitle(problemForm.title) || `exam-problem-${Date.now()}`
-}
-
-function slugifyTitle(value: string) {
-  return value
-    .trim()
-    .toLowerCase()
-    .replace(/\s+/g, '-')
-    .replace(/[^a-z0-9._-]/g, '')
-    .replace(/^-+|-+$/g, '')
-}
-
 function resetProblemForm() {
   problemForm.assets.forEach((asset) => URL.revokeObjectURL(asset.preview_url))
   problemForm.label = nextAvailableLabel()
   problemForm.score = 100
-  problemForm.slug = `exam-problem-${Date.now()}`
   problemForm.title = ''
   problemForm.statement = ''
   problemForm.time_limit_ms = 1000
@@ -978,7 +929,6 @@ function resetProblemForm() {
   testPointUploadFiles.value = []
   testPointUploadKey.value += 1
   testPointErrors.value = []
-  slugManuallyEdited.value = false
 }
 
 async function syncTestPointFiles(_uploadFile: any, uploadFiles: any[]) {
@@ -1057,15 +1007,6 @@ function formatBytes(value: number) {
   if (value < 1024) return `${value} B`
   if (value < 1024 * 1024) return `${(value / 1024).toFixed(1)} KB`
   return `${(value / 1024 / 1024).toFixed(1)} MB`
-}
-
-async function copyText(value: string) {
-  try {
-    await copyTextToClipboard(value)
-    ElMessage.success('已复制')
-  } catch {
-    ElMessage.error('复制失败，请手动选择文本')
-  }
 }
 
 function addProblemImage(uploadFile: any) {

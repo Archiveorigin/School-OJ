@@ -24,6 +24,8 @@ const Login = () => import('../views/Login.vue')
 const MyCourses = () => import('../views/courses/MyCourses.vue')
 const Plagiarism = () => import('../views/Plagiarism.vue')
 const ProblemDetail = () => import('../views/problems/ProblemDetail.vue')
+const ProblemCreate = () => import('../views/problems/ProblemCreate.vue')
+const ProblemSubmissions = () => import('../views/problems/ProblemSubmissions.vue')
 const Problems = () => import('../views/Problems.vue')
 const ProblemsLayout = () => import('../views/problems/ProblemsLayout.vue')
 const PreparedProblems = () => import('../views/PreparedProblems.vue')
@@ -33,6 +35,7 @@ const Submissions = () => import('../views/Submissions.vue')
 const Users = () => import('../views/Users.vue')
 
 const teacherRoles = ['admin', 'teacher']
+const problemAuthorRoles = ['admin', 'teacher', 'problem_setter']
 
 const router = createRouter({
   history: createWebHistory(),
@@ -47,6 +50,8 @@ const router = createRouter({
       meta: { public: true, title: '题库', activeMenu: '/problems' },
       children: [
         { path: '', name: 'problem-list', component: Problems },
+        { path: 'create', name: 'problem-create', component: ProblemCreate, meta: { public: false, roles: problemAuthorRoles, title: '创建题目', activeMenu: '/problems/create' } },
+        { path: ':id/submissions', name: 'problem-submissions', component: ProblemSubmissions, meta: { public: false, title: '题目提交记录' } },
         { path: ':id', name: 'problem-detail', component: ProblemDetail, meta: { title: '题目详情' } }
       ]
     },

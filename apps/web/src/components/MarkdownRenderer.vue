@@ -1,12 +1,14 @@
 <template>
-  <div class="markdown-body" v-html="rendered"></div>
+  <div class="markdown-body" v-html="rendered" @click="onMarkdownClick"></div>
 </template>
 
 <script setup lang="ts">
 import katex from 'katex'
+import { ElMessage } from 'element-plus'
 import MarkdownIt from 'markdown-it'
 import { computed } from 'vue'
 import { problemAssetUrl } from '../api/client'
+import { copyTextToClipboard } from '../features/clipboard'
 import 'katex/dist/katex.min.css'
 
 const props = defineProps<{ source?: string | null; problemId?: number; assetUrls?: Record<string, string> }>()
@@ -73,6 +75,8 @@ md.block.ruler.before('fence', 'math_block', (state: any, startLine: number, end
 
 md.renderer.rules.math_inline = (tokens, idx) => renderMath(tokens[idx].content, false)
 md.renderer.rules.math_block = (tokens, idx) => `<div class="math-block">${renderMath(tokens[idx].content, true)}</div>`
+md.renderer.rules.fence = (tokens, idx) => renderCodeBlock(tokens[idx].content, tokens[idx].info)
+md.renderer.rules.code_block = (tokens, idx) => renderCodeBlock(tokens[idx].content, '')
 md.renderer.rules.image = (tokens, idx, options, env, self) => {
   const token = tokens[idx]
   const src = token.attrGet('src') || ''
@@ -97,6 +101,31 @@ function renderMath(source: string, displayMode: boolean) {
 }
 
 const rendered = computed(() => md.render(props.source || ''))
+
+function renderCodeBlock(source: string, info: string) {
+  const language = info.trim().split(/\s+/)[0].replace(/[^A-Za-z0-9_-]/g, '')
+  const languageClass = language ? ` class="language-${md.utils.escapeHtml(language)}"` : ''
+  return [
+    '<div class="markdown-code-block">',
+    '<button type="button" class="markdown-copy-button" aria-label="复制代码">复制</button>',
+    `<pre><code${languageClass}>${md.utils.escapeHtml(source)}</code></pre>`,
+    '</div>'
+  ].join('')
+}
+
+async function onMarkdownClick(event: MouseEvent) {
+  const target = event.target as HTMLElement | null
+  const button = target?.closest<HTMLButtonElement>('.markdown-copy-button')
+  if (!button) return
+  const code = button.parentElement?.querySelector('pre code')?.textContent || ''
+  try {
+    await copyTextToClipboard(code)
+    button.textContent = '已复制'
+    window.setTimeout(() => { button.textContent = '复制' }, 1200)
+  } catch {
+    ElMessage.error('复制失败，请手动选择文本')
+  }
+}
 
 function resolveImage(src: string) {
   if (!src || src.includes('://') || src.startsWith('data:') || src.startsWith('blob:') || src.startsWith('/') || src.startsWith('#')) {
@@ -137,6 +166,28 @@ function resolveImage(src: string) {
   border-radius: 8px;
   background: #111827;
   color: #f9fafb;
+}
+
+.markdown-body :deep(.markdown-code-block) {
+  position: relative;
+}
+
+.markdown-body :deep(.markdown-copy-button) {
+  position: absolute;
+  top: 8px;
+  right: 8px;
+  z-index: 1;
+  padding: 4px 9px;
+  color: #dbeafe;
+  border: 1px solid rgba(191, 219, 254, 0.32);
+  border-radius: 6px;
+  background: rgba(15, 23, 42, 0.82);
+  font-size: 12px;
+  cursor: pointer;
+}
+
+.markdown-body :deep(.markdown-code-block pre) {
+  padding-top: 42px;
 }
 
 .markdown-body :deep(code) {

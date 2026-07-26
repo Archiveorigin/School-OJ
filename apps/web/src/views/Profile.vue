@@ -25,6 +25,43 @@
       </div>
     </section>
 
+    <section class="panel author-panel">
+      <div class="author-copy">
+        <span class="eyebrow">PROBLEM AUTHOR PROGRAM</span>
+        <h2>{{ canAuthor ? '出题工作台已开放' : '申请成为出题者' }}</h2>
+        <p v-if="canAuthor">你可以创建题目、导入 Markdown 题面和测试点压缩包，并维护自己提供的题目。</p>
+        <p v-else-if="authorApplication?.status === 'pending'">申请已提交，管理员审核通过后账号会自动转换为出题者。</p>
+        <p v-else>说明你的出题经验、擅长方向或计划提供的题目类型，管理员审核通过后即可开始出题。</p>
+        <el-alert
+          v-if="authorApplication?.status === 'rejected'"
+          type="warning"
+          :closable="false"
+          :title="authorApplication.review_note || '上次申请未通过，你可以补充说明后重新申请。'"
+        />
+      </div>
+      <div v-if="canAuthor" class="author-actions">
+        <el-button type="primary" size="large" @click="router.push('/problems/create')">进入出题页面</el-button>
+        <el-button size="large" @click="router.push('/problems')">查看题库</el-button>
+      </div>
+      <div v-else-if="authorApplication?.status === 'pending'" class="application-status">
+        <el-tag type="warning" size="large">等待审核</el-tag>
+        <span>提交于 {{ formatApplicationTime(authorApplication.created_at) }}</span>
+      </div>
+      <div v-else class="application-form">
+        <el-input
+          v-model="authorMotivation"
+          type="textarea"
+          :rows="4"
+          maxlength="800"
+          show-word-limit
+          placeholder="至少 10 个字，例如：有算法竞赛经验，计划提供基础数据结构与动态规划题目。"
+        />
+        <el-button type="primary" :loading="applying" @click="applyAsAuthor">
+          {{ authorApplication?.status === 'rejected' ? '重新提交申请' : '提交申请' }}
+        </el-button>
+      </div>
+    </section>
+
     <section class="panel activity-panel">
       <div class="activity-heading">
         <div>
@@ -176,7 +213,7 @@
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { computed, onMounted, reactive, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
-import { client, type User } from '../api/client'
+import { client, type AuthorApplication, type User } from '../api/client'
 import { useAuthStore } from '../stores/auth'
 
 interface ActivityProblem {
@@ -209,6 +246,9 @@ const editVisible = ref(false)
 const avatarInput = ref<HTMLInputElement>()
 const savingProfile = ref(false)
 const sendingCode = ref(false)
+const applying = ref(false)
+const authorApplication = ref<AuthorApplication | null>(null)
+const authorMotivation = ref('')
 
 const profileForm = reactive({ name: '' })
 const emailForm = reactive({ email: '', code: '' })
@@ -217,14 +257,15 @@ const passwordForm = reactive({ current_password: '', new_password: '', confirm_
 const initials = computed(() => (profile.value?.user.name || auth.user?.name || 'U').trim().slice(0, 1).toUpperCase())
 const roleLabel = computed(() => {
   const role = profile.value?.user.role || auth.user?.role
-  return role === 'admin' ? '管理员' : role === 'teacher' ? '教师' : '学生'
+  return role === 'admin' ? '管理员' : role === 'teacher' ? '教师' : role === 'problem_setter' ? '出题者' : '学生'
 })
+const canAuthor = computed(() => ['admin', 'teacher', 'problem_setter'].includes(profile.value?.user.role || auth.role || ''))
 const joinedAt = computed(() => {
   const value = profile.value?.user.created_at
   if (!value) return '平台成员'
   return new Intl.DateTimeFormat('zh-CN', { year: 'numeric', month: 'long' }).format(new Date(value))
 })
-const activityVerb = computed(() => auth.role === 'teacher' || auth.role === 'admin' ? '上传' : '解出')
+const activityVerb = computed(() => canAuthor.value ? '上传' : '解出')
 
 const days = computed<ActivityDay[]>(() => {
   const map = new Map((profile.value?.activity || []).map((item) => [item.date, item]))
@@ -279,9 +320,36 @@ async function load() {
     profile.value = data
     profileForm.name = data.user.name
     auth.updateUser(data.user)
+    if (data.user.role === 'student') {
+      authorApplication.value = (await client.get('/author-applications/me')).data.application
+    } else {
+      authorApplication.value = null
+    }
   } catch (err: any) {
     ElMessage.error(err.response?.data?.error || err.message)
   }
+}
+
+async function applyAsAuthor() {
+  const motivation = authorMotivation.value.trim()
+  if (motivation.length < 10) {
+    ElMessage.error('申请说明至少需要 10 个字')
+    return
+  }
+  applying.value = true
+  try {
+    authorApplication.value = (await client.post('/author-applications', { motivation })).data
+    authorMotivation.value = ''
+    ElMessage.success('申请已提交，请等待管理员审核')
+  } catch (err: any) {
+    ElMessage.error(err.response?.data?.error || err.message)
+  } finally {
+    applying.value = false
+  }
+}
+
+function formatApplicationTime(value: string) {
+  return new Intl.DateTimeFormat('zh-CN', { dateStyle: 'medium', timeStyle: 'short' }).format(new Date(value))
 }
 
 function openEditor() {
@@ -458,6 +526,13 @@ onMounted(load)
 .identity-meta strong { overflow: hidden; font-size: 14px; text-overflow: ellipsis; white-space: nowrap; }
 .identity-meta .el-button { grid-column: 1 / -1; margin-top: 2px; }
 .activity-panel { margin-top: 18px; padding: 30px 34px 24px; }
+.author-panel { display: grid; grid-template-columns: minmax(0, 1fr) minmax(320px, .8fr); gap: 28px; margin-top: 18px; padding: 28px 34px; }
+.author-copy h2 { margin: 7px 0; font-size: 24px; }
+.author-copy p { margin: 0 0 12px; color: var(--muted); line-height: 1.7; }
+.author-actions { display: flex; align-items: center; justify-content: flex-end; gap: 10px; }
+.application-form { display: grid; gap: 10px; }
+.application-form .el-button { justify-self: end; }
+.application-status { display: flex; align-items: center; justify-content: flex-end; gap: 12px; color: var(--muted); }
 .activity-heading { display: flex; align-items: end; justify-content: space-between; gap: 28px; }
 .activity-heading h2 { margin: 8px 0 5px; font-family: 'Noto Serif SC', SimSun, serif; font-size: 27px; }
 .activity-heading p { margin: 0; color: var(--muted); }
@@ -508,6 +583,6 @@ button.activity-cell:hover { z-index: 2; transform: scale(1.32); outline: 1px so
 .dialog-footer { display: flex; align-items: center; justify-content: space-between; gap: 16px; width: 100%; }
 .hidden-input { display: none; }
 :global(.profile-edit-dialog .el-dialog__body) { padding-top: 12px; }
-@media (max-width: 900px) { .identity-panel, .activity-heading { align-items: stretch; flex-direction: column; } .identity-meta { min-width: 0; width: 100%; } .profile-dialog-grid { grid-template-columns: 1fr; } .dialog-form-section { padding-right: 0; border-right: 0; } }
+@media (max-width: 900px) { .identity-panel, .activity-heading { align-items: stretch; flex-direction: column; } .identity-meta { min-width: 0; width: 100%; } .author-panel { grid-template-columns: 1fr; } .author-actions, .application-status { justify-content: flex-start; } .profile-dialog-grid { grid-template-columns: 1fr; } .dialog-form-section { padding-right: 0; border-right: 0; } }
 @media (max-width: 620px) { .profile-page { padding: 20px 13px 46px; } .identity-panel, .activity-panel { padding: 24px 20px; } .identity-main { align-items: flex-start; flex-direction: column; } .identity-meta, .activity-metrics, .form-grid { grid-template-columns: 1fr; } .profile-avatar { width: 88px; height: 88px; } .dialog-footer { align-items: stretch; flex-direction: column-reverse; } .dialog-footer > div { display: flex; } .dialog-footer .el-button { flex: 1; } }
 </style>

@@ -8,8 +8,7 @@
         </div>
         <span class="muted">{{ problemLimitText(problem) }}</span>
       </div>
-      <MarkdownRenderer :source="statementBody" :problem-id="problem.id" />
-      <ProblemSamplesView :samples="samples" />
+      <MarkdownRenderer :source="problem.statement" :problem-id="problem.id" />
     </section>
 
     <aside class="panel meta-box">
@@ -94,17 +93,14 @@
 import { computed } from 'vue'
 import type { Problem } from '../api/client'
 import {
-  difficultyFromTags,
   difficultyTagType,
-  extractStatementSamples,
   problemDisplayCode,
+  problemDifficulty,
   problemLimitLines,
   problemLimitText,
-  stripStatementSamples,
   tagList
 } from '../features/problems/problemMeta'
 import MarkdownRenderer from './MarkdownRenderer.vue'
-import ProblemSamplesView from './ProblemSamplesView.vue'
 
 const props = withDefaults(
   defineProps<{
@@ -121,10 +117,8 @@ const props = withDefaults(
   }
 )
 
-const samples = computed(() => extractStatementSamples(props.problem.statement))
-const statementBody = computed(() => stripStatementSamples(props.problem.statement))
 const tags = computed(() => tagList(props.problem.tags))
-const difficulty = computed(() => difficultyFromTags(props.problem.tags))
+const difficulty = computed(() => problemDifficulty(props.problem))
 const displayNumber = computed(() => props.problemNumber || problemDisplayCode(props.problem))
 const statusImage = computed(() => props.statusImage || '')
 const statusImageAlt = computed(() => {

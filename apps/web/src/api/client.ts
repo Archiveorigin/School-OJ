@@ -21,7 +21,7 @@ client.interceptors.request.use((config) => {
   return config
 })
 
-export type Role = 'student' | 'teacher' | 'admin'
+export type Role = 'student' | 'problem_setter' | 'teacher' | 'admin'
 
 export interface User {
   id: number
@@ -40,10 +40,10 @@ export interface Problem {
   id: number
   owner_id?: number
   display_code?: string
-  slug: string
   title: string
   statement: string
   tags?: Record<string, unknown>
+  difficulty?: string
   time_limit_ms: number
   memory_limit_mb: number
   output_limit_kb: number
@@ -89,6 +89,7 @@ export interface Submission {
   exam_id?: number
   language: string
   source_code?: string
+  is_public?: boolean
   status: string
   score: number
   manual_score?: number
@@ -104,6 +105,19 @@ export interface Submission {
   problem_title?: string
   assignment_title?: string
   exam_title?: string
+  created_at: string
+  updated_at: string
+}
+
+export interface AuthorApplication {
+  id: number
+  user_id: number
+  motivation: string
+  status: 'pending' | 'approved' | 'rejected'
+  review_note?: string
+  reviewed_by?: number
+  reviewed_at?: string
+  user?: User
   created_at: string
   updated_at: string
 }

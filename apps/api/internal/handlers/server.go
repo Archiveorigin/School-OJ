@@ -34,6 +34,7 @@ import (
 	"golang.org/x/crypto/bcrypt"
 	"gorm.io/datatypes"
 	"gorm.io/gorm"
+	"gorm.io/gorm/clause"
 )
 
 type Server struct {
@@ -148,6 +149,7 @@ type problemUpdateInput struct {
 	Title         string   `json:"title"`
 	Statement     string   `json:"statement"`
 	Tags          []string `json:"tags"`
+	Difficulty    string   `json:"difficulty"`
 	TimeLimitMS   int      `json:"time_limit_ms"`
 	MemoryLimitMB int      `json:"memory_limit_mb"`
 	OutputLimitKB int      `json:"output_limit_kb"`
@@ -261,6 +263,7 @@ func (req preparedProblemInput) draft() services.ProblemPackageDraft {
 		Title:         req.Title,
 		Statement:     req.Statement,
 		Tags:          req.Tags,
+		Difficulty:    req.Difficulty,
 		TimeLimitMS:   req.TimeLimitMS,
 		MemoryLimitMB: req.MemoryLimitMB,
 		OutputLimitKB: req.OutputLimitKB,
@@ -299,6 +302,8 @@ func (s Server) Router() *gin.Engine {
 	auth.POST("/profile/email-code", s.sendProfileEmailCode)
 	auth.POST("/profile/email", s.rebindEmail)
 	auth.DELETE("/profile", s.deleteProfile)
+	auth.GET("/author-applications/me", s.getMyAuthorApplication)
+	auth.POST("/author-applications", s.createAuthorApplication)
 	auth.POST("/feedback", s.createFeedback)
 	auth.GET("/courses", s.listCourses)
 	auth.POST("/courses", middleware.RequireRoles(models.RoleAdmin, models.RoleTeacher), s.createCourse)
@@ -325,14 +330,14 @@ func (s Server) Router() *gin.Engine {
 	auth.GET("/classes/:id/students", middleware.RequireRoles(models.RoleAdmin, models.RoleTeacher), s.listClassStudents)
 	auth.DELETE("/classes/:id/students/:user_id", middleware.RequireRoles(models.RoleAdmin, models.RoleTeacher), s.removeClassStudent)
 	auth.POST("/classes/:id/students/import", middleware.RequireRoles(models.RoleAdmin, models.RoleTeacher), s.importClassStudents)
-	auth.POST("/problems", middleware.RequireRoles(models.RoleAdmin, models.RoleTeacher), s.createProblem)
-	auth.POST("/problems/parse-markdown", middleware.RequireRoles(models.RoleAdmin, models.RoleTeacher), s.parseMarkdownBatch)
-	auth.POST("/problems/upload", middleware.RequireRoles(models.RoleAdmin, models.RoleTeacher), s.uploadProblem)
-	auth.PUT("/problems/:id", middleware.RequireRoles(models.RoleAdmin, models.RoleTeacher), s.updateProblem)
-	auth.GET("/problems/:id/tests", middleware.RequireRoles(models.RoleAdmin, models.RoleTeacher), s.listProblemTests)
-	auth.GET("/problems/:id/tests/download", middleware.RequireRoles(models.RoleAdmin, models.RoleTeacher), s.downloadProblemTests)
-	auth.GET("/problems/:id/tests/file/*file_path", middleware.RequireRoles(models.RoleAdmin, models.RoleTeacher), s.downloadProblemTestFile)
-	auth.DELETE("/problems/:id", middleware.RequireRoles(models.RoleAdmin, models.RoleTeacher), s.deleteProblem)
+	auth.POST("/problems", middleware.RequireRoles(models.RoleAdmin, models.RoleTeacher, models.RoleProblemSetter), s.createProblem)
+	auth.POST("/problems/parse-markdown", middleware.RequireRoles(models.RoleAdmin, models.RoleTeacher, models.RoleProblemSetter), s.parseMarkdownBatch)
+	auth.POST("/problems/upload", middleware.RequireRoles(models.RoleAdmin, models.RoleTeacher, models.RoleProblemSetter), s.uploadProblem)
+	auth.PUT("/problems/:id", middleware.RequireRoles(models.RoleAdmin, models.RoleTeacher, models.RoleProblemSetter), s.updateProblem)
+	auth.GET("/problems/:id/tests", middleware.RequireRoles(models.RoleAdmin, models.RoleTeacher, models.RoleProblemSetter), s.listProblemTests)
+	auth.GET("/problems/:id/tests/download", middleware.RequireRoles(models.RoleAdmin, models.RoleTeacher, models.RoleProblemSetter), s.downloadProblemTests)
+	auth.GET("/problems/:id/tests/file/*file_path", middleware.RequireRoles(models.RoleAdmin, models.RoleTeacher, models.RoleProblemSetter), s.downloadProblemTestFile)
+	auth.DELETE("/problems/:id", middleware.RequireRoles(models.RoleAdmin, models.RoleTeacher, models.RoleProblemSetter), s.deleteProblem)
 	auth.GET("/prepared-problems", middleware.RequireRoles(models.RoleAdmin, models.RoleTeacher), s.listPreparedProblems)
 	auth.POST("/prepared-problems", middleware.RequireRoles(models.RoleAdmin, models.RoleTeacher), s.createPreparedProblem)
 	auth.POST("/prepared-problems/upload", middleware.RequireRoles(models.RoleAdmin, models.RoleTeacher), s.uploadPreparedProblem)
@@ -368,6 +373,8 @@ func (s Server) Router() *gin.Engine {
 	auth.PUT("/users/:id", middleware.RequireRoles(models.RoleAdmin), s.updateUser)
 	auth.DELETE("/users/:id", middleware.RequireRoles(models.RoleAdmin), s.deleteUser)
 	auth.POST("/users/:id/reset-password", middleware.RequireRoles(models.RoleAdmin), s.resetUserPassword)
+	auth.GET("/author-applications", middleware.RequireRoles(models.RoleAdmin), s.listAuthorApplications)
+	auth.PUT("/author-applications/:id/review", middleware.RequireRoles(models.RoleAdmin), s.reviewAuthorApplication)
 	return r
 }
 
@@ -481,7 +488,7 @@ func (s Server) createUser(c *gin.Context) {
 		return
 	}
 	if !validRole(req.Role) {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "role must be one of student, teacher, admin"})
+		c.JSON(http.StatusBadRequest, gin.H{"error": "role must be one of student, problem_setter, teacher, admin"})
 		return
 	}
 	req.Email = normalizeEmail(req.Email)
@@ -557,7 +564,7 @@ func (s Server) updateUser(c *gin.Context) {
 		return
 	}
 	if !validRole(req.Role) {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "role must be one of student, teacher, admin"})
+		c.JSON(http.StatusBadRequest, gin.H{"error": "role must be one of student, problem_setter, teacher, admin"})
 		return
 	}
 	if email != user.Email {
@@ -664,6 +671,125 @@ func (s Server) resetUserPassword(c *gin.Context) {
 		resp["password"] = password
 	}
 	c.JSON(http.StatusOK, resp)
+}
+
+func (s Server) getMyAuthorApplication(c *gin.Context) {
+	user, _ := middleware.CurrentUser(c)
+	var application models.AuthorApplication
+	err := s.DB.Where("user_id = ?", user.ID).Order("id desc").First(&application).Error
+	if err != nil {
+		if err == gorm.ErrRecordNotFound {
+			c.JSON(http.StatusOK, gin.H{"application": nil})
+			return
+		}
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{"application": application})
+}
+
+func (s Server) createAuthorApplication(c *gin.Context) {
+	user, _ := middleware.CurrentUser(c)
+	if user.Role == models.RoleAdmin || user.Role == models.RoleTeacher || user.Role == models.RoleProblemSetter {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "current account can already create problems"})
+		return
+	}
+	var req struct {
+		Motivation string `json:"motivation"`
+	}
+	if !bind(c, &req) {
+		return
+	}
+	req.Motivation = strings.TrimSpace(req.Motivation)
+	if len([]rune(req.Motivation)) < 10 {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "motivation must be at least 10 characters"})
+		return
+	}
+	application := models.AuthorApplication{
+		UserID:     user.ID,
+		Motivation: req.Motivation,
+		Status:     models.AuthorApplicationPending,
+	}
+	if err := s.DB.Create(&application).Error; err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "a pending application already exists"})
+		return
+	}
+	services.Audit(c, s.DB, "author_application.create", "author_application", application.ID, nil)
+	c.JSON(http.StatusCreated, application)
+}
+
+func (s Server) listAuthorApplications(c *gin.Context) {
+	var applications []models.AuthorApplication
+	q := s.DB.Preload("User", "account_deleted = false").
+		Order("CASE WHEN status = 'pending' THEN 0 ELSE 1 END, id DESC")
+	if status := strings.TrimSpace(c.Query("status")); status != "" {
+		q = q.Where("status = ?", status)
+	}
+	if err := q.Find(&applications).Error; err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+	c.JSON(http.StatusOK, applications)
+}
+
+func (s Server) reviewAuthorApplication(c *gin.Context) {
+	admin, _ := middleware.CurrentUser(c)
+	applicationID, ok := idParam(c, "id")
+	if !ok {
+		return
+	}
+	var req struct {
+		Status     models.AuthorApplicationStatus `json:"status"`
+		ReviewNote string                         `json:"review_note"`
+	}
+	if !bind(c, &req) {
+		return
+	}
+	if req.Status != models.AuthorApplicationApproved && req.Status != models.AuthorApplicationRejected {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "status must be approved or rejected"})
+		return
+	}
+	now := time.Now()
+	if err := s.DB.Transaction(func(tx *gorm.DB) error {
+		var application models.AuthorApplication
+		if err := tx.Clauses(clause.Locking{Strength: "UPDATE"}).First(&application, applicationID).Error; err != nil {
+			return err
+		}
+		if application.Status != models.AuthorApplicationPending {
+			return fmt.Errorf("application has already been reviewed")
+		}
+		if err := tx.Model(&application).Updates(map[string]any{
+			"status":      req.Status,
+			"review_note": strings.TrimSpace(req.ReviewNote),
+			"reviewed_by": admin.ID,
+			"reviewed_at": now,
+		}).Error; err != nil {
+			return err
+		}
+		if req.Status == models.AuthorApplicationApproved {
+			var applicant models.User
+			if err := tx.First(&applicant, application.UserID).Error; err != nil {
+				return err
+			}
+			if applicant.Role == models.RoleStudent {
+				if err := tx.Model(&applicant).Update("role", models.RoleProblemSetter).Error; err != nil {
+					return err
+				}
+			}
+		}
+		return nil
+	}); err != nil {
+		status := http.StatusBadRequest
+		if err == gorm.ErrRecordNotFound {
+			status = http.StatusNotFound
+		}
+		c.JSON(status, gin.H{"error": err.Error()})
+		return
+	}
+	services.Audit(c, s.DB, "author_application.review", "author_application", applicationID, datatypes.JSONMap{"status": req.Status})
+	var application models.AuthorApplication
+	_ = s.DB.Preload("User").First(&application, applicationID).Error
+	c.JSON(http.StatusOK, application)
 }
 
 func (s Server) listCourses(c *gin.Context) {
@@ -1549,7 +1675,15 @@ func (s Server) uploadProblem(c *gin.Context) {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 		return
 	}
-	problem, ok := s.saveProblemPackage(c, user, body, pkg, tagsJSONMap(parseTagFields(c.PostFormArray("tags"), c.PostForm("tags"))), "problem.upload")
+	problem, ok := s.saveProblemPackage(
+		c,
+		user,
+		body,
+		pkg,
+		tagsJSONMap(parseTagFields(c.PostFormArray("tags"), c.PostForm("tags"))),
+		c.PostForm("difficulty"),
+		"problem.upload",
+	)
 	if !ok {
 		return
 	}
@@ -1571,7 +1705,7 @@ func (s Server) createProblem(c *gin.Context) {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 		return
 	}
-	problem, ok := s.saveProblemPackage(c, user, body, pkg, tagsJSONMap(req.Tags), "problem.create")
+	problem, ok := s.saveProblemPackage(c, user, body, pkg, tagsJSONMap(req.Tags), req.Difficulty, "problem.create")
 	if !ok {
 		return
 	}
@@ -1609,7 +1743,7 @@ func (s Server) createProblemMultipart(c *gin.Context, user models.User) {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 		return
 	}
-	problem, ok := s.saveProblemPackage(c, user, body, pkg, tagsJSONMap(req.Tags), "problem.create")
+	problem, ok := s.saveProblemPackage(c, user, body, pkg, tagsJSONMap(req.Tags), req.Difficulty, "problem.create")
 	if !ok {
 		return
 	}
@@ -1706,31 +1840,44 @@ func (s Server) uploadProblemPackageArtifacts(c *gin.Context, body []byte, pkg *
 	return problemPackageArtifacts{Object: object, Checksum: pkg.SHA256, Manifest: manifest}, true
 }
 
-func (s Server) saveProblemPackage(c *gin.Context, user models.User, body []byte, pkg services.ParsedProblemPackage, tags datatypes.JSONMap, action string) (models.Problem, bool) {
-	artifacts, ok := s.uploadProblemPackageArtifacts(c, body, &pkg)
-	if !ok {
-		return models.Problem{}, false
-	}
+func (s Server) saveProblemPackage(c *gin.Context, user models.User, body []byte, pkg services.ParsedProblemPackage, tags datatypes.JSONMap, difficulty string, action string) (models.Problem, bool) {
 	problem := models.Problem{
-		OwnerID:         user.ID,
-		DisplayCode:     "",
-		Slug:            pkg.Manifest.Slug,
-		Title:           pkg.Manifest.Title,
-		Statement:       pkg.Manifest.Statement,
-		Tags:            tags,
-		TimeLimitMS:     pkg.Manifest.TimeLimitMS,
-		MemoryLimitMB:   pkg.Manifest.MemoryLimitMB,
-		OutputLimitKB:   pkg.Manifest.OutputLimitKB,
-		PackageObject:   artifacts.Object,
-		PackageChecksum: artifacts.Checksum,
-		Manifest:        artifacts.Manifest,
+		OwnerID:       user.ID,
+		DisplayCode:   "",
+		Title:         pkg.Manifest.Title,
+		Statement:     pkg.Manifest.Statement,
+		Tags:          tags,
+		Difficulty:    normalizeProblemDifficulty(difficulty, tags),
+		TimeLimitMS:   pkg.Manifest.TimeLimitMS,
+		MemoryLimitMB: pkg.Manifest.MemoryLimitMB,
+		OutputLimitKB: pkg.Manifest.OutputLimitKB,
 	}
 	if err := s.DB.Transaction(func(tx *gorm.DB) error {
+		if err := tx.Exec("SELECT pg_advisory_xact_lock(?)", int64(734956411)).Error; err != nil {
+			return err
+		}
+		internalSlug, err := nextProblemInternalSlug(tx)
+		if err != nil {
+			return err
+		}
 		displayCode, err := nextProblemDisplayCode(tx)
 		if err != nil {
 			return err
 		}
+		pkg.Manifest.Slug = internalSlug
+		rebuiltBody, rebuiltPkg, err := services.RebuildProblemPackage(body, pkg.Manifest, nil)
+		if err != nil {
+			return err
+		}
+		artifacts, ok := s.uploadProblemPackageArtifacts(c, rebuiltBody, &rebuiltPkg)
+		if !ok {
+			return fmt.Errorf("upload problem package artifacts")
+		}
+		problem.Slug = internalSlug
 		problem.DisplayCode = displayCode
+		problem.PackageObject = artifacts.Object
+		problem.PackageChecksum = artifacts.Checksum
+		problem.Manifest = artifacts.Manifest
 		if err := tx.Create(&problem).Error; err != nil {
 			return err
 		}
@@ -1741,6 +1888,40 @@ func (s Server) saveProblemPackage(c *gin.Context, user models.User, body []byte
 	}
 	services.Audit(c, s.DB, action, "problem", problem.ID, datatypes.JSONMap{"slug": problem.Slug})
 	return problem, true
+}
+
+func nextProblemInternalSlug(tx *gorm.DB) (string, error) {
+	var slugs []string
+	if err := tx.Model(&models.Problem{}).Where("deleted_at IS NULL").Pluck("slug", &slugs).Error; err != nil {
+		return "", err
+	}
+	return firstAvailableProblemInternalSlug(slugs), nil
+}
+
+func firstAvailableProblemInternalSlug(slugs []string) string {
+	used := map[int]bool{}
+	for _, slug := range slugs {
+		if index := parseProblemInternalSlug(slug); index > 0 {
+			used[index] = true
+		}
+	}
+	for index := 1; ; index++ {
+		if !used[index] {
+			return fmt.Sprintf("P%06d", index)
+		}
+	}
+}
+
+func parseProblemInternalSlug(value string) int {
+	value = strings.TrimSpace(strings.ToUpper(value))
+	if len(value) != 7 || value[0] != 'P' {
+		return 0
+	}
+	index, err := strconv.Atoi(value[1:])
+	if err != nil || index <= 0 {
+		return 0
+	}
+	return index
 }
 
 func nextProblemDisplayCode(tx *gorm.DB) (string, error) {
@@ -1853,6 +2034,9 @@ func (s Server) updateProblem(c *gin.Context) {
 	}
 	if req.Tags != nil {
 		updates["tags"] = tagsJSONMap(req.Tags)
+	}
+	if value := normalizeProblemDifficulty(req.Difficulty, tagsJSONMap(req.Tags)); value != "" {
+		updates["difficulty"] = value
 	}
 	if err := s.DB.Model(&models.Problem{}).Where("id = ?", problem.ID).Updates(updates).Error; err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
@@ -2088,6 +2272,9 @@ func (s Server) problemForTestDownload(c *gin.Context, user models.User) (models
 func (s Server) canManageProblemData(user models.User, problem models.Problem) bool {
 	if user.Role == models.RoleAdmin {
 		return true
+	}
+	if user.Role == models.RoleProblemSetter {
+		return problem.OwnerID == user.ID
 	}
 	if user.Role != models.RoleTeacher {
 		return false
@@ -2325,7 +2512,7 @@ func (s Server) createPreparedProblem(c *gin.Context) {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 		return
 	}
-	problem, ok := s.saveProblemPackage(c, user, body, pkg, tagsJSONMap(req.Tags), "prepared_problem.create")
+	problem, ok := s.saveProblemPackage(c, user, body, pkg, tagsJSONMap(req.Tags), req.Difficulty, "prepared_problem.create")
 	if !ok {
 		return
 	}
@@ -2370,7 +2557,7 @@ func (s Server) uploadPreparedProblem(c *gin.Context) {
 		return
 	}
 	tags := parseTagFields(c.PostFormArray("tags"), c.PostForm("tags"))
-	problem, ok := s.saveProblemPackage(c, user, body, pkg, tagsJSONMap(tags), "prepared_problem.upload")
+	problem, ok := s.saveProblemPackage(c, user, body, pkg, tagsJSONMap(tags), c.PostForm("difficulty"), "prepared_problem.upload")
 	if !ok {
 		return
 	}
@@ -2412,9 +2599,11 @@ func (s Server) updatePreparedProblem(c *gin.Context) {
 	if !bind(c, &req) {
 		return
 	}
+	tags := tagsJSONMap(req.Tags)
+	difficulty := normalizeProblemDifficulty(req.Difficulty, tags)
 	updates := map[string]any{
 		"folder":     strings.TrimSpace(req.Folder),
-		"difficulty": strings.TrimSpace(req.Difficulty),
+		"difficulty": difficulty,
 		"source":     strings.TrimSpace(req.Source),
 		"notes":      strings.TrimSpace(req.Notes),
 	}
@@ -2425,8 +2614,15 @@ func (s Server) updatePreparedProblem(c *gin.Context) {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 		return
 	}
+	problemUpdates := map[string]any{}
 	if req.Tags != nil {
-		if err := s.DB.Model(&models.Problem{}).Where("id = ?", item.ProblemID).Update("tags", tagsJSONMap(req.Tags)).Error; err != nil {
+		problemUpdates["tags"] = tags
+	}
+	if difficulty != "" {
+		problemUpdates["difficulty"] = difficulty
+	}
+	if len(problemUpdates) > 0 {
+		if err := s.DB.Model(&models.Problem{}).Where("id = ?", item.ProblemID).Updates(problemUpdates).Error; err != nil {
 			c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 			return
 		}
@@ -3673,6 +3869,7 @@ func (s Server) createSubmission(c *gin.Context) {
 		ExamID       *uint  `json:"exam_id"`
 		Language     string `json:"language" binding:"required"`
 		SourceCode   string `json:"source_code" binding:"required"`
+		IsPublic     bool   `json:"is_public"`
 	}
 	if !bind(c, &req) {
 		return
@@ -3770,6 +3967,7 @@ func (s Server) createSubmission(c *gin.Context) {
 		ExamID:       req.ExamID,
 		Language:     req.Language,
 		SourceCode:   req.SourceCode,
+		IsPublic:     req.IsPublic && req.AssignmentID == nil && req.ExamID == nil,
 		Status:       status,
 	}
 	if err := s.DB.Transaction(func(tx *gorm.DB) error {
@@ -3809,7 +4007,23 @@ func (s Server) listSubmissions(c *gin.Context) {
 	user, _ := middleware.CurrentUser(c)
 	var items []models.Submission
 	q := s.DB.Order("id desc").Limit(200)
-	if user.Role == models.RoleStudent {
+	publicProblemView := strings.EqualFold(strings.TrimSpace(c.Query("visibility")), "problem")
+	if publicProblemView {
+		problemID, ok := queryUint(c, "problem_id")
+		if !ok {
+			c.JSON(http.StatusBadRequest, gin.H{"error": "problem_id is required"})
+			return
+		}
+		if !s.isProblemPublic(problemID) {
+			c.JSON(http.StatusNotFound, gin.H{"error": "problem not found"})
+			return
+		}
+		q = q.Where(
+			"problem_id = ? AND assignment_id IS NULL AND exam_id IS NULL AND (user_id = ? OR is_public = true)",
+			problemID,
+			user.ID,
+		)
+	} else if user.Role == models.RoleStudent || user.Role == models.RoleProblemSetter {
 		q = q.Where("user_id = ?", user.ID)
 	} else if user.Role == models.RoleTeacher {
 		primaryCourses := s.DB.Model(&models.Course{}).Select("id").Where("teacher_id = ?", user.ID)
@@ -3829,6 +4043,17 @@ func (s Server) listSubmissions(c *gin.Context) {
 	if problemID := c.Query("problem_id"); problemID != "" {
 		q = q.Where("problem_id = ?", problemID)
 	}
+	if language := strings.TrimSpace(c.Query("language")); language != "" {
+		if !validLanguage(language) {
+			c.JSON(http.StatusBadRequest, gin.H{"error": "unsupported language"})
+			return
+		}
+		q = q.Where("language = ?", language)
+	}
+	if username := strings.TrimSpace(c.Query("username")); username != "" {
+		like := "%" + strings.ToLower(username) + "%"
+		q = q.Where("user_id IN (?)", s.DB.Model(&models.User{}).Select("id").Where("account_deleted = false AND lower(name) LIKE ?", like))
+	}
 	if assignmentID := c.Query("assignment_id"); assignmentID != "" {
 		q = q.Where("assignment_id = ?", assignmentID)
 	}
@@ -3840,7 +4065,15 @@ func (s Server) listSubmissions(c *gin.Context) {
 		}
 	}
 	q.Find(&items)
-	c.JSON(http.StatusOK, s.submissionListViews(items))
+	views := s.submissionListViews(items)
+	if publicProblemView {
+		for i := range views {
+			if views[i].UserID != user.ID {
+				views[i].StudentNo = ""
+			}
+		}
+	}
+	c.JSON(http.StatusOK, views)
 }
 
 func (s Server) submissionListViews(items []models.Submission) []submissionListView {
@@ -3981,7 +4214,7 @@ func (s Server) getSubmission(c *gin.Context) {
 		return
 	}
 	var results []models.SubmissionResult
-	if user.Role != models.RoleStudent {
+	if s.canViewSubmissionResults(user, sub) {
 		s.DB.Where("submission_id = ?", sub.ID).Order("id asc").Find(&results)
 	}
 	submission := s.enrichSubmissionViews([]submissionListView{{Submission: sub}})
@@ -5214,8 +5447,18 @@ func (s Server) canAccessSubmission(user models.User, sub models.Submission) boo
 	if user.Role == models.RoleAdmin {
 		return true
 	}
+	if sub.IsPublic && sub.AssignmentID == nil && sub.ExamID == nil && s.isProblemPublic(sub.ProblemID) {
+		return true
+	}
 	if user.Role == models.RoleStudent {
 		return sub.UserID == user.ID
+	}
+	if user.Role == models.RoleProblemSetter {
+		if sub.UserID == user.ID {
+			return true
+		}
+		var problem models.Problem
+		return s.DB.First(&problem, sub.ProblemID).Error == nil && problem.OwnerID == user.ID
 	}
 	if sub.AssignmentID != nil {
 		var assignment models.Assignment
@@ -5236,6 +5479,25 @@ func (s Server) canAccessSubmission(user models.User, sub models.Submission) boo
 		return false
 	}
 	return problem.OwnerID == user.ID
+}
+
+func (s Server) canViewSubmissionResults(user models.User, sub models.Submission) bool {
+	if user.Role == models.RoleAdmin || sub.UserID == user.ID {
+		return true
+	}
+	if sub.AssignmentID != nil {
+		var assignment models.Assignment
+		return s.DB.First(&assignment, *sub.AssignmentID).Error == nil && s.canManageCourse(user, assignment.CourseID)
+	}
+	if sub.ExamID != nil {
+		var exam models.Exam
+		return s.DB.First(&exam, *sub.ExamID).Error == nil && s.canManageCourse(user, exam.CourseID)
+	}
+	if user.Role != models.RoleTeacher && user.Role != models.RoleProblemSetter {
+		return false
+	}
+	var problem models.Problem
+	return s.DB.First(&problem, sub.ProblemID).Error == nil && problem.OwnerID == user.ID
 }
 
 func (s Server) preparedProblemForUser(c *gin.Context, user models.User, id uint) (models.PreparedProblem, bool) {
@@ -5841,6 +6103,47 @@ func tagsJSONMap(tags []string) datatypes.JSONMap {
 	return datatypes.JSONMap{"labels": tags}
 }
 
+func normalizeProblemDifficulty(value string, tags datatypes.JSONMap) string {
+	value = strings.TrimSpace(value)
+	for _, allowed := range []string{"入门", "基础", "普及", "提高", "综合"} {
+		if value == allowed {
+			return value
+		}
+	}
+	switch strings.ToLower(value) {
+	case "简单", "easy":
+		return "基础"
+	case "中等", "medium":
+		return "普及"
+	case "困难", "hard":
+		return "提高"
+	case "挑战":
+		return "综合"
+	}
+	if tags == nil {
+		return ""
+	}
+	raw, ok := tags["labels"]
+	if !ok {
+		return ""
+	}
+	switch labels := raw.(type) {
+	case []string:
+		for _, label := range labels {
+			if normalized := normalizeProblemDifficulty(label, nil); normalized != "" {
+				return normalized
+			}
+		}
+	case []any:
+		for _, label := range labels {
+			if normalized := normalizeProblemDifficulty(fmt.Sprint(label), nil); normalized != "" {
+				return normalized
+			}
+		}
+	}
+	return ""
+}
+
 func validLanguage(language string) bool {
 	switch language {
 	case "c", "cpp", "python", "java":
@@ -5852,7 +6155,7 @@ func validLanguage(language string) bool {
 
 func validRole(role models.Role) bool {
 	switch role {
-	case models.RoleStudent, models.RoleTeacher, models.RoleAdmin:
+	case models.RoleStudent, models.RoleProblemSetter, models.RoleTeacher, models.RoleAdmin:
 		return true
 	default:
 		return false

@@ -63,6 +63,7 @@ type ProblemPackageDraft struct {
 	Title         string              `json:"title"`
 	Statement     string              `json:"statement"`
 	Tags          []string            `json:"tags"`
+	Difficulty    string              `json:"difficulty"`
 	TimeLimitMS   int                 `json:"time_limit_ms"`
 	MemoryLimitMB int                 `json:"memory_limit_mb"`
 	OutputLimitKB int                 `json:"output_limit_kb"`
@@ -268,8 +269,11 @@ func lastNumber(value string) (int, bool) {
 }
 
 func BuildProblemPackage(draft ProblemPackageDraft) ([]byte, ParsedProblemPackage, error) {
-	if strings.TrimSpace(draft.Slug) == "" || strings.TrimSpace(draft.Title) == "" {
-		return nil, ParsedProblemPackage{}, fmt.Errorf("slug and title are required")
+	if strings.TrimSpace(draft.Title) == "" {
+		return nil, ParsedProblemPackage{}, fmt.Errorf("title is required")
+	}
+	if strings.TrimSpace(draft.Slug) == "" {
+		draft.Slug = "auto"
 	}
 	if len(draft.Cases) == 0 {
 		return nil, ParsedProblemPackage{}, fmt.Errorf("at least one test case is required")
@@ -420,8 +424,11 @@ func RebuildProblemPackage(base []byte, manifest ProblemManifest, replacementCas
 			files[outputPath] = []byte(normalizeCaseText(tc.Output))
 		}
 	}
-	if strings.TrimSpace(manifest.Slug) == "" || strings.TrimSpace(manifest.Title) == "" {
-		return nil, ParsedProblemPackage{}, fmt.Errorf("slug and title are required")
+	if strings.TrimSpace(manifest.Title) == "" {
+		return nil, ParsedProblemPackage{}, fmt.Errorf("title is required")
+	}
+	if strings.TrimSpace(manifest.Slug) == "" {
+		manifest.Slug = "auto"
 	}
 	if manifest.TimeLimitMS <= 0 {
 		manifest.TimeLimitMS = 1000
@@ -596,8 +603,11 @@ func ParseProblemPackage(body []byte) (ParsedProblemPackage, error) {
 	if err := yaml.Unmarshal(manifestBytes, &manifest); err != nil {
 		return ParsedProblemPackage{}, fmt.Errorf("parse problem.yaml: %w", err)
 	}
-	if manifest.Slug == "" || manifest.Title == "" {
-		return ParsedProblemPackage{}, fmt.Errorf("slug and title are required")
+	if strings.TrimSpace(manifest.Title) == "" {
+		return ParsedProblemPackage{}, fmt.Errorf("title is required")
+	}
+	if strings.TrimSpace(manifest.Slug) == "" {
+		manifest.Slug = "auto"
 	}
 	if manifest.TimeLimitMS <= 0 {
 		manifest.TimeLimitMS = 1000
