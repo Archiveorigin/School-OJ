@@ -3,6 +3,7 @@ package streams
 import (
 	"errors"
 	"testing"
+	"time"
 
 	"school-oj/apps/worker/internal/config"
 
@@ -52,5 +53,16 @@ func TestSubmissionIDFromMessage(t *testing.T) {
 	}
 	if _, err := submissionIDFromMessage(redis.XMessage{Values: map[string]any{"submission_id": "bad"}}); err == nil {
 		t.Fatal("expected invalid submission id error")
+	}
+}
+
+func TestJudgeLeaseTTLExceedsPendingReclaimWindow(t *testing.T) {
+	consumer := Consumer{Cfg: config.Config{RetryIdleSeconds: 90}}
+	if got, want := consumer.judgeLeaseTTL(), 3*time.Minute; got != want {
+		t.Fatalf("judge lease ttl = %s, want %s", got, want)
+	}
+	consumer.Cfg.RetryIdleSeconds = 10
+	if got := consumer.judgeLeaseTTL(); got != 2*time.Minute {
+		t.Fatalf("short reclaim window must still use safe minimum lease, got %s", got)
 	}
 }

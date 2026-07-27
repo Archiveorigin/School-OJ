@@ -92,6 +92,22 @@
               <el-input-number v-model="form.output_limit_kb" :min="1" :step="64" />
               <span class="unit">KB</span>
             </el-form-item>
+            <el-form-item label="答案比较">
+              <el-select v-model="form.checker_type" style="width: 100%">
+                <el-option label="标准比较（忽略行尾空白）" value="exact" />
+                <el-option label="令牌比较（忽略空白差异）" value="tokens" />
+                <el-option label="浮点比较（允许误差）" value="float" />
+              </el-select>
+            </el-form-item>
+            <template v-if="form.checker_type === 'float'">
+              <el-form-item label="绝对误差">
+                <el-input-number v-model="form.absolute_tolerance" :min="0" :max="1" :step="0.000001" :precision="8" />
+              </el-form-item>
+              <el-form-item label="相对误差">
+                <el-input-number v-model="form.relative_tolerance" :min="0" :max="1" :step="0.000001" :precision="8" />
+              </el-form-item>
+            </template>
+            <p class="checker-note">比较器只使用平台内置算法，不运行题目包中的脚本。</p>
           </section>
 
           <section class="panel import-panel">
@@ -176,7 +192,10 @@ const form = reactive({
   tags: '',
   time_limit_ms: 1000,
   memory_limit_mb: 256,
-  output_limit_kb: 1024
+  output_limit_kb: 1024,
+  checker_type: 'exact',
+  absolute_tolerance: 0.000001,
+  relative_tolerance: 0.000001
 })
 
 const submitLabel = computed(() => {
@@ -259,6 +278,11 @@ async function submitProblem() {
       time_limit_ms: form.time_limit_ms,
       memory_limit_mb: form.memory_limit_mb,
       output_limit_kb: form.output_limit_kb,
+      checker: {
+        type: form.checker_type,
+        absolute_tolerance: form.checker_type === 'float' ? form.absolute_tolerance : 0,
+        relative_tolerance: form.checker_type === 'float' ? form.relative_tolerance : 0
+      },
       cases: importedCases.value
     }
     const endpoint = resubmitting ? `/problems/${cachedProblemId.value}` : '/problems'
@@ -321,6 +345,9 @@ function restoreDraft() {
     form.time_limit_ms = Number(cached.time_limit_ms) || 1000
     form.memory_limit_mb = Number(cached.memory_limit_mb) || 256
     form.output_limit_kb = Number(cached.output_limit_kb) || 1024
+    form.checker_type = ['exact', 'tokens', 'float'].includes(cached.checker_type) ? cached.checker_type : 'exact'
+    form.absolute_tolerance = checkerTolerance(cached.absolute_tolerance)
+    form.relative_tolerance = checkerTolerance(cached.relative_tolerance)
     importedCases.value = Array.isArray(cached.cases) ? cached.cases : []
     cachedProblemId.value = cached.problem_id ? Number(cached.problem_id) : undefined
     cachedProblemCode.value = cached.problem_code || ''
@@ -348,6 +375,9 @@ async function loadReviewState() {
       form.time_limit_ms = 1000
       form.memory_limit_mb = 256
       form.output_limit_kb = 1024
+      form.checker_type = 'exact'
+      form.absolute_tolerance = 0.000001
+      form.relative_tolerance = 0.000001
       importedCases.value = []
       cachedProblemId.value = undefined
       cachedProblemCode.value = ''
@@ -367,6 +397,10 @@ async function loadReviewState() {
       form.time_limit_ms = review.problem.time_limit_ms || 1000
       form.memory_limit_mb = review.problem.memory_limit_mb || 256
       form.output_limit_kb = review.problem.output_limit_kb || 1024
+      const checker = problemChecker(review.problem.manifest)
+      form.checker_type = checker.type
+      form.absolute_tolerance = checker.absolute_tolerance
+      form.relative_tolerance = checker.relative_tolerance
     }
     persistDraft()
   } catch {
@@ -377,6 +411,21 @@ async function loadReviewState() {
 function problemTags(tags?: Record<string, unknown>) {
   const labels = tags?.labels
   return Array.isArray(labels) ? labels.map(String) : []
+}
+
+function problemChecker(manifest?: Record<string, unknown>) {
+  const raw = (manifest?.checker || {}) as Record<string, unknown>
+  const type = ['exact', 'tokens', 'float'].includes(String(raw.type)) ? String(raw.type) : 'exact'
+  return {
+    type,
+    absolute_tolerance: checkerTolerance(raw.absolute_tolerance),
+    relative_tolerance: checkerTolerance(raw.relative_tolerance)
+  }
+}
+
+function checkerTolerance(value: unknown) {
+  const parsed = Number(value)
+  return Number.isFinite(parsed) && parsed >= 0 ? parsed : 0.000001
 }
 
 async function clearDraft() {
@@ -397,6 +446,9 @@ async function clearDraft() {
   form.time_limit_ms = 1000
   form.memory_limit_mb = 256
   form.output_limit_kb = 1024
+  form.checker_type = 'exact'
+  form.absolute_tolerance = 0.000001
+  form.relative_tolerance = 0.000001
   importedCases.value = []
   testFiles.value = []
   cachedProblemId.value = undefined
@@ -432,6 +484,7 @@ onMounted(async () => {
 .two-columns { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 14px; }
 .unit { margin-left: 8px; color: var(--muted); }
 .limits-panel :deep(.el-input-number) { width: calc(100% - 38px); }
+.checker-note { margin: -4px 0 0; color: var(--muted); font-size: 12px; line-height: 1.6; }
 .import-panel { display: grid; gap: 12px; }
 .upload-title { margin-bottom: 6px; font-weight: 700; }
 .cache-note { margin: 0; color: var(--muted); font-size: 12px; line-height: 1.65; }

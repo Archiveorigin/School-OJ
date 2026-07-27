@@ -3,6 +3,9 @@
 Local:
 
 ```bash
+cp .env.example .env
+# Set JWT_SECRET to at least 32 random bytes, for example:
+# openssl rand -hex 32
 docker compose up -d --build
 ```
 
@@ -55,3 +58,12 @@ bound to localhost by default in compose (`POSTGRES_BIND`, `REDIS_BIND`) so they
 are not unintentionally exposed on public interfaces. The judge worker also
 supports `SUBMISSION_MAX_RETRIES` and `SUBMISSION_RETRY_IDLE_SECONDS` for
 recovering pending Redis Stream messages after worker restarts.
+
+`JWT_SECRET` is required by the canonical Compose file; deployment fails during
+configuration interpolation when it is missing. `CORS_ALLOWED_ORIGINS` is a
+comma-separated browser-origin allowlist. `TRUSTED_PROXIES` is a comma-separated
+list of reverse-proxy IPs or CIDRs; do not add untrusted client networks because
+rate limits use the trusted client IP.
+
+The API serves both `/api/*` and `/api/v1/*`. Existing web deployments remain
+compatible, while new external clients should use `/api/v1`.

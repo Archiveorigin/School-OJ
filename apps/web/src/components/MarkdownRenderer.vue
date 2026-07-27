@@ -6,12 +6,14 @@
 import katex from 'katex'
 import { ElMessage } from 'element-plus'
 import MarkdownIt from 'markdown-it'
-import { computed } from 'vue'
-import { problemAssetUrl } from '../api/client'
+import { computed, onBeforeUnmount, ref, watch } from 'vue'
+import { client } from '../api/client'
 import { copyTextToClipboard } from '../features/clipboard'
 import 'katex/dist/katex.min.css'
 
 const props = defineProps<{ source?: string | null; problemId?: number; assetUrls?: Record<string, string> }>()
+const fetchedAssetUrls = ref<Record<string, string>>({})
+let assetGeneration = 0
 
 const md = new MarkdownIt({
   html: false,
@@ -102,6 +104,19 @@ function renderMath(source: string, displayMode: boolean) {
 
 const rendered = computed(() => md.render(props.source || ''))
 
+watch(
+  () => [props.problemId, props.source],
+  () => {
+    void loadProblemAssets()
+  },
+  { immediate: true }
+)
+
+onBeforeUnmount(() => {
+  assetGeneration += 1
+  revokeFetchedAssets()
+})
+
 function renderCodeBlock(source: string, info: string) {
   const language = info.trim().split(/\s+/)[0].replace(/[^A-Za-z0-9_-]/g, '')
   const languageClass = language ? ` class="language-${md.utils.escapeHtml(language)}"` : ''
@@ -133,8 +148,57 @@ function resolveImage(src: string) {
     return ''
   }
   if (props.assetUrls?.[src]) return props.assetUrls[src]
-  if (props.problemId && src.startsWith('assets/')) return problemAssetUrl(props.problemId, src)
+  if (fetchedAssetUrls.value[src]) return fetchedAssetUrls.value[src]
   return ''
+}
+
+async function loadProblemAssets() {
+  const generation = ++assetGeneration
+  revokeFetchedAssets()
+  if (!props.problemId || !props.source) return
+  const paths = collectAssetPaths(props.source)
+  const loaded: Record<string, string> = {}
+  await Promise.all(
+    paths.map(async (path) => {
+      const encoded = path
+        .replace(/^\/+/, '')
+        .split('/')
+        .map((part) => encodeURIComponent(part))
+        .join('/')
+      try {
+        const { data } = await client.get(`/problems/${props.problemId}/assets/${encoded}`, { responseType: 'blob' })
+        const url = URL.createObjectURL(data)
+        if (generation !== assetGeneration) {
+          URL.revokeObjectURL(url)
+          return
+        }
+        loaded[path] = url
+      } catch {
+        // Missing or unauthorized assets remain hidden by the renderer.
+      }
+    })
+  )
+  if (generation === assetGeneration) fetchedAssetUrls.value = loaded
+}
+
+function collectAssetPaths(source: string) {
+  const paths = new Set<string>()
+  const visit = (tokens: any[]) => {
+    for (const token of tokens) {
+      if (token.type === 'image') {
+        const src = token.attrGet?.('src') || ''
+        if (src.startsWith('assets/')) paths.add(src)
+      }
+      if (Array.isArray(token.children)) visit(token.children)
+    }
+  }
+  visit(md.parse(source, {}))
+  return [...paths]
+}
+
+function revokeFetchedAssets() {
+  for (const url of Object.values(fetchedAssetUrls.value)) URL.revokeObjectURL(url)
+  fetchedAssetUrls.value = {}
 }
 </script>
 

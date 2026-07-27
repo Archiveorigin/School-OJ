@@ -27,7 +27,6 @@ import (
 	"school-oj/apps/api/internal/services"
 	"school-oj/apps/api/internal/streams"
 
-	"github.com/gin-contrib/cors"
 	"github.com/gin-gonic/gin"
 	"github.com/minio/minio-go/v7"
 	"github.com/redis/go-redis/v9"
@@ -137,6 +136,7 @@ type preparedProblemInput struct {
 	TimeLimitMS   int                          `json:"time_limit_ms"`
 	MemoryLimitMB int                          `json:"memory_limit_mb"`
 	OutputLimitKB int                          `json:"output_limit_kb"`
+	Checker       services.CheckerManifest     `json:"checker"`
 	Assets        []services.ProblemAssetDraft `json:"assets"`
 	Cases         []services.ProblemCaseDraft  `json:"cases"`
 	Folder        string                       `json:"folder"`
@@ -146,13 +146,14 @@ type preparedProblemInput struct {
 }
 
 type problemUpdateInput struct {
-	Title         string   `json:"title"`
-	Statement     string   `json:"statement"`
-	Tags          []string `json:"tags"`
-	Difficulty    string   `json:"difficulty"`
-	TimeLimitMS   int      `json:"time_limit_ms"`
-	MemoryLimitMB int      `json:"memory_limit_mb"`
-	OutputLimitKB int      `json:"output_limit_kb"`
+	Title         string                    `json:"title"`
+	Statement     string                    `json:"statement"`
+	Tags          []string                  `json:"tags"`
+	Difficulty    string                    `json:"difficulty"`
+	TimeLimitMS   int                       `json:"time_limit_ms"`
+	MemoryLimitMB int                       `json:"memory_limit_mb"`
+	OutputLimitKB int                       `json:"output_limit_kb"`
+	Checker       *services.CheckerManifest `json:"checker"`
 }
 
 type workProblemInput struct {
@@ -267,121 +268,10 @@ func (req preparedProblemInput) draft() services.ProblemPackageDraft {
 		TimeLimitMS:   req.TimeLimitMS,
 		MemoryLimitMB: req.MemoryLimitMB,
 		OutputLimitKB: req.OutputLimitKB,
+		Checker:       req.Checker,
 		Assets:        req.Assets,
 		Cases:         req.Cases,
 	}
-}
-
-func (s Server) Router() *gin.Engine {
-	r := gin.New()
-	r.Use(gin.Logger(), gin.Recovery())
-	r.Use(cors.New(cors.Config{
-		AllowOrigins:     []string{"http://localhost:3000", "http://localhost:5173"},
-		AllowMethods:     []string{"GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"},
-		AllowHeaders:     []string{"Authorization", "Content-Type"},
-		ExposeHeaders:    []string{"Content-Length"},
-		AllowCredentials: true,
-		MaxAge:           12 * time.Hour,
-	}))
-	r.GET("/healthz", s.health)
-	api := r.Group("/api")
-	api.POST("/auth/login", s.login)
-	api.POST("/auth/send-code", s.sendEmailCode)
-	api.POST("/auth/register", s.register)
-	api.POST("/auth/password-reset", s.resetPassword)
-	api.GET("/problems", middleware.OptionalAuth(s.DB, s.Cfg.JWTSecret), s.listProblems)
-	api.GET("/problems/:id/assets/*asset_path", middleware.OptionalAuth(s.DB, s.Cfg.JWTSecret), s.getProblemAsset)
-	api.GET("/problems/:id", middleware.OptionalAuth(s.DB, s.Cfg.JWTSecret), s.getProblem)
-	auth := api.Group("")
-	auth.Use(middleware.Auth(s.DB, s.Cfg.JWTSecret))
-	auth.GET("/me", s.me)
-	auth.GET("/me/active-exam", s.activeExam)
-	auth.GET("/profile", s.getProfile)
-	auth.PUT("/profile", s.updateProfile)
-	auth.POST("/profile/password", s.updateProfilePassword)
-	auth.POST("/profile/email-code", s.sendProfileEmailCode)
-	auth.POST("/profile/email", s.rebindEmail)
-	auth.DELETE("/profile", s.deleteProfile)
-	auth.GET("/author-applications/me", s.getMyAuthorApplication)
-	auth.POST("/author-applications", s.createAuthorApplication)
-	auth.POST("/feedback", s.createFeedback)
-	auth.GET("/courses", s.listCourses)
-	auth.POST("/courses", middleware.RequireRoles(models.RoleAdmin, models.RoleTeacher), s.createCourse)
-	auth.PUT("/courses/:id", middleware.RequireRoles(models.RoleAdmin, models.RoleTeacher), s.updateCourse)
-	auth.DELETE("/courses/:id", middleware.RequireRoles(models.RoleAdmin, models.RoleTeacher), s.archiveCourse)
-	auth.POST("/courses/:id/archive", middleware.RequireRoles(models.RoleAdmin, models.RoleTeacher), s.archiveCourse)
-	auth.POST("/courses/:id/classes", middleware.RequireRoles(models.RoleAdmin, models.RoleTeacher), s.createClass)
-	auth.GET("/courses/:id/members", middleware.RequireRoles(models.RoleAdmin, models.RoleTeacher), s.listCourseMembers)
-	auth.POST("/courses/:id/members", middleware.RequireRoles(models.RoleAdmin, models.RoleTeacher), s.addCourseMember)
-	auth.DELETE("/courses/:id/members/:user_id", middleware.RequireRoles(models.RoleAdmin, models.RoleTeacher), s.removeCourseMember)
-	auth.GET("/courses/preview", s.previewCourseByCode)
-	auth.POST("/courses/join", s.joinCourseByCode)
-	auth.POST("/courses/:id/leave", s.leaveCourse)
-	auth.GET("/courses/:id/students", middleware.RequireRoles(models.RoleAdmin, models.RoleTeacher), s.listCourseStudents)
-	auth.GET("/classes", s.listClasses)
-	auth.GET("/classes/join-preview", middleware.RequireRoles(models.RoleStudent), s.previewClassJoin)
-	auth.GET("/me/classes", s.myClasses)
-	auth.POST("/classes/join", middleware.RequireRoles(models.RoleStudent), s.joinClassByCode)
-	auth.POST("/classes/:id/join", middleware.RequireRoles(models.RoleStudent), s.joinClass)
-	auth.POST("/classes/:id/leave", middleware.RequireRoles(models.RoleStudent), s.leaveClass)
-	auth.PUT("/classes/:id", middleware.RequireRoles(models.RoleAdmin, models.RoleTeacher), s.updateClass)
-	auth.DELETE("/classes/:id", middleware.RequireRoles(models.RoleAdmin, models.RoleTeacher), s.archiveClass)
-	auth.POST("/classes/:id/archive", middleware.RequireRoles(models.RoleAdmin, models.RoleTeacher), s.archiveClass)
-	auth.GET("/classes/:id/students", middleware.RequireRoles(models.RoleAdmin, models.RoleTeacher), s.listClassStudents)
-	auth.DELETE("/classes/:id/students/:user_id", middleware.RequireRoles(models.RoleAdmin, models.RoleTeacher), s.removeClassStudent)
-	auth.POST("/classes/:id/students/import", middleware.RequireRoles(models.RoleAdmin, models.RoleTeacher), s.importClassStudents)
-	auth.POST("/problems", s.createProblem)
-	auth.POST("/problems/parse-markdown", s.parseMarkdownBatch)
-	auth.POST("/problems/upload", s.uploadProblem)
-	auth.PUT("/problems/:id", s.updateProblem)
-	auth.GET("/problems/:id/tests", s.listProblemTests)
-	auth.GET("/problems/:id/tests/download", s.downloadProblemTests)
-	auth.GET("/problems/:id/tests/file/*file_path", s.downloadProblemTestFile)
-	auth.DELETE("/problems/:id", s.deleteProblem)
-	auth.GET("/prepared-problems", middleware.RequireRoles(models.RoleAdmin, models.RoleTeacher), s.listPreparedProblems)
-	auth.POST("/prepared-problems", middleware.RequireRoles(models.RoleAdmin, models.RoleTeacher), s.createPreparedProblem)
-	auth.POST("/prepared-problems/upload", middleware.RequireRoles(models.RoleAdmin, models.RoleTeacher), s.uploadPreparedProblem)
-	auth.GET("/prepared-problems/:id", middleware.RequireRoles(models.RoleAdmin, models.RoleTeacher), s.getPreparedProblem)
-	auth.PUT("/prepared-problems/:id", middleware.RequireRoles(models.RoleAdmin, models.RoleTeacher), s.updatePreparedProblem)
-	auth.POST("/prepared-problems/:id/publish", middleware.RequireRoles(models.RoleAdmin, models.RoleTeacher), s.publishPreparedProblem)
-	auth.GET("/assignments", s.listAssignments)
-	auth.GET("/assignments/:id", s.getAssignment)
-	auth.POST("/assignments", middleware.RequireRoles(models.RoleAdmin, models.RoleTeacher), s.createAssignment)
-	auth.GET("/assignments/:id/report", middleware.RequireRoles(models.RoleAdmin, models.RoleTeacher), s.assignmentReport)
-	auth.DELETE("/assignments/:id", middleware.RequireRoles(models.RoleAdmin, models.RoleTeacher), s.deleteAssignment)
-	auth.GET("/exams", s.listExams)
-	auth.GET("/exams/:id", s.getExam)
-	auth.POST("/exams/:id/finish", middleware.RequireRoles(models.RoleStudent), s.finishExam)
-	auth.POST("/exams", middleware.RequireRoles(models.RoleAdmin, models.RoleTeacher), s.createExam)
-	auth.GET("/exams/:id/report/export", middleware.RequireRoles(models.RoleAdmin, models.RoleTeacher), s.exportExamReport)
-	auth.GET("/exams/:id/report", middleware.RequireRoles(models.RoleAdmin, models.RoleTeacher), s.examReport)
-	auth.GET("/exams/:id/ranking", s.examRanking)
-	auth.DELETE("/exams/:id", middleware.RequireRoles(models.RoleAdmin, models.RoleTeacher), s.deleteExam)
-	auth.POST("/exams/:id/submissions/:submission_id/judge", middleware.RequireRoles(models.RoleAdmin, models.RoleTeacher), s.judgeManualExamSubmission)
-	auth.PUT("/exams/:id/submissions/:submission_id/grade", middleware.RequireRoles(models.RoleAdmin, models.RoleTeacher), s.gradeManualExamSubmission)
-	auth.POST("/submissions", s.createSubmission)
-	auth.GET("/submissions", s.listSubmissions)
-	auth.GET("/submissions/:id", s.getSubmission)
-	auth.GET("/submissions/:id/events", s.submissionEvents)
-	// leaderboard disabled: auth.GET("/leaderboard", s.leaderboard)
-	auth.GET("/plagiarism/jobs", middleware.RequireRoles(models.RoleAdmin, models.RoleTeacher), s.listPlagiarismJobs)
-	auth.POST("/plagiarism/jobs", middleware.RequireRoles(models.RoleAdmin, models.RoleTeacher), s.createPlagiarismJob)
-	auth.GET("/audit-logs", middleware.RequireRoles(models.RoleAdmin), s.listAuditLogs)
-	auth.GET("/users", middleware.RequireRoles(models.RoleAdmin), s.listUsers)
-	auth.POST("/users", middleware.RequireRoles(models.RoleAdmin), s.createUser)
-	auth.GET("/users/:id", middleware.RequireRoles(models.RoleAdmin), s.getUser)
-	auth.PUT("/users/:id", middleware.RequireRoles(models.RoleAdmin), s.updateUser)
-	auth.DELETE("/users/:id", middleware.RequireRoles(models.RoleAdmin), s.deleteUser)
-	auth.POST("/users/:id/reset-password", middleware.RequireRoles(models.RoleAdmin), s.resetUserPassword)
-	auth.GET("/author-applications", middleware.RequireRoles(models.RoleAdmin), s.listAuthorApplications)
-	auth.PUT("/author-applications/:id/review", middleware.RequireRoles(models.RoleAdmin), s.reviewAuthorApplication)
-	auth.GET("/problem-authors", middleware.RequireRoles(models.RoleAdmin), s.listProblemAuthors)
-	auth.DELETE("/problem-authors/:id", middleware.RequireRoles(models.RoleAdmin), s.removeProblemAuthor)
-	auth.GET("/problem-reviews/mine", s.listMyProblemReviews)
-	auth.GET("/problem-reviews", middleware.RequireRoles(models.RoleAdmin), s.listProblemReviews)
-	auth.PUT("/problem-reviews/:id/review", middleware.RequireRoles(models.RoleAdmin), s.reviewProblem)
-	auth.PUT("/problem-reviews/:id/withdraw", middleware.RequireRoles(models.RoleAdmin), s.withdrawProblem)
-	return r
 }
 
 func (s Server) health(c *gin.Context) {
@@ -2227,6 +2117,9 @@ func (s Server) updateProblem(c *gin.Context) {
 		manifest.OutputLimitKB = req.OutputLimitKB
 	} else {
 		manifest.OutputLimitKB = problem.OutputLimitKB
+	}
+	if req.Checker != nil {
+		manifest.Checker = *req.Checker
 	}
 	rebuiltBody, rebuiltPkg, err := services.RebuildProblemPackage(currentBody, manifest, replacementCases)
 	if err != nil {
@@ -4476,46 +4369,6 @@ func (s Server) getSubmission(c *gin.Context) {
 	}
 	submission := s.enrichSubmissionViews([]submissionListView{{Submission: sub}})
 	c.JSON(http.StatusOK, gin.H{"submission": submission[0], "results": results})
-}
-
-func (s Server) submissionEvents(c *gin.Context) {
-	user, _ := middleware.CurrentUser(c)
-	id, ok := idParam(c, "id")
-	if !ok {
-		return
-	}
-	c.Header("Content-Type", "text/event-stream")
-	c.Header("Cache-Control", "no-cache")
-	c.Header("Connection", "keep-alive")
-	c.Header("X-Accel-Buffering", "no")
-	ticker := time.NewTicker(time.Second)
-	defer ticker.Stop()
-	var last string
-	for {
-		var sub models.Submission
-		if err := s.DB.First(&sub, id).Error; err != nil {
-			writeSSE(c, "error", gin.H{"error": "submission not found"})
-			return
-		}
-		if !s.canAccessSubmission(user, sub) {
-			writeSSE(c, "error", gin.H{"error": "forbidden"})
-			return
-		}
-		payload := gin.H{"id": sub.ID, "status": sub.Status, "score": sub.Score, "manual_score": sub.ManualScore, "manual_graded_at": sub.ManualGradedAt, "time_ms": sub.TimeMS, "memory_kb": sub.MemoryKB, "message": sub.Message, "updated_at": sub.UpdatedAt}
-		raw, _ := json.Marshal(payload)
-		if string(raw) != last {
-			last = string(raw)
-			writeSSE(c, "status", payload)
-		}
-		if terminal(sub.Status) {
-			return
-		}
-		select {
-		case <-c.Request.Context().Done():
-			return
-		case <-ticker.C:
-		}
-	}
 }
 
 func (s Server) leaderboard(c *gin.Context) {

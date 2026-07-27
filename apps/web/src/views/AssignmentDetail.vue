@@ -80,7 +80,7 @@
 import { ElMessage } from 'element-plus'
 import { computed, onMounted, reactive, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
-import { client, sseUrl, type Problem, type Submission } from '../api/client'
+import { client, openEventStream, type Problem, type Submission } from '../api/client'
 import CodeEditor from '../components/CodeEditor.vue'
 import ListPagination from '../components/ListPagination.vue'
 import ProblemStatementView from '../components/ProblemStatementView.vue'
@@ -175,7 +175,7 @@ async function submitSolution() {
 }
 
 function watchSubmission(id: number, problemID: number) {
-  const es = new EventSource(sseUrl(`/submissions/${id}/events`))
+  const es = openEventStream(`/submissions/${id}/events`)
   es.addEventListener('status', async (event) => {
     ensureEditorState(problemID).live = JSON.parse((event as MessageEvent).data)
     if (!['queued', 'running'].includes(ensureEditorState(problemID).live.status)) {

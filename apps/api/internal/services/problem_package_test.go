@@ -62,6 +62,35 @@ func TestBuildProblemPackage(t *testing.T) {
 	}
 }
 
+func TestBuildProblemPackageNormalizesChecker(t *testing.T) {
+	_, parsed, err := BuildProblemPackage(ProblemPackageDraft{
+		Slug:    "float-checker",
+		Title:   "Float Checker",
+		Checker: CheckerManifest{Type: "float"},
+		Cases:   []ProblemCaseDraft{{Name: "one", Input: "1\n", Output: "1.0\n", Weight: 100}},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if parsed.Manifest.Checker.Type != "float" ||
+		parsed.Manifest.Checker.AbsoluteTolerance != 1e-6 ||
+		parsed.Manifest.Checker.RelativeTolerance != 1e-6 {
+		t.Fatalf("unexpected checker: %+v", parsed.Manifest.Checker)
+	}
+}
+
+func TestBuildProblemPackageRejectsExecutableChecker(t *testing.T) {
+	_, _, err := BuildProblemPackage(ProblemPackageDraft{
+		Slug:    "unsafe-checker",
+		Title:   "Unsafe Checker",
+		Checker: CheckerManifest{Type: "script"},
+		Cases:   []ProblemCaseDraft{{Name: "one", Input: "1\n", Output: "1\n", Weight: 100}},
+	})
+	if err == nil {
+		t.Fatal("expected executable checker type to be rejected")
+	}
+}
+
 func TestBuildProblemPackageWithAsset(t *testing.T) {
 	_, parsed, err := BuildProblemPackage(ProblemPackageDraft{
 		Slug:      "image-sum",

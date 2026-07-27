@@ -6,6 +6,7 @@ import (
 	"testing"
 
 	"school-oj/apps/worker/internal/config"
+	"school-oj/apps/worker/internal/models"
 )
 
 func TestPrepareHostVisibleRootCreatesAndRefreshesSeccompProfile(t *testing.T) {
@@ -41,6 +42,21 @@ func TestPrepareHostVisibleRootRejectsRelativePaths(t *testing.T) {
 	}
 }
 
+func TestLimitedBufferCancelsAtOutputLimit(t *testing.T) {
+	cancelled := false
+	buffer := limitedBuffer{
+		limit:   4,
+		onLimit: func() { cancelled = true },
+	}
+	written, err := buffer.Write([]byte("12345"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if written != 5 || buffer.String() != "1234" || !buffer.truncated || !cancelled {
+		t.Fatalf("unexpected limited buffer state: written=%d body=%q truncated=%v cancelled=%v", written, buffer.String(), buffer.truncated, cancelled)
+	}
+}
+
 func TestInfrastructureErrorClassification(t *testing.T) {
 	for _, message := range []string{
 		"mkdir /tmp/school-oj-worker/seccomp: no such file or directory",
@@ -59,6 +75,27 @@ func TestInfrastructureErrorClassification(t *testing.T) {
 		if IsInfrastructureError(message) {
 			t.Fatalf("unexpected infrastructure error: %s", message)
 		}
+	}
+}
+
+func TestCompileFailurePreservesInfrastructureError(t *testing.T) {
+	limit := sandboxLimits{TimeLimitMS: 30000, MemoryMB: 1024}
+	result := compileFailure(
+		models.StatusSystemError,
+		"docker sandbox infrastructure is not ready",
+		25,
+		limit,
+	)
+	if result.Status != models.StatusSystemError {
+		t.Fatalf("compile infrastructure status = %s, want %s", result.Status, models.StatusSystemError)
+	}
+	if !IsInfrastructureError(result.Message) {
+		t.Fatalf("compile infrastructure message is not retryable: %s", result.Message)
+	}
+
+	result = compileFailure(models.StatusRuntimeError, "compiler exited 1", 10, limit)
+	if result.Status != models.StatusCompileError {
+		t.Fatalf("ordinary compile failure status = %s, want %s", result.Status, models.StatusCompileError)
 	}
 }
 

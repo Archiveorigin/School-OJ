@@ -43,7 +43,7 @@ func OptionalAuth(db *gorm.DB, secret string) gin.HandlerFunc {
 func authenticate(db *gorm.DB, secret string, required bool) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		header := c.GetHeader("Authorization")
-		tokenString := c.Query("token")
+		tokenString := ""
 		if strings.HasPrefix(header, "Bearer ") {
 			tokenString = strings.TrimPrefix(header, "Bearer ")
 		}

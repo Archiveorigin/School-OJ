@@ -3,6 +3,7 @@ package runner
 import (
 	"archive/zip"
 	"bytes"
+	"strings"
 	"testing"
 
 	"school-oj/apps/worker/internal/models"
@@ -103,6 +104,62 @@ func TestWeightedScoreNormalizesLargeCaseSets(t *testing.T) {
 	}
 	if got := weightedScore(0, 200); got != 0 {
 		t.Fatalf("expected 0, got %d", got)
+	}
+}
+
+func TestOutputCheckers(t *testing.T) {
+	tests := []struct {
+		name     string
+		checker  Checker
+		expected string
+		actual   string
+		match    bool
+	}{
+		{name: "exact normalizes line endings", checker: Checker{Type: "exact"}, expected: "a\nb\n", actual: "a\r\nb", match: true},
+		{name: "tokens ignore whitespace", checker: Checker{Type: "tokens"}, expected: "1  2\n3", actual: "1\n2 3", match: true},
+		{name: "tokens preserve token text", checker: Checker{Type: "tokens"}, expected: "01", actual: "1", match: false},
+		{name: "float accepts tolerance", checker: Checker{Type: "float", AbsoluteTolerance: 1e-6, RelativeTolerance: 1e-6}, expected: "0.3", actual: "0.3000002", match: true},
+		{name: "float rejects outside tolerance", checker: Checker{Type: "float", AbsoluteTolerance: 1e-9, RelativeTolerance: 1e-9}, expected: "0.3", actual: "0.31", match: false},
+		{name: "float preserves labels", checker: Checker{Type: "float", AbsoluteTolerance: 1e-6, RelativeTolerance: 1e-6}, expected: "answer 1.0", actual: "answer 1.0000001", match: true},
+		{name: "float rejects nan", checker: Checker{Type: "float", AbsoluteTolerance: 1, RelativeTolerance: 1}, expected: "0", actual: "NaN", match: false},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			if got := compareOutput(test.checker, test.expected, test.actual); got != test.match {
+				t.Fatalf("compareOutput() = %v, want %v", got, test.match)
+			}
+		})
+	}
+}
+
+func TestParsePackageValidatesChecker(t *testing.T) {
+	valid := testZip(t, map[string]string{
+		"problem.yaml": "slug: p\ntitle: P\nchecker:\n  type: float\n  absolute_tolerance: 0.000001\ncases:\n  - input: tests/a.in\n    output: tests/a.out\n",
+		"tests/a.in":   "1\n",
+		"tests/a.out":  "1\n",
+	})
+	pkg, err := ParsePackage(valid)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if pkg.Manifest.Checker.Type != "float" || pkg.Manifest.Checker.RelativeTolerance != 0 {
+		t.Fatalf("unexpected checker: %+v", pkg.Manifest.Checker)
+	}
+
+	invalid := testZip(t, map[string]string{
+		"problem.yaml": "slug: p\ntitle: P\nchecker:\n  type: script\ncases:\n  - input: tests/a.in\n    output: tests/a.out\n",
+		"tests/a.in":   "1\n",
+		"tests/a.out":  "1\n",
+	})
+	if _, err := ParsePackage(invalid); err == nil {
+		t.Fatal("expected executable checker type to be rejected")
+	}
+}
+
+func TestDiffMessageBoundsExpectedAndActual(t *testing.T) {
+	message := diffMessage(strings.Repeat("e", 1000), strings.Repeat("a", 1000))
+	if len([]rune(message)) > 1040 {
+		t.Fatalf("diagnostic was not bounded: %d runes", len([]rune(message)))
 	}
 }
 

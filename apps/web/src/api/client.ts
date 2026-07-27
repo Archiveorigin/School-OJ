@@ -4,7 +4,7 @@ export const apiBase = import.meta.env.VITE_API_BASE || '/api'
 
 export const client = axios.create({
   baseURL: apiBase,
-  timeout: 30000
+  timeout: 30000,
 })
 
 let activeToken = localStorage.getItem('school-oj-token') || ''
@@ -139,18 +139,78 @@ export interface ProblemReview {
   updated_at: string
 }
 
-export function sseUrl(path: string) {
-  const token = localStorage.getItem('school-oj-token')
-  const sep = path.includes('?') ? '&' : '?'
-  return `${apiBase}${path}${sep}token=${encodeURIComponent(token || '')}`
+type SSEListener = (event: MessageEvent<string>) => void
+
+export class AuthenticatedEventSource {
+  private readonly controller = new AbortController()
+  private readonly listeners = new Map<string, Set<SSEListener>>()
+
+  constructor(path: string) {
+    void this.connect(path)
+  }
+
+  addEventListener(type: string, listener: SSEListener) {
+    const listeners = this.listeners.get(type) || new Set<SSEListener>()
+    listeners.add(listener)
+    this.listeners.set(type, listeners)
+  }
+
+  close() {
+    this.controller.abort()
+    this.listeners.clear()
+  }
+
+  private emit(type: string, data: string) {
+    const event = new MessageEvent(type, { data })
+    for (const listener of this.listeners.get(type) || []) listener(event)
+  }
+
+  private async connect(path: string) {
+    const token = activeToken || localStorage.getItem('school-oj-token') || ''
+    try {
+      const response = await fetch(`${apiBase}${path}`, {
+        headers: token ? { Authorization: `Bearer ${token}` } : {},
+        signal: this.controller.signal,
+      })
+      if (!response.ok || !response.body)
+        throw new Error(`event stream failed: ${response.status}`)
+      const reader = response.body.getReader()
+      const decoder = new TextDecoder()
+      let buffer = ''
+      while (!this.controller.signal.aborted) {
+        const { value, done } = await reader.read()
+        buffer += decoder.decode(value || new Uint8Array(), { stream: !done })
+        buffer = buffer.replace(/\r\n/g, '\n')
+        let boundary = buffer.indexOf('\n\n')
+        while (boundary >= 0) {
+          const frame = buffer.slice(0, boundary)
+          buffer = buffer.slice(boundary + 2)
+          this.consumeFrame(frame)
+          boundary = buffer.indexOf('\n\n')
+        }
+        if (done) break
+      }
+    } catch (error: any) {
+      if (!this.controller.signal.aborted) {
+        this.emit(
+          'error',
+          JSON.stringify({ error: error?.message || 'event stream failed' }),
+        )
+      }
+    }
+  }
+
+  private consumeFrame(frame: string) {
+    let type = 'message'
+    const data: string[] = []
+    for (const line of frame.split('\n')) {
+      if (line.startsWith('event:')) type = line.slice(6).trim()
+      if (line.startsWith('data:')) data.push(line.slice(5).trimStart())
+    }
+    if (data.length) this.emit(type, data.join('\n'))
+  }
 }
 
-export function problemAssetUrl(problemID: number, path: string) {
-  const token = localStorage.getItem('school-oj-token')
-  const clean = path.replace(/^\/+/, '')
-  const encoded = clean
-    .split('/')
-    .map((part) => encodeURIComponent(part))
-    .join('/')
-  return `${apiBase}/problems/${problemID}/assets/${encoded}?token=${encodeURIComponent(token || '')}`
+export function openEventStream(path: string) {
+  return new AuthenticatedEventSource(path)
 }

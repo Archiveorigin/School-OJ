@@ -3,6 +3,7 @@ package config
 import (
 	"os"
 	"strconv"
+	"strings"
 	"time"
 )
 
@@ -29,6 +30,8 @@ type Config struct {
 	JPlagJarPath   string
 	JPlagWorkDir   string
 	RequestTimeout time.Duration
+	CORSOrigins    []string
+	TrustedProxies []string
 }
 
 func Load() Config {
@@ -55,6 +58,8 @@ func Load() Config {
 		JPlagJarPath:   env("JPLAG_JAR_PATH", ""),
 		JPlagWorkDir:   env("JPLAG_WORK_DIR", os.TempDir()+"/jplag"),
 		RequestTimeout: time.Duration(envInt("REQUEST_TIMEOUT_SECONDS", 30)) * time.Second,
+		CORSOrigins:    envList("CORS_ALLOWED_ORIGINS", "http://localhost:3000,http://localhost:5173"),
+		TrustedProxies: envList("TRUSTED_PROXIES", "127.0.0.1/32,::1/128,172.16.0.0/12"),
 	}
 }
 
@@ -87,4 +92,26 @@ func envInt(key string, fallback int) int {
 		return fallback
 	}
 	return parsed
+}
+
+func envList(key, fallback string) []string {
+	value := strings.TrimSpace(os.Getenv(key))
+	if value == "" {
+		value = fallback
+	}
+	if value == "" {
+		return nil
+	}
+	items := strings.Split(value, ",")
+	result := make([]string, 0, len(items))
+	seen := map[string]bool{}
+	for _, item := range items {
+		item = strings.TrimSpace(item)
+		if item == "" || seen[item] {
+			continue
+		}
+		seen[item] = true
+		result = append(result, item)
+	}
+	return result
 }

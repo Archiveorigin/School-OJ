@@ -1,8 +1,10 @@
 package middleware
 
 import (
+	"io"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 	"time"
 
@@ -76,5 +78,23 @@ func TestOptionalAuthRejectsInvalidSuppliedToken(t *testing.T) {
 
 	if rec.Code != http.StatusUnauthorized {
 		t.Fatalf("expected 401, got %d", rec.Code)
+	}
+}
+
+func TestAuthDoesNotAcceptQueryStringTokens(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	router := gin.New()
+	router.Use(Auth(nil, "secret"))
+	router.GET("/protected", func(c *gin.Context) { c.Status(http.StatusOK) })
+
+	req := httptest.NewRequest(http.MethodGet, "/protected?token=leaked-token", nil)
+	rec := httptest.NewRecorder()
+	router.ServeHTTP(rec, req)
+	body, err := io.ReadAll(rec.Result().Body)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if rec.Code != http.StatusUnauthorized || !strings.Contains(string(body), "missing bearer token") {
+		t.Fatalf("query token must be ignored, status=%d body=%s", rec.Code, body)
 	}
 }

@@ -11,6 +11,7 @@ import (
 )
 
 const SubmissionStream = "oj.submissions"
+const submissionChannelPrefix = "oj.submission."
 
 func Connect(ctx context.Context, cfg config.Config) (*redis.Client, error) {
 	client := redis.NewClient(&redis.Options{
@@ -41,4 +42,8 @@ func EnqueueSubmission(ctx context.Context, client *redis.Client, submissionID u
 			"submission_id": submissionID,
 		},
 	}).Result()
+}
+
+func SubmissionChannel(submissionID uint) string {
+	return fmt.Sprintf("%s%d", submissionChannelPrefix, submissionID)
 }

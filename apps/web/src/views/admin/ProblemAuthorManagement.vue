@@ -4,7 +4,6 @@
       <div>
         <span class="eyebrow">AUTHORING CONTROL</span>
         <h2>出题管理</h2>
-        <p>集中管理出题者人员、待审批申请与非管理员提交的题目。</p>
       </div>
       <div class="header-actions">
         <el-badge

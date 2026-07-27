@@ -11,6 +11,10 @@ statement: 输入两个整数 a 和 b，输出它们的和。
 time_limit_ms: 1000
 memory_limit_mb: 128
 output_limit_kb: 64
+checker:
+  type: float
+  absolute_tolerance: 0.000001
+  relative_tolerance: 0.000001
 cases:
   - name: sample1
     input: tests/01.in
@@ -30,6 +34,12 @@ Rules:
 - At least one test case is required.
 - Supported submission languages are `c`, `cpp`, `python`, and `java`.
 - Time, memory, and output limits are enforced by the worker sandbox.
+- `checker.type` may be `exact` (default), `tokens`, or `float`.
+  - `exact` normalizes line endings and trailing line whitespace.
+  - `tokens` compares non-whitespace tokens and ignores whitespace layout.
+  - `float` compares numeric tokens with absolute and relative tolerance while requiring non-numeric tokens to match exactly.
+- Checker tolerances must be finite, non-negative, and no greater than `1`. If both float tolerances are omitted, each defaults to `1e-6`.
+- Executable checker scripts are deliberately unsupported. This preserves the sandbox trust boundary while covering common Special Judge use cases.
 - Oversized packages, assets, and test uploads are rejected with explicit errors instead of being silently truncated.
 
 Create a sample package:

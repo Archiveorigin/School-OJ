@@ -128,7 +128,7 @@
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { computed, onBeforeUnmount, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
-import { client, sseUrl, type Problem } from '../../api/client'
+import { AuthenticatedEventSource, client, openEventStream, type Problem } from '../../api/client'
 import CodeEditor from '../../components/CodeEditor.vue'
 import MarkdownRenderer from '../../components/MarkdownRenderer.vue'
 import ProblemEditDialog from '../../components/ProblemEditDialog.vue'
@@ -158,7 +158,7 @@ const live = ref<any>(null)
 const editorRef = ref<InstanceType<typeof CodeEditor> | null>(null)
 const codeFileInput = ref<HTMLInputElement>()
 const codeFileName = ref('')
-let submissionEvents: EventSource | null = null
+let submissionEvents: AuthenticatedEventSource | null = null
 
 const canManage = computed(() => auth.role === 'admin' || (
   Boolean(auth.user?.can_author) &&
@@ -238,7 +238,7 @@ async function submit() {
 
 function watchSubmission(id: number) {
   submissionEvents?.close()
-  submissionEvents = new EventSource(sseUrl(`/submissions/${id}/events`))
+  submissionEvents = openEventStream(`/submissions/${id}/events`)
   submissionEvents.addEventListener('status', (event) => {
     live.value = JSON.parse((event as MessageEvent).data)
     if (!['queued', 'running'].includes(live.value.status)) {

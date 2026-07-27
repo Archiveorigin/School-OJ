@@ -8,6 +8,7 @@ import (
 	"encoding/hex"
 	"fmt"
 	"io"
+	"math"
 	"net/http"
 	"path/filepath"
 	"sort"
@@ -24,8 +25,15 @@ type ProblemManifest struct {
 	TimeLimitMS   int             `json:"time_limit_ms" yaml:"time_limit_ms"`
 	MemoryLimitMB int             `json:"memory_limit_mb" yaml:"memory_limit_mb"`
 	OutputLimitKB int             `json:"output_limit_kb" yaml:"output_limit_kb"`
+	Checker       CheckerManifest `json:"checker" yaml:"checker"`
 	Assets        []AssetManifest `json:"assets,omitempty" yaml:"assets,omitempty"`
 	Cases         []CaseManifest  `json:"cases" yaml:"cases"`
+}
+
+type CheckerManifest struct {
+	Type              string  `json:"type" yaml:"type"`
+	AbsoluteTolerance float64 `json:"absolute_tolerance,omitempty" yaml:"absolute_tolerance,omitempty"`
+	RelativeTolerance float64 `json:"relative_tolerance,omitempty" yaml:"relative_tolerance,omitempty"`
 }
 
 type AssetManifest struct {
@@ -67,6 +75,7 @@ type ProblemPackageDraft struct {
 	TimeLimitMS   int                 `json:"time_limit_ms"`
 	MemoryLimitMB int                 `json:"memory_limit_mb"`
 	OutputLimitKB int                 `json:"output_limit_kb"`
+	Checker       CheckerManifest     `json:"checker"`
 	Assets        []ProblemAssetDraft `json:"assets"`
 	Cases         []ProblemCaseDraft  `json:"cases"`
 }
@@ -287,6 +296,10 @@ func BuildProblemPackage(draft ProblemPackageDraft) ([]byte, ParsedProblemPackag
 	if draft.OutputLimitKB <= 0 {
 		draft.OutputLimitKB = 1024
 	}
+	checker, err := normalizeChecker(draft.Checker)
+	if err != nil {
+		return nil, ParsedProblemPackage{}, err
+	}
 
 	manifest := ProblemManifest{
 		Slug:          strings.TrimSpace(draft.Slug),
@@ -295,6 +308,7 @@ func BuildProblemPackage(draft ProblemPackageDraft) ([]byte, ParsedProblemPackag
 		TimeLimitMS:   draft.TimeLimitMS,
 		MemoryLimitMB: draft.MemoryLimitMB,
 		OutputLimitKB: draft.OutputLimitKB,
+		Checker:       checker,
 		Cases:         make([]CaseManifest, 0, len(draft.Cases)),
 	}
 	files := map[string][]byte{}
@@ -438,6 +452,10 @@ func RebuildProblemPackage(base []byte, manifest ProblemManifest, replacementCas
 	}
 	if manifest.OutputLimitKB <= 0 {
 		manifest.OutputLimitKB = 1024
+	}
+	manifest.Checker, err = normalizeChecker(manifest.Checker)
+	if err != nil {
+		return nil, ParsedProblemPackage{}, err
 	}
 	manifest.Slug = strings.TrimSpace(manifest.Slug)
 	manifest.Title = strings.TrimSpace(manifest.Title)
@@ -618,6 +636,10 @@ func ParseProblemPackage(body []byte) (ParsedProblemPackage, error) {
 	if manifest.OutputLimitKB <= 0 {
 		manifest.OutputLimitKB = 1024
 	}
+	manifest.Checker, err = normalizeChecker(manifest.Checker)
+	if err != nil {
+		return ParsedProblemPackage{}, err
+	}
 	if len(manifest.Cases) == 0 {
 		return ParsedProblemPackage{}, fmt.Errorf("at least one test case is required")
 	}
@@ -680,6 +702,34 @@ func ParseProblemPackage(body []byte) (ParsedProblemPackage, error) {
 		Size:     int64(len(body)),
 		Assets:   sortedAssets(assets),
 	}, nil
+}
+
+func normalizeChecker(checker CheckerManifest) (CheckerManifest, error) {
+	checker.Type = strings.ToLower(strings.TrimSpace(checker.Type))
+	switch checker.Type {
+	case "", "exact":
+		return CheckerManifest{Type: "exact"}, nil
+	case "token", "tokens":
+		return CheckerManifest{Type: "tokens"}, nil
+	case "float":
+		if math.IsNaN(checker.AbsoluteTolerance) || math.IsInf(checker.AbsoluteTolerance, 0) ||
+			math.IsNaN(checker.RelativeTolerance) || math.IsInf(checker.RelativeTolerance, 0) {
+			return CheckerManifest{}, fmt.Errorf("checker tolerances must be finite")
+		}
+		if checker.AbsoluteTolerance < 0 || checker.RelativeTolerance < 0 {
+			return CheckerManifest{}, fmt.Errorf("checker tolerances cannot be negative")
+		}
+		if checker.AbsoluteTolerance == 0 && checker.RelativeTolerance == 0 {
+			checker.AbsoluteTolerance = 1e-6
+			checker.RelativeTolerance = 1e-6
+		}
+		if checker.AbsoluteTolerance > 1 || checker.RelativeTolerance > 1 {
+			return CheckerManifest{}, fmt.Errorf("checker tolerances cannot exceed 1")
+		}
+		return checker, nil
+	default:
+		return CheckerManifest{}, fmt.Errorf("checker type must be one of exact, tokens, float")
+	}
 }
 
 func normalizeCaseText(value string) string {

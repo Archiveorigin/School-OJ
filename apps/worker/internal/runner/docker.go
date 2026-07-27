@@ -4,10 +4,13 @@ import (
 	"bytes"
 	"context"
 	"fmt"
+	"math"
 	"os"
 	"os/exec"
 	"path/filepath"
+	"strconv"
 	"strings"
+	"sync"
 	"time"
 
 	"school-oj/apps/worker/internal/config"
@@ -57,14 +60,21 @@ func (r DockerRunner) Judge(ctx context.Context, req JudgeRequest) JudgeResult {
 		return systemError(err)
 	}
 	defer os.RemoveAll(workDir)
-	if err := os.Chmod(workDir, 0o777); err != nil {
+	if err := os.Chown(workDir, 65532, 65532); err != nil {
+		return systemError(err)
+	}
+	if err := os.Chmod(workDir, 0o700); err != nil {
 		return systemError(err)
 	}
 	spec, err := languageSpec(req.Language)
 	if err != nil {
 		return systemError(err)
 	}
-	if err := os.WriteFile(filepath.Join(workDir, spec.Source), []byte(req.SourceCode), 0o666); err != nil {
+	sourcePath := filepath.Join(workDir, spec.Source)
+	if err := os.WriteFile(sourcePath, []byte(req.SourceCode), 0o600); err != nil {
+		return systemError(err)
+	}
+	if err := os.Chown(sourcePath, 65532, 65532); err != nil {
 		return systemError(err)
 	}
 	limit := r.applyLimits(limits(req))
@@ -72,11 +82,12 @@ func (r DockerRunner) Judge(ctx context.Context, req JudgeRequest) JudgeResult {
 		compileLimit := r.applyLimits(compileLimits(req, r.Cfg))
 		out, status, ms := r.runContainer(ctx, workDir, spec.Image, spec.Compile, "", compileLimit)
 		if status != models.StatusAccepted {
-			return JudgeResult{Status: models.StatusCompileError, Message: failureMessage("compile", status, out), TimeMS: ms, Trace: trace(compileLimit)}
+			return compileFailure(status, out, ms, compileLimit)
 		}
 	}
-	finalStatus, totalScore, maxTime, cases := judgeCases(
+	finalStatus, totalScore, maxTime, cases := judgeCasesWithChecker(
 		req.Package.Manifest.Cases,
+		req.Package.Manifest.Checker,
 		req.Package.CaseInput,
 		req.Package.CaseOutput,
 		func(input string) (string, models.SubmissionStatus, int) {
@@ -90,9 +101,26 @@ func (r DockerRunner) Judge(ctx context.Context, req JudgeRequest) JudgeResult {
 	return JudgeResult{Status: finalStatus, Score: totalScore, TimeMS: maxTime, Message: message, Trace: trace(limit), Cases: cases}
 }
 
+func compileFailure(status models.SubmissionStatus, output string, elapsedMS int, limit sandboxLimits) JudgeResult {
+	resultStatus := models.StatusCompileError
+	if status == models.StatusSystemError {
+		resultStatus = models.StatusSystemError
+	}
+	return JudgeResult{
+		Status:  resultStatus,
+		Message: failureMessage("compile", status, output),
+		TimeMS:  elapsedMS,
+		Trace:   trace(limit),
+	}
+}
+
 type caseRunner func(input string) (string, models.SubmissionStatus, int)
 
 func judgeCases(cases []Case, inputFor func(Case) string, outputFor func(Case) string, run caseRunner) (models.SubmissionStatus, int, int, []CaseResult) {
+	return judgeCasesWithChecker(cases, Checker{Type: "exact"}, inputFor, outputFor, run)
+}
+
+func judgeCasesWithChecker(cases []Case, checker Checker, inputFor func(Case) string, outputFor func(Case) string, run caseRunner) (models.SubmissionStatus, int, int, []CaseResult) {
 	totalWeight := 0
 	for _, tc := range cases {
 		totalWeight += tc.Weight
@@ -102,14 +130,14 @@ func judgeCases(cases []Case, inputFor func(Case) string, outputFor func(Case) s
 	finalStatus := models.StatusAccepted
 	results := make([]CaseResult, 0, len(cases))
 	for _, tc := range cases {
-		expected := normalize(outputFor(tc))
+		expected := outputFor(tc)
 		actual, status, ms := run(inputFor(tc))
 		caseResult := CaseResult{Name: tc.Name, Status: status, TimeMS: ms}
 		if ms > maxTime {
 			maxTime = ms
 		}
 		if status == models.StatusAccepted {
-			if normalize(actual) == expected {
+			if compareOutput(checker, expected, actual) {
 				passedWeight += tc.Weight
 				caseResult.Message = "ok"
 			} else {
@@ -127,6 +155,55 @@ func judgeCases(cases []Case, inputFor func(Case) string, outputFor func(Case) s
 		}
 	}
 	return finalStatus, weightedScore(passedWeight, totalWeight), maxTime, results
+}
+
+func compareOutput(checker Checker, expected, actual string) bool {
+	switch checker.Type {
+	case "tokens":
+		expectedTokens := strings.Fields(stripUTF8BOM(expected))
+		actualTokens := strings.Fields(stripUTF8BOM(actual))
+		if len(expectedTokens) != len(actualTokens) {
+			return false
+		}
+		for i := range expectedTokens {
+			if expectedTokens[i] != actualTokens[i] {
+				return false
+			}
+		}
+		return true
+	case "float":
+		return compareFloatTokens(checker, expected, actual)
+	default:
+		return normalize(actual) == normalize(expected)
+	}
+}
+
+func compareFloatTokens(checker Checker, expected, actual string) bool {
+	expectedTokens := strings.Fields(stripUTF8BOM(expected))
+	actualTokens := strings.Fields(stripUTF8BOM(actual))
+	if len(expectedTokens) != len(actualTokens) {
+		return false
+	}
+	for i := range expectedTokens {
+		expectedNumber, expectedErr := strconv.ParseFloat(expectedTokens[i], 64)
+		actualNumber, actualErr := strconv.ParseFloat(actualTokens[i], 64)
+		if expectedErr != nil {
+			if expectedTokens[i] != actualTokens[i] {
+				return false
+			}
+			continue
+		}
+		if actualErr != nil || math.IsNaN(expectedNumber) || math.IsInf(expectedNumber, 0) ||
+			math.IsNaN(actualNumber) || math.IsInf(actualNumber, 0) {
+			return false
+		}
+		difference := math.Abs(expectedNumber - actualNumber)
+		scale := math.Max(math.Abs(expectedNumber), math.Abs(actualNumber))
+		if difference > checker.AbsoluteTolerance+checker.RelativeTolerance*scale {
+			return false
+		}
+	}
+	return true
 }
 
 func weightedScore(passedWeight int, totalWeight int) int {
@@ -172,23 +249,25 @@ func runtimeCommand(command string, limit sandboxLimits) string {
 	if limit.MemoryMB > 32 && heap > limit.MemoryMB-16 {
 		heap = limit.MemoryMB - 16
 	}
-	return strings.ReplaceAll(command, "{{JAVA_XMX_MB}}", strconv(heap))
+	return strings.ReplaceAll(command, "{{JAVA_XMX_MB}}", intString(heap))
 }
 
 type sandboxLimits struct {
-	TimeLimitMS   int
-	MemoryMB      int
-	OutputLimitKB int
-	CPU           string
-	Pids          int
-	Seccomp       string
+	TimeLimitMS     int
+	MemoryMB        int
+	OutputLimitKB   int
+	CPU             string
+	Pids            int
+	Seccomp         string
+	WorkDirReadOnly bool
 }
 
 func limits(req JudgeRequest) sandboxLimits {
 	return sandboxLimits{
-		TimeLimitMS:   max(req.Problem.TimeLimitMS, req.Package.Manifest.TimeLimitMS),
-		MemoryMB:      max(req.Problem.MemoryLimitMB, req.Package.Manifest.MemoryLimitMB),
-		OutputLimitKB: max(req.Problem.OutputLimitKB, req.Package.Manifest.OutputLimitKB),
+		TimeLimitMS:     max(req.Problem.TimeLimitMS, req.Package.Manifest.TimeLimitMS),
+		MemoryMB:        max(req.Problem.MemoryLimitMB, req.Package.Manifest.MemoryLimitMB),
+		OutputLimitKB:   max(req.Problem.OutputLimitKB, req.Package.Manifest.OutputLimitKB),
+		WorkDirReadOnly: true,
 	}
 }
 
@@ -202,24 +281,37 @@ func compileLimits(req JudgeRequest, cfg config.Config) sandboxLimits {
 
 func (r DockerRunner) runContainer(ctx context.Context, workDir, image, command, input string, limit sandboxLimits) (string, models.SubmissionStatus, int) {
 	timeout := time.Duration(limit.TimeLimitMS+1000) * time.Millisecond
-	runCtx, cancel := context.WithTimeout(ctx, timeout)
-	defer cancel()
+	timeoutCtx, cancelTimeout := context.WithTimeout(ctx, timeout)
+	defer cancelTimeout()
+	runCtx, cancelRun := context.WithCancel(timeoutCtx)
+	defer cancelRun()
+	containerName := fmt.Sprintf("school-oj-%s-%d", filepath.Base(workDir), time.Now().UnixNano())
+	workMode := "rw"
+	if limit.WorkDirReadOnly {
+		workMode = "ro"
+	}
 	args := []string{
 		"run", "--rm",
+		"--name", containerName,
+		"--log-driver", "none",
 		"--network", "none",
+		"--ipc", "none",
 		"--read-only",
 		"--tmpfs", "/tmp:rw,nosuid,nodev,noexec,size=64m",
 		"--user", "65532:65532",
 		"--cap-drop", "ALL",
 		"--security-opt", "no-new-privileges",
 		"--security-opt", "seccomp=" + limit.Seccomp,
-		"--pids-limit", strconv(limit.Pids),
+		"--pids-limit", intString(limit.Pids),
 		"--cpus", limit.CPU,
 		"--memory", fmt.Sprintf("%dm", limit.MemoryMB),
 		"--memory-swap", fmt.Sprintf("%dm", limit.MemoryMB),
+		"--ulimit", "core=0:0",
+		"--ulimit", "nofile=64:64",
 		"--stop-timeout", "1",
+		"--env", "PYTHONDONTWRITEBYTECODE=1",
 		"-i",
-		"-v", workDir + ":/work:rw",
+		"-v", workDir + ":/work:" + workMode,
 		"-w", "/work",
 		image,
 		"sh", "-lc", command,
@@ -228,19 +320,22 @@ func (r DockerRunner) runContainer(ctx context.Context, workDir, image, command,
 	cmd.Stdin = strings.NewReader(input)
 	var out limitedBuffer
 	out.limit = limit.OutputLimitKB * 1024
+	out.onLimit = cancelRun
 	var errOut limitedBuffer
 	errOut.limit = limit.OutputLimitKB * 1024
+	errOut.onLimit = cancelRun
 	cmd.Stdout = &out
 	cmd.Stderr = &errOut
 	start := time.Now()
 	err := cmd.Run()
 	elapsed := int(time.Since(start).Milliseconds())
+	r.cleanupContainer(containerName)
 	combined := strings.TrimSpace(out.String() + "\n" + errOut.String())
-	if runCtx.Err() == context.DeadlineExceeded {
-		return nonEmpty(combined, "time limit exceeded"), models.StatusTimeLimit, elapsed
-	}
 	if out.truncated || errOut.truncated {
 		return nonEmpty(combined, "output limit exceeded"), models.StatusOutputLimit, elapsed
+	}
+	if timeoutCtx.Err() == context.DeadlineExceeded {
+		return nonEmpty(combined, "time limit exceeded"), models.StatusTimeLimit, elapsed
 	}
 	if err != nil {
 		if IsInfrastructureError(combined) {
@@ -252,6 +347,12 @@ func (r DockerRunner) runContainer(ctx context.Context, workDir, image, command,
 		return nonEmpty(combined, err.Error()), models.StatusRuntimeError, elapsed
 	}
 	return out.String(), models.StatusAccepted, elapsed
+}
+
+func (r DockerRunner) cleanupContainer(name string) {
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	_ = exec.CommandContext(ctx, "docker", "rm", "-f", name).Run()
 }
 
 func (r DockerRunner) applyLimits(limit sandboxLimits) sandboxLimits {
@@ -274,6 +375,8 @@ type limitedBuffer struct {
 	bytes.Buffer
 	limit     int
 	truncated bool
+	onLimit   func()
+	once      sync.Once
 }
 
 func (b *limitedBuffer) Write(p []byte) (int, error) {
@@ -283,11 +386,21 @@ func (b *limitedBuffer) Write(p []byte) (int, error) {
 	remaining := b.limit - b.Buffer.Len()
 	if remaining <= 0 {
 		b.truncated = true
+		b.once.Do(func() {
+			if b.onLimit != nil {
+				b.onLimit()
+			}
+		})
 		return len(p), nil
 	}
 	if len(p) > remaining {
 		b.truncated = true
 		_, _ = b.Buffer.Write(p[:remaining])
+		b.once.Do(func() {
+			if b.onLimit != nil {
+				b.onLimit()
+			}
+		})
 		return len(p), nil
 	}
 	return b.Buffer.Write(p)
@@ -303,10 +416,15 @@ func normalize(s string) string {
 }
 
 func diffMessage(expected, actual string) string {
-	if len(actual) > 500 {
-		actual = actual[:500]
+	return fmt.Sprintf("expected %q, got %q", truncateDiagnostic(normalize(expected)), truncateDiagnostic(normalize(actual)))
+}
+
+func truncateDiagnostic(value string) string {
+	runes := []rune(value)
+	if len(runes) <= 500 {
+		return value
 	}
-	return fmt.Sprintf("expected %q, got %q", expected, normalize(actual))
+	return string(runes[:500]) + "…"
 }
 
 // IsInfrastructureError reports whether Docker failed before user code could run.
@@ -367,19 +485,23 @@ func nonEmpty(value, fallback string) string {
 func trace(limit sandboxLimits) datatypes.JSONMap {
 	return datatypes.JSONMap{
 		"docker": map[string]any{
-			"network":            "none",
-			"read_only_root":     true,
-			"tmpfs":              "/tmp",
-			"user":               "65532:65532",
-			"cap_drop":           "ALL",
-			"no_new_privileges":  true,
-			"seccomp":            limit.Seccomp,
-			"pids_limit":         limit.Pids,
-			"cpu":                limit.CPU,
-			"memory_mb":          limit.MemoryMB,
-			"time_limit_ms":      limit.TimeLimitMS,
-			"output_limit_kb":    limit.OutputLimitKB,
-			"memory_swap_equals": true,
+			"network":              "none",
+			"read_only_root":       true,
+			"tmpfs":                "/tmp",
+			"user":                 "65532:65532",
+			"cap_drop":             "ALL",
+			"no_new_privileges":    true,
+			"seccomp":              limit.Seccomp,
+			"pids_limit":           limit.Pids,
+			"cpu":                  limit.CPU,
+			"memory_mb":            limit.MemoryMB,
+			"time_limit_ms":        limit.TimeLimitMS,
+			"output_limit_kb":      limit.OutputLimitKB,
+			"memory_swap_equals":   true,
+			"work_mount_read_only": limit.WorkDirReadOnly,
+			"ipc":                  "none",
+			"log_driver":           "none",
+			"nofile_limit":         64,
 		},
 	}
 }
@@ -452,6 +574,6 @@ func max(a, b int) int {
 	return b
 }
 
-func strconv(v int) string {
+func intString(v int) string {
 	return fmt.Sprintf("%d", v)
 }

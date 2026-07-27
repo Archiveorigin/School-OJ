@@ -74,7 +74,7 @@
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { computed, onBeforeUnmount, onMounted, reactive, ref, watch } from 'vue'
 import { onBeforeRouteLeave, useRoute, useRouter } from 'vue-router'
-import { client, sseUrl, type Problem, type Submission } from '../api/client'
+import { AuthenticatedEventSource, client, openEventStream, type Problem, type Submission } from '../api/client'
 import ProblemEditDialog from '../components/ProblemEditDialog.vue'
 import { formatDateTime, workStatusLabel } from '../features/assignments/assignmentMeta'
 import { useAuthStore } from '../stores/auth'
@@ -100,7 +100,7 @@ const editorStates = reactive<Record<number, EditorState>>({})
 let deadlineTimer: number | null = null
 let deadlinePoller: number | null = null
 let forceLeavingExam = false
-const liveStreams = new Set<EventSource>()
+const liveStreams = new Set<AuthenticatedEventSource>()
 
 const examID = computed(() => Number(route.params.id))
 const examLocked = computed(() => {
@@ -215,7 +215,7 @@ async function submitSolution() {
 }
 
 function watchSubmission(id: number, problemID: number) {
-  const es = new EventSource(sseUrl(`/submissions/${id}/events`))
+  const es = openEventStream(`/submissions/${id}/events`)
   liveStreams.add(es)
   es.addEventListener('status', async (event) => {
     ensureEditorState(problemID).live = JSON.parse((event as MessageEvent).data)
@@ -445,7 +445,7 @@ function clearExamRuntimeState(id?: number) {
   clearExamDraftCache(id)
 }
 
-function closeLiveStream(stream: EventSource) {
+function closeLiveStream(stream: AuthenticatedEventSource) {
   stream.close()
   liveStreams.delete(stream)
 }

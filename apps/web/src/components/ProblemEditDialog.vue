@@ -37,6 +37,26 @@
           </el-form-item>
         </el-col>
       </el-row>
+      <el-form-item label="答案比较">
+        <el-select v-model="form.checker_type" style="width: 100%">
+          <el-option label="标准比较（忽略行尾空白）" value="exact" />
+          <el-option label="令牌比较（忽略空白差异）" value="tokens" />
+          <el-option label="浮点比较（允许误差）" value="float" />
+        </el-select>
+      </el-form-item>
+      <el-row v-if="form.checker_type === 'float'" :gutter="12">
+        <el-col :span="12">
+          <el-form-item label="绝对误差">
+            <el-input-number v-model="form.absolute_tolerance" :min="0" :max="1" :step="0.000001" :precision="8" />
+          </el-form-item>
+        </el-col>
+        <el-col :span="12">
+          <el-form-item label="相对误差">
+            <el-input-number v-model="form.relative_tolerance" :min="0" :max="1" :step="0.000001" :precision="8" />
+          </el-form-item>
+        </el-col>
+      </el-row>
+      <p class="checker-note">比较器只使用平台内置算法，不运行题目包中的脚本。</p>
       <el-form-item label="标签">
         <el-input v-model="form.tags" placeholder="多个标签用逗号、空格或换行分隔" />
       </el-form-item>
@@ -105,6 +125,9 @@ const form = reactive({
   time_limit_ms: 1000,
   memory_limit_mb: 256,
   output_limit_kb: 1024,
+  checker_type: 'exact',
+  absolute_tolerance: 0.000001,
+  relative_tolerance: 0.000001,
   tags: '',
   difficulty: '入门'
 })
@@ -118,6 +141,10 @@ watch(
     form.time_limit_ms = props.problem.time_limit_ms || 1000
     form.memory_limit_mb = props.problem.memory_limit_mb || 256
     form.output_limit_kb = props.problem.output_limit_kb || 1024
+    const checker = problemChecker(props.problem.manifest)
+    form.checker_type = checker.type
+    form.absolute_tolerance = checker.absolute_tolerance
+    form.relative_tolerance = checker.relative_tolerance
     form.tags = tagList(props.problem.tags).join(', ')
     form.difficulty = problemDifficulty(props.problem) || '入门'
     testFiles.value = []
@@ -134,6 +161,21 @@ function parseTags(value: string) {
     .split(/[\s,，、]+/)
     .map((item) => item.trim())
     .filter(Boolean)
+}
+
+function problemChecker(manifest?: Record<string, unknown>) {
+  const raw = (manifest?.checker || {}) as Record<string, unknown>
+  const type = ['exact', 'tokens', 'float'].includes(String(raw.type)) ? String(raw.type) : 'exact'
+  return {
+    type,
+    absolute_tolerance: checkerTolerance(raw.absolute_tolerance),
+    relative_tolerance: checkerTolerance(raw.relative_tolerance)
+  }
+}
+
+function checkerTolerance(value: unknown) {
+  const parsed = Number(value)
+  return Number.isFinite(parsed) && parsed >= 0 ? parsed : 0.000001
 }
 
 async function save() {
@@ -153,6 +195,11 @@ async function save() {
         time_limit_ms: form.time_limit_ms,
         memory_limit_mb: form.memory_limit_mb,
         output_limit_kb: form.output_limit_kb,
+        checker: {
+          type: form.checker_type,
+          absolute_tolerance: form.checker_type === 'float' ? form.absolute_tolerance : 0,
+          relative_tolerance: form.checker_type === 'float' ? form.relative_tolerance : 0
+        },
         tags: parseTags(form.tags),
         difficulty: form.difficulty
       })
@@ -194,5 +241,12 @@ async function save() {
 .unit {
   margin-left: 8px;
   color: var(--text-muted);
+}
+
+.checker-note {
+  margin: -4px 0 12px 96px;
+  color: var(--muted);
+  font-size: 12px;
+  line-height: 1.6;
 }
 </style>

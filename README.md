@@ -5,7 +5,7 @@
 - `apps/api`: Go 1.24 + Gin + GORM + PostgreSQL + Redis Streams + MinIO
 - `apps/worker`: Go 1.24 judge-worker，Redis Streams consumer，Docker 沙箱
 - `apps/web`: Vue3 + Vite + TypeScript + Element Plus + Monaco
-- `deploy/compose`: Docker Compose 部署副本
+- `deploy/compose`: 引用根目录规范编排的兼容入口
 - `deploy/k8s`: Kubernetes 参考清单
 - `scripts`: 运维脚本
 - `docs`: 架构、题目包、安全、部署文档
@@ -13,6 +13,8 @@
 ## 快速启动
 
 ```bash
+cp .env.example .env
+# 在 .env 中设置强随机 JWT_SECRET（例如 openssl rand -hex 32）
 docker compose up -d --build
 ```
 
@@ -41,13 +43,16 @@ docker compose restart worker
 - 题库与 ZIP 题目包，`problem.yaml` 校验
 - C、C++、Python、Java 判题
 - 作业、考试、排行榜
-- SSE 实时提交状态
+- Redis 状态通知 + SSE 实时提交状态（30 秒低频兜底，不再每秒轮询数据库）
 - JPlag 查重任务，支持 `JPLAG_JAR_PATH`，未配置时生成可测试的 fallback 报告
 - 审计日志
 - 用户 Profile、头像、邮箱换绑、反馈、账号注销
 - 注册与邮箱找回密码，验证码邮件发件人为“黄海在线”
 - Redis Streams judge-worker
+- 内置标准、令牌、浮点误差三种安全答案比较器，不执行题目方脚本
+- Redis 分布式接口限流、可配置 CORS/可信代理、API `/api/v1` 版本入口
 - Docker 沙箱：禁网、只读根、tmpfs、非 root、`cap_drop=ALL`、`no-new-privileges`、seccomp、pids/cpu/memory/time/output limit
+- 运行期只读工作目录、沙箱日志禁用、输出超限即时终止与兜底容器清理
 - 判题队列会恢复超时 pending 消息，并按 `SUBMISSION_MAX_RETRIES` 对沙箱基础设施类错误做有限重试
 
 ## 常用命令

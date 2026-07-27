@@ -5,6 +5,7 @@ import (
 	"bytes"
 	"fmt"
 	"io"
+	"math"
 	"path/filepath"
 	"strings"
 
@@ -21,13 +22,20 @@ type ProblemPackage struct {
 }
 
 type Manifest struct {
-	Slug          string `yaml:"slug"`
-	Title         string `yaml:"title"`
-	Statement     string `yaml:"statement"`
-	TimeLimitMS   int    `yaml:"time_limit_ms"`
-	MemoryLimitMB int    `yaml:"memory_limit_mb"`
-	OutputLimitKB int    `yaml:"output_limit_kb"`
-	Cases         []Case `yaml:"cases"`
+	Slug          string  `yaml:"slug"`
+	Title         string  `yaml:"title"`
+	Statement     string  `yaml:"statement"`
+	TimeLimitMS   int     `yaml:"time_limit_ms"`
+	MemoryLimitMB int     `yaml:"memory_limit_mb"`
+	OutputLimitKB int     `yaml:"output_limit_kb"`
+	Checker       Checker `yaml:"checker"`
+	Cases         []Case  `yaml:"cases"`
+}
+
+type Checker struct {
+	Type              string  `yaml:"type"`
+	AbsoluteTolerance float64 `yaml:"absolute_tolerance,omitempty"`
+	RelativeTolerance float64 `yaml:"relative_tolerance,omitempty"`
 }
 
 type Case struct {
@@ -88,6 +96,10 @@ func ParsePackage(body []byte) (ProblemPackage, error) {
 	if manifest.OutputLimitKB <= 0 {
 		manifest.OutputLimitKB = 1024
 	}
+	manifest.Checker, err = normalizeChecker(manifest.Checker)
+	if err != nil {
+		return ProblemPackage{}, err
+	}
 	if len(manifest.Cases) == 0 {
 		return ProblemPackage{}, fmt.Errorf("at least one test case is required")
 	}
@@ -116,6 +128,34 @@ func ParsePackage(body []byte) (ProblemPackage, error) {
 		manifest.Cases[i].Output = output
 	}
 	return ProblemPackage{Manifest: manifest, Files: files}, nil
+}
+
+func normalizeChecker(checker Checker) (Checker, error) {
+	checker.Type = strings.ToLower(strings.TrimSpace(checker.Type))
+	switch checker.Type {
+	case "", "exact":
+		return Checker{Type: "exact"}, nil
+	case "token", "tokens":
+		return Checker{Type: "tokens"}, nil
+	case "float":
+		if math.IsNaN(checker.AbsoluteTolerance) || math.IsInf(checker.AbsoluteTolerance, 0) ||
+			math.IsNaN(checker.RelativeTolerance) || math.IsInf(checker.RelativeTolerance, 0) {
+			return Checker{}, fmt.Errorf("checker tolerances must be finite")
+		}
+		if checker.AbsoluteTolerance < 0 || checker.RelativeTolerance < 0 {
+			return Checker{}, fmt.Errorf("checker tolerances cannot be negative")
+		}
+		if checker.AbsoluteTolerance == 0 && checker.RelativeTolerance == 0 {
+			checker.AbsoluteTolerance = 1e-6
+			checker.RelativeTolerance = 1e-6
+		}
+		if checker.AbsoluteTolerance > 1 || checker.RelativeTolerance > 1 {
+			return Checker{}, fmt.Errorf("checker tolerances cannot exceed 1")
+		}
+		return checker, nil
+	default:
+		return Checker{}, fmt.Errorf("checker type must be one of exact, tokens, float")
+	}
 }
 
 func (p ProblemPackage) CaseInput(c Case) string {
