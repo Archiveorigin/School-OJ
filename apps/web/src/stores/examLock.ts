@@ -11,7 +11,7 @@ type ActiveExam = {
 }
 
 function activeExamMessage(title?: string) {
-  return title ? `你有正在进行的考试「${title}」，请及时返回考试界面。` : '你有正在进行的考试，请及时返回考试界面。'
+  return title ? `你有正在进行的考试「${title}」，请及时完成考试。` : '你有正在进行的考试，请及时完成考试。'
 }
 
 export const useExamLockStore = defineStore('examLock', {
@@ -19,7 +19,7 @@ export const useExamLockStore = defineStore('examLock', {
     locked: false,
     examId: undefined as number | undefined,
     title: '',
-    message: '你有正在进行的考试，请及时返回考试界面。',
+    message: '你有正在进行的考试，请及时完成考试。',
     synced: false
   }),
   actions: {

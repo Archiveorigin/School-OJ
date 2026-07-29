@@ -45,6 +45,7 @@
           />
         </el-select>
         <el-button v-if="canManage && activeProblem" type="primary" plain @click="openProblemEditor">修改题目</el-button>
+        <ProblemTestDownloads v-if="canManage && activeProblem" :problem-id="activeProblem.id" :problem-code="activeProblem.display_code" />
       </div>
 
       <router-view v-slot="{ Component }">
@@ -76,12 +77,23 @@ import { computed, onBeforeUnmount, onMounted, reactive, ref, watch } from 'vue'
 import { onBeforeRouteLeave, useRoute, useRouter } from 'vue-router'
 import { AuthenticatedEventSource, client, openEventStream, type Problem, type Submission } from '../api/client'
 import ProblemEditDialog from '../components/ProblemEditDialog.vue'
+import ProblemTestDownloads from '../components/ProblemTestDownloads.vue'
 import { formatDateTime, workStatusLabel } from '../features/assignments/assignmentMeta'
 import { useAuthStore } from '../stores/auth'
 import { useExamLockStore } from '../stores/examLock'
 
-type DetailProblem = { problem: Problem; score: number; label?: string; problem_id: number }
-type EditorState = { language: string; source: string; live: any; dirty: boolean }
+type DetailProblem = {
+  problem: Problem
+  score: number
+  label?: string
+  problem_id: number
+}
+type EditorState = {
+  language: string
+  source: string
+  live: any
+  dirty: boolean
+}
 type ExamTab = 'problems' | 'submit' | 'records' | 'ranking'
 
 const auth = useAuthStore()
@@ -154,7 +166,10 @@ async function loadDetail() {
       exitClosedExam()
       return
     }
-    activeEntry.value = detail.value.problems?.find((entry: DetailProblem) => entry.problem.id === activeProblem.value?.id) || detail.value.problems?.[0] || null
+    activeEntry.value =
+      detail.value.problems?.find((entry: DetailProblem) => entry.problem.id === activeProblem.value?.id) ||
+      detail.value.problems?.[0] ||
+      null
     if (activeProblem.value) ensureEditorState(activeProblem.value.id)
     await loadHistory()
     scheduleDeadlineCheck()
@@ -240,13 +255,18 @@ async function refreshDetail() {
     exitClosedExam()
     return
   }
-  activeEntry.value = detail.value.problems.find((entry: DetailProblem) => entry.problem.id === activeID) || detail.value.problems[0] || null
+  activeEntry.value =
+    detail.value.problems.find((entry: DetailProblem) => entry.problem.id === activeID) || detail.value.problems[0] || null
   scheduleDeadlineCheck()
 }
 
 async function loadHistory() {
   if (!detail.value) return
-  history.value = (await client.get('/submissions', { params: { exam_id: detail.value.exam.id } })).data
+  history.value = (
+    await client.get('/submissions', {
+      params: { exam_id: detail.value.exam.id }
+    })
+  ).data
   hydrateEditorStatesFromHistory()
 }
 
@@ -288,7 +308,12 @@ function ensureEditorState(problemID: number) {
   if (!editorStates[problemID]) {
     const submission = preferredSubmission(problemID)
     const language = submission?.language || 'cpp'
-    editorStates[problemID] = { language, source: submission?.source_code || '', live: null, dirty: false }
+    editorStates[problemID] = {
+      language,
+      source: submission?.source_code || '',
+      live: null,
+      dirty: false
+    }
   }
   return editorStates[problemID]
 }
@@ -334,7 +359,8 @@ function problemOptionLabel(entry: DetailProblem) {
 
 function problemLabel(entry: DetailProblem, index?: number) {
   if (entry.label?.trim()) return entry.label.trim()
-  const position = typeof index === 'number' ? index : detail.value?.problems?.findIndex((item: DetailProblem) => item.problem.id === entry.problem.id)
+  const position =
+    typeof index === 'number' ? index : detail.value?.problems?.findIndex((item: DetailProblem) => item.problem.id === entry.problem.id)
   if (typeof position === 'number' && position >= 0) return defaultProblemLabel(position)
   return defaultProblemLabel(0)
 }
@@ -418,7 +444,12 @@ function isInvalidExamError(err: any) {
   if (status === 404) return true
   if (status !== 403 || err?.response?.data?.finished_at) return false
   const message = String(err?.response?.data?.error || '').toLowerCase()
-  return message.includes('forbidden') || message.includes('not available') || message.includes('not found') || message.includes('has not started')
+  return (
+    message.includes('forbidden') ||
+    message.includes('not available') ||
+    message.includes('not found') ||
+    message.includes('has not started')
+  )
 }
 
 function forceExitExam(message: string) {

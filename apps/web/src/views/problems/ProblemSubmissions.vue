@@ -30,7 +30,7 @@
           @keyup.enter="search"
         />
         <el-button type="primary" :loading="loading" @click="search">搜索</el-button>
-        <el-button @click="resetFilters">重置</el-button>
+        <el-button @click="resetFilters">清空筛选</el-button>
       </section>
 
       <section class="panel records-table">

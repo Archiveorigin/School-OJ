@@ -9,9 +9,6 @@
       :status-image="statusImage"
       :show-difficulty="false"
     />
-    <section v-if="canManage" class="panel test-download-panel">
-      <ProblemTestDownloads :problem-id="activeProblem.id" :problem-code="activeProblem.display_code" />
-    </section>
   </template>
   <div v-else class="panel empty-detail muted">请选择题目</div>
 </template>
@@ -20,11 +17,15 @@
 import { computed } from 'vue'
 import type { Problem } from '../../api/client'
 import ProblemStatementView from '../../components/ProblemStatementView.vue'
-import ProblemTestDownloads from '../../components/ProblemTestDownloads.vue'
 
 const props = defineProps<{
   detail: any
-  activeEntry: { problem: Problem; score: number; label?: string; problem_id: number } | null
+  activeEntry: {
+    problem: Problem
+    score: number
+    label?: string
+    problem_id: number
+  } | null
   activeProblem: Problem | null
   canManage?: boolean
 }>()
@@ -75,9 +76,5 @@ function defaultProblemLabel(index: number) {
   display: grid;
   min-height: 260px;
   place-items: center;
-}
-
-.test-download-panel {
-  margin-top: 14px;
 }
 </style>

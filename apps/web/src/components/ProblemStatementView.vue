@@ -1,12 +1,8 @@
 <template>
   <div class="problem-view-grid">
     <section class="panel statement-box">
-      <div class="statement-head">
-        <div>
-          <span class="eyebrow">题目信息</span>
-          <h3>{{ problem.title }}</h3>
-        </div>
-        <span class="muted">{{ problemLimitText(problem) }}</span>
+      <div v-if="showTitle" class="statement-head">
+        <h1>{{ problem.title }}</h1>
       </div>
       <MarkdownRenderer :source="problem.statement" :problem-id="problem.id" />
     </section>
@@ -29,21 +25,13 @@
             fill="none"
             aria-hidden="true"
           >
-            <rect x="0" y="0" width="156" height="48" rx="14" fill="#22c55e" />
-            <text
-              x="78"
-              y="30"
-              fill="white"
-              text-anchor="middle"
-              font-size="17"
-              font-weight="800"
-              font-family="Inter, Arial, sans-serif"
-            >
+            <rect width="156" height="48" rx="14" fill="#22c55e" />
+            <text x="78" y="30" fill="white" text-anchor="middle" font-size="17" font-weight="800" font-family="Inter, Arial, sans-serif">
               Accepted
             </text>
           </svg>
           <svg
-            v-else-if="statusImage === 'uac'"
+            v-else
             class="status-icon"
             xmlns="http://www.w3.org/2000/svg"
             viewBox="0 0 156 48"
@@ -52,16 +40,8 @@
             fill="none"
             aria-hidden="true"
           >
-            <rect x="0" y="0" width="156" height="48" rx="14" fill="#ef4444" />
-            <text
-              x="78"
-              y="30"
-              fill="white"
-              text-anchor="middle"
-              font-size="17"
-              font-weight="800"
-              font-family="Inter, Arial, sans-serif"
-            >
+            <rect width="156" height="48" rx="14" fill="#ef4444" />
+            <text x="78" y="30" fill="white" text-anchor="middle" font-size="17" font-weight="800" font-family="Inter, Arial, sans-serif">
               Unaccepted
             </text>
           </svg>
@@ -92,14 +72,7 @@
 <script setup lang="ts">
 import { computed } from 'vue'
 import type { Problem } from '../api/client'
-import {
-  difficultyTagType,
-  problemDisplayCode,
-  problemDifficulty,
-  problemLimitLines,
-  problemLimitText,
-  tagList
-} from '../features/problems/problemMeta'
+import { difficultyTagType, problemDisplayCode, problemDifficulty, problemLimitLines, tagList } from '../features/problems/problemMeta'
 import MarkdownRenderer from './MarkdownRenderer.vue'
 
 const props = withDefaults(
@@ -111,9 +84,11 @@ const props = withDefaults(
     statusType?: 'success' | 'warning' | 'info' | 'danger'
     statusImage?: 'ac' | 'uac' | ''
     showDifficulty?: boolean
+    showTitle?: boolean
   }>(),
   {
-    showDifficulty: true
+    showDifficulty: true,
+    showTitle: true
   }
 )
 
@@ -126,7 +101,6 @@ const statusImageAlt = computed(() => {
   if (statusImage.value === 'uac') return '未通过'
   return ''
 })
-
 </script>
 
 <style scoped>
@@ -143,17 +117,16 @@ const statusImageAlt = computed(() => {
 }
 
 .statement-head {
-  display: flex;
-  align-items: flex-start;
-  justify-content: space-between;
-  gap: 12px;
-  margin-bottom: 12px;
+  margin-bottom: 18px;
+  padding-bottom: 16px;
+  border-bottom: 1px solid var(--border);
 }
 
-.statement-head h3,
-.meta-title strong {
-  margin: 4px 0 0;
+.statement-head h1 {
+  margin: 0;
   color: var(--text);
+  font-size: 24px;
+  line-height: 1.3;
 }
 
 .eyebrow {
@@ -169,6 +142,8 @@ const statusImageAlt = computed(() => {
 }
 
 .meta-title strong {
+  margin: 4px 0 0;
+  color: var(--text);
   font-size: 24px;
 }
 
