@@ -1,7 +1,7 @@
 <template>
   <router-view v-if="authPage" />
-  <el-container v-else direction="vertical" class="shell" :class="{ 'exam-shell': studentExamWorkspace, 'admin-shell': adminWorkspace, 'course-shell': courseWorkspace }">
-    <el-header v-if="!studentExamWorkspace && !adminWorkspace && !courseWorkspace" class="topbar" height="auto">
+  <el-container v-else direction="vertical" class="shell" :class="{ 'exam-shell': studentExamWorkspace, 'admin-shell': adminWorkspace, 'course-shell': courseWorkspace, 'team-shell': teamWorkspace }">
+    <el-header v-if="!studentExamWorkspace && !adminWorkspace && !courseWorkspace && !teamWorkspace" class="topbar" height="auto">
       <AppSidebar :active-menu="activeMenu" :role="auth.role" :authenticated="auth.isAuthed" :can-author="canAuthor" />
       <div class="topbar-actions">
         <el-dropdown v-if="auth.isAuthed" trigger="hover" :show-timeout="120" :hide-timeout="180" @command="handleCommand">
@@ -24,7 +24,7 @@
         <el-button v-else type="primary" @click="goLogin">登录</el-button>
       </div>
     </el-header>
-    <el-main class="main-content" :class="{ 'exam-main-content': studentExamWorkspace, 'admin-main-content': adminWorkspace, 'course-main-content': courseWorkspace }">
+    <el-main class="main-content" :class="{ 'exam-main-content': studentExamWorkspace, 'admin-main-content': adminWorkspace, 'course-main-content': courseWorkspace, 'team-main-content': teamWorkspace }">
       <router-view />
     </el-main>
   </el-container>
@@ -56,6 +56,7 @@ const currentExamRouteId = computed(() => {
 const studentExamWorkspace = computed(() => auth.role === 'student' && Boolean(currentExamRouteId.value) && route.path.startsWith('/exams/'))
 const adminWorkspace = computed(() => route.path === '/admin' || route.path.startsWith('/admin/'))
 const courseWorkspace = computed(() => /^\/my\/courses\/[^/]+/.test(route.path))
+const teamWorkspace = computed(() => /^\/teams\/[^/]+\/(?:contests|problem-sets|members)$/.test(route.path))
 const activeExamRoot = computed(() => (examLock.examId ? `/exams/${examLock.examId}` : ''))
 const inActiveExam = computed(() => Boolean(activeExamRoot.value) && (route.path === activeExamRoot.value || route.path.startsWith(`${activeExamRoot.value}/`)))
 
@@ -210,12 +211,15 @@ watch(
 .admin-shell,
 .admin-main-content,
 .course-shell,
-.course-main-content {
+.course-main-content,
+.team-shell,
+.team-main-content {
   min-height: 100vh;
 }
 
 .admin-main-content,
-.course-main-content {
+.course-main-content,
+.team-main-content {
   padding: 0;
 }
 

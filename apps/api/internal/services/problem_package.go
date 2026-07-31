@@ -72,6 +72,8 @@ type ProblemPackageDraft struct {
 	Statement     string              `json:"statement"`
 	Tags          []string            `json:"tags"`
 	Difficulty    string              `json:"difficulty"`
+	TeamID        *uint               `json:"team_id,omitempty"`
+	ProblemSetID  *uint               `json:"problem_set_id,omitempty"`
 	TimeLimitMS   int                 `json:"time_limit_ms"`
 	MemoryLimitMB int                 `json:"memory_limit_mb"`
 	OutputLimitKB int                 `json:"output_limit_kb"`

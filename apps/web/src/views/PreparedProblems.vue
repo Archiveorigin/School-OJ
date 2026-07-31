@@ -38,11 +38,7 @@
         </el-select>
         <el-input v-model="filters.tag" clearable placeholder="标签" />
         <el-select v-model="filters.difficulty" clearable placeholder="难度">
-          <el-option label="入门" value="入门" />
-          <el-option label="简单" value="简单" />
-          <el-option label="中等" value="中等" />
-          <el-option label="困难" value="困难" />
-          <el-option label="挑战" value="挑战" />
+          <el-option v-for="item in problemDifficultyOptions" :key="item" :label="item" :value="item" />
         </el-select>
         <el-select v-model="filters.archived" placeholder="归档">
           <el-option label="未归档" value="false" />
@@ -138,11 +134,7 @@
           <el-col :span="6">
             <el-form-item label="难度">
               <el-select v-model="metaForm.difficulty" clearable style="width: 100%">
-                <el-option label="入门" value="入门" />
-                <el-option label="简单" value="简单" />
-                <el-option label="中等" value="中等" />
-                <el-option label="困难" value="困难" />
-                <el-option label="挑战" value="挑战" />
+                <el-option v-for="item in problemDifficultyOptions" :key="item" :label="item" :value="item" />
               </el-select>
             </el-form-item>
           </el-col>
@@ -153,7 +145,7 @@
           </el-col>
         </el-row>
         <el-form-item label="标签">
-          <el-input v-model="metaForm.tagsText" placeholder="用逗号分隔，例如：数组, 入门, 模拟" />
+          <ProblemTagSelector v-model="metaForm.tags" />
         </el-form-item>
         <el-form-item label="备注">
           <el-input v-model="metaForm.notes" type="textarea" :rows="2" />
@@ -298,15 +290,11 @@
         <el-form-item label="文件夹"><el-input v-model="editForm.folder" /></el-form-item>
         <el-form-item label="难度">
           <el-select v-model="editForm.difficulty" clearable style="width: 100%">
-            <el-option label="入门" value="入门" />
-            <el-option label="简单" value="简单" />
-            <el-option label="中等" value="中等" />
-            <el-option label="困难" value="困难" />
-            <el-option label="挑战" value="挑战" />
+            <el-option v-for="item in problemDifficultyOptions" :key="item" :label="item" :value="item" />
           </el-select>
         </el-form-item>
         <el-form-item label="来源"><el-input v-model="editForm.source" /></el-form-item>
-        <el-form-item label="标签"><el-input v-model="editForm.tagsText" /></el-form-item>
+        <el-form-item label="标签"><ProblemTagSelector v-model="editForm.tags" /></el-form-item>
         <el-form-item label="备注"><el-input v-model="editForm.notes" type="textarea" :rows="3" /></el-form-item>
       </el-form>
       <template #footer>
@@ -336,8 +324,9 @@ import { computed, onMounted, reactive, ref, watch } from 'vue'
 import { client, type PreparedProblem } from '../api/client'
 import ListPagination from '../components/ListPagination.vue'
 import MarkdownRenderer from '../components/MarkdownRenderer.vue'
+import ProblemTagSelector from '../components/ProblemTagSelector.vue'
 import ProblemTestDownloads from '../components/ProblemTestDownloads.vue'
-import { problemDisplayCode } from '../features/problems/problemMeta'
+import { problemDifficultyOptions, problemDisplayCode, tagList } from '../features/problems/problemMeta'
 
 type ProblemAssetForm = { name: string; path: string; content_type: string; data: string; preview_url: string }
 type CaseFilePair = { name: string; inputName: string; outputName: string; inputSize: number; outputSize: number; weight: number }
@@ -369,7 +358,7 @@ const metaForm = reactive({
   folder: '',
   difficulty: '',
   source: '',
-  tagsText: '',
+  tags: [] as string[],
   notes: ''
 })
 
@@ -378,7 +367,7 @@ const editForm = reactive({
   folder: '',
   difficulty: '',
   source: '',
-  tagsText: '',
+  tags: [] as string[],
   notes: ''
 })
 
@@ -432,7 +421,7 @@ function openEditDialog(row: PreparedProblem) {
   editForm.folder = row.folder || ''
   editForm.difficulty = row.difficulty || ''
   editForm.source = row.source || ''
-  editForm.tagsText = tagList(row.problem?.tags).join(', ')
+  editForm.tags = tagList(row.problem?.tags)
   editForm.notes = row.notes || ''
   editVisible.value = true
 }
@@ -479,7 +468,7 @@ async function uploadZip(options: any) {
     fd.append('difficulty', metaForm.difficulty)
     fd.append('source', metaForm.source)
     fd.append('notes', metaForm.notes)
-    parseTags(metaForm.tagsText).forEach((tag) => fd.append('tags', tag))
+    metaForm.tags.forEach((tag) => fd.append('tags', tag))
     const { data } = await client.post('/prepared-problems/upload', fd)
     ElMessage.success('预备题包已上传')
     createVisible.value = false
@@ -500,7 +489,7 @@ async function saveEdit() {
       difficulty: editForm.difficulty,
       source: editForm.source,
       notes: editForm.notes,
-      tags: parseTags(editForm.tagsText)
+      tags: editForm.tags
     })
     ElMessage.success('分类已保存')
     editVisible.value = false
@@ -551,7 +540,7 @@ function metadataPayload() {
     difficulty: metaForm.difficulty,
     source: metaForm.source,
     notes: metaForm.notes,
-    tags: parseTags(metaForm.tagsText)
+    tags: metaForm.tags
   }
 }
 
@@ -568,7 +557,7 @@ function resetMeta() {
   metaForm.folder = ''
   metaForm.difficulty = ''
   metaForm.source = ''
-  metaForm.tagsText = ''
+  metaForm.tags = []
   metaForm.notes = ''
 }
 
@@ -718,21 +707,6 @@ function uniqueAssetPath(name: string) {
 
 function escapeRegExp(value: string) {
   return value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
-}
-
-function parseTags(value: string) {
-  return value
-    .split(',')
-    .map((item) => item.trim())
-    .filter(Boolean)
-}
-
-function tagList(tags: any) {
-  if (!tags) return []
-  if (Array.isArray(tags)) return tags.map(String)
-  if (Array.isArray(tags.labels)) return tags.labels.map(String)
-  if (Array.isArray(tags.items)) return tags.items.map(String)
-  return []
 }
 
 watch(pageSize, () => { page.value = 1 })

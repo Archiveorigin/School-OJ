@@ -270,12 +270,14 @@ onMounted(load)
 .difficulty-level-3 { --difficulty-color: #d97706; }
 .difficulty-level-4 { --difficulty-color: #ea580c; }
 .difficulty-level-5 { --difficulty-color: #dc2626; }
+.difficulty-level-6 { --difficulty-color: #7c3aed; }
 .difficulty-option i { background: var(--difficulty-color, #64748b); }
 :deep(.el-tag.difficulty-level-1) { color: #15803d; border-color: #86efac; background: #f0fdf4; }
 :deep(.el-tag.difficulty-level-2) { color: #0369a1; border-color: #7dd3fc; background: #f0f9ff; }
 :deep(.el-tag.difficulty-level-3) { color: #b45309; border-color: #fcd34d; background: #fffbeb; }
 :deep(.el-tag.difficulty-level-4) { color: #c2410c; border-color: #fdba74; background: #fff7ed; }
 :deep(.el-tag.difficulty-level-5) { color: #b91c1c; border-color: #fca5a5; background: #fef2f2; }
+:deep(.el-tag.difficulty-level-6) { color: #6d28d9; border-color: #c4b5fd; background: #f5f3ff; }
 .upload-text { margin-bottom: 6px; font-weight: 700; }
 @media (max-width: 900px) {
   .problem-filters { grid-template-columns: repeat(2, minmax(0, 1fr)); }

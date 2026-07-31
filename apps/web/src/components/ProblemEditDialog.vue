@@ -58,7 +58,7 @@
       </el-row>
       <p class="checker-note">比较器只使用平台内置算法，不运行题目包中的脚本。</p>
       <el-form-item label="标签">
-        <el-input v-model="form.tags" placeholder="多个标签用逗号、空格或换行分隔" />
+        <ProblemTagSelector v-model="form.tags" />
       </el-form-item>
       <el-form-item label="难度">
         <el-select v-model="form.difficulty" placeholder="请选择难度" style="width: 100%">
@@ -102,6 +102,7 @@ import { ElMessage } from 'element-plus'
 import { computed, reactive, ref, watch } from 'vue'
 import { client, type Problem } from '../api/client'
 import { problemDifficulty, problemDifficultyOptions, tagList } from '../features/problems/problemMeta'
+import ProblemTagSelector from './ProblemTagSelector.vue'
 
 const props = defineProps<{
   modelValue: boolean
@@ -128,7 +129,7 @@ const form = reactive({
   checker_type: 'exact',
   absolute_tolerance: 0.000001,
   relative_tolerance: 0.000001,
-  tags: '',
+  tags: [] as string[],
   difficulty: '入门'
 })
 
@@ -145,7 +146,7 @@ watch(
     form.checker_type = checker.type
     form.absolute_tolerance = checker.absolute_tolerance
     form.relative_tolerance = checker.relative_tolerance
-    form.tags = tagList(props.problem.tags).join(', ')
+    form.tags = tagList(props.problem.tags)
     form.difficulty = problemDifficulty(props.problem) || '入门'
     testFiles.value = []
   },
@@ -154,13 +155,6 @@ watch(
 
 function syncTestFiles(_file: any, fileList: any[]) {
   testFiles.value = fileList
-}
-
-function parseTags(value: string) {
-  return value
-    .split(/[\s,，、]+/)
-    .map((item) => item.trim())
-    .filter(Boolean)
 }
 
 function problemChecker(manifest?: Record<string, unknown>) {
@@ -200,7 +194,7 @@ async function save() {
           absolute_tolerance: form.checker_type === 'float' ? form.absolute_tolerance : 0,
           relative_tolerance: form.checker_type === 'float' ? form.relative_tolerance : 0
         },
-        tags: parseTags(form.tags),
+        tags: form.tags,
         difficulty: form.difficulty
       })
     )

@@ -16,7 +16,7 @@ export const problemStatusOptions: Array<{ label: string; value: ProblemStatusFi
   { label: '已通过', value: 'accepted' }
 ]
 
-export const problemDifficultyOptions = ['入门', '基础', '普及', '提高', '综合'] as const
+export const problemDifficultyOptions = ['入门', '基础', '普及', '提高', '综合', '挑战'] as const
 
 export function tagList(tags: unknown) {
   if (!tags) return []
@@ -61,7 +61,7 @@ export function difficultyFromTags(tags: unknown) {
   if (['简单', 'Easy'].includes(legacy || '')) return '基础'
   if (['中等', 'Medium'].includes(legacy || '')) return '普及'
   if (['困难', 'Hard'].includes(legacy || '')) return '提高'
-  if (legacy === '挑战') return '综合'
+  if (legacy === '挑战') return '挑战'
   return ''
 }
 
@@ -74,7 +74,7 @@ export function difficultyTagType(difficulty?: string): 'success' | 'warning' | 
   if (difficulty === '入门') return 'success'
   if (difficulty === '基础') return 'info'
   if (difficulty === '普及') return 'warning'
-  if (difficulty === '提高' || difficulty === '综合') return 'danger'
+  if (difficulty === '提高' || difficulty === '综合' || difficulty === '挑战') return 'danger'
   return 'info'
 }
 

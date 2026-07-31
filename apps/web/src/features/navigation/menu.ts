@@ -20,6 +20,7 @@ export const navGroups: NavGroup[] = [
       { path: '/', label: '概览' },
       { path: '/problems', label: '题库' },
       { path: '/problems/create', label: '出题', authorOnly: true, requiresAuth: true },
+      { path: '/teams', label: '团队', requiresAuth: true },
       { path: '/my/courses', label: '课程', requiresAuth: true }
     ]
   }

@@ -1786,6 +1786,9 @@ func (s Server) createProblem(c *gin.Context) {
 	if !bind(c, &req) {
 		return
 	}
+	if !s.validateTeamProblemScope(c, user, req.TeamID, req.ProblemSetID) {
+		return
+	}
 	body, pkg, err := services.BuildProblemPackage(req)
 	if err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
@@ -1794,6 +1797,12 @@ func (s Server) createProblem(c *gin.Context) {
 	problem, ok := s.saveProblemPackage(c, user, body, pkg, tagsJSONMap(req.Tags), req.Difficulty, "problem.create")
 	if !ok {
 		return
+	}
+	if !s.attachProblemToTeamScope(c, problem.ID, req.TeamID, req.ProblemSetID) {
+		return
+	}
+	if req.TeamID != nil {
+		problem.TeamID = req.TeamID
 	}
 	c.JSON(http.StatusCreated, problem)
 }
@@ -1811,6 +1820,9 @@ func (s Server) createProblemMultipart(c *gin.Context, user models.User) {
 	var req services.ProblemPackageDraft
 	if err := json.Unmarshal([]byte(rawDraft), &req); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "parse draft: " + err.Error()})
+		return
+	}
+	if !s.validateTeamProblemScope(c, user, req.TeamID, req.ProblemSetID) {
 		return
 	}
 	uploads, err := testPointUploadsFromMultipart(c.Request.MultipartForm)
@@ -1832,6 +1844,12 @@ func (s Server) createProblemMultipart(c *gin.Context, user models.User) {
 	problem, ok := s.saveProblemPackage(c, user, body, pkg, tagsJSONMap(req.Tags), req.Difficulty, "problem.create")
 	if !ok {
 		return
+	}
+	if !s.attachProblemToTeamScope(c, problem.ID, req.TeamID, req.ProblemSetID) {
+		return
+	}
+	if req.TeamID != nil {
+		problem.TeamID = req.TeamID
 	}
 	c.JSON(http.StatusCreated, problem)
 }
@@ -2061,7 +2079,7 @@ func (s Server) getProblem(c *gin.Context) {
 	if !ok {
 		return
 	}
-	if !s.isProblemPublic(problem.ID) && (!authed || !s.canManageProblemData(user, problem)) {
+	if !s.isProblemPublic(problem.ID) && (!authed || (!s.canManageProblemData(user, problem) && !s.canAccessTeamProblem(user, problem))) {
 		c.JSON(http.StatusNotFound, gin.H{"error": "problem not found"})
 		return
 	}
@@ -2585,7 +2603,12 @@ func (s Server) deleteProblem(c *gin.Context) {
 		return
 	}
 	now := time.Now()
-	if err := s.DB.Model(&models.Problem{}).Where("id = ?", problem.ID).Update("deleted_at", now).Error; err != nil {
+	if err := s.DB.Transaction(func(tx *gorm.DB) error {
+		if err := tx.Model(&models.Problem{}).Where("id = ?", problem.ID).Update("deleted_at", now).Error; err != nil {
+			return err
+		}
+		return tx.Where("problem_id = ?", problem.ID).Delete(&models.TeamProblemSetProblem{}).Error
+	}); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 		return
 	}
@@ -2666,7 +2689,7 @@ func (s Server) createPreparedProblem(c *gin.Context) {
 		ProblemID:  problem.ID,
 		OwnerID:    user.ID,
 		Folder:     strings.TrimSpace(req.Folder),
-		Difficulty: strings.TrimSpace(req.Difficulty),
+		Difficulty: normalizeProblemDifficulty(req.Difficulty, tagsJSONMap(req.Tags)),
 		Source:     strings.TrimSpace(req.Source),
 		Notes:      strings.TrimSpace(req.Notes),
 		Problem:    problem,
@@ -2715,7 +2738,7 @@ func (s Server) uploadPreparedProblem(c *gin.Context) {
 		ProblemID:  problem.ID,
 		OwnerID:    user.ID,
 		Folder:     strings.TrimSpace(c.PostForm("folder")),
-		Difficulty: strings.TrimSpace(c.PostForm("difficulty")),
+		Difficulty: normalizeProblemDifficulty(c.PostForm("difficulty"), tagsJSONMap(parseTagFields(c.PostFormArray("tags"), c.PostForm("tags")))),
 		Source:     strings.TrimSpace(c.PostForm("source")),
 		Notes:      strings.TrimSpace(c.PostForm("notes")),
 		Problem:    problem,
@@ -4041,6 +4064,10 @@ func (s Server) createSubmission(c *gin.Context) {
 		c.JSON(http.StatusNotFound, gin.H{"error": "problem not found"})
 		return
 	}
+	if problem.TeamID != nil && !s.canAccessTeamProblem(user, problem) {
+		c.JSON(http.StatusForbidden, gin.H{"error": "仅该团队成员可以提交此题"})
+		return
+	}
 	var assignmentAttempt *uint
 	var examAttempt *uint
 	var examForSubmission *models.Exam
@@ -4057,7 +4084,7 @@ func (s Server) createSubmission(c *gin.Context) {
 				return
 			}
 			examAttempt = req.ExamID
-		} else if !s.isProblemPublic(req.ProblemID) {
+		} else if !s.isProblemPublic(req.ProblemID) && !s.canAccessTeamProblem(user, problem) {
 			c.JSON(http.StatusForbidden, gin.H{"error": "problem is not publicly available"})
 			return
 		}
@@ -4117,7 +4144,7 @@ func (s Server) createSubmission(c *gin.Context) {
 		ExamID:       req.ExamID,
 		Language:     req.Language,
 		SourceCode:   req.SourceCode,
-		IsPublic:     req.IsPublic && req.AssignmentID == nil && req.ExamID == nil,
+		IsPublic:     req.IsPublic && problem.TeamID == nil && req.AssignmentID == nil && req.ExamID == nil,
 		Status:       status,
 	}
 	if err := s.DB.Transaction(func(tx *gorm.DB) error {
@@ -4165,14 +4192,19 @@ func (s Server) listSubmissions(c *gin.Context) {
 			return
 		}
 		if !s.isProblemPublic(problemID) {
-			c.JSON(http.StatusNotFound, gin.H{"error": "problem not found"})
-			return
+			var problem models.Problem
+			if err := s.DB.Where("deleted_at IS NULL").First(&problem, problemID).Error; err != nil || !s.canAccessTeamProblem(user, problem) {
+				c.JSON(http.StatusNotFound, gin.H{"error": "problem not found"})
+				return
+			}
+			q = q.Where("problem_id = ? AND user_id = ?", problemID, user.ID)
+		} else {
+			q = q.Where(
+				"problem_id = ? AND assignment_id IS NULL AND exam_id IS NULL AND (user_id = ? OR is_public = true)",
+				problemID,
+				user.ID,
+			)
 		}
-		q = q.Where(
-			"problem_id = ? AND assignment_id IS NULL AND exam_id IS NULL AND (user_id = ? OR is_public = true)",
-			problemID,
-			user.ID,
-		)
 	} else if user.Role == models.RoleStudent {
 		q = q.Where("user_id = ?", user.ID)
 	} else if user.Role == models.RoleTeacher {
@@ -4772,6 +4804,9 @@ func (s Server) canReadProblemAsset(user models.User, problem models.Problem, as
 	if s.isProblemPublic(problem.ID) {
 		return true
 	}
+	if s.canAccessTeamProblem(user, problem) {
+		return true
+	}
 	if user.Role == models.RoleAdmin {
 		return true
 	}
@@ -4788,7 +4823,7 @@ func (s Server) canReadProblemAsset(user models.User, problem models.Problem, as
 }
 
 func publicProblemSQL() string {
-	return `NOT EXISTS (
+	return `problems.team_id IS NULL AND NOT EXISTS (
 		SELECT 1 FROM problem_reviews
 		WHERE problem_reviews.problem_id = problems.id
 		  AND problem_reviews.status <> 'approved'
@@ -6229,8 +6264,33 @@ func tagsJSONMap(tags []string) datatypes.JSONMap {
 }
 
 func normalizeProblemDifficulty(value string, tags datatypes.JSONMap) string {
+	if normalized := normalizeDifficultyValue(value); normalized != "" {
+		return normalized
+	}
+	if tags != nil {
+		if raw, ok := tags["labels"]; ok {
+			switch labels := raw.(type) {
+			case []string:
+				for _, label := range labels {
+					if normalized := normalizeDifficultyValue(label); normalized != "" {
+						return normalized
+					}
+				}
+			case []any:
+				for _, label := range labels {
+					if normalized := normalizeDifficultyValue(fmt.Sprint(label)); normalized != "" {
+						return normalized
+					}
+				}
+			}
+		}
+	}
+	return "入门"
+}
+
+func normalizeDifficultyValue(value string) string {
 	value = strings.TrimSpace(value)
-	for _, allowed := range []string{"入门", "基础", "普及", "提高", "综合"} {
+	for _, allowed := range []string{"入门", "基础", "普及", "提高", "综合", "挑战"} {
 		if value == allowed {
 			return value
 		}
@@ -6242,29 +6302,8 @@ func normalizeProblemDifficulty(value string, tags datatypes.JSONMap) string {
 		return "普及"
 	case "困难", "hard":
 		return "提高"
-	case "挑战":
-		return "综合"
-	}
-	if tags == nil {
-		return ""
-	}
-	raw, ok := tags["labels"]
-	if !ok {
-		return ""
-	}
-	switch labels := raw.(type) {
-	case []string:
-		for _, label := range labels {
-			if normalized := normalizeProblemDifficulty(label, nil); normalized != "" {
-				return normalized
-			}
-		}
-	case []any:
-		for _, label := range labels {
-			if normalized := normalizeProblemDifficulty(fmt.Sprint(label), nil); normalized != "" {
-				return normalized
-			}
-		}
+	case "challenge":
+		return "挑战"
 	}
 	return ""
 }

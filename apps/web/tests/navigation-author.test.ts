@@ -15,4 +15,8 @@ describe('author navigation', () => {
   it('shows authoring when the independent permission is granted', () => {
     expect(visiblePaths(true)).toContain('/problems/create')
   })
+
+  it('shows teams to every authenticated role', () => {
+    expect(visiblePaths(false)).toContain('/teams')
+  })
 })

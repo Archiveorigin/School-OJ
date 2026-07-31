@@ -83,12 +83,13 @@ type ClassProblem struct {
 type Problem struct {
 	ID              uint              `json:"id" gorm:"primaryKey"`
 	OwnerID         uint              `json:"owner_id" gorm:"index;not null"`
+	TeamID          *uint             `json:"team_id,omitempty" gorm:"index"`
 	DisplayCode     string            `json:"display_code" gorm:"uniqueIndex;size:16"`
 	Slug            string            `json:"-" gorm:"uniqueIndex:idx_problems_slug_active,where:deleted_at IS NULL;size:120;not null"`
 	Title           string            `json:"title" gorm:"size:200;not null"`
 	Statement       string            `json:"statement" gorm:"type:text"`
 	Tags            datatypes.JSONMap `json:"tags" gorm:"type:jsonb"`
-	Difficulty      string            `json:"difficulty" gorm:"size:32;index"`
+	Difficulty      string            `json:"difficulty" gorm:"size:32;index;not null;default:'入门'"`
 	TimeLimitMS     int               `json:"time_limit_ms" gorm:"not null;default:1000"`
 	MemoryLimitMB   int               `json:"memory_limit_mb" gorm:"not null;default:256"`
 	OutputLimitKB   int               `json:"output_limit_kb" gorm:"not null;default:1024"`
@@ -105,7 +106,7 @@ type PreparedProblem struct {
 	ProblemID   uint       `json:"problem_id" gorm:"uniqueIndex;not null"`
 	OwnerID     uint       `json:"owner_id" gorm:"index;not null"`
 	Folder      string     `json:"folder" gorm:"size:160;index"`
-	Difficulty  string     `json:"difficulty" gorm:"size:32;index"`
+	Difficulty  string     `json:"difficulty" gorm:"size:32;index;not null;default:'入门'"`
 	Source      string     `json:"source" gorm:"size:160"`
 	Notes       string     `json:"notes" gorm:"type:text"`
 	Archived    bool       `json:"archived" gorm:"not null;default:false;index"`
@@ -387,6 +388,93 @@ type Feedback struct {
 	UpdatedAt time.Time `json:"updated_at"`
 }
 
+type TeamRole string
+
+const (
+	TeamRoleOwner  TeamRole = "owner"
+	TeamRoleAdmin  TeamRole = "admin"
+	TeamRoleMember TeamRole = "member"
+)
+
+type Team struct {
+	ID                uint      `json:"id" gorm:"primaryKey"`
+	Name              string    `json:"name" gorm:"size:120;not null"`
+	Slug              string    `json:"slug" gorm:"uniqueIndex;size:30;not null"`
+	OwnerID           uint      `json:"owner_id" gorm:"index;not null"`
+	Visibility        string    `json:"visibility" gorm:"size:16;index;not null;default:'private'"`
+	JoinMode          string    `json:"join_mode" gorm:"size:16;index;not null;default:'application'"`
+	ContestPermission string    `json:"contest_permission" gorm:"size:16;not null;default:'admin'"`
+	JoinCode          string    `json:"join_code,omitempty" gorm:"size:24;index"`
+	Description       string    `json:"description" gorm:"size:140"`
+	Announcement      string    `json:"announcement" gorm:"type:text"`
+	IconURL           string    `json:"icon_url" gorm:"type:text"`
+	CreatedAt         time.Time `json:"created_at"`
+	UpdatedAt         time.Time `json:"updated_at"`
+}
+
+type TeamMembership struct {
+	ID        uint      `json:"id" gorm:"primaryKey"`
+	TeamID    uint      `json:"team_id" gorm:"uniqueIndex:idx_team_user;index;not null"`
+	UserID    uint      `json:"user_id" gorm:"uniqueIndex:idx_team_user;index;not null"`
+	Role      TeamRole  `json:"role" gorm:"type:varchar(16);index;not null;default:'member'"`
+	CreatedAt time.Time `json:"created_at"`
+	UpdatedAt time.Time `json:"updated_at"`
+}
+
+type TeamJoinApplication struct {
+	ID         uint       `json:"id" gorm:"primaryKey"`
+	TeamID     uint       `json:"team_id" gorm:"index;not null"`
+	UserID     uint       `json:"user_id" gorm:"index;not null"`
+	Message    string     `json:"message" gorm:"size:300"`
+	Status     string     `json:"status" gorm:"size:16;index;not null;default:'pending'"`
+	ReviewedBy *uint      `json:"reviewed_by,omitempty" gorm:"index"`
+	ReviewedAt *time.Time `json:"reviewed_at,omitempty"`
+	CreatedAt  time.Time  `json:"created_at"`
+	UpdatedAt  time.Time  `json:"updated_at"`
+}
+
+type TeamContest struct {
+	ID              uint       `json:"id" gorm:"primaryKey"`
+	TeamID          uint       `json:"team_id" gorm:"index;not null"`
+	Title           string     `json:"title" gorm:"size:200;not null"`
+	Description     string     `json:"description" gorm:"type:text"`
+	StartsAt        *time.Time `json:"starts_at" gorm:"index"`
+	DurationMinutes int        `json:"duration_minutes" gorm:"not null;default:120"`
+	CreatedBy       uint       `json:"created_by" gorm:"index;not null"`
+	CreatedAt       time.Time  `json:"created_at"`
+	UpdatedAt       time.Time  `json:"updated_at"`
+}
+
+type TeamProblemSet struct {
+	ID          uint      `json:"id" gorm:"primaryKey"`
+	TeamID      uint      `json:"team_id" gorm:"index;not null"`
+	Title       string    `json:"title" gorm:"size:200;not null"`
+	Description string    `json:"description" gorm:"type:text"`
+	CreatedBy   uint      `json:"created_by" gorm:"index;not null"`
+	CreatedAt   time.Time `json:"created_at"`
+	UpdatedAt   time.Time `json:"updated_at"`
+}
+
+type TeamProblemSetProblem struct {
+	ID           uint      `json:"id" gorm:"primaryKey"`
+	ProblemSetID uint      `json:"problem_set_id" gorm:"uniqueIndex:idx_team_set_problem;index;not null"`
+	ProblemID    uint      `json:"problem_id" gorm:"uniqueIndex:idx_team_set_problem;index;not null"`
+	Label        string    `json:"label" gorm:"size:16"`
+	SortOrder    int       `json:"sort_order" gorm:"not null;default:0"`
+	Problem      Problem   `json:"problem,omitempty" gorm:"foreignKey:ProblemID"`
+	CreatedAt    time.Time `json:"created_at"`
+}
+
+type TeamDiscussion struct {
+	ID           uint      `json:"id" gorm:"primaryKey"`
+	ProblemSetID uint      `json:"problem_set_id" gorm:"index;not null"`
+	ProblemID    *uint     `json:"problem_id,omitempty" gorm:"index"`
+	AuthorID     uint      `json:"author_id" gorm:"index;not null"`
+	Content      string    `json:"content" gorm:"type:text;not null"`
+	CreatedAt    time.Time `json:"created_at"`
+	UpdatedAt    time.Time `json:"updated_at"`
+}
+
 func AllModels() []any {
 	return []any{
 		&User{},
@@ -413,5 +501,12 @@ func AllModels() []any {
 		&EmailVerification{},
 		&LoginAttempt{},
 		&Feedback{},
+		&Team{},
+		&TeamMembership{},
+		&TeamJoinApplication{},
+		&TeamContest{},
+		&TeamProblemSet{},
+		&TeamProblemSetProblem{},
+		&TeamDiscussion{},
 	}
 }

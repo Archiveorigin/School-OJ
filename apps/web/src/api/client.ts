@@ -40,6 +40,7 @@ export interface User {
 export interface Problem {
   id: number
   owner_id?: number
+  team_id?: number
   display_code?: string
   title: string
   statement: string
@@ -53,6 +54,40 @@ export interface Problem {
   points?: number
   points_awarded?: boolean
   deleted_at?: string
+}
+
+export type TeamRole = 'owner' | 'admin' | 'member'
+
+export interface Team {
+  id: number
+  name: string
+  slug: string
+  owner_id: number
+  owner_name?: string
+  visibility: 'private' | 'public'
+  join_mode: 'invitation' | 'application' | 'open'
+  contest_permission: 'all' | 'admin' | 'owner'
+  join_code?: string
+  description?: string
+  announcement?: string
+  icon_url?: string
+  member_count?: number
+  my_role?: TeamRole
+  joined?: boolean
+  application_status?: string
+  created_at?: string
+  updated_at?: string
+}
+
+export interface TeamProblemSet {
+  id: number
+  team_id: number
+  title: string
+  description?: string
+  created_by: number
+  problem_count?: number
+  created_at?: string
+  updated_at?: string
 }
 
 export interface PreparedProblem {

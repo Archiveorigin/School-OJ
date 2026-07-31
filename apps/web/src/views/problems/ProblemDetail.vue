@@ -67,8 +67,11 @@
                   <el-option label="Java 21" value="java" />
                 </el-select>
               </el-form-item>
-              <el-form-item label="公开代码">
+              <el-form-item v-if="!problem.team_id" label="公开代码">
                 <el-switch v-model="isPublic" active-text="所有登录用户可查看" inactive-text="仅自己可见" />
+              </el-form-item>
+              <el-form-item v-else label="代码可见性">
+                <el-tag type="info" effect="plain">团队私有，仅自己可见</el-tag>
               </el-form-item>
             </div>
             <CodeEditor ref="editorRef" v-model="source" :language="language" />

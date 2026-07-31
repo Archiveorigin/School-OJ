@@ -33,6 +33,12 @@ const PreparedProblems = () => import('../views/PreparedProblems.vue')
 const Profile = () => import('../views/Profile.vue')
 const Register = () => import('../views/Register.vue')
 const Submissions = () => import('../views/Submissions.vue')
+const TeamContests = () => import('../views/teams/TeamContests.vue')
+const TeamList = () => import('../views/teams/TeamList.vue')
+const TeamMembers = () => import('../views/teams/TeamMembers.vue')
+const TeamProblemSetDetail = () => import('../views/teams/TeamProblemSetDetail.vue')
+const TeamProblemSets = () => import('../views/teams/TeamProblemSets.vue')
+const TeamWorkspace = () => import('../views/teams/TeamWorkspace.vue')
 const Users = () => import('../views/Users.vue')
 
 const teacherRoles = ['admin', 'teacher']
@@ -56,6 +62,19 @@ const router = createRouter({
       ]
     },
     { path: '/profile', component: Profile, meta: { title: '个人中心' } },
+    { path: '/teams', component: TeamList, meta: { title: '团队', activeMenu: '/teams' } },
+    { path: '/teams/:teamId/problem-sets/:setId', component: TeamProblemSetDetail, meta: { title: '团队题单', activeMenu: '/teams' } },
+    {
+      path: '/teams/:teamSlug',
+      component: TeamWorkspace,
+      redirect: (to) => `/teams/${to.params.teamSlug}/contests`,
+      meta: { title: '团队空间', activeMenu: '/teams' },
+      children: [
+        { path: 'contests', component: TeamContests, meta: { title: '团队比赛' } },
+        { path: 'problem-sets', component: TeamProblemSets, meta: { title: '团队题单' } },
+        { path: 'members', component: TeamMembers, meta: { title: '团队成员' } }
+      ]
+    },
     { path: '/my/courses', component: MyCourses, meta: { title: '我的课程', activeMenu: '/my/courses' } },
     {
       path: '/my/courses/:courseId',

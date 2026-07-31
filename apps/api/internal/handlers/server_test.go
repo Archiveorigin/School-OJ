@@ -206,9 +206,39 @@ func TestCanCreateProblemsUsesIndependentAuthorFlag(t *testing.T) {
 
 func TestPublicProblemSQLRequiresApprovedReview(t *testing.T) {
 	sql := publicProblemSQL()
-	for _, want := range []string{"problem_reviews", "status <> 'approved'", "status = 'approved'"} {
+	for _, want := range []string{"problems.team_id IS NULL", "problem_reviews", "status <> 'approved'", "status = 'approved'"} {
 		if !strings.Contains(sql, want) {
 			t.Fatalf("public problem SQL missing %q: %s", want, sql)
+		}
+	}
+}
+
+func TestProblemDifficultyVocabulary(t *testing.T) {
+	for _, value := range []string{"入门", "基础", "普及", "提高", "综合", "挑战"} {
+		if got := normalizeProblemDifficulty(value, nil); got != value {
+			t.Fatalf("normalizeProblemDifficulty(%q) = %q", value, got)
+		}
+	}
+	if got := normalizeProblemDifficulty("challenge", nil); got != "挑战" {
+		t.Fatalf("challenge normalized to %q", got)
+	}
+	if got := normalizeProblemDifficulty("", datatypes.JSONMap{"labels": []string{"动态规划 DP", "挑战"}}); got != "挑战" {
+		t.Fatalf("difficulty from tags = %q", got)
+	}
+	if got := normalizeProblemDifficulty("", nil); got != "入门" {
+		t.Fatalf("empty difficulty = %q", got)
+	}
+}
+
+func TestTeamSlugPattern(t *testing.T) {
+	for _, value := range []string{"acm", "team-2026", "a1"} {
+		if !teamSlugPattern.MatchString(value) {
+			t.Fatalf("valid slug rejected: %s", value)
+		}
+	}
+	for _, value := range []string{"Acm", "1team", "a", "team_name"} {
+		if teamSlugPattern.MatchString(value) {
+			t.Fatalf("invalid slug accepted: %s", value)
 		}
 	}
 }

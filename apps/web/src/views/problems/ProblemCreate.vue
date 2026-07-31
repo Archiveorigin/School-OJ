@@ -1,15 +1,15 @@
 <template>
   <section class="page problem-create-page">
     <div class="create-container">
-      <el-page-header title="返回题库" @back="router.push('/problems')">
+      <el-page-header :title="teamScope ? '返回团队题单' : '返回题库'" @back="goBack">
         <template #content><span>创建题目</span></template>
       </el-page-header>
 
       <header class="create-heading">
         <div>
           <span class="eyebrow">PROBLEM AUTHORING</span>
-          <h1>{{ reviewStatus === 'rejected' ? '修改退回题目' : reviewStatus === 'withdrawn' ? '修改已撤销题目' : '新建题库题目' }}</h1>
-          <p>题目内容会自动缓存；非管理员提交后需经后台审核才会进入公共题库。</p>
+          <h1>{{ teamScope ? '新建团队私有题目' : reviewStatus === 'rejected' ? '修改退回题目' : reviewStatus === 'withdrawn' ? '修改已撤销题目' : '新建题库题目' }}</h1>
+          <p>{{ teamScope ? '题目仅对当前团队成员开放，并会自动加入当前题单。' : '题目内容会自动缓存；非管理员提交后需经后台审核才会进入公共题库。' }}</p>
         </div>
         <el-upload
           action="#"
@@ -67,7 +67,7 @@
               </el-select>
             </el-form-item>
             <el-form-item label="标签">
-              <el-input v-model="form.tags" placeholder="数组、动态规划；用逗号或空格分隔" />
+              <ProblemTagSelector v-model="form.tags" />
             </el-form-item>
           </div>
 
@@ -146,7 +146,7 @@
         <span class="draft-state">草稿已自动缓存</span>
         <div>
           <el-button v-if="reviewStatus !== 'pending'" @click="clearDraft">清除草稿</el-button>
-          <el-button @click="router.push('/problems')">取消</el-button>
+          <el-button @click="goBack">取消</el-button>
           <el-button
             type="primary"
             size="large"
@@ -165,16 +165,17 @@
 <script setup lang="ts">
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { computed, onMounted, reactive, ref, watch } from 'vue'
-import { useRouter } from 'vue-router'
+import { useRoute, useRouter } from 'vue-router'
 import { client, type ProblemReview } from '../../api/client'
 import MarkdownRenderer from '../../components/MarkdownRenderer.vue'
+import ProblemTagSelector from '../../components/ProblemTagSelector.vue'
 import { problemDifficultyOptions } from '../../features/problems/problemMeta'
 import { useAuthStore } from '../../stores/auth'
 
 type TestCase = { name: string; input: string; output: string; weight: number }
 type ReviewStatus = ProblemReview['status'] | ''
 
-const DRAFT_KEY = 'school-oj-problem-author-draft-v2'
+const route = useRoute()
 const router = useRouter()
 const auth = useAuthStore()
 const saving = ref(false)
@@ -189,7 +190,7 @@ const form = reactive({
   title: '',
   statement: '',
   difficulty: '入门',
-  tags: '',
+  tags: [] as string[],
   time_limit_ms: 1000,
   memory_limit_mb: 256,
   output_limit_kb: 1024,
@@ -198,16 +199,18 @@ const form = reactive({
   relative_tolerance: 0.000001
 })
 
+const teamID = computed(() => Number(route.query.teamId) || 0)
+const problemSetID = computed(() => Number(route.query.problemSetId) || 0)
+const teamScope = computed(() => Boolean(teamID.value && problemSetID.value))
+const draftKey = computed(() => teamScope.value ? `school-oj-team-${teamID.value}-set-${problemSetID.value}-problem-draft-v1` : 'school-oj-problem-author-draft-v2')
+
 const submitLabel = computed(() => {
+  if (teamScope.value) return '创建团队私有题目'
   if (auth.role === 'admin') return '创建并发布'
   if (reviewStatus.value === 'pending') return '等待管理员审核'
   if (reviewStatus.value === 'rejected' || reviewStatus.value === 'withdrawn') return '重新提交审核'
   return '提交管理员审核'
 })
-
-function parseTags() {
-  return form.tags.split(/[\s,，、]+/).map((item) => item.trim()).filter(Boolean)
-}
 
 function normalizeStatement(value: string) {
   return value.replace(/(```[^\r\n]*\r?\n)(?:[ \t]*\r?\n)+/g, '$1')
@@ -274,7 +277,9 @@ async function submitProblem() {
       title: form.title.trim(),
       statement: form.statement,
       difficulty: form.difficulty,
-      tags: parseTags(),
+      tags: form.tags,
+      team_id: teamScope.value ? teamID.value : undefined,
+      problem_set_id: teamScope.value ? problemSetID.value : undefined,
       time_limit_ms: form.time_limit_ms,
       memory_limit_mb: form.memory_limit_mb,
       output_limit_kb: form.output_limit_kb,
@@ -292,8 +297,14 @@ async function submitProblem() {
         ? client.put(endpoint, draft)
         : client.post(endpoint, draft)
     const { data } = await request
+    if (teamScope.value) {
+      localStorage.removeItem(draftKey.value)
+      ElMessage.success('团队私有题目已创建并加入题单')
+      await router.push(`/teams/${teamID.value}/problem-sets/${problemSetID.value}`)
+      return
+    }
     if (auth.role === 'admin') {
-      localStorage.removeItem(DRAFT_KEY)
+      localStorage.removeItem(draftKey.value)
       ElMessage.success('题目已创建并发布')
       await router.push(`/problems/${encodeURIComponent(data.display_code || String(data.id))}`)
       return
@@ -321,7 +332,7 @@ function buildMultipartRequest(endpoint: string, draft: Record<string, unknown>,
 
 function persistDraft() {
   try {
-    localStorage.setItem(DRAFT_KEY, JSON.stringify({
+    localStorage.setItem(draftKey.value, JSON.stringify({
       ...form,
       cases: importedCases.value,
       problem_id: cachedProblemId.value,
@@ -336,12 +347,12 @@ function persistDraft() {
 
 function restoreDraft() {
   try {
-    const cached = JSON.parse(localStorage.getItem(DRAFT_KEY) || 'null')
+    const cached = JSON.parse(localStorage.getItem(draftKey.value) || 'null')
     if (!cached) return
     form.title = cached.title || ''
     form.statement = normalizeStatement(cached.statement || '')
     form.difficulty = cached.difficulty || '入门'
-    form.tags = cached.tags || ''
+    form.tags = Array.isArray(cached.tags) ? cached.tags.map(String) : String(cached.tags || '').split(/[\s,，、]+/).filter(Boolean)
     form.time_limit_ms = Number(cached.time_limit_ms) || 1000
     form.memory_limit_mb = Number(cached.memory_limit_mb) || 256
     form.output_limit_kb = Number(cached.output_limit_kb) || 1024
@@ -354,12 +365,12 @@ function restoreDraft() {
     reviewStatus.value = cached.review_status || ''
     reviewNote.value = cached.review_note || ''
   } catch {
-    localStorage.removeItem(DRAFT_KEY)
+    localStorage.removeItem(draftKey.value)
   }
 }
 
 async function loadReviewState() {
-  if (auth.role === 'admin') return
+  if (auth.role === 'admin' || teamScope.value) return
   try {
     const { data } = await client.get<ProblemReview[]>('/problem-reviews/mine')
     const review = cachedProblemId.value
@@ -367,11 +378,11 @@ async function loadReviewState() {
       : data.find((item) => item.status === 'rejected' || item.status === 'withdrawn' || item.status === 'pending')
     if (!review) return
     if (review.status === 'approved') {
-      localStorage.removeItem(DRAFT_KEY)
+      localStorage.removeItem(draftKey.value)
       form.title = ''
       form.statement = ''
       form.difficulty = '入门'
-      form.tags = ''
+      form.tags = []
       form.time_limit_ms = 1000
       form.memory_limit_mb = 256
       form.output_limit_kb = 1024
@@ -393,7 +404,7 @@ async function loadReviewState() {
       form.title = review.problem.title || ''
       form.statement = normalizeStatement(review.problem.statement || '')
       form.difficulty = review.problem.difficulty || '入门'
-      form.tags = problemTags(review.problem.tags).join('、')
+      form.tags = problemTags(review.problem.tags)
       form.time_limit_ms = review.problem.time_limit_ms || 1000
       form.memory_limit_mb = review.problem.memory_limit_mb || 256
       form.output_limit_kb = review.problem.output_limit_kb || 1024
@@ -428,6 +439,14 @@ function checkerTolerance(value: unknown) {
   return Number.isFinite(parsed) && parsed >= 0 ? parsed : 0.000001
 }
 
+function goBack() {
+  if (teamScope.value) {
+    router.push(`/teams/${teamID.value}/problem-sets/${problemSetID.value}`)
+    return
+  }
+  router.push('/problems')
+}
+
 async function clearDraft() {
   try {
     await ElMessageBox.confirm('确认清除当前浏览器中的出题草稿？服务器中的待审或退回题目不会被删除。', '清除草稿', {
@@ -438,11 +457,11 @@ async function clearDraft() {
   } catch {
     return
   }
-  localStorage.removeItem(DRAFT_KEY)
+  localStorage.removeItem(draftKey.value)
   form.title = ''
   form.statement = ''
   form.difficulty = '入门'
-  form.tags = ''
+  form.tags = []
   form.time_limit_ms = 1000
   form.memory_limit_mb = 256
   form.output_limit_kb = 1024

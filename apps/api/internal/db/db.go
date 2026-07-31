@@ -71,6 +71,9 @@ func AutoMigrate(gdb *gorm.DB) error {
 	if err := backfillProblemDifficulties(gdb); err != nil {
 		return err
 	}
+	if err := enforceProblemDifficultyVocabulary(gdb); err != nil {
+		return err
+	}
 	if err := backfillPreparedProblemPublishedAt(gdb); err != nil {
 		return err
 	}
@@ -137,18 +140,55 @@ func backfillProblemDifficulties(gdb *gorm.DB) error {
 	if !gdb.Migrator().HasTable("problems") {
 		return nil
 	}
-	return gdb.Exec(`
+	if err := gdb.Exec(`
 UPDATE problems
 SET difficulty = CASE
-  WHEN COALESCE(tags->'labels', '[]'::jsonb) ? '入门' THEN '入门'
-  WHEN COALESCE(tags->'labels', '[]'::jsonb) ? '基础' THEN '基础'
-  WHEN COALESCE(tags->'labels', '[]'::jsonb) ? '普及' THEN '普及'
-  WHEN COALESCE(tags->'labels', '[]'::jsonb) ? '提高' THEN '提高'
+  WHEN difficulty IN ('入门', '基础', '普及', '提高', '综合', '挑战') THEN difficulty
+  WHEN lower(trim(COALESCE(difficulty, ''))) IN ('简单', 'easy') THEN '基础'
+  WHEN lower(trim(COALESCE(difficulty, ''))) IN ('中等', 'medium') THEN '普及'
+  WHEN lower(trim(COALESCE(difficulty, ''))) IN ('困难', 'hard') THEN '提高'
+  WHEN lower(trim(COALESCE(difficulty, ''))) = 'challenge' THEN '挑战'
+  WHEN COALESCE(tags->'labels', '[]'::jsonb) ? '挑战' THEN '挑战'
   WHEN COALESCE(tags->'labels', '[]'::jsonb) ? '综合' THEN '综合'
-  ELSE ''
+  WHEN COALESCE(tags->'labels', '[]'::jsonb) ? '提高' THEN '提高'
+  WHEN COALESCE(tags->'labels', '[]'::jsonb) ? '普及' THEN '普及'
+  WHEN COALESCE(tags->'labels', '[]'::jsonb) ? '基础' THEN '基础'
+  WHEN COALESCE(tags->'labels', '[]'::jsonb) ? '入门' THEN '入门'
+  ELSE '入门'
 END
-WHERE COALESCE(problems.difficulty, '') = ''
+`).Error; err != nil {
+		return err
+	}
+	if !gdb.Migrator().HasTable("prepared_problems") {
+		return nil
+	}
+	return gdb.Exec(`
+UPDATE prepared_problems
+SET difficulty = CASE
+  WHEN difficulty IN ('入门', '基础', '普及', '提高', '综合', '挑战') THEN difficulty
+  WHEN lower(trim(COALESCE(difficulty, ''))) IN ('简单', 'easy') THEN '基础'
+  WHEN lower(trim(COALESCE(difficulty, ''))) IN ('中等', 'medium') THEN '普及'
+  WHEN lower(trim(COALESCE(difficulty, ''))) IN ('困难', 'hard') THEN '提高'
+  WHEN lower(trim(COALESCE(difficulty, ''))) IN ('挑战', 'challenge') THEN '挑战'
+  ELSE '入门'
+END
 `).Error
+}
+
+func enforceProblemDifficultyVocabulary(gdb *gorm.DB) error {
+	statements := []string{
+		`ALTER TABLE problems DROP CONSTRAINT IF EXISTS problems_difficulty_check`,
+		`ALTER TABLE problems ADD CONSTRAINT problems_difficulty_check CHECK (difficulty IN ('入门', '基础', '普及', '提高', '综合', '挑战'))`,
+		`ALTER TABLE prepared_problems DROP CONSTRAINT IF EXISTS prepared_problems_difficulty_check`,
+		`ALTER TABLE prepared_problems ADD CONSTRAINT prepared_problems_difficulty_check CHECK (difficulty IN ('入门', '基础', '普及', '提高', '综合', '挑战'))`,
+		`CREATE UNIQUE INDEX IF NOT EXISTS idx_team_join_applications_pending ON team_join_applications(team_id, user_id) WHERE status = 'pending'`,
+	}
+	for _, statement := range statements {
+		if err := gdb.Exec(statement).Error; err != nil {
+			return err
+		}
+	}
+	return nil
 }
 
 func backfillPreparedProblemPublishedAt(gdb *gorm.DB) error {
