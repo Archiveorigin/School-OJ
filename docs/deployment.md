@@ -52,6 +52,23 @@ use the web entrypoint for smoke checks:
 WEB=http://mc.citprobe.cn:25565 ./scripts/smoke.sh
 ```
 
+For an in-place application update, fast-forward the deployment checkout, rebuild
+the application images, recreate services while removing obsolete Compose
+containers, and then verify health:
+
+```bash
+git pull --ff-only
+docker compose build api worker web
+docker compose up -d --remove-orphans
+docker container prune -f
+curl -fsS http://127.0.0.1:25565/healthz
+```
+
+The API startup applies the repository migrations, including the team contest
+workspace tables and submission context columns. Keep the API and worker images
+on the same revision so newly scoped submissions are consumed by a compatible
+worker.
+
 For production, set a strong `JWT_SECRET`, database password, and MinIO
 credentials in `.env`; do not reuse the example values. PostgreSQL and Redis are
 bound to localhost by default in compose (`POSTGRES_BIND`, `REDIS_BIND`) so they
