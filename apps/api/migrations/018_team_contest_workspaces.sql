@@ -12,9 +12,9 @@ ALTER TABLE submissions
   ADD COLUMN IF NOT EXISTS team_contest_id BIGINT REFERENCES team_contests(id) ON DELETE SET NULL;
 
 ALTER TABLE submissions
-  ADD COLUMN IF NOT EXISTS team_problem_set_id BIGINT REFERENCES team_problem_sets(id) ON DELETE SET NULL;
+  ADD COLUMN IF NOT EXISTS problem_set_id BIGINT REFERENCES team_problem_sets(id) ON DELETE SET NULL;
 
 CREATE INDEX IF NOT EXISTS idx_submissions_team_contest_id ON submissions(team_contest_id);
-CREATE INDEX IF NOT EXISTS idx_submissions_team_problem_set_id ON submissions(team_problem_set_id);
+CREATE INDEX IF NOT EXISTS idx_submissions_problem_set_id ON submissions(problem_set_id);
 CREATE INDEX IF NOT EXISTS idx_team_contest_problems_contest_id ON team_contest_problems(contest_id);
 CREATE INDEX IF NOT EXISTS idx_team_contest_problems_problem_id ON team_contest_problems(problem_id);

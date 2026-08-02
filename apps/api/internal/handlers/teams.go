@@ -69,8 +69,8 @@ type teamContestProblemView struct {
 }
 
 type teamSubmissionInput struct {
-	ProblemID uint   `json:"problem_id" binding:"required"`
-	Language  string `json:"language" binding:"required"`
+	ProblemID  uint   `json:"problem_id" binding:"required"`
+	Language   string `json:"language" binding:"required"`
 	SourceCode string `json:"source_code" binding:"required"`
 }
 
@@ -675,18 +675,18 @@ func (s Server) teamContestRanking(c *gin.Context) {
 	var submissions []models.Submission
 	s.DB.Where("team_contest_id = ?", contest.ID).Order("created_at asc").Find(&submissions)
 	type problemCell struct {
-		ProblemID uint      `json:"problem_id"`
-		Status    string    `json:"status"`
-		Attempts  int       `json:"attempts"`
+		ProblemID uint       `json:"problem_id"`
+		Status    string     `json:"status"`
+		Attempts  int        `json:"attempts"`
 		SolvedAt  *time.Time `json:"solved_at,omitempty"`
 	}
 	type rankingRow struct {
-		UserID         uint          `json:"user_id"`
-		Name           string        `json:"name"`
-		Solved         int           `json:"solved"`
-		SubmissionCount int          `json:"submission_count"`
-		LastSubmission *time.Time     `json:"last_submission,omitempty"`
-		Problems       []problemCell `json:"problems"`
+		UserID          uint          `json:"user_id"`
+		Name            string        `json:"name"`
+		Solved          int           `json:"solved"`
+		SubmissionCount int           `json:"submission_count"`
+		LastSubmission  *time.Time    `json:"last_submission,omitempty"`
+		Problems        []problemCell `json:"problems"`
 	}
 	rows := make([]rankingRow, 0, len(users))
 	for _, member := range users {
@@ -788,12 +788,12 @@ func (s Server) getTeamProblemSet(c *gin.Context) {
 		var latest models.Submission
 		status := ""
 		var submittedAt *time.Time
-		if err := s.DB.Where("user_id = ? AND team_problem_set_id = ? AND problem_id = ?", user.ID, set.ID, link.ProblemID).Order("created_at desc").First(&latest).Error; err == nil {
+		if err := s.DB.Where("user_id = ? AND problem_set_id = ? AND problem_id = ?", user.ID, set.ID, link.ProblemID).Order("created_at desc").First(&latest).Error; err == nil {
 			status = string(latest.Status)
 			value := latest.CreatedAt
 			submittedAt = &value
 			var accepted int64
-			s.DB.Model(&models.Submission{}).Where("user_id = ? AND team_problem_set_id = ? AND problem_id = ? AND status = ?", user.ID, set.ID, link.ProblemID, models.StatusAccepted).Count(&accepted)
+			s.DB.Model(&models.Submission{}).Where("user_id = ? AND problem_set_id = ? AND problem_id = ? AND status = ?", user.ID, set.ID, link.ProblemID, models.StatusAccepted).Count(&accepted)
 			if accepted > 0 {
 				status = string(models.StatusAccepted)
 			}
@@ -873,7 +873,7 @@ func (s Server) listTeamProblemSetSubmissions(c *gin.Context) {
 		return
 	}
 	var items []models.Submission
-	s.DB.Where("user_id = ? AND team_problem_set_id = ?", user.ID, set.ID).Order("id desc").Limit(200).Find(&items)
+	s.DB.Where("user_id = ? AND problem_set_id = ?", user.ID, set.ID).Order("id desc").Limit(200).Find(&items)
 	c.JSON(http.StatusOK, s.submissionListViews(items))
 }
 
