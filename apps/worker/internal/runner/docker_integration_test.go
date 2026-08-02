@@ -54,12 +54,12 @@ func TestDockerSandboxMetricsIntegration(t *testing.T) {
 
 	timeLimit := baseLimit
 	timeLimit.TimeLimitMS = 100
-	_, status, _, _ = r.runContainer(
+	_, status, timeMS, memoryKB = r.runContainer(
 		context.Background(), workDir, "python:3.12-slim",
 		`python3 -c "while True: pass"`, "", timeLimit,
 	)
-	if status != models.StatusTimeLimit {
-		t.Fatalf("CPU-bound timeout status=%s, want %s", status, models.StatusTimeLimit)
+	if status != models.StatusTimeLimit || timeMS <= 0 || memoryKB <= 0 {
+		t.Fatalf("CPU-bound timeout status=%s time_ms=%d memory_kb=%d, want %s with metrics", status, timeMS, memoryKB, models.StatusTimeLimit)
 	}
 
 	memoryLimit := baseLimit

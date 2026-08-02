@@ -358,8 +358,10 @@ func (r DockerRunner) runContainer(ctx context.Context, workDir, image, command,
 	err := cmd.Run()
 	elapsed := int(time.Since(start).Milliseconds())
 	stateOOMKilled := inspectContainerOOM(containerName)
+	snapshot := inspectContainerMetrics(containerName)
 	r.cleanupContainer(containerName)
 	cleanErr, metrics := parseExecutionMetrics(errOut.String())
+	metrics = mergeExecutionMetrics(metrics, snapshot)
 	if metrics.TimeMS <= 0 {
 		metrics.TimeMS = metrics.WallTimeMS
 	}
@@ -477,6 +479,46 @@ func inspectContainerOOM(name string) bool {
 	defer cancel()
 	out, err := exec.CommandContext(ctx, "docker", "inspect", "--format", "{{.State.OOMKilled}}", name).Output()
 	return err == nil && strings.TrimSpace(string(out)) == "true"
+}
+
+func inspectContainerMetrics(name string) executionMetrics {
+	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+	defer cancel()
+	command := `oj_cpu_ns=0
+if [ -r /sys/fs/cgroup/cpu.stat ]; then
+  while read -r oj_key oj_value; do
+    case "$oj_key" in usage_usec) oj_cpu_ns=$((${oj_value:-0} * 1000)) ;; esac
+  done < /sys/fs/cgroup/cpu.stat
+elif [ -r /sys/fs/cgroup/cpuacct/cpuacct.usage ]; then
+  oj_cpu_ns=$(cat /sys/fs/cgroup/cpuacct/cpuacct.usage 2>/dev/null || true)
+fi
+oj_peak=0
+if [ -r /sys/fs/cgroup/memory.peak ]; then
+  oj_peak=$(cat /sys/fs/cgroup/memory.peak 2>/dev/null || true)
+elif [ -r /sys/fs/cgroup/memory/memory.max_usage_in_bytes ]; then
+  oj_peak=$(cat /sys/fs/cgroup/memory/memory.max_usage_in_bytes 2>/dev/null || true)
+fi
+printf '__SCHOOL_OJ_CPU_NS__=%s\n__SCHOOL_OJ_MEMORY_BYTES__=%s\n' "$oj_cpu_ns" "$oj_peak"`
+	out, err := exec.CommandContext(ctx, "docker", "exec", name, "sh", "-lc", command).CombinedOutput()
+	if err != nil {
+		return executionMetrics{}
+	}
+	_, metrics := parseExecutionMetrics(string(out))
+	return metrics
+}
+
+func mergeExecutionMetrics(primary executionMetrics, fallback executionMetrics) executionMetrics {
+	if fallback.TimeMS > primary.TimeMS {
+		primary.TimeMS = fallback.TimeMS
+	}
+	if fallback.WallTimeMS > primary.WallTimeMS {
+		primary.WallTimeMS = fallback.WallTimeMS
+	}
+	if fallback.MemoryKB > primary.MemoryKB {
+		primary.MemoryKB = fallback.MemoryKB
+	}
+	primary.OOMKilled = primary.OOMKilled || fallback.OOMKilled
+	return primary
 }
 
 func isExplicitMemoryLimitError(output string) bool {

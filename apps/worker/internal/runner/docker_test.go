@@ -111,6 +111,16 @@ func TestParseExecutionMetrics(t *testing.T) {
 	}
 }
 
+func TestMergeExecutionMetricsKeepsPeaks(t *testing.T) {
+	got := mergeExecutionMetrics(
+		executionMetrics{TimeMS: 10, WallTimeMS: 30, MemoryKB: 1024},
+		executionMetrics{TimeMS: 12, WallTimeMS: 20, MemoryKB: 2048, OOMKilled: true},
+	)
+	if got.TimeMS != 12 || got.WallTimeMS != 30 || got.MemoryKB != 2048 || !got.OOMKilled {
+		t.Fatalf("unexpected merged metrics: %+v", got)
+	}
+}
+
 func TestMemoryLimitClassificationUsesExplicitSignals(t *testing.T) {
 	for _, message := range []string{"MemoryError", "java.lang.OutOfMemoryError: Java heap space", "terminate called after throwing std::bad_alloc"} {
 		if !isExplicitMemoryLimitError(message) {
