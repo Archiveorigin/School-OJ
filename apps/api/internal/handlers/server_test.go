@@ -313,3 +313,28 @@ func TestRenderExamMarkdownReportIncludesSubmissionCode(t *testing.T) {
 		}
 	}
 }
+
+func TestNormalizeTeamProblemLabelsUsesStablePPrefix(t *testing.T) {
+	links := []models.TeamProblemSetProblem{{ID: 11, SortOrder: 1}, {ID: 4, Label: "CUSTOM", SortOrder: 0}}
+	normalizeTeamProblemLabels(links)
+	if links[0].Label != "CUSTOM" {
+		t.Fatalf("explicit label changed to %q", links[0].Label)
+	}
+	if links[1].Label != "P1011" {
+		t.Fatalf("generated problem-set label = %q, want P1011", links[1].Label)
+	}
+}
+
+func TestTeamContestWindow(t *testing.T) {
+	start := time.Date(2026, 8, 2, 10, 0, 0, 0, time.UTC)
+	contest := models.TeamContest{StartsAt: &start, DurationMinutes: 120}
+	if _, status := teamContestWindow(contest, start.Add(-time.Second)); status != "not_started" {
+		t.Fatalf("before start status = %q", status)
+	}
+	if endsAt, status := teamContestWindow(contest, start.Add(time.Hour)); status != "running" || endsAt == nil || !endsAt.Equal(start.Add(2*time.Hour)) {
+		t.Fatalf("running window = %v, %q", endsAt, status)
+	}
+	if _, status := teamContestWindow(contest, start.Add(2*time.Hour)); status != "closed" {
+		t.Fatalf("at end status = %q", status)
+	}
+}

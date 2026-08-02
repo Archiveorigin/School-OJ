@@ -34,18 +34,16 @@
         <el-button v-if="canManage || detail.ranking_visible" :type="tabType('ranking')" @click="goExamTab('ranking')">实时榜单</el-button>
       </div>
 
-      <div v-if="activeTab !== 'ranking'" class="problem-select-row">
-        <span class="muted">题目选择</span>
-        <el-select v-model="activeProblemID" filterable class="problem-select" placeholder="选择题目">
-          <el-option
-            v-for="entry in detail.problems"
-            :key="entry.problem.id"
-            :label="problemOptionLabel(entry)"
-            :value="entry.problem.id"
-          />
-        </el-select>
-        <el-button v-if="canManage && activeProblem" type="primary" plain @click="openProblemEditor">修改题目</el-button>
-        <ProblemTestDownloads v-if="canManage && activeProblem" :problem-id="activeProblem.id" :problem-code="activeProblem.display_code" />
+      <div v-if="activeTab !== 'ranking'" class="problem-select-row panel">
+        <div class="problem-select-copy">
+          <strong>题目选择</strong>
+          <span class="muted">选择题号后可查看题面、提交代码与追踪结果</span>
+        </div>
+        <ProblemSwitcher v-model="activeProblemID" :items="switcherEntries" />
+        <div v-if="canManage && activeProblem" class="problem-manager-actions">
+          <el-button type="primary" plain @click="openProblemEditor">修改题目</el-button>
+          <ProblemTestDownloads :problem-id="activeProblem.id" :problem-code="activeProblem.display_code" />
+        </div>
       </div>
 
       <router-view v-slot="{ Component }">
@@ -77,6 +75,7 @@ import { computed, onBeforeUnmount, onMounted, reactive, ref, watch } from 'vue'
 import { onBeforeRouteLeave, useRoute, useRouter } from 'vue-router'
 import { AuthenticatedEventSource, client, openEventStream, type Problem, type Submission } from '../api/client'
 import ProblemEditDialog from '../components/ProblemEditDialog.vue'
+import ProblemSwitcher from '../components/ProblemSwitcher.vue'
 import ProblemTestDownloads from '../components/ProblemTestDownloads.vue'
 import { formatDateTime, workStatusLabel } from '../features/assignments/assignmentMeta'
 import { useAuthStore } from '../stores/auth'
@@ -157,6 +156,12 @@ const scoreSummary = computed(() => {
   if (detail.value.score_ready) return `${detail.value.total_score} / ${detail.value.max_score}`
   return detail.value.work_status === 'submitted' ? '待评分' : '-'
 })
+const switcherEntries = computed(() => (detail.value?.problems || []).map((entry: DetailProblem) => {
+  const score = scoreForProblem(entry.problem.id)
+  let submissionStatus = ''
+  if (score?.submission_id) submissionStatus = score.score_ready && score.best_score >= score.score ? 'accepted' : 'attempted'
+  return { ...entry, submission_status: submissionStatus }
+}))
 
 async function loadDetail() {
   if (!examID.value) return
@@ -353,10 +358,6 @@ function scoreForProblem(problemID: number) {
   return detail.value?.problem_scores?.find((item: any) => item.problem.id === problemID)
 }
 
-function problemOptionLabel(entry: DetailProblem) {
-  return `${problemLabel(entry)} · ${entry.problem.title} · ${entry.score} 分 · ${problemScoreText(entry.problem.id)}`
-}
-
 function problemLabel(entry: DetailProblem, index?: number) {
   if (entry.label?.trim()) return entry.label.trim()
   const position =
@@ -539,19 +540,22 @@ onMounted(async () => {
 }
 
 .problem-select-row {
-  display: flex;
+  display: grid;
+  grid-template-columns: minmax(180px, .7fr) minmax(320px, 1fr) auto;
   align-items: center;
-  gap: 10px;
+  gap: 20px;
+  padding: 18px 20px;
 }
 
-.problem-select {
-  width: min(520px, 100%);
-}
+.problem-select-copy { display: grid; gap: 5px; }
+.problem-select-copy span { font-size: 12px; line-height: 1.55; }
+.problem-manager-actions { display: flex; align-items: center; justify-content: flex-end; gap: 8px; }
 
 @media (max-width: 760px) {
   .problem-select-row {
     align-items: stretch;
-    flex-direction: column;
+    grid-template-columns: 1fr;
   }
+  .problem-manager-actions { justify-content: flex-start; }
 }
 </style>

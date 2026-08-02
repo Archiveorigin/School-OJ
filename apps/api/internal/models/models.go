@@ -259,6 +259,8 @@ type Submission struct {
 	ProblemID      uint              `json:"problem_id" gorm:"index;not null"`
 	AssignmentID   *uint             `json:"assignment_id" gorm:"index"`
 	ExamID         *uint             `json:"exam_id" gorm:"index"`
+	TeamContestID  *uint             `json:"team_contest_id,omitempty" gorm:"index"`
+	ProblemSetID   *uint             `json:"team_problem_set_id,omitempty" gorm:"index"`
 	Language       string            `json:"language" gorm:"size:32;index;not null"`
 	SourceCode     string            `json:"source_code" gorm:"type:text;not null"`
 	IsPublic       bool              `json:"is_public" gorm:"not null;default:false;index"`
@@ -445,6 +447,16 @@ type TeamContest struct {
 	UpdatedAt       time.Time  `json:"updated_at"`
 }
 
+type TeamContestProblem struct {
+	ID        uint      `json:"id" gorm:"primaryKey"`
+	ContestID uint      `json:"contest_id" gorm:"uniqueIndex:idx_team_contest_problem;index;not null"`
+	ProblemID uint      `json:"problem_id" gorm:"uniqueIndex:idx_team_contest_problem;index;not null"`
+	Label     string    `json:"label" gorm:"size:16"`
+	SortOrder int       `json:"sort_order" gorm:"not null;default:0"`
+	Problem   Problem   `json:"problem,omitempty" gorm:"foreignKey:ProblemID"`
+	CreatedAt time.Time `json:"created_at"`
+}
+
 type TeamProblemSet struct {
 	ID          uint      `json:"id" gorm:"primaryKey"`
 	TeamID      uint      `json:"team_id" gorm:"index;not null"`
@@ -505,6 +517,7 @@ func AllModels() []any {
 		&TeamMembership{},
 		&TeamJoinApplication{},
 		&TeamContest{},
+		&TeamContestProblem{},
 		&TeamProblemSet{},
 		&TeamProblemSetProblem{},
 		&TeamDiscussion{},

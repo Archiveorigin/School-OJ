@@ -404,6 +404,9 @@
         <el-form-item label="标题">
           <el-input v-model="problemForm.title" placeholder="两数之和" />
         </el-form-item>
+        <el-form-item label="标签">
+          <ProblemTagSelector v-model="problemForm.tags" />
+        </el-form-item>
         <el-form-item label="题面">
           <el-input
             v-model="problemForm.statement"
@@ -519,6 +522,7 @@ import { computed, onMounted, reactive, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { client, type PreparedProblem, type Problem } from '../api/client'
 import MarkdownRenderer from '../components/MarkdownRenderer.vue'
+import ProblemTagSelector from '../components/ProblemTagSelector.vue'
 import { problemDisplayCode, tagList } from '../features/problems/problemMeta'
 import { useClassroomStore } from '../stores/classroom'
 
@@ -573,6 +577,7 @@ const problemForm = reactive({
   score: 100,
   title: '',
   statement: '',
+  tags: [] as string[],
   time_limit_ms: 1000,
   memory_limit_mb: 256,
   output_limit_kb: 1024,
@@ -719,6 +724,7 @@ async function createMarkdownProblem() {
     fd.append('draft', JSON.stringify({
       title: problemForm.title,
       statement: problemForm.statement,
+      tags: problemForm.tags,
       time_limit_ms: problemForm.time_limit_ms,
       memory_limit_mb: problemForm.memory_limit_mb,
       output_limit_kb: problemForm.output_limit_kb,
@@ -921,6 +927,7 @@ function resetProblemForm() {
   problemForm.score = 100
   problemForm.title = ''
   problemForm.statement = ''
+  problemForm.tags = []
   problemForm.time_limit_ms = 1000
   problemForm.memory_limit_mb = 256
   problemForm.output_limit_kb = 1024

@@ -33,14 +33,14 @@
               :class="{ active: selectedIndex === index, accepted: link.submission_status === 'accepted' }"
               @click="selectedIndex = index"
             >
-              {{ link.label || String.fromCharCode(65 + index) }}
+              {{ problemSetLabel(link, index) }}
             </button>
           </div>
           <div v-if="selectedLink" class="problem-quick-actions">
             <strong>{{ selectedLink.problem.display_code }} · {{ selectedLink.problem.title }}</strong>
             <div>
               <span>提交</span>
-              <el-button type="primary" size="small" @click="openProblem(selectedLink)">提交本题</el-button>
+              <el-button type="primary" size="small" @click="openSubmit(selectedLink)">提交本题</el-button>
               <span>提交状态</span>
               <StatusBadge v-if="selectedLink.submission_status" :status="selectedLink.submission_status" />
               <el-tag v-else type="info" effect="plain">未提交</el-tag>
@@ -52,7 +52,7 @@
         <ProblemStatementView
           v-if="activeTab === 'problems' && selectedLink"
           :problem="selectedLink.problem"
-          :problem-number="selectedLink.label || String.fromCharCode(65 + selectedIndex)"
+          :problem-number="problemSetLabel(selectedLink, selectedIndex)"
           :status-text="statusText(selectedLink.submission_status)"
           :status-type="statusType(selectedLink.submission_status)"
         />
@@ -60,7 +60,7 @@
         <section v-else-if="activeTab === 'submissions'" class="panel status-panel">
           <el-table :data="links">
             <el-table-column label="题号" width="90">
-              <template #default="{ row, $index }">{{ row.label || String.fromCharCode(65 + $index) }}</template>
+              <template #default="{ row, $index }">{{ problemSetLabel(row, $index) }}</template>
             </el-table-column>
             <el-table-column label="题目" min-width="230">
               <template #default="{ row }"><a href="#" @click.prevent="selectAndOpen(row)">{{ row.problem.display_code }} · {{ row.problem.title }}</a></template>
@@ -78,7 +78,7 @@
           <div class="panel discussion-editor">
             <h3>参与讨论</h3>
             <el-select v-model="discussionProblemID" clearable placeholder="整个题单">
-              <el-option v-for="(link, index) in links" :key="link.id" :label="`${link.label || String.fromCharCode(65 + index)} · ${link.problem.title}`" :value="link.problem_id" />
+              <el-option v-for="(link, index) in links" :key="link.id" :label="`${problemSetLabel(link, index)} · ${link.problem.title}`" :value="link.problem_id" />
             </el-select>
             <el-input v-model="discussionContent" type="textarea" :rows="5" maxlength="5000" show-word-limit placeholder="分享思路、提出疑问或补充题解" />
             <el-button type="primary" :loading="posting" @click="postDiscussion">发布讨论</el-button>
@@ -110,14 +110,36 @@
         <el-button type="primary" :loading="adding" @click="addProblem">添加</el-button>
       </template>
     </el-dialog>
+
+    <el-dialog v-model="submitVisible" :title="`提交 ${selectedLink ? problemSetLabel(selectedLink, selectedIndex) : ''} ${selectedLink?.problem?.title || ''}`" width="min(900px, calc(100vw - 24px))" destroy-on-close>
+      <div class="submit-toolbar">
+        <el-select v-model="language" style="width: 140px">
+          <el-option label="C++17" value="cpp" />
+          <el-option label="C" value="c" />
+          <el-option label="Python" value="python" />
+          <el-option label="Java" value="java" />
+        </el-select>
+        <span>本次代码仅计入当前团队题单</span>
+      </div>
+      <CodeEditor v-model="source" :language="language" />
+      <div v-if="liveStatus" class="live-status">
+        <StatusBadge :status="liveStatus.status" />
+        <span>{{ liveStatus.message || '评测中' }}</span>
+      </div>
+      <template #footer>
+        <el-button @click="submitVisible = false">取消</el-button>
+        <el-button type="primary" :loading="submitting" @click="submitSolution">提交评测</el-button>
+      </template>
+    </el-dialog>
   </section>
 </template>
 
 <script setup lang="ts">
 import { ElMessage, ElMessageBox } from 'element-plus'
-import { computed, ref, watch } from 'vue'
+import { computed, onBeforeUnmount, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
-import { client } from '../../api/client'
+import { client, openEventStream, type AuthenticatedEventSource } from '../../api/client'
+import CodeEditor from '../../components/CodeEditor.vue'
 import MarkdownRenderer from '../../components/MarkdownRenderer.vue'
 import ProblemStatementView from '../../components/ProblemStatementView.vue'
 import StatusBadge from '../../components/StatusBadge.vue'
@@ -138,6 +160,12 @@ const posting = ref(false)
 const addVisible = ref(false)
 const adding = ref(false)
 const problemCode = ref('')
+const submitVisible = ref(false)
+const submitting = ref(false)
+const language = ref('cpp')
+const source = ref('')
+const liveStatus = ref<any>(null)
+const liveStreams = new Set<AuthenticatedEventSource>()
 const teamID = computed(() => Number(route.params.teamId))
 const problemSetID = computed(() => Number(route.params.setId))
 const selectedLink = computed(() => links.value[selectedIndex.value])
@@ -196,8 +224,41 @@ async function removeProblem(link: any) {
   }
 }
 
-function openProblem(link: any) {
-  router.push(`/problems/${encodeURIComponent(link.problem.display_code || String(link.problem.id))}`)
+function openSubmit(link: any) {
+  selectedIndex.value = links.value.findIndex((item) => item.id === link.id)
+  source.value = ''
+  liveStatus.value = null
+  submitVisible.value = true
+}
+
+async function submitSolution() {
+  if (!selectedLink.value || !source.value.trim()) {
+    ElMessage.warning('请输入代码')
+    return
+  }
+  submitting.value = true
+  try {
+    const { data } = await client.post(`/teams/${teamID.value}/problem-sets/${problemSetID.value}/submissions`, {
+      problem_id: selectedLink.value.problem.id,
+      language: language.value,
+      source_code: source.value
+    })
+    const stream = openEventStream(`/submissions/${data.id}/events`)
+    liveStreams.add(stream)
+    stream.addEventListener('status', async (event) => {
+      liveStatus.value = JSON.parse((event as MessageEvent).data)
+      if (!['queued', 'running'].includes(liveStatus.value.status)) {
+        stream.close()
+        liveStreams.delete(stream)
+        await load()
+      }
+    })
+    ElMessage.success('代码已提交评测')
+  } catch (err: any) {
+    ElMessage.error(err.response?.data?.error || err.message)
+  } finally {
+    submitting.value = false
+  }
 }
 
 function selectAndOpen(link: any) {
@@ -251,10 +312,15 @@ function statusType(status?: string): 'success' | 'warning' | 'info' | 'danger' 
 function problemLabel(problemID: number) {
   const index = links.value.findIndex((link) => link.problem_id === problemID)
   if (index < 0) return '题单讨论'
-  return links.value[index].label || String.fromCharCode(65 + index)
+  return problemSetLabel(links.value[index], index)
+}
+
+function problemSetLabel(link: any, index: number) {
+  return link?.label?.trim() || `P${String(1001 + index).padStart(4, '0')}`
 }
 
 watch(() => [route.params.teamId, route.params.setId], load, { immediate: true })
+onBeforeUnmount(() => { for (const stream of liveStreams) stream.close() })
 </script>
 
 <style scoped>
@@ -285,5 +351,8 @@ watch(() => [route.params.teamId, route.params.setId], load, { immediate: true }
 .discussion-author > div { display: grid; gap: 2px; margin-right: auto; }
 .discussion-author span { color: var(--muted); font-size: 12px; }
 .dialog-hint { color: var(--muted); }
+.submit-toolbar, .live-status { display: flex; align-items: center; gap: 10px; margin-bottom: 12px; }
+.submit-toolbar span, .live-status span { color: var(--muted); font-size: 12px; }
+.live-status { margin: 12px 0 0; }
 @media (max-width: 760px) { .problem-set-page { padding: 16px 13px 42px; } .set-heading, .problem-quick-actions { align-items: stretch; flex-direction: column; } .heading-actions { flex-direction: column; } .discussion-layout { grid-template-columns: 1fr; } }
 </style>

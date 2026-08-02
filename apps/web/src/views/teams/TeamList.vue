@@ -1,42 +1,33 @@
 <template>
   <section class="page team-list-page">
-    <header class="team-hero">
-      <div>
-        <span class="eyebrow">COLLABORATIVE TEAMS</span>
-        <h1>团队</h1>
-        <p>跨越课程与班级，自主组织比赛、私有题单与成员协作。</p>
-      </div>
-      <el-button type="primary" size="large" @click="openCreate">创建团队</el-button>
-    </header>
-
-    <div class="team-tabs">
+    <header class="team-tabs">
       <button type="button" :class="{ active: activeTab === 'mine' }" @click="activeTab = 'mine'">我的团队</button>
       <button type="button" :class="{ active: activeTab === 'discover' }" @click="activeTab = 'discover'">发现</button>
-      <el-input v-model="keyword" clearable placeholder="搜索团队名称、链接名或简介" />
-    </div>
+      <el-button type="primary" plain @click="openCreate">创建团队</el-button>
+    </header>
 
     <div v-loading="loading" class="team-grid">
-      <article v-for="team in teams" :key="team.id" class="team-card panel" @click="openTeam(team)">
-        <div class="team-icon">
-          <img v-if="team.icon_url" :src="team.icon_url" alt="" />
-          <span v-else>{{ team.name.slice(0, 1).toUpperCase() }}</span>
-        </div>
-        <div class="team-copy">
-          <div class="team-name-row">
-            <h2>{{ team.name }}</h2>
-            <el-tag v-if="team.my_role" size="small" :type="team.my_role === 'owner' ? 'warning' : team.my_role === 'admin' ? 'success' : 'info'">
-              {{ teamRoleLabel(team.my_role) }}
-            </el-tag>
+      <article v-for="team in teams" :key="team.id" class="team-card" @click="openTeam(team)">
+        <div class="team-card-main">
+          <div class="team-icon">
+            <img v-if="team.icon_url" :src="team.icon_url" alt="" />
+            <span v-else>{{ team.name.slice(0, 1).toUpperCase() }}</span>
           </div>
-          <code>/{{ team.slug }}</code>
-          <p>{{ team.description || '这个团队还没有填写简介。' }}</p>
+          <div class="team-copy">
+            <div class="team-name-row">
+              <h2>{{ team.name }}</h2>
+              <el-tag size="small" :type="team.visibility === 'private' ? 'danger' : 'success'" effect="plain">{{ team.visibility === 'private' ? '私有' : '公开' }}</el-tag>
+            </div>
+            <p>{{ team.description || '这个团队还没有填写简介。' }}</p>
+          </div>
+        </div>
+        <footer class="team-card-footer">
+          <div class="owner-meta"><span>{{ team.owner_name || '团队创建者' }}</span><code>/{{ team.slug }}</code></div>
           <div class="team-meta">
+            <el-tag v-if="team.my_role" size="small" :type="team.my_role === 'owner' ? 'warning' : team.my_role === 'admin' ? 'success' : 'info'">{{ teamRoleLabel(team.my_role) }}</el-tag>
             <span>{{ team.member_count || 0 }} 名成员</span>
-            <span>{{ team.visibility === 'public' ? '公开' : '私有' }}</span>
             <span>{{ joinModeLabel(team.join_mode) }}</span>
           </div>
-        </div>
-        <div class="team-action">
           <el-button v-if="team.joined" type="primary" @click.stop="openTeam(team)">进入</el-button>
           <el-button
             v-else-if="team.application_status === 'pending'"
@@ -46,7 +37,7 @@
             申请审核中
           </el-button>
           <el-button v-else type="primary" plain @click.stop="requestJoin(team)">加入</el-button>
-        </div>
+        </footer>
       </article>
     </div>
     <el-empty v-if="!loading && !teams.length" :description="activeTab === 'mine' ? '还没有加入团队' : '暂未发现公开团队'" />
@@ -119,7 +110,6 @@ const router = useRouter()
 const activeTab = ref<'mine' | 'discover'>('mine')
 const teams = ref<Team[]>([])
 const loading = ref(false)
-const keyword = ref('')
 const createVisible = ref(false)
 const creating = ref(false)
 const joinVisible = ref(false)
@@ -135,12 +125,11 @@ const form = reactive({
   announcement: ''
 })
 const joinForm = reactive({ join_code: '', message: '' })
-let searchTimer: ReturnType<typeof setTimeout> | undefined
 
 async function load() {
   loading.value = true
   try {
-    const { data } = await client.get<Team[]>('/teams', { params: { scope: activeTab.value, keyword: keyword.value.trim() } })
+    const { data } = await client.get<Team[]>('/teams', { params: { scope: activeTab.value } })
     teams.value = data || []
   } catch (err: any) {
     ElMessage.error(err.response?.data?.error || err.message)
@@ -215,33 +204,30 @@ function joinModeLabel(mode: Team['join_mode']) {
 }
 
 watch(activeTab, load)
-watch(keyword, () => {
-  clearTimeout(searchTimer)
-  searchTimer = setTimeout(load, 280)
-})
 onMounted(load)
 </script>
 
 <style scoped>
-.team-list-page { max-width: 1180px; margin: 0 auto; padding: 34px 28px 70px; }
-.team-hero { display: flex; align-items: end; justify-content: space-between; gap: 22px; padding: 40px 44px; color: #fff; border-radius: 24px; background: radial-gradient(circle at 78% 24%, rgba(45,212,191,.28), transparent 26%), linear-gradient(120deg, #12213b, #155e75 65%, #0f766e); }
-.eyebrow { color: #99f6e4; font-size: 12px; font-weight: 800; letter-spacing: .16em; }
-.team-hero h1 { margin: 8px 0 5px; font-size: 40px; }
-.team-hero p { margin: 0; color: #ccfbf1; }
-.team-tabs { display: flex; align-items: center; gap: 6px; margin: 26px 0 16px; border-bottom: 1px solid var(--border); }
+.team-list-page { max-width: 1180px; margin: 0 auto; padding: 14px 28px 70px; }
+.team-tabs { display: flex; align-items: center; gap: 6px; margin: 0 0 40px; border-bottom: 1px solid var(--border); }
 .team-tabs button { padding: 14px 22px; color: var(--muted); border: 0; border-bottom: 3px solid transparent; background: transparent; font-size: 15px; cursor: pointer; }
 .team-tabs button.active { color: var(--accent); border-bottom-color: var(--accent); font-weight: 800; }
-.team-tabs .el-input { width: min(360px, 100%); margin-left: auto; padding-bottom: 8px; }
-.team-grid { display: grid; gap: 12px; min-height: 100px; }
-.team-card { display: grid; grid-template-columns: 58px minmax(0, 1fr) auto; align-items: center; gap: 16px; cursor: pointer; }
-.team-icon { width: 58px; height: 58px; display: grid; place-items: center; overflow: hidden; color: #fff; border-radius: 15px; background: linear-gradient(135deg, #0a5ea6, #14b8a6); font-size: 25px; font-weight: 900; }
+.team-tabs > .el-button { margin: 0 0 7px auto; }
+.team-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 20px; min-height: 100px; }
+.team-card { position: relative; min-width: 0; overflow: hidden; border: 1px solid var(--border); border-top: 4px solid #c5304f; border-radius: 10px; background: var(--surface-strong); box-shadow: var(--shadow); cursor: pointer; transition: transform .18s ease, border-color .18s ease; }
+.team-card:hover { border-color: color-mix(in srgb, var(--accent) 50%, var(--border)); transform: translateY(-2px); }
+.team-card-main { display: grid; grid-template-columns: 88px minmax(0, 1fr); gap: 17px; min-height: 132px; padding: 20px 20px 16px; }
+.team-icon { width: 88px; height: 88px; display: grid; place-items: center; overflow: hidden; color: #fff; border: 1px solid var(--border); border-radius: 9px; background: var(--accent); font-size: 30px; font-weight: 900; }
 .team-icon img { width: 100%; height: 100%; object-fit: cover; }
 .team-name-row { display: flex; align-items: center; flex-wrap: wrap; gap: 10px; }
-.team-name-row h2 { margin: 0; font-size: 18px; }
-.team-copy code { color: var(--accent); font-size: 12px; }
-.team-copy p { margin: 7px 0; color: var(--muted); }
-.team-meta { display: flex; flex-wrap: wrap; gap: 14px; color: var(--muted); font-size: 12px; }
+.team-name-row h2 { margin: 0; font-size: 20px; }
+.team-copy p { display: -webkit-box; margin: 10px 0 0; overflow: hidden; color: var(--muted); line-height: 1.65; -webkit-box-orient: vertical; -webkit-line-clamp: 2; }
+.team-card-footer { display: flex; align-items: center; gap: 12px; padding: 13px 16px; border-top: 1px solid var(--border); background: color-mix(in srgb, var(--surface-strong) 88%, var(--app-bg)); }
+.owner-meta { display: grid; gap: 2px; margin-right: auto; color: var(--accent); font-size: 13px; }
+.owner-meta code { color: var(--muted); font-size: 11px; }
+.team-meta { display: flex; align-items: center; flex-wrap: wrap; justify-content: flex-end; gap: 9px; color: var(--muted); font-size: 12px; }
 .create-team-form { padding-right: 18px; }
 .dialog-hint { margin: 0 0 16px; color: var(--muted); line-height: 1.7; }
-@media (max-width: 680px) { .team-list-page { padding: 18px 14px 48px; } .team-hero { align-items: stretch; flex-direction: column; padding: 28px 24px; } .team-tabs { align-items: stretch; flex-wrap: wrap; } .team-tabs .el-input { width: 100%; margin-left: 0; } .team-card { grid-template-columns: 48px minmax(0, 1fr); } .team-icon { width: 48px; height: 48px; } .team-action { grid-column: 1 / -1; } .team-action .el-button { width: 100%; } .create-team-form { padding-right: 0; } }
+@media (max-width: 860px) { .team-grid { grid-template-columns: 1fr; } }
+@media (max-width: 560px) { .team-list-page { padding: 8px 14px 48px; } .team-tabs { margin-bottom: 24px; } .team-tabs button { padding-inline: 13px; } .team-card-main { grid-template-columns: 64px minmax(0, 1fr); padding: 16px; } .team-icon { width: 64px; height: 64px; } .team-card-footer { align-items: stretch; flex-direction: column; } .team-meta { justify-content: flex-start; } .team-card-footer > .el-button { width: 100%; } .create-team-form { padding-right: 0; } }
 </style>

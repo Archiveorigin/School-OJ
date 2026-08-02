@@ -3,6 +3,7 @@ package handlers
 import (
 	"crypto/rand"
 	"encoding/hex"
+	"fmt"
 	"net/http"
 	"regexp"
 	"sort"
@@ -12,6 +13,7 @@ import (
 	"school-oj/apps/api/internal/middleware"
 	"school-oj/apps/api/internal/models"
 	"school-oj/apps/api/internal/services"
+	"school-oj/apps/api/internal/streams"
 
 	"github.com/gin-gonic/gin"
 	"gorm.io/datatypes"
@@ -51,6 +53,25 @@ type teamProblemLinkView struct {
 	models.TeamProblemSetProblem
 	SubmissionStatus string     `json:"submission_status,omitempty"`
 	SubmittedAt      *time.Time `json:"submitted_at,omitempty"`
+}
+
+type teamContestView struct {
+	models.TeamContest
+	EndsAt       *time.Time `json:"ends_at,omitempty"`
+	Status       string     `json:"status"`
+	ProblemCount int64      `json:"problem_count"`
+}
+
+type teamContestProblemView struct {
+	models.TeamContestProblem
+	SubmissionStatus string     `json:"submission_status,omitempty"`
+	SubmittedAt      *time.Time `json:"submitted_at,omitempty"`
+}
+
+type teamSubmissionInput struct {
+	ProblemID uint   `json:"problem_id" binding:"required"`
+	Language  string `json:"language" binding:"required"`
+	SourceCode string `json:"source_code" binding:"required"`
 }
 
 type teamDiscussionView struct {
@@ -468,7 +489,14 @@ func (s Server) listTeamContests(c *gin.Context) {
 	}
 	var items []models.TeamContest
 	s.DB.Where("team_id = ?", team.ID).Order("starts_at desc nulls last, id desc").Find(&items)
-	c.JSON(http.StatusOK, items)
+	views := make([]teamContestView, 0, len(items))
+	for _, item := range items {
+		var count int64
+		s.DB.Model(&models.TeamContestProblem{}).Where("contest_id = ?", item.ID).Count(&count)
+		endsAt, status := teamContestWindow(item, time.Now())
+		views = append(views, teamContestView{TeamContest: item, EndsAt: endsAt, Status: status, ProblemCount: count})
+	}
+	c.JSON(http.StatusOK, views)
 }
 
 func (s Server) createTeamContest(c *gin.Context) {
@@ -496,6 +524,210 @@ func (s Server) createTeamContest(c *gin.Context) {
 	}
 	services.Audit(c, s.DB, "team.contest.create", "team_contest", item.ID, datatypes.JSONMap{"team_id": team.ID})
 	c.JSON(http.StatusCreated, item)
+}
+
+func (s Server) getTeamContest(c *gin.Context) {
+	user, _ := middleware.CurrentUser(c)
+	contest, team, ok := s.teamContestByParams(c)
+	if !ok || !s.requireTeamMember(c, user, team) {
+		return
+	}
+	endsAt, status := teamContestWindow(contest, time.Now())
+	canOrganize := s.canTeamContentPermission(user, team)
+	if status == "not_started" && !canOrganize {
+		c.JSON(http.StatusForbidden, gin.H{"error": "比赛尚未开始"})
+		return
+	}
+	var links []models.TeamContestProblem
+	s.DB.Preload("Problem").Where("contest_id = ?", contest.ID).Order("sort_order, id").Find(&links)
+	links = filterActiveTeamContestProblemLinks(links)
+	normalizeTeamContestProblemLabels(links)
+	views := make([]teamContestProblemView, 0, len(links))
+	for _, link := range links {
+		var latest models.Submission
+		view := teamContestProblemView{TeamContestProblem: link}
+		if err := s.DB.Where("user_id = ? AND team_contest_id = ? AND problem_id = ?", user.ID, contest.ID, link.ProblemID).Order("created_at desc").First(&latest).Error; err == nil {
+			view.SubmissionStatus = string(latest.Status)
+			value := latest.CreatedAt
+			view.SubmittedAt = &value
+			var accepted int64
+			s.DB.Model(&models.Submission{}).Where("user_id = ? AND team_contest_id = ? AND problem_id = ? AND status = ?", user.ID, contest.ID, link.ProblemID, models.StatusAccepted).Count(&accepted)
+			if accepted > 0 {
+				view.SubmissionStatus = string(models.StatusAccepted)
+			}
+		}
+		views = append(views, view)
+	}
+	c.JSON(http.StatusOK, gin.H{
+		"contest":      teamContestView{TeamContest: contest, EndsAt: endsAt, Status: status, ProblemCount: int64(len(views))},
+		"team":         s.teamViews([]models.Team{team}, user.ID)[0],
+		"problems":     views,
+		"can_organize": canOrganize,
+		"can_submit":   status == "running",
+	})
+}
+
+func (s Server) addTeamContestProblem(c *gin.Context) {
+	user, _ := middleware.CurrentUser(c)
+	contest, team, ok := s.teamContestByParams(c)
+	if !ok || !s.requireTeamContentPermission(c, user, team) {
+		return
+	}
+	var req struct {
+		ProblemID   uint   `json:"problem_id"`
+		ProblemCode string `json:"problem_code"`
+		Label       string `json:"label"`
+	}
+	if !bind(c, &req) {
+		return
+	}
+	problem, found := s.teamScopedProblem(c, user, team, req.ProblemID, req.ProblemCode)
+	if !found {
+		return
+	}
+	var count int64
+	s.DB.Model(&models.TeamContestProblem{}).Where("contest_id = ?", contest.ID).Count(&count)
+	link := models.TeamContestProblem{ContestID: contest.ID, ProblemID: problem.ID, Label: strings.TrimSpace(req.Label), SortOrder: int(count)}
+	if err := s.DB.Create(&link).Error; err != nil {
+		c.JSON(http.StatusConflict, gin.H{"error": "题目已在该比赛中"})
+		return
+	}
+	c.JSON(http.StatusCreated, link)
+}
+
+func (s Server) removeTeamContestProblem(c *gin.Context) {
+	user, _ := middleware.CurrentUser(c)
+	contest, team, ok := s.teamContestByParams(c)
+	if !ok || !s.requireTeamContentPermission(c, user, team) {
+		return
+	}
+	problemID, ok := idParam(c, "problem_id")
+	if !ok {
+		return
+	}
+	result := s.DB.Where("contest_id = ? AND problem_id = ?", contest.ID, problemID).Delete(&models.TeamContestProblem{})
+	if result.Error != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": result.Error.Error()})
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{"removed": result.RowsAffected > 0})
+}
+
+func (s Server) listTeamContestSubmissions(c *gin.Context) {
+	user, _ := middleware.CurrentUser(c)
+	contest, team, ok := s.teamContestByParams(c)
+	if !ok || !s.requireTeamMember(c, user, team) {
+		return
+	}
+	var items []models.Submission
+	s.DB.Where("user_id = ? AND team_contest_id = ?", user.ID, contest.ID).Order("id desc").Limit(200).Find(&items)
+	c.JSON(http.StatusOK, s.submissionListViews(items))
+}
+
+func (s Server) createTeamContestSubmission(c *gin.Context) {
+	user, _ := middleware.CurrentUser(c)
+	contest, team, ok := s.teamContestByParams(c)
+	if !ok || !s.requireTeamMember(c, user, team) {
+		return
+	}
+	_, status := teamContestWindow(contest, time.Now())
+	if status != "running" {
+		message := "比赛已结束"
+		if status == "not_started" {
+			message = "比赛尚未开始"
+		}
+		c.JSON(http.StatusForbidden, gin.H{"error": message})
+		return
+	}
+	var req teamSubmissionInput
+	if !bind(c, &req) {
+		return
+	}
+	var count int64
+	s.DB.Model(&models.TeamContestProblem{}).Where("contest_id = ? AND problem_id = ?", contest.ID, req.ProblemID).Count(&count)
+	if count == 0 {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "题目不属于当前比赛"})
+		return
+	}
+	s.createScopedTeamSubmission(c, user, req, &contest.ID, nil)
+}
+
+func (s Server) teamContestRanking(c *gin.Context) {
+	user, _ := middleware.CurrentUser(c)
+	contest, team, ok := s.teamContestByParams(c)
+	if !ok || !s.requireTeamMember(c, user, team) {
+		return
+	}
+	var links []models.TeamContestProblem
+	s.DB.Preload("Problem").Where("contest_id = ?", contest.ID).Order("sort_order, id").Find(&links)
+	links = filterActiveTeamContestProblemLinks(links)
+	normalizeTeamContestProblemLabels(links)
+	var memberships []models.TeamMembership
+	s.DB.Where("team_id = ?", team.ID).Find(&memberships)
+	userIDs := make([]uint, 0, len(memberships))
+	for _, membership := range memberships {
+		userIDs = append(userIDs, membership.UserID)
+	}
+	var users []models.User
+	if len(userIDs) > 0 {
+		s.DB.Where("id IN ? AND account_deleted = false", userIDs).Find(&users)
+	}
+	var submissions []models.Submission
+	s.DB.Where("team_contest_id = ?", contest.ID).Order("created_at asc").Find(&submissions)
+	type problemCell struct {
+		ProblemID uint      `json:"problem_id"`
+		Status    string    `json:"status"`
+		Attempts  int       `json:"attempts"`
+		SolvedAt  *time.Time `json:"solved_at,omitempty"`
+	}
+	type rankingRow struct {
+		UserID         uint          `json:"user_id"`
+		Name           string        `json:"name"`
+		Solved         int           `json:"solved"`
+		SubmissionCount int          `json:"submission_count"`
+		LastSubmission *time.Time     `json:"last_submission,omitempty"`
+		Problems       []problemCell `json:"problems"`
+	}
+	rows := make([]rankingRow, 0, len(users))
+	for _, member := range users {
+		row := rankingRow{UserID: member.ID, Name: member.Name, Problems: make([]problemCell, 0, len(links))}
+		for _, link := range links {
+			cell := problemCell{ProblemID: link.ProblemID}
+			for _, sub := range submissions {
+				if sub.UserID != member.ID || sub.ProblemID != link.ProblemID {
+					continue
+				}
+				cell.Attempts++
+				row.SubmissionCount++
+				value := sub.CreatedAt
+				row.LastSubmission = &value
+				if cell.Status != string(models.StatusAccepted) {
+					cell.Status = string(sub.Status)
+				}
+				if sub.Status == models.StatusAccepted && cell.SolvedAt == nil {
+					cell.Status = string(models.StatusAccepted)
+					cell.SolvedAt = &value
+					row.Solved++
+				}
+			}
+			row.Problems = append(row.Problems, cell)
+		}
+		rows = append(rows, row)
+	}
+	sort.SliceStable(rows, func(i, j int) bool {
+		if rows[i].Solved != rows[j].Solved {
+			return rows[i].Solved > rows[j].Solved
+		}
+		if rows[i].SubmissionCount != rows[j].SubmissionCount {
+			return rows[i].SubmissionCount < rows[j].SubmissionCount
+		}
+		return strings.ToLower(rows[i].Name) < strings.ToLower(rows[j].Name)
+	})
+	problems := make([]gin.H, 0, len(links))
+	for _, link := range links {
+		problems = append(problems, gin.H{"problem_id": link.ProblemID, "label": link.Label, "title": link.Problem.Title})
+	}
+	c.JSON(http.StatusOK, gin.H{"contest": contest, "problems": problems, "rows": rows})
 }
 
 func (s Server) listTeamProblemSets(c *gin.Context) {
@@ -556,12 +788,12 @@ func (s Server) getTeamProblemSet(c *gin.Context) {
 		var latest models.Submission
 		status := ""
 		var submittedAt *time.Time
-		if err := s.DB.Where("user_id = ? AND problem_id = ?", user.ID, link.ProblemID).Order("created_at desc").First(&latest).Error; err == nil {
+		if err := s.DB.Where("user_id = ? AND team_problem_set_id = ? AND problem_id = ?", user.ID, set.ID, link.ProblemID).Order("created_at desc").First(&latest).Error; err == nil {
 			status = string(latest.Status)
 			value := latest.CreatedAt
 			submittedAt = &value
 			var accepted int64
-			s.DB.Model(&models.Submission{}).Where("user_id = ? AND problem_id = ? AND status = ?", user.ID, link.ProblemID, models.StatusAccepted).Count(&accepted)
+			s.DB.Model(&models.Submission{}).Where("user_id = ? AND team_problem_set_id = ? AND problem_id = ? AND status = ?", user.ID, set.ID, link.ProblemID, models.StatusAccepted).Count(&accepted)
 			if accepted > 0 {
 				status = string(models.StatusAccepted)
 			}
@@ -632,6 +864,36 @@ func (s Server) removeTeamProblemSetProblem(c *gin.Context) {
 		return
 	}
 	c.JSON(http.StatusOK, gin.H{"removed": result.RowsAffected > 0})
+}
+
+func (s Server) listTeamProblemSetSubmissions(c *gin.Context) {
+	user, _ := middleware.CurrentUser(c)
+	set, team, ok := s.teamProblemSetByParams(c)
+	if !ok || !s.requireTeamMember(c, user, team) {
+		return
+	}
+	var items []models.Submission
+	s.DB.Where("user_id = ? AND team_problem_set_id = ?", user.ID, set.ID).Order("id desc").Limit(200).Find(&items)
+	c.JSON(http.StatusOK, s.submissionListViews(items))
+}
+
+func (s Server) createTeamProblemSetSubmission(c *gin.Context) {
+	user, _ := middleware.CurrentUser(c)
+	set, team, ok := s.teamProblemSetByParams(c)
+	if !ok || !s.requireTeamMember(c, user, team) {
+		return
+	}
+	var req teamSubmissionInput
+	if !bind(c, &req) {
+		return
+	}
+	var count int64
+	s.DB.Model(&models.TeamProblemSetProblem{}).Where("problem_set_id = ? AND problem_id = ?", set.ID, req.ProblemID).Count(&count)
+	if count == 0 {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "题目不属于当前题单"})
+		return
+	}
+	s.createScopedTeamSubmission(c, user, req, nil, &set.ID)
 }
 
 func (s Server) listTeamDiscussions(c *gin.Context) {
@@ -733,6 +995,96 @@ func (s Server) teamProblemSetByParams(c *gin.Context) (models.TeamProblemSet, m
 	return set, team, true
 }
 
+func (s Server) teamContestByParams(c *gin.Context) (models.TeamContest, models.Team, bool) {
+	team, ok := s.teamByIDParam(c)
+	if !ok {
+		return models.TeamContest{}, models.Team{}, false
+	}
+	contestID, ok := idParam(c, "contest_id")
+	if !ok {
+		return models.TeamContest{}, models.Team{}, false
+	}
+	var contest models.TeamContest
+	if err := s.DB.Where("id = ? AND team_id = ?", contestID, team.ID).First(&contest).Error; err != nil {
+		c.JSON(http.StatusNotFound, gin.H{"error": "contest not found"})
+		return models.TeamContest{}, models.Team{}, false
+	}
+	return contest, team, true
+}
+
+func (s Server) teamScopedProblem(c *gin.Context, user models.User, team models.Team, problemID uint, problemCode string) (models.Problem, bool) {
+	var problem models.Problem
+	query := s.DB.Where("deleted_at IS NULL")
+	if problemID > 0 {
+		query = query.Where("id = ?", problemID)
+	} else if code := strings.TrimSpace(problemCode); code != "" {
+		query = query.Where("upper(display_code) = ?", strings.ToUpper(code))
+	} else {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "problem_id or problem_code is required"})
+		return models.Problem{}, false
+	}
+	if err := query.First(&problem).Error; err != nil {
+		c.JSON(http.StatusNotFound, gin.H{"error": "problem not found"})
+		return models.Problem{}, false
+	}
+	if problem.TeamID != nil && *problem.TeamID != team.ID {
+		c.JSON(http.StatusForbidden, gin.H{"error": "不能添加其他团队的私有题目"})
+		return models.Problem{}, false
+	}
+	if problem.TeamID == nil && !s.isProblemPublic(problem.ID) && !s.canManageProblemData(user, problem) {
+		c.JSON(http.StatusForbidden, gin.H{"error": "题目尚未公开或无权使用"})
+		return models.Problem{}, false
+	}
+	return problem, true
+}
+
+func (s Server) createScopedTeamSubmission(c *gin.Context, user models.User, req teamSubmissionInput, contestID, problemSetID *uint) {
+	if !validLanguage(req.Language) {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "language must be one of c, cpp, python, java"})
+		return
+	}
+	if len([]byte(req.SourceCode)) > services.MaxSubmissionSourceSize {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "source code is too large"})
+		return
+	}
+	var problem models.Problem
+	if err := s.DB.Where("deleted_at IS NULL").First(&problem, req.ProblemID).Error; err != nil {
+		c.JSON(http.StatusNotFound, gin.H{"error": "problem not found"})
+		return
+	}
+	submission := models.Submission{
+		UserID:        user.ID,
+		ProblemID:     problem.ID,
+		TeamContestID: contestID,
+		ProblemSetID:  problemSetID,
+		Language:      req.Language,
+		SourceCode:    req.SourceCode,
+		IsPublic:      false,
+		Status:        models.StatusQueued,
+	}
+	if err := s.DB.Create(&submission).Error; err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+	streamID, err := streams.EnqueueSubmission(c.Request.Context(), s.Redis, submission.ID)
+	if err != nil {
+		s.DB.Model(&submission).Updates(map[string]any{"status": models.StatusSystemError, "message": err.Error()})
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		return
+	}
+	action := "team.problem_set.submission.create"
+	metadata := datatypes.JSONMap{"stream_id": streamID}
+	if problemSetID != nil {
+		metadata["problem_set_id"] = *problemSetID
+	}
+	if contestID != nil {
+		action = "team.contest.submission.create"
+		metadata = datatypes.JSONMap{"stream_id": streamID, "contest_id": *contestID}
+	}
+	services.Audit(c, s.DB, action, "submission", submission.ID, metadata)
+	c.JSON(http.StatusCreated, submission)
+}
+
 func (s Server) teamMembership(teamID, userID uint) (models.TeamMembership, bool) {
 	var membership models.TeamMembership
 	if err := s.DB.Where("team_id = ? AND user_id = ?", teamID, userID).First(&membership).Error; err != nil {
@@ -784,6 +1136,23 @@ func (s Server) requireTeamContentPermission(c *gin.Context, user models.User, t
 		c.JSON(http.StatusForbidden, gin.H{"error": "当前团队职级不能组织比赛或题单"})
 	}
 	return allowed
+}
+
+func (s Server) canTeamContentPermission(user models.User, team models.Team) bool {
+	if user.Role == models.RoleAdmin {
+		return true
+	}
+	membership, ok := s.teamMembership(team.ID, user.ID)
+	if !ok {
+		return false
+	}
+	if membership.Role == models.TeamRoleOwner {
+		return true
+	}
+	if team.ContestPermission == "all" {
+		return true
+	}
+	return team.ContestPermission == "admin" && membership.Role == models.TeamRoleAdmin
 }
 
 func (s Server) canAccessTeamProblem(user models.User, problem models.Problem) bool {
@@ -879,13 +1248,62 @@ func normalizeTeamProblemLabels(links []models.TeamProblemSetProblem) {
 	})
 	for index := range links {
 		if strings.TrimSpace(links[index].Label) == "" {
-			links[index].Label = string(rune('A' + index))
+			links[index].Label = fmt.Sprintf("P%04d", 1000+int(links[index].ID))
 		}
 	}
 }
 
+func normalizeTeamContestProblemLabels(links []models.TeamContestProblem) {
+	sort.SliceStable(links, func(i, j int) bool {
+		if links[i].SortOrder == links[j].SortOrder {
+			return links[i].ID < links[j].ID
+		}
+		return links[i].SortOrder < links[j].SortOrder
+	})
+	for index := range links {
+		if strings.TrimSpace(links[index].Label) == "" {
+			links[index].Label = teamAlphaLabel(index)
+		}
+	}
+}
+
+func teamAlphaLabel(index int) string {
+	index++
+	label := ""
+	for index > 0 {
+		index--
+		label = string(rune('A'+index%26)) + label
+		index /= 26
+	}
+	return label
+}
+
+func teamContestWindow(contest models.TeamContest, now time.Time) (*time.Time, string) {
+	if contest.StartsAt == nil {
+		return nil, "running"
+	}
+	endsAt := contest.StartsAt.Add(time.Duration(contest.DurationMinutes) * time.Minute)
+	if now.Before(*contest.StartsAt) {
+		return &endsAt, "not_started"
+	}
+	if !now.Before(endsAt) {
+		return &endsAt, "closed"
+	}
+	return &endsAt, "running"
+}
+
 func filterActiveTeamProblemLinks(links []models.TeamProblemSetProblem) []models.TeamProblemSetProblem {
 	active := make([]models.TeamProblemSetProblem, 0, len(links))
+	for _, link := range links {
+		if link.Problem.ID != 0 && link.Problem.DeletedAt == nil {
+			active = append(active, link)
+		}
+	}
+	return active
+}
+
+func filterActiveTeamContestProblemLinks(links []models.TeamContestProblem) []models.TeamContestProblem {
+	active := make([]models.TeamContestProblem, 0, len(links))
 	for _, link := range links {
 		if link.Problem.ID != 0 && link.Problem.DeletedAt == nil {
 			active = append(active, link)

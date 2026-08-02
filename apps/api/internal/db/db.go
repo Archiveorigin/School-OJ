@@ -292,6 +292,16 @@ DELETE FROM prepared_problems
 WHERE NOT EXISTS (
   SELECT 1 FROM problems WHERE problems.id = prepared_problems.problem_id
 )`,
+		"team_problem_set_problems": `
+DELETE FROM team_problem_set_problems
+WHERE NOT EXISTS (
+  SELECT 1 FROM problems WHERE problems.id = team_problem_set_problems.problem_id
+)`,
+		"team_contest_problems": `
+DELETE FROM team_contest_problems
+WHERE NOT EXISTS (
+  SELECT 1 FROM problems WHERE problems.id = team_contest_problems.problem_id
+)`,
 	}
 	for table, sql := range statements {
 		if !gdb.Migrator().HasTable(table) || !gdb.Migrator().HasTable("problems") {

@@ -2607,7 +2607,10 @@ func (s Server) deleteProblem(c *gin.Context) {
 		if err := tx.Model(&models.Problem{}).Where("id = ?", problem.ID).Update("deleted_at", now).Error; err != nil {
 			return err
 		}
-		return tx.Where("problem_id = ?", problem.ID).Delete(&models.TeamProblemSetProblem{}).Error
+		if err := tx.Where("problem_id = ?", problem.ID).Delete(&models.TeamProblemSetProblem{}).Error; err != nil {
+			return err
+		}
+		return tx.Where("problem_id = ?", problem.ID).Delete(&models.TeamContestProblem{}).Error
 	}); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 		return

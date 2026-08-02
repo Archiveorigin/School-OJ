@@ -56,7 +56,7 @@ const currentExamRouteId = computed(() => {
 const studentExamWorkspace = computed(() => auth.role === 'student' && Boolean(currentExamRouteId.value) && route.path.startsWith('/exams/'))
 const adminWorkspace = computed(() => route.path === '/admin' || route.path.startsWith('/admin/'))
 const courseWorkspace = computed(() => /^\/my\/courses\/[^/]+/.test(route.path))
-const teamWorkspace = computed(() => /^\/teams\/[^/]+\/(?:contests|problem-sets|members)$/.test(route.path))
+const teamWorkspace = computed(() => /^\/teams\/[^/]+\/(?:contests(?:\/[^/]+)?|problem-sets|members)$/.test(route.path))
 const activeExamRoot = computed(() => (examLock.examId ? `/exams/${examLock.examId}` : ''))
 const inActiveExam = computed(() => Boolean(activeExamRoot.value) && (route.path === activeExamRoot.value || route.path.startsWith(`${activeExamRoot.value}/`)))
 

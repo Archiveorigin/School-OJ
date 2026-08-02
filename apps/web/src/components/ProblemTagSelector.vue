@@ -83,16 +83,20 @@ const emit = defineEmits<{ (event: 'update:modelValue', value: string[]): void }
 
 const algorithmGroups = [
   { name: '语言入门', tags: ['语言入门', '顺序结构', '分支结构', '循环结构', '数组', '字符串（入门）', '结构体', '函数与递归'] },
-  { name: '数学', tags: ['数学', '枚举', '模拟', '高精度', '数论', '组合数学', '概率与期望', '线性代数', '博弈论', '计算几何'] },
-  { name: '搜索', tags: ['搜索', '深度优先搜索 DFS', '广度优先搜索 BFS', '回溯', '剪枝', '启发式搜索', '双向搜索', '迭代加深'] },
-  { name: '动态规划 DP', tags: ['动态规划 DP', '线性 DP', '背包 DP', '区间 DP', '树形 DP', '状态压缩 DP', '数位 DP', '概率 DP', 'DP 优化'] },
-  { name: '图论', tags: ['图论', '最短路', '最小生成树', '拓扑排序', '强连通分量', '二分图', '网络流', '差分约束', '树上问题'] },
-  { name: '数据结构', tags: ['数据结构', '栈', '队列', '链表', '堆', '并查集', '树状数组', '线段树', '平衡树', '可持久化数据结构'] },
-  { name: '字符串', tags: ['字符串', 'KMP 算法', 'Trie 字典树', 'AC 自动机', '后缀数组 SA', '后缀自动机 SAM', '回文自动机 PAM', 'Manacher 算法', '字符串哈希'] },
-  { name: '常用技巧', tags: ['贪心', '分治', '二分答案', '前缀和', '差分', '双指针', '离散化', '位运算', '随机化'] }
+  { name: '基础算法', tags: ['枚举', '模拟', '排序', '快速排序', '归并排序', '桶排序', '贪心', '分治', '二分查找', '二分答案', '前缀和', '差分', '双指针', '离散化', '位运算', '随机化'] },
+  { name: '数学', tags: ['数学', '高精度', '数论', '质数筛', '最大公约数 GCD', '快速幂', '矩阵快速幂', '扩展欧几里得', '同余与逆元', '中国剩余定理', '组合数学', '容斥原理', '概率与期望', '线性代数', '博弈论'] },
+  { name: '计算几何', tags: ['计算几何', '向量与叉积', '点线关系', '线段相交', '凸包', '旋转卡壳', '扫描线', '半平面交', '最近点对'] },
+  { name: '搜索', tags: ['搜索', '深度优先搜索 DFS', '广度优先搜索 BFS', '回溯', '剪枝', '启发式搜索', 'A* 搜索', '双向搜索', '迭代加深', '记忆化搜索', 'Dancing Links'] },
+  { name: '动态规划 DP', tags: ['动态规划 DP', '线性 DP', '背包 DP', '多重背包', '完全背包', '区间 DP', '树形 DP', '状态压缩 DP', '数位 DP', '概率 DP', '插头 DP', '斜率优化 DP', '单调队列优化 DP', 'DP 优化'] },
+  { name: '图论', tags: ['图论', '图的遍历', '最短路', 'Dijkstra', 'Bellman-Ford', 'Floyd', '最小生成树', '拓扑排序', '强连通分量', '割点与桥', '双连通分量', '二分图', '二分图匹配', '网络流', '最小割', '费用流', '差分约束', '欧拉路径', '树上问题'] },
+  { name: '树上算法', tags: ['树的直径', '最近公共祖先 LCA', '树上倍增', '树链剖分', '点分治', '树上差分', '虚树', 'DSU on Tree'] },
+  { name: '数据结构', tags: ['数据结构', '栈', '单调栈', '队列', '单调队列', '链表', '堆', '并查集', '带权并查集', '树状数组', '线段树', '懒标记线段树', '平衡树', 'Treap', 'ST 表', '分块', '莫队算法', '可持久化数据结构'] },
+  { name: '字符串', tags: ['字符串', 'KMP 算法', 'Z 函数', 'Trie 字典树', 'AC 自动机', '后缀数组 SA', '后缀自动机 SAM', '回文自动机 PAM', 'Manacher 算法', '最小表示法', '字符串哈希'] },
+  { name: '进阶技巧', tags: ['倍增', '整体二分', 'CDQ 分治', '启发式合并', '离线算法', '在线算法', 'Meet in the Middle', '根号分治', '并行二分'] }
 ] as const
 
 const sourceOptions = ['黄海学院 OJ', '校内赛', '课程作业', '训练营', '洛谷', 'Codeforces', 'AtCoder', 'ICPC', 'CCPC', 'NOIP', '蓝桥杯']
+const algorithmOptions = new Set<string>(algorithmGroups.flatMap((group) => [...group.tags]))
 const currentYear = new Date().getFullYear()
 const yearOptions = Array.from({ length: 41 }, (_, index) => currentYear + 1 - index)
 const visible = ref(false)
@@ -119,7 +123,7 @@ const filteredGroups = computed(() => {
 function open() {
   const incoming = [...new Set(props.modelValue.map((tag) => tag.trim()).filter(Boolean))]
   draftYear.value = incoming.find((tag) => /^\d{4}$/.test(tag)) || ''
-  draftSource.value = incoming.find((tag) => sourceOptions.includes(tag)) || ''
+  draftSource.value = incoming.find((tag) => sourceOptions.includes(tag)) || incoming.find((tag) => tag !== draftYear.value && !algorithmOptions.has(tag)) || ''
   draftAlgorithms.value = incoming.filter((tag) => tag !== draftYear.value && tag !== draftSource.value)
   activeTab.value = 'algorithm'
   keyword.value = ''

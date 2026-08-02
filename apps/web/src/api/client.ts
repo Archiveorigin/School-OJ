@@ -90,6 +90,21 @@ export interface TeamProblemSet {
   updated_at?: string
 }
 
+export interface TeamContest {
+  id: number
+  team_id: number
+  title: string
+  description?: string
+  starts_at?: string
+  ends_at?: string
+  duration_minutes: number
+  created_by: number
+  problem_count?: number
+  status?: 'not_started' | 'running' | 'closed'
+  created_at?: string
+  updated_at?: string
+}
+
 export interface PreparedProblem {
   id: number
   problem_id: number
@@ -123,6 +138,8 @@ export interface Submission {
   problem_id: number
   assignment_id?: number
   exam_id?: number
+  team_contest_id?: number
+  team_problem_set_id?: number
   language: string
   source_code?: string
   is_public?: boolean

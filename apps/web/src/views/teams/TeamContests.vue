@@ -5,13 +5,22 @@
       <el-button v-if="canOrganize" type="primary" @click="createVisible = true">创建比赛</el-button>
     </div>
     <div v-loading="loading" class="panel list-panel">
-      <el-table :data="contests">
+      <el-table :data="contests" row-class-name="contest-row" @row-click="openContest">
         <el-table-column prop="title" label="标题" min-width="240" />
         <el-table-column label="开始时间" width="190">
           <template #default="{ row }">{{ row.starts_at ? formatTime(row.starts_at) : '待定' }}</template>
         </el-table-column>
         <el-table-column label="时长" width="130">
           <template #default="{ row }">{{ durationText(row.duration_minutes) }}</template>
+        </el-table-column>
+        <el-table-column label="题目" width="90">
+          <template #default="{ row }">{{ row.problem_count || 0 }} 题</template>
+        </el-table-column>
+        <el-table-column label="状态" width="110">
+          <template #default="{ row }"><el-tag :type="statusType(row.status)">{{ statusLabel(row.status) }}</el-tag></template>
+        </el-table-column>
+        <el-table-column width="90" align="right">
+          <template #default><el-button type="primary" link>进入</el-button></template>
         </el-table-column>
       </el-table>
       <el-empty v-if="!loading && !contests.length" description="暂无团队比赛" />
@@ -38,11 +47,13 @@
 <script setup lang="ts">
 import { ElMessage } from 'element-plus'
 import { computed, onMounted, reactive, ref } from 'vue'
-import { client, type Team } from '../../api/client'
+import { useRouter } from 'vue-router'
+import { client, type Team, type TeamContest } from '../../api/client'
 import { formatDateTime } from '../../features/time'
 
 const props = defineProps<{ team: Team }>()
-const contests = ref<any[]>([])
+const router = useRouter()
+const contests = ref<TeamContest[]>([])
 const loading = ref(false)
 const createVisible = ref(false)
 const creating = ref(false)
@@ -69,18 +80,43 @@ async function createContest() {
     ElMessage.warning('请输入比赛标题')
     return
   }
+  if (!form.starts_at) {
+    ElMessage.warning('请选择比赛开始时间')
+    return
+  }
   creating.value = true
   try {
-    await client.post(`/teams/${props.team.id}/contests`, { ...form, starts_at: form.starts_at || null })
+    const { data } = await client.post<TeamContest>(`/teams/${props.team.id}/contests`, form)
     Object.assign(form, { title: '', description: '', starts_at: '', duration_minutes: 120 })
     createVisible.value = false
     ElMessage.success('团队比赛已创建')
     await load()
+    await router.push(`/teams/${props.team.slug}/contests/${data.id}`)
   } catch (err: any) {
     ElMessage.error(err.response?.data?.error || err.message)
   } finally {
     creating.value = false
   }
+}
+
+function openContest(row: TeamContest) {
+  if (row.status === 'not_started' && !canOrganize.value) {
+    ElMessage.warning('比赛尚未开始')
+    return
+  }
+  router.push(`/teams/${props.team.slug}/contests/${row.id}`)
+}
+
+function statusLabel(status?: TeamContest['status']) {
+  if (status === 'not_started') return '未开始'
+  if (status === 'closed') return '已结束'
+  return '进行中'
+}
+
+function statusType(status?: TeamContest['status']): 'success' | 'warning' | 'info' {
+  if (status === 'not_started') return 'warning'
+  if (status === 'closed') return 'info'
+  return 'success'
 }
 
 function formatTime(value: string) {
@@ -101,6 +137,7 @@ onMounted(load)
 .view-heading h3 { margin: 0 0 5px; font-size: 22px; }
 .view-heading p { margin: 0; color: var(--muted); }
 .list-panel { padding: 18px; }
+.list-panel :deep(.contest-row) { cursor: pointer; }
 .unit { margin-left: 8px; color: var(--muted); }
 @media (max-width: 680px) { .workspace-view { padding: 22px 14px 44px; } .view-heading { align-items: stretch; flex-direction: column; } }
 </style>

@@ -34,6 +34,7 @@ const Profile = () => import('../views/Profile.vue')
 const Register = () => import('../views/Register.vue')
 const Submissions = () => import('../views/Submissions.vue')
 const TeamContests = () => import('../views/teams/TeamContests.vue')
+const TeamContestDetail = () => import('../views/teams/TeamContestDetail.vue')
 const TeamList = () => import('../views/teams/TeamList.vue')
 const TeamMembers = () => import('../views/teams/TeamMembers.vue')
 const TeamProblemSetDetail = () => import('../views/teams/TeamProblemSetDetail.vue')
@@ -71,6 +72,7 @@ const router = createRouter({
       meta: { title: '团队空间', activeMenu: '/teams' },
       children: [
         { path: 'contests', component: TeamContests, meta: { title: '团队比赛' } },
+        { path: 'contests/:contestId', component: TeamContestDetail, meta: { title: '团队比赛详情' } },
         { path: 'problem-sets', component: TeamProblemSets, meta: { title: '团队题单' } },
         { path: 'members', component: TeamMembers, meta: { title: '团队成员' } }
       ]
