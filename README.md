@@ -56,7 +56,7 @@ docker compose restart worker
 - Redis Streams judge-worker
 - 内置标准、令牌、浮点误差三种安全答案比较器，不执行题目方脚本
 - Redis 分布式接口限流、可配置 CORS/可信代理、API `/api/v1` 版本入口
-- Docker 沙箱：禁网、只读根、tmpfs、非 root、`cap_drop=ALL`、`no-new-privileges`、seccomp、pids/cpu/memory/time/output limit
+- Docker 沙箱：禁网、只读根、tmpfs、非 root、`cap_drop=ALL`、`no-new-privileges`、seccomp、pids/cpu/memory/time/output limit；按测试点采集 cgroup CPU 用量、峰值内存和 OOM 事件
 - 运行期只读工作目录、沙箱日志禁用、输出超限即时终止与兜底容器清理
 - 判题队列会恢复超时 pending 消息，并按 `SUBMISSION_MAX_RETRIES` 对沙箱基础设施类错误做有限重试
 

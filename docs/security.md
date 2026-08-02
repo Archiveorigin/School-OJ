@@ -21,6 +21,8 @@ The worker invokes Docker with these controls for every compile and run:
 
 Compilation uses a separate sandbox limit of 30 seconds and at least 1024 MB memory, because compiler resource usage is not the same as the submitted program's runtime limit. Test execution still uses the problem's `time_limit_ms`, `memory_limit_mb`, and `output_limit_kb`.
 
+Runtime accounting reads cgroup CPU usage and peak memory for the complete sandbox process group. A separate wall-clock guard terminates blocked or sleeping submissions. Memory-limit classification uses cgroup OOM counters and Docker's OOM state; generic text such as `Killed` or `memory` is not sufficient to produce a memory-limit verdict.
+
 The included seccomp profile blocks network socket calls, mount/module/keyring/BPF/perf operations, ptrace, reboot, swap, and namespace unshare calls.
 
 Sandbox workspaces are owned by UID/GID `65532` with mode `0700`; source files

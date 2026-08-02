@@ -169,16 +169,16 @@ func TestJudgeCasesStopsAtFirstFailureAndScoresPrefix(t *testing.T) {
 		cases = append(cases, Case{Name: "case", Weight: 1})
 	}
 	calls := 0
-	status, score, _, results := judgeCases(
+	status, score, _, _, results := judgeCases(
 		cases,
 		func(Case) string { return "input\n" },
 		func(Case) string { return "ok\n" },
-		func(string) (string, models.SubmissionStatus, int) {
+		func(string) (string, models.SubmissionStatus, int, int) {
 			calls++
 			if calls == 5 {
-				return "bad\n", models.StatusAccepted, 1
+				return "bad\n", models.StatusAccepted, 1, 1024
 			}
-			return "ok\n", models.StatusAccepted, 1
+			return "ok\n", models.StatusAccepted, 1, 1024
 		},
 	)
 	if status != models.StatusWrongAnswer {
@@ -192,13 +192,13 @@ func TestJudgeCasesStopsAtFirstFailureAndScoresPrefix(t *testing.T) {
 	}
 
 	calls = 0
-	_, score, _, results = judgeCases(
+	_, score, _, _, results = judgeCases(
 		cases,
 		func(Case) string { return "input\n" },
 		func(Case) string { return "ok\n" },
-		func(string) (string, models.SubmissionStatus, int) {
+		func(string) (string, models.SubmissionStatus, int, int) {
 			calls++
-			return "bad\n", models.StatusAccepted, 1
+			return "bad\n", models.StatusAccepted, 1, 2048
 		},
 	)
 	if score != 0 {

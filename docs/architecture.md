@@ -23,6 +23,8 @@ Core flow:
 6. Worker publishes a lightweight Redis notification after status changes. The API fans it out over `/api/submissions/:id/events`; a 30-second reconciliation protects against ephemeral Pub/Sub loss without one-second database polling.
 7. Web receives SSE status events and updates live status.
 
+Judge measurements follow contest-system semantics per test case. `time_ms` is the cgroup CPU usage of the whole sandbox process group, while a separate wall-clock deadline stops sleeping or blocked programs. `memory_kb` is the cgroup peak allocation, including language runtimes such as Python and the JVM. OOM events and Docker state, rather than error-message substrings, distinguish memory exhaustion from ordinary crashes; an observed time-limit event takes precedence over cleanup signals. The database problem limits displayed to contestants are authoritative, with package manifest limits retained only as a legacy fallback.
+
 Team workspace flow:
 
 1. A team manager creates a contest with an explicit title, start time, and end time, then links problems through `team_contest_problems`.

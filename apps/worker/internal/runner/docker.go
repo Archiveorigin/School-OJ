@@ -80,17 +80,17 @@ func (r DockerRunner) Judge(ctx context.Context, req JudgeRequest) JudgeResult {
 	limit := r.applyLimits(limits(req))
 	if spec.Compile != "" {
 		compileLimit := r.applyLimits(compileLimits(req, r.Cfg))
-		out, status, ms := r.runContainer(ctx, workDir, spec.Image, spec.Compile, "", compileLimit)
+		out, status, ms, memoryKB := r.runContainer(ctx, workDir, spec.Image, spec.Compile, "", compileLimit)
 		if status != models.StatusAccepted {
-			return compileFailure(status, out, ms, compileLimit)
+			return compileFailure(status, out, ms, memoryKB, compileLimit)
 		}
 	}
-	finalStatus, totalScore, maxTime, cases := judgeCasesWithChecker(
+	finalStatus, totalScore, maxTime, maxMemory, cases := judgeCasesWithChecker(
 		req.Package.Manifest.Cases,
 		req.Package.Manifest.Checker,
 		req.Package.CaseInput,
 		req.Package.CaseOutput,
-		func(input string) (string, models.SubmissionStatus, int) {
+		func(input string) (string, models.SubmissionStatus, int, int) {
 			return r.runContainer(ctx, workDir, spec.Image, runtimeCommand(spec.Run, limit), input, limit)
 		},
 	)
@@ -98,43 +98,48 @@ func (r DockerRunner) Judge(ctx context.Context, req JudgeRequest) JudgeResult {
 	if finalStatus != models.StatusAccepted {
 		message = "some test cases failed"
 	}
-	return JudgeResult{Status: finalStatus, Score: totalScore, TimeMS: maxTime, Message: message, Trace: trace(limit), Cases: cases}
+	return JudgeResult{Status: finalStatus, Score: totalScore, TimeMS: maxTime, MemoryKB: maxMemory, Message: message, Trace: trace(limit), Cases: cases}
 }
 
-func compileFailure(status models.SubmissionStatus, output string, elapsedMS int, limit sandboxLimits) JudgeResult {
+func compileFailure(status models.SubmissionStatus, output string, elapsedMS int, memoryKB int, limit sandboxLimits) JudgeResult {
 	resultStatus := models.StatusCompileError
 	if status == models.StatusSystemError {
 		resultStatus = models.StatusSystemError
 	}
 	return JudgeResult{
-		Status:  resultStatus,
-		Message: failureMessage("compile", status, output),
-		TimeMS:  elapsedMS,
-		Trace:   trace(limit),
+		Status:   resultStatus,
+		Message:  failureMessage("compile", status, output),
+		TimeMS:   elapsedMS,
+		MemoryKB: memoryKB,
+		Trace:    trace(limit),
 	}
 }
 
-type caseRunner func(input string) (string, models.SubmissionStatus, int)
+type caseRunner func(input string) (string, models.SubmissionStatus, int, int)
 
-func judgeCases(cases []Case, inputFor func(Case) string, outputFor func(Case) string, run caseRunner) (models.SubmissionStatus, int, int, []CaseResult) {
+func judgeCases(cases []Case, inputFor func(Case) string, outputFor func(Case) string, run caseRunner) (models.SubmissionStatus, int, int, int, []CaseResult) {
 	return judgeCasesWithChecker(cases, Checker{Type: "exact"}, inputFor, outputFor, run)
 }
 
-func judgeCasesWithChecker(cases []Case, checker Checker, inputFor func(Case) string, outputFor func(Case) string, run caseRunner) (models.SubmissionStatus, int, int, []CaseResult) {
+func judgeCasesWithChecker(cases []Case, checker Checker, inputFor func(Case) string, outputFor func(Case) string, run caseRunner) (models.SubmissionStatus, int, int, int, []CaseResult) {
 	totalWeight := 0
 	for _, tc := range cases {
 		totalWeight += tc.Weight
 	}
 	passedWeight := 0
 	maxTime := 0
+	maxMemory := 0
 	finalStatus := models.StatusAccepted
 	results := make([]CaseResult, 0, len(cases))
 	for _, tc := range cases {
 		expected := outputFor(tc)
-		actual, status, ms := run(inputFor(tc))
-		caseResult := CaseResult{Name: tc.Name, Status: status, TimeMS: ms}
+		actual, status, ms, memoryKB := run(inputFor(tc))
+		caseResult := CaseResult{Name: tc.Name, Status: status, TimeMS: ms, MemoryKB: memoryKB}
 		if ms > maxTime {
 			maxTime = ms
+		}
+		if memoryKB > maxMemory {
+			maxMemory = memoryKB
 		}
 		if status == models.StatusAccepted {
 			if compareOutput(checker, expected, actual) {
@@ -154,7 +159,7 @@ func judgeCasesWithChecker(cases []Case, checker Checker, inputFor func(Case) st
 			break
 		}
 	}
-	return finalStatus, weightedScore(passedWeight, totalWeight), maxTime, results
+	return finalStatus, weightedScore(passedWeight, totalWeight), maxTime, maxMemory, results
 }
 
 func compareOutput(checker Checker, expected, actual string) bool {
@@ -264,11 +269,20 @@ type sandboxLimits struct {
 
 func limits(req JudgeRequest) sandboxLimits {
 	return sandboxLimits{
-		TimeLimitMS:     max(req.Problem.TimeLimitMS, req.Package.Manifest.TimeLimitMS),
-		MemoryMB:        max(req.Problem.MemoryLimitMB, req.Package.Manifest.MemoryLimitMB),
-		OutputLimitKB:   max(req.Problem.OutputLimitKB, req.Package.Manifest.OutputLimitKB),
+		TimeLimitMS:     configuredLimit(req.Problem.TimeLimitMS, req.Package.Manifest.TimeLimitMS),
+		MemoryMB:        configuredLimit(req.Problem.MemoryLimitMB, req.Package.Manifest.MemoryLimitMB),
+		OutputLimitKB:   configuredLimit(req.Problem.OutputLimitKB, req.Package.Manifest.OutputLimitKB),
 		WorkDirReadOnly: true,
 	}
+}
+
+// The database values are what the problem page shows to contestants, so they
+// are authoritative. The package value is only a fallback for legacy records.
+func configuredLimit(problemValue int, packageValue int) int {
+	if problemValue > 0 {
+		return problemValue
+	}
+	return packageValue
 }
 
 func compileLimits(req JudgeRequest, cfg config.Config) sandboxLimits {
@@ -279,7 +293,21 @@ func compileLimits(req JudgeRequest, cfg config.Config) sandboxLimits {
 	}
 }
 
-func (r DockerRunner) runContainer(ctx context.Context, workDir, image, command, input string, limit sandboxLimits) (string, models.SubmissionStatus, int) {
+const (
+	metricCPUNSPrefix      = "__SCHOOL_OJ_CPU_NS__="
+	metricWallNSPrefix     = "__SCHOOL_OJ_WALL_NS__="
+	metricMemoryBytePrefix = "__SCHOOL_OJ_MEMORY_BYTES__="
+	metricOOMPrefix        = "__SCHOOL_OJ_OOM__="
+)
+
+type executionMetrics struct {
+	TimeMS     int
+	WallTimeMS int
+	MemoryKB   int
+	OOMKilled  bool
+}
+
+func (r DockerRunner) runContainer(ctx context.Context, workDir, image, command, input string, limit sandboxLimits) (string, models.SubmissionStatus, int, int) {
 	timeout := time.Duration(limit.TimeLimitMS+1000) * time.Millisecond
 	timeoutCtx, cancelTimeout := context.WithTimeout(ctx, timeout)
 	defer cancelTimeout()
@@ -291,7 +319,7 @@ func (r DockerRunner) runContainer(ctx context.Context, workDir, image, command,
 		workMode = "ro"
 	}
 	args := []string{
-		"run", "--rm",
+		"run",
 		"--name", containerName,
 		"--log-driver", "none",
 		"--network", "none",
@@ -314,7 +342,7 @@ func (r DockerRunner) runContainer(ctx context.Context, workDir, image, command,
 		"-v", workDir + ":/work:" + workMode,
 		"-w", "/work",
 		image,
-		"sh", "-lc", command,
+		"sh", "-lc", instrumentedCommand(command),
 	}
 	cmd := exec.CommandContext(runCtx, "docker", args...)
 	cmd.Stdin = strings.NewReader(input)
@@ -329,24 +357,142 @@ func (r DockerRunner) runContainer(ctx context.Context, workDir, image, command,
 	start := time.Now()
 	err := cmd.Run()
 	elapsed := int(time.Since(start).Milliseconds())
+	stateOOMKilled := inspectContainerOOM(containerName)
 	r.cleanupContainer(containerName)
-	combined := strings.TrimSpace(out.String() + "\n" + errOut.String())
+	cleanErr, metrics := parseExecutionMetrics(errOut.String())
+	if metrics.TimeMS <= 0 {
+		metrics.TimeMS = metrics.WallTimeMS
+	}
+	if metrics.WallTimeMS <= 0 {
+		metrics.WallTimeMS = elapsed
+	}
+	combined := strings.TrimSpace(out.String() + "\n" + cleanErr)
 	if out.truncated || errOut.truncated {
-		return nonEmpty(combined, "output limit exceeded"), models.StatusOutputLimit, elapsed
+		return nonEmpty(combined, "output limit exceeded"), models.StatusOutputLimit, metrics.TimeMS, metrics.MemoryKB
 	}
-	if timeoutCtx.Err() == context.DeadlineExceeded {
-		return nonEmpty(combined, "time limit exceeded"), models.StatusTimeLimit, elapsed
-	}
-	if err != nil {
+	timeExceeded := timeoutCtx.Err() == context.DeadlineExceeded || metrics.TimeMS > limit.TimeLimitMS
+	status := classifyExecution(combined, err, timeExceeded, ctx.Err() != nil, stateOOMKilled || metrics.OOMKilled)
+	switch status {
+	case models.StatusTimeLimit:
+		if metrics.TimeMS <= 0 {
+			metrics.TimeMS = limit.TimeLimitMS
+		}
+		return nonEmpty(combined, "time limit exceeded"), models.StatusTimeLimit, metrics.TimeMS, metrics.MemoryKB
+	case models.StatusSystemError:
 		if IsInfrastructureError(combined) {
-			return dockerInfraMessage(combined), models.StatusSystemError, elapsed
+			return dockerInfraMessage(combined), models.StatusSystemError, metrics.TimeMS, metrics.MemoryKB
 		}
-		if strings.Contains(combined, "Killed") || strings.Contains(combined, "memory") {
-			return nonEmpty(combined, "memory limit exceeded"), models.StatusMemoryLimit, elapsed
-		}
-		return nonEmpty(combined, err.Error()), models.StatusRuntimeError, elapsed
+		return nonEmpty(combined, "judge cancelled"), models.StatusSystemError, metrics.TimeMS, metrics.MemoryKB
+	case models.StatusMemoryLimit:
+		return nonEmpty(combined, "memory limit exceeded"), models.StatusMemoryLimit, metrics.TimeMS, metrics.MemoryKB
+	case models.StatusRuntimeError:
+		return nonEmpty(combined, err.Error()), models.StatusRuntimeError, metrics.TimeMS, metrics.MemoryKB
 	}
-	return out.String(), models.StatusAccepted, elapsed
+	return out.String(), models.StatusAccepted, metrics.TimeMS, metrics.MemoryKB
+}
+
+func classifyExecution(output string, runErr error, timeExceeded bool, cancelled bool, oomKilled bool) models.SubmissionStatus {
+	if timeExceeded {
+		return models.StatusTimeLimit
+	}
+	if cancelled || IsInfrastructureError(output) {
+		return models.StatusSystemError
+	}
+	if runErr == nil {
+		return models.StatusAccepted
+	}
+	if oomKilled || isExplicitMemoryLimitError(output) {
+		return models.StatusMemoryLimit
+	}
+	return models.StatusRuntimeError
+}
+
+func instrumentedCommand(command string) string {
+	return `oj_started_ns=$(date +%s%N 2>/dev/null || true)
+` + command + `
+oj_exit=$?
+oj_finished_ns=$(date +%s%N 2>/dev/null || true)
+oj_cpu_ns=0
+if [ -r /sys/fs/cgroup/cpu.stat ]; then
+  while read -r oj_key oj_value; do
+    case "$oj_key" in usage_usec) oj_cpu_ns=$((${oj_value:-0} * 1000)) ;; esac
+  done < /sys/fs/cgroup/cpu.stat
+elif [ -r /sys/fs/cgroup/cpuacct/cpuacct.usage ]; then
+  oj_cpu_ns=$(cat /sys/fs/cgroup/cpuacct/cpuacct.usage 2>/dev/null || true)
+fi
+oj_peak=0
+if [ -r /sys/fs/cgroup/memory.peak ]; then
+  oj_peak=$(cat /sys/fs/cgroup/memory.peak 2>/dev/null || true)
+elif [ -r /sys/fs/cgroup/memory/memory.max_usage_in_bytes ]; then
+  oj_peak=$(cat /sys/fs/cgroup/memory/memory.max_usage_in_bytes 2>/dev/null || true)
+fi
+oj_oom=0
+if [ -r /sys/fs/cgroup/memory.events ]; then
+  while read -r oj_key oj_value; do
+    case "$oj_key" in oom|oom_kill) [ "${oj_value:-0}" -gt 0 ] 2>/dev/null && oj_oom=1 ;; esac
+  done < /sys/fs/cgroup/memory.events
+elif [ -r /sys/fs/cgroup/memory/memory.oom_control ]; then
+  while read -r oj_key oj_value; do
+    case "$oj_key" in oom_kill) [ "${oj_value:-0}" -gt 0 ] 2>/dev/null && oj_oom=1 ;; esac
+  done < /sys/fs/cgroup/memory/memory.oom_control
+fi
+oj_elapsed_ns=0
+case "$oj_started_ns:$oj_finished_ns" in
+  *[!0-9:]*|:*) ;;
+  *) oj_elapsed_ns=$((oj_finished_ns - oj_started_ns)) ;;
+esac
+printf '\n__SCHOOL_OJ_CPU_NS__=%s\n__SCHOOL_OJ_WALL_NS__=%s\n__SCHOOL_OJ_MEMORY_BYTES__=%s\n__SCHOOL_OJ_OOM__=%s\n' "$oj_cpu_ns" "$oj_elapsed_ns" "$oj_peak" "$oj_oom" >&2
+exit "$oj_exit"`
+}
+
+func parseExecutionMetrics(stderr string) (string, executionMetrics) {
+	metrics := executionMetrics{}
+	kept := make([]string, 0)
+	for _, line := range strings.Split(stderr, "\n") {
+		trimmed := strings.TrimSpace(line)
+		switch {
+		case strings.HasPrefix(trimmed, metricCPUNSPrefix):
+			if value, err := strconv.ParseInt(strings.TrimPrefix(trimmed, metricCPUNSPrefix), 10, 64); err == nil && value > 0 {
+				metrics.TimeMS = int((value + int64(time.Millisecond) - 1) / int64(time.Millisecond))
+			}
+		case strings.HasPrefix(trimmed, metricWallNSPrefix):
+			if value, err := strconv.ParseInt(strings.TrimPrefix(trimmed, metricWallNSPrefix), 10, 64); err == nil && value > 0 {
+				metrics.WallTimeMS = int((value + int64(time.Millisecond) - 1) / int64(time.Millisecond))
+			}
+		case strings.HasPrefix(trimmed, metricMemoryBytePrefix):
+			if value, err := strconv.ParseInt(strings.TrimPrefix(trimmed, metricMemoryBytePrefix), 10, 64); err == nil && value > 0 {
+				metrics.MemoryKB = int((value + 1023) / 1024)
+			}
+		case strings.HasPrefix(trimmed, metricOOMPrefix):
+			metrics.OOMKilled = strings.TrimPrefix(trimmed, metricOOMPrefix) == "1"
+		default:
+			kept = append(kept, line)
+		}
+	}
+	return strings.TrimSpace(strings.Join(kept, "\n")), metrics
+}
+
+func inspectContainerOOM(name string) bool {
+	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+	defer cancel()
+	out, err := exec.CommandContext(ctx, "docker", "inspect", "--format", "{{.State.OOMKilled}}", name).Output()
+	return err == nil && strings.TrimSpace(string(out)) == "true"
+}
+
+func isExplicitMemoryLimitError(output string) bool {
+	text := strings.ToLower(output)
+	markers := []string{
+		"cannot allocate memory",
+		"java.lang.outofmemoryerror",
+		"memoryerror",
+		"std::bad_alloc",
+	}
+	for _, marker := range markers {
+		if strings.Contains(text, marker) {
+			return true
+		}
+	}
+	return false
 }
 
 func (r DockerRunner) cleanupContainer(name string) {
@@ -496,7 +642,10 @@ func trace(limit sandboxLimits) datatypes.JSONMap {
 			"cpu":                  limit.CPU,
 			"memory_mb":            limit.MemoryMB,
 			"time_limit_ms":        limit.TimeLimitMS,
+			"time_measurement":     "cgroup_cpu_usage",
+			"wall_time_guard_ms":   limit.TimeLimitMS + 1000,
 			"output_limit_kb":      limit.OutputLimitKB,
+			"memory_measurement":   "cgroup_peak",
 			"memory_swap_equals":   true,
 			"work_mount_read_only": limit.WorkDirReadOnly,
 			"ipc":                  "none",
