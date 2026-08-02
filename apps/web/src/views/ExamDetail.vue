@@ -13,6 +13,8 @@
         <el-tag v-if="detail?.all_submitted" type="success">已提交全部题目</el-tag>
         <el-tag v-if="detail">{{ workStatusLabel(detail.work_status) }}</el-tag>
         <strong v-if="detail">{{ scoreSummary }}</strong>
+        <el-button v-if="canManage && activeProblem" type="primary" plain @click="openProblemEditor">修改题目</el-button>
+        <ProblemTestDownloads v-if="canManage && activeProblem" :problem-id="activeProblem.id" :problem-code="activeProblem.display_code" />
         <el-button
           v-if="!canManage"
           type="danger"
@@ -34,18 +36,6 @@
         <el-button v-if="canManage || detail.ranking_visible" :type="tabType('ranking')" @click="goExamTab('ranking')">实时榜单</el-button>
       </div>
 
-      <div v-if="activeTab !== 'ranking'" class="problem-select-row panel">
-        <div class="problem-select-copy">
-          <strong>题目选择</strong>
-          <span class="muted">选择题号后可查看题面、提交代码与追踪结果</span>
-        </div>
-        <ProblemSwitcher v-model="activeProblemID" :items="switcherEntries" />
-        <div v-if="canManage && activeProblem" class="problem-manager-actions">
-          <el-button type="primary" plain @click="openProblemEditor">修改题目</el-button>
-          <ProblemTestDownloads :problem-id="activeProblem.id" :problem-code="activeProblem.display_code" />
-        </div>
-      </div>
-
       <router-view v-slot="{ Component }">
         <component
           :is="Component"
@@ -58,8 +48,11 @@
           :live="live"
           :submitting="submitting"
           :can-manage="canManage"
+          :switcher-entries="switcherEntries"
+          :active-problem-id="activeProblemID"
           @update:language="language = $event"
           @update:source="source = $event"
+          @update:active-problem-id="activeProblemID = $event"
           @submit="submitSolution"
           @refresh-history="loadHistory"
         />
@@ -75,7 +68,6 @@ import { computed, onBeforeUnmount, onMounted, reactive, ref, watch } from 'vue'
 import { onBeforeRouteLeave, useRoute, useRouter } from 'vue-router'
 import { AuthenticatedEventSource, client, openEventStream, type Problem, type Submission } from '../api/client'
 import ProblemEditDialog from '../components/ProblemEditDialog.vue'
-import ProblemSwitcher from '../components/ProblemSwitcher.vue'
 import ProblemTestDownloads from '../components/ProblemTestDownloads.vue'
 import { formatDateTime, workStatusLabel } from '../features/assignments/assignmentMeta'
 import { useAuthStore } from '../stores/auth'
@@ -539,23 +531,7 @@ onMounted(async () => {
   gap: 8px;
 }
 
-.problem-select-row {
-  display: grid;
-  grid-template-columns: minmax(180px, .7fr) minmax(320px, 1fr) auto;
-  align-items: center;
-  gap: 20px;
-  padding: 18px 20px;
-}
-
-.problem-select-copy { display: grid; gap: 5px; }
-.problem-select-copy span { font-size: 12px; line-height: 1.55; }
-.problem-manager-actions { display: flex; align-items: center; justify-content: flex-end; gap: 8px; }
-
 @media (max-width: 760px) {
-  .problem-select-row {
-    align-items: stretch;
-    grid-template-columns: 1fr;
-  }
-  .problem-manager-actions { justify-content: flex-start; }
+  .exam-tabs { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); }
 }
 </style>

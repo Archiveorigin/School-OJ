@@ -36,7 +36,7 @@
         <el-select v-model="filters.folder" clearable filterable placeholder="文件夹">
           <el-option v-for="folder in folderOptions" :key="folder" :label="folder" :value="folder" />
         </el-select>
-        <el-input v-model="filters.tag" clearable placeholder="标签" />
+        <ProblemTagSelector v-model="filters.tags" />
         <el-select v-model="filters.difficulty" clearable placeholder="难度">
           <el-option v-for="item in problemDifficultyOptions" :key="item" :label="item" :value="item" />
         </el-select>
@@ -349,7 +349,7 @@ let caseFileParseSeq = 0
 const filters = reactive({
   q: '',
   folder: '',
-  tag: '',
+  tags: [] as string[],
   difficulty: '',
   archived: 'false'
 })
@@ -396,7 +396,7 @@ async function load() {
   const params: Record<string, string> = { archived: filters.archived }
   if (filters.q) params.q = filters.q
   if (filters.folder) params.folder = filters.folder
-  if (filters.tag) params.tag = filters.tag
+  if (filters.tags.length) params.tag = filters.tags.join(',')
   if (filters.difficulty) params.difficulty = filters.difficulty
   items.value = (await client.get('/prepared-problems', { params })).data
   if ((page.value - 1) * pageSize.value >= items.value.length) page.value = 1

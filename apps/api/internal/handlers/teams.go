@@ -53,6 +53,8 @@ type teamProblemLinkView struct {
 	models.TeamProblemSetProblem
 	SubmissionStatus string     `json:"submission_status,omitempty"`
 	SubmittedAt      *time.Time `json:"submitted_at,omitempty"`
+	SubmissionCount  int64      `json:"submission_count"`
+	AcceptedCount    int64      `json:"accepted_count"`
 }
 
 type teamContestView struct {
@@ -788,6 +790,10 @@ func (s Server) getTeamProblemSet(c *gin.Context) {
 		var latest models.Submission
 		status := ""
 		var submittedAt *time.Time
+		var submissionCount int64
+		var acceptedCount int64
+		s.DB.Model(&models.Submission{}).Where("problem_set_id = ? AND problem_id = ?", set.ID, link.ProblemID).Count(&submissionCount)
+		s.DB.Model(&models.Submission{}).Where("problem_set_id = ? AND problem_id = ? AND status = ?", set.ID, link.ProblemID, models.StatusAccepted).Count(&acceptedCount)
 		if err := s.DB.Where("user_id = ? AND problem_set_id = ? AND problem_id = ?", user.ID, set.ID, link.ProblemID).Order("created_at desc").First(&latest).Error; err == nil {
 			status = string(latest.Status)
 			value := latest.CreatedAt
@@ -798,7 +804,13 @@ func (s Server) getTeamProblemSet(c *gin.Context) {
 				status = string(models.StatusAccepted)
 			}
 		}
-		views = append(views, teamProblemLinkView{TeamProblemSetProblem: link, SubmissionStatus: status, SubmittedAt: submittedAt})
+		views = append(views, teamProblemLinkView{
+			TeamProblemSetProblem: link,
+			SubmissionStatus:      status,
+			SubmittedAt:           submittedAt,
+			SubmissionCount:       submissionCount,
+			AcceptedCount:         acceptedCount,
+		})
 	}
 	c.JSON(http.StatusOK, gin.H{"problem_set": set, "team": s.teamViews([]models.Team{team}, user.ID)[0], "problems": views})
 }
@@ -873,8 +885,12 @@ func (s Server) listTeamProblemSetSubmissions(c *gin.Context) {
 		return
 	}
 	var items []models.Submission
-	s.DB.Where("user_id = ? AND problem_set_id = ?", user.ID, set.ID).Order("id desc").Limit(200).Find(&items)
-	c.JSON(http.StatusOK, s.submissionListViews(items))
+	s.DB.Where("problem_set_id = ?", set.ID).Order("id desc").Limit(500).Find(&items)
+	views := s.submissionListViews(items)
+	for index := range views {
+		views[index].SourceCode = ""
+	}
+	c.JSON(http.StatusOK, views)
 }
 
 func (s Server) createTeamProblemSetSubmission(c *gin.Context) {

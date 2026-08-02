@@ -17,7 +17,7 @@ const problem = {
 function filters(overrides: Partial<ProblemFilters> = {}): ProblemFilters {
   return {
     keyword: '',
-    tag: '',
+    tags: [],
     difficulty: '',
     status: 'all',
     ...overrides
@@ -27,12 +27,17 @@ function filters(overrides: Partial<ProblemFilters> = {}): ProblemFilters {
 describe('problem list filters', () => {
   it('matches display code, tag, difficulty, and status', () => {
     expect(problemMatchesFilters(problem, filters({ keyword: 'T007' }))).toBe(true)
-    expect(problemMatchesFilters(problem, filters({ tag: '数组' }))).toBe(true)
+    expect(problemMatchesFilters(problem, filters({ tags: ['数组'] }))).toBe(true)
     expect(problemMatchesFilters(problem, filters({ difficulty: '基础' }))).toBe(true)
     expect(problemMatchesFilters(problem, filters({ status: 'accepted' }))).toBe(true)
   })
 
   it('rejects a different difficulty', () => {
     expect(problemMatchesFilters(problem, filters({ difficulty: '提高' }))).toBe(false)
+  })
+
+  it('matches any selected tag using OR semantics', () => {
+    expect(problemMatchesFilters(problem, filters({ tags: ['图论', '数组'] }))).toBe(true)
+    expect(problemMatchesFilters(problem, filters({ tags: ['图论', '字符串'] }))).toBe(false)
   })
 })

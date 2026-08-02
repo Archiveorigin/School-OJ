@@ -8,7 +8,14 @@
       :status-type="statusType"
       :status-image="statusImage"
       :show-difficulty="false"
-    />
+    >
+      <template #sidebar-footer>
+        <div class="exam-problem-selector">
+          <div><strong>题目选择</strong><span class="muted">选择题号切换当前题目</span></div>
+          <ProblemSwitcher :model-value="activeProblemId" :items="switcherEntries" @update:model-value="emit('update:active-problem-id', $event)" />
+        </div>
+      </template>
+    </ProblemStatementView>
   </template>
   <div v-else class="panel empty-detail muted">请选择题目</div>
 </template>
@@ -17,6 +24,7 @@
 import { computed } from 'vue'
 import type { Problem } from '../../api/client'
 import ProblemStatementView from '../../components/ProblemStatementView.vue'
+import ProblemSwitcher from '../../components/ProblemSwitcher.vue'
 
 const props = defineProps<{
   detail: any
@@ -28,7 +36,11 @@ const props = defineProps<{
   } | null
   activeProblem: Problem | null
   canManage?: boolean
+  switcherEntries: Array<{ problem: Problem; label?: string; submission_status?: string }>
+  activeProblemId?: number
 }>()
+
+const emit = defineEmits<{ 'update:active-problem-id': [value: number] }>()
 
 const scoreItem = computed(() => {
   return props.detail?.problem_scores?.find((item: any) => item.problem.id === props.activeProblem?.id)
@@ -77,4 +89,8 @@ function defaultProblemLabel(index: number) {
   min-height: 260px;
   place-items: center;
 }
+
+.exam-problem-selector { display: grid; gap: 14px; margin-top: 20px; padding-top: 18px; border-top: 1px solid var(--border); }
+.exam-problem-selector > div { display: grid; gap: 4px; }
+.exam-problem-selector .muted { font-size: 12px; }
 </style>

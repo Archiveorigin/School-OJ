@@ -58,13 +58,14 @@
           <span v-for="line in problemLimitLines(problem)" :key="line">{{ line }}</span>
         </strong>
       </div>
-      <div class="tag-section">
+      <div v-if="showTags" class="tag-section">
         <span class="muted">标签</span>
         <div v-if="tags.length" class="tag-row">
           <el-tag v-for="tag in tags" :key="tag" size="small">{{ tag }}</el-tag>
         </div>
         <span v-else class="muted">暂无标签</span>
       </div>
+      <slot name="sidebar-footer" />
     </aside>
   </div>
 </template>
@@ -85,10 +86,12 @@ const props = withDefaults(
     statusImage?: 'ac' | 'uac' | ''
     showDifficulty?: boolean
     showTitle?: boolean
+    showTags?: boolean
   }>(),
   {
     showDifficulty: true,
-    showTitle: true
+    showTitle: true,
+    showTags: true
   }
 )
 
@@ -106,7 +109,7 @@ const statusImageAlt = computed(() => {
 <style scoped>
 .problem-view-grid {
   display: grid;
-  grid-template-columns: minmax(360px, 1fr) minmax(260px, 320px);
+  grid-template-columns: minmax(360px, 1fr) minmax(362px, 420px);
   gap: 14px;
   align-items: start;
 }

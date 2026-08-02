@@ -26,9 +26,7 @@
 
       <div class="panel problem-filters">
         <el-input v-model="filters.keyword" clearable placeholder="搜索题号、标题或标签" />
-        <el-select v-model="filters.tag" clearable filterable placeholder="标签">
-          <el-option v-for="tag in tagOptions" :key="tag" :label="tag" :value="tag" />
-        </el-select>
+        <ProblemTagSelector v-model="filters.tags" />
         <el-select v-model="filters.difficulty" clearable placeholder="难度">
           <el-option v-for="item in problemDifficultyOptions" :key="item" :label="item" :value="item">
             <div class="difficulty-option"><i :class="difficultyClass(item)"></i><span>{{ item }}</span></div>
@@ -128,6 +126,7 @@ import { computed, onMounted, reactive, ref, watch } from 'vue'
 import { useRouter } from 'vue-router'
 import { client, type PreparedProblem, type Problem } from '../api/client'
 import ListPagination from '../components/ListPagination.vue'
+import ProblemTagSelector from '../components/ProblemTagSelector.vue'
 import {
   difficultyClass,
   difficultyTagType,
@@ -149,7 +148,7 @@ const router = useRouter()
 const canAuthor = computed(() => Boolean(auth.user?.can_author) || auth.role === 'admin')
 const canPublishPrepared = computed(() => auth.role === 'admin' || auth.role === 'teacher')
 const problems = ref<Problem[]>([])
-const filters = reactive<ProblemFilters>({ keyword: '', tag: '', difficulty: '', status: 'all' })
+const filters = reactive<ProblemFilters>({ keyword: '', tags: [], difficulty: '', status: 'all' })
 const uploadVisible = ref(false)
 const preparedPublishVisible = ref(false)
 const preparedItems = ref<PreparedProblem[]>([])
@@ -190,7 +189,7 @@ function openProblem(problem: Problem) {
 
 function resetFilters() {
   filters.keyword = ''
-  filters.tag = ''
+  filters.tags = []
   filters.difficulty = ''
   filters.status = 'all'
 }
@@ -238,7 +237,7 @@ async function publishPrepared() {
 }
 
 watch(
-  () => [filters.keyword, filters.tag, filters.difficulty, filters.status, pageSize.value],
+  () => [filters.keyword, filters.tags.join(','), filters.difficulty, filters.status, pageSize.value],
   () => { page.value = 1 }
 )
 onMounted(load)

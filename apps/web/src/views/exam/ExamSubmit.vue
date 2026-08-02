@@ -4,6 +4,10 @@
       <h3>提交代码</h3>
       <span class="muted">{{ displayNumber }} {{ activeProblem.title }}</span>
     </div>
+    <div class="submit-problem-selector">
+      <span class="muted">题目选择</span>
+      <ProblemSwitcher :model-value="activeProblemId" :items="switcherEntries" @update:model-value="emit('update:active-problem-id', $event)" />
+    </div>
     <div class="toolbar editor-toolbar">
       <el-select :model-value="language" style="width: 130px" @update:model-value="emit('update:language', String($event))">
         <el-option label="C++17" value="cpp" />
@@ -33,6 +37,7 @@
 import { computed, ref } from 'vue'
 import type { Problem } from '../../api/client'
 import CodeEditor from '../../components/CodeEditor.vue'
+import ProblemSwitcher from '../../components/ProblemSwitcher.vue'
 import StatusBadge from '../../components/StatusBadge.vue'
 
 const props = defineProps<{
@@ -43,12 +48,15 @@ const props = defineProps<{
   source: string
   live: any
   submitting: boolean
+  switcherEntries: Array<{ problem: Problem; label?: string; submission_status?: string }>
+  activeProblemId?: number
 }>()
 
 const emit = defineEmits<{
   'update:language': [value: string]
   'update:source': [value: string]
   submit: []
+  'update:active-problem-id': [value: number]
 }>()
 
 const editorRef = ref<InstanceType<typeof CodeEditor> | null>(null)
@@ -85,6 +93,8 @@ function defaultProblemLabel(index: number) {
   justify-content: flex-end;
 }
 
+.submit-problem-selector { display: flex; align-items: center; justify-content: space-between; gap: 20px; padding: 12px 0; border-block: 1px solid var(--border); }
+
 .live {
   display: flex;
   align-items: center;
@@ -96,4 +106,6 @@ function defaultProblemLabel(index: number) {
   min-height: 260px;
   place-items: center;
 }
+
+@media (max-width: 720px) { .submit-problem-selector { align-items: stretch; flex-direction: column; } }
 </style>

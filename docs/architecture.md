@@ -11,7 +11,7 @@ Product domains:
 - The course domain owns classes, assignments, school exams, and their course-scoped ranking and submission views.
 - The team domain owns team membership, contests, contest problem links, problem sets, and team-scoped submissions. Team contests deliberately use `/teams/:slug/contests/:contestId`; school exams remain under `/exams/:examId`, so similarly shaped screens never share route identity or request state.
 - The public problem bank remains the canonical problem content store. Team contests and team problem sets reference those problems, but submission creation is performed through the owning team endpoint and carries `team_contest_id` or `problem_set_id`. This keeps records, status, and rankings inside the correct workspace instead of redirecting through the public problem page.
-- Team problem-set labels are stable presentation identifiers derived from the link record (for example `P1011`). They are intentionally distinct from public problem IDs and do not change the underlying problem package.
+- Team problem sets keep the linked problem ID only as the persistent identity. The web derives `A`, `B`, `C`, … from the link order for list rows, detail navigation, discussions, and submission filters, so public problem codes never leak into the team worksheet presentation.
 
 Core flow:
 
@@ -27,13 +27,15 @@ Team workspace flow:
 
 1. A team manager creates a contest with an explicit title, start time, and end time, then links problems through `team_contest_problems`.
 2. The contest detail endpoint returns the contest window, linked problems, scoped status, and permission flags. The web route renders problems, submission records, and a live ranking without entering the school-exam router.
-3. A team member submits from the contest or problem-set code dialog. The API validates membership and the owning workspace before creating the submission and enqueueing the normal judge job.
+3. A team member opens a problem from the worksheet list, switches between lettered problems inside the detail component, and submits from the scoped code dialog. The API validates membership and the owning workspace before creating the submission and enqueueing the normal judge job.
 4. The worker uses the same sandbox pipeline for all submissions. The API and web use the context columns to expose the result only in the correct contest or problem set.
+5. Team members can inspect the worksheet submission stream using username text search plus problem, verdict, and language selectors. Source code is not returned by this list endpoint; only its computed length is exposed.
 
 Shared web components:
 
-- `ProblemSwitcher.vue` provides the compact lettered problem grid used by school exam and team contest detail pages. It owns only selection presentation; each parent retains its own route, API calls, timing rules, and submission action.
+- `ProblemSwitcher.vue` provides the compact lettered problem grid used by school exams, team contests, and team problem sets. It owns only selection presentation; each parent retains its own route, API calls, timing rules, and submission action. School exams mount the navigator in the problem metadata sidebar instead of a separate full-width toolbar.
 - `ProblemTagSelector.vue` is the single authoring control for problem creation, problem editing, prepared-problem editing, and exam-side Markdown problem creation. It presents algorithm, time, and source tags in a popup and stores the selected values in the existing problem tag payload.
+- Public and prepared problem lists reuse `ProblemTagSelector.vue` as a multi-select filter. A problem matches when any selected tag is present (OR semantics); an empty selection leaves the result set unrestricted.
 - `TeamList.vue` keeps the team entry page at navigation level: “我的团队”, “发现”, and the create action. Team summaries render as responsive two-column cards while the nested `TeamWorkspace` owns contest, problem-set, member, and settings navigation.
 
 API compatibility:

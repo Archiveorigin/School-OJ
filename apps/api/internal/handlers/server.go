@@ -193,6 +193,7 @@ type submissionListView struct {
 	AssignmentTitle string `json:"assignment_title,omitempty"`
 	ExamTitle       string `json:"exam_title,omitempty"`
 	ErrorPoint      string `json:"error_point,omitempty"`
+	CodeLength      int    `json:"code_length"`
 }
 
 type plagiarismJobView struct {
@@ -2639,8 +2640,20 @@ func (s Server) listPreparedProblems(c *gin.Context) {
 	if difficulty := strings.TrimSpace(c.Query("difficulty")); difficulty != "" {
 		q = q.Where("prepared_problems.difficulty = ?", difficulty)
 	}
-	if tag := strings.TrimSpace(c.Query("tag")); tag != "" {
-		q = q.Where("lower(cast(problems.tags as text)) LIKE ?", "%"+strings.ToLower(tag)+"%")
+	if rawTags := strings.TrimSpace(c.Query("tag")); rawTags != "" {
+		conditions := []string{}
+		arguments := []any{}
+		for _, tag := range strings.Split(rawTags, ",") {
+			tag = strings.TrimSpace(tag)
+			if tag == "" {
+				continue
+			}
+			conditions = append(conditions, "lower(cast(problems.tags as text)) LIKE ?")
+			arguments = append(arguments, "%"+strings.ToLower(tag)+"%")
+		}
+		if len(conditions) > 0 {
+			q = q.Where("("+strings.Join(conditions, " OR ")+")", arguments...)
+		}
 	}
 	switch strings.TrimSpace(c.Query("archived")) {
 	case "true", "1":
@@ -4282,7 +4295,7 @@ func (s Server) submissionListViews(items []models.Submission) []submissionListV
 		firstFailure[result.SubmissionID] = verdictCode(result.Status) + strconv.Itoa(caseIndex[result.SubmissionID])
 	}
 	for _, item := range items {
-		view := submissionListView{Submission: item, ErrorPoint: firstFailure[item.ID]}
+		view := submissionListView{Submission: item, ErrorPoint: firstFailure[item.ID], CodeLength: len([]rune(item.SourceCode))}
 		if view.ErrorPoint == "" && item.Status != models.StatusAccepted && item.Status != models.StatusQueued && item.Status != models.StatusRunning && item.Status != models.StatusPendingReview {
 			view.ErrorPoint = verdictCode(item.Status)
 		}

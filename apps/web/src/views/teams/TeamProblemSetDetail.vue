@@ -18,67 +18,104 @@
       </header>
 
       <nav class="set-tabs">
-        <button type="button" :class="{ active: activeTab === 'problems' }" @click="activeTab = 'problems'">题目</button>
-        <button type="button" :class="{ active: activeTab === 'submissions' }" @click="activeTab = 'submissions'">提交状态</button>
+        <button type="button" :class="{ active: activeTab === 'problems' }" @click="openProblemList">题目列表</button>
+        <button type="button" :class="{ active: activeTab === 'submissions' }" @click="openSubmissions">提交状态</button>
         <button type="button" :class="{ active: activeTab === 'discussions' }" @click="openDiscussions">讨论</button>
       </nav>
 
       <template v-if="links.length">
-        <section class="problem-switcher panel">
-          <div class="number-row">
-            <button
-              v-for="(link, index) in links"
-              :key="link.id"
-              type="button"
-              :class="{ active: selectedIndex === index, accepted: link.submission_status === 'accepted' }"
-              @click="selectedIndex = index"
-            >
-              {{ problemSetLabel(link, index) }}
-            </button>
-          </div>
-          <div v-if="selectedLink" class="problem-quick-actions">
-            <strong>{{ selectedLink.problem.display_code }} · {{ selectedLink.problem.title }}</strong>
-            <div>
-              <span>提交</span>
-              <el-button type="primary" size="small" @click="openSubmit(selectedLink)">提交本题</el-button>
-              <span>提交状态</span>
-              <StatusBadge v-if="selectedLink.submission_status" :status="selectedLink.submission_status" />
-              <el-tag v-else type="info" effect="plain">未提交</el-tag>
-              <el-button v-if="canOrganize" type="danger" text size="small" @click="removeProblem(selectedLink)">移出题单</el-button>
-            </div>
-          </div>
-        </section>
-
-        <ProblemStatementView
-          v-if="activeTab === 'problems' && selectedLink"
-          :problem="selectedLink.problem"
-          :problem-number="problemSetLabel(selectedLink, selectedIndex)"
-          :status-text="statusText(selectedLink.submission_status)"
-          :status-type="statusType(selectedLink.submission_status)"
-        />
-
-        <section v-else-if="activeTab === 'submissions'" class="panel status-panel">
-          <el-table :data="links">
-            <el-table-column label="题号" width="90">
-              <template #default="{ row, $index }">{{ problemSetLabel(row, $index) }}</template>
+        <section v-if="activeTab === 'problems' && problemView === 'list'" class="panel problem-list-panel">
+          <el-table :data="links" row-class-name="problem-row" @row-click="showProblem">
+            <el-table-column label="状态" width="130" align="center">
+              <template #default="{ row }">
+                <el-tag v-if="row.submission_status === 'accepted'" type="success" effect="plain">已解决</el-tag>
+                <el-tag v-else-if="row.submission_status" type="warning" effect="plain">已尝试</el-tag>
+                <span v-else class="muted">-</span>
+              </template>
             </el-table-column>
-            <el-table-column label="题目" min-width="230">
-              <template #default="{ row }"><a href="#" @click.prevent="selectAndOpen(row)">{{ row.problem.display_code }} · {{ row.problem.title }}</a></template>
+            <el-table-column label="提交统计" width="150" align="center">
+              <template #default="{ row }"><span class="submission-stat">{{ row.accepted_count || 0 }} / {{ row.submission_count || 0 }}</span></template>
             </el-table-column>
-            <el-table-column label="状态" width="130">
-              <template #default="{ row }"><StatusBadge v-if="row.submission_status" :status="row.submission_status" /><el-tag v-else type="info">未提交</el-tag></template>
+            <el-table-column label="#" width="76" align="center">
+              <template #default="{ $index }"><strong>{{ problemSetLabel($index) }}</strong></template>
             </el-table-column>
-            <el-table-column label="最近提交" width="190">
-              <template #default="{ row }">{{ row.submitted_at ? formatDateTime(row.submitted_at) : '-' }}</template>
+            <el-table-column label="标题" min-width="260">
+              <template #default="{ row }"><button type="button" class="problem-title-button" @click.stop="showProblem(row)">{{ row.problem.title }}</button></template>
+            </el-table-column>
+            <el-table-column v-if="canOrganize" label="操作" width="110" align="right">
+              <template #default="{ row }"><el-button type="danger" text size="small" @click.stop="removeProblem(row)">移出题单</el-button></template>
             </el-table-column>
           </el-table>
+        </section>
+
+        <template v-else-if="activeTab === 'problems' && selectedLink">
+          <div class="problem-detail-toolbar">
+            <el-button text @click="openProblemList">← 返回题目列表</el-button>
+            <strong>{{ problemSetLabel(selectedIndex) }} · {{ selectedLink.problem.title }}</strong>
+          </div>
+          <ProblemStatementView
+            :problem="selectedLink.problem"
+            :problem-number="problemSetLabel(selectedIndex)"
+            :status-text="statusText(selectedLink.submission_status)"
+            :status-type="statusType(selectedLink.submission_status)"
+            :show-tags="false"
+          >
+            <template #sidebar-footer>
+              <div class="problem-number-selector">
+                <span class="muted">题目选择</span>
+                <ProblemSwitcher v-model="selectedProblemID" :items="switcherItems" />
+                <el-button type="primary" class="submit-current" @click="openSubmit(selectedLink)">提交代码</el-button>
+              </div>
+            </template>
+          </ProblemStatementView>
+        </template>
+
+        <section v-else-if="activeTab === 'submissions'" class="panel status-panel">
+          <div class="submission-toolbar">
+            <strong>提交状态</strong>
+            <span class="muted">共 {{ filteredSubmissions.length }} 条记录</span>
+            <el-button @click="resetSubmissionFilters">重置</el-button>
+            <el-button :loading="loadingSubmissions" @click="loadSubmissions">刷新</el-button>
+          </div>
+          <el-table :data="pagedSubmissions" v-loading="loadingSubmissions" size="small">
+            <el-table-column prop="id" label="ID" width="104" />
+            <el-table-column min-width="170" align="center">
+              <template #header>
+                <div class="filter-heading"><span>用户名</span><el-input v-model="submissionFilters.username" clearable size="small" placeholder="查询用户名" /></div>
+              </template>
+              <template #default="{ row }"><span class="user-name">{{ row.user_name || `用户 ${row.user_id}` }}</span></template>
+            </el-table-column>
+            <el-table-column width="128" align="center">
+              <template #header>
+                <div class="filter-heading"><span>题号</span><el-select v-model="submissionFilters.problemID" clearable size="small" placeholder="全部"><el-option v-for="(link, index) in links" :key="link.problem_id" :label="problemSetLabel(index)" :value="link.problem_id" /></el-select></div>
+              </template>
+              <template #default="{ row }"><button type="button" class="problem-code-button" @click="openSubmissionProblem(row.problem_id)">{{ problemLabel(row.problem_id) }}</button></template>
+            </el-table-column>
+            <el-table-column min-width="178" align="center">
+              <template #header>
+                <div class="filter-heading"><span>评测结果</span><el-select v-model="submissionFilters.status" clearable size="small" placeholder="全部"><el-option v-for="status in submissionStatusOptions" :key="status" :label="submissionStatusLabel(status)" :value="status" /></el-select></div>
+              </template>
+              <template #default="{ row }"><StatusBadge :status="row.status" /></template>
+            </el-table-column>
+            <el-table-column label="耗时 (ms)" width="112" align="center"><template #default="{ row }">{{ row.time_ms || '-' }}</template></el-table-column>
+            <el-table-column label="内存 (MB)" width="112" align="center"><template #default="{ row }">{{ formatMemory(row.memory_kb) }}</template></el-table-column>
+            <el-table-column prop="code_length" label="代码长度" width="112" align="center" />
+            <el-table-column width="142" align="center">
+              <template #header>
+                <div class="filter-heading"><span>语言</span><el-select v-model="submissionFilters.language" clearable size="small" placeholder="全部"><el-option v-for="item in submissionLanguageOptions" :key="item" :label="languageLabel(item)" :value="item" /></el-select></div>
+              </template>
+              <template #default="{ row }">{{ languageLabel(row.language) }}</template>
+            </el-table-column>
+            <el-table-column label="提交时间" min-width="176"><template #default="{ row }">{{ formatDateTime(row.created_at) }}</template></el-table-column>
+          </el-table>
+          <ListPagination v-model:page="submissionPage" v-model:page-size="submissionPageSize" :total="filteredSubmissions.length" />
         </section>
 
         <section v-else-if="activeTab === 'discussions'" class="discussion-layout">
           <div class="panel discussion-editor">
             <h3>参与讨论</h3>
             <el-select v-model="discussionProblemID" clearable placeholder="整个题单">
-              <el-option v-for="(link, index) in links" :key="link.id" :label="`${problemSetLabel(link, index)} · ${link.problem.title}`" :value="link.problem_id" />
+                <el-option v-for="(link, index) in links" :key="link.id" :label="`${problemSetLabel(index)} · ${link.problem.title}`" :value="link.problem_id" />
             </el-select>
             <el-input v-model="discussionContent" type="textarea" :rows="5" maxlength="5000" show-word-limit placeholder="分享思路、提出疑问或补充题解" />
             <el-button type="primary" :loading="posting" @click="postDiscussion">发布讨论</el-button>
@@ -111,7 +148,7 @@
       </template>
     </el-dialog>
 
-    <el-dialog v-model="submitVisible" :title="`提交 ${selectedLink ? problemSetLabel(selectedLink, selectedIndex) : ''} ${selectedLink?.problem?.title || ''}`" width="min(900px, calc(100vw - 24px))" destroy-on-close>
+    <el-dialog v-model="submitVisible" :title="`提交 ${selectedLink ? problemSetLabel(selectedIndex) : ''} ${selectedLink?.problem?.title || ''}`" width="min(900px, calc(100vw - 24px))" destroy-on-close>
       <div class="submit-toolbar">
         <el-select v-model="language" style="width: 140px">
           <el-option label="C++17" value="cpp" />
@@ -136,12 +173,14 @@
 
 <script setup lang="ts">
 import { ElMessage, ElMessageBox } from 'element-plus'
-import { computed, onBeforeUnmount, ref, watch } from 'vue'
+import { computed, onBeforeUnmount, reactive, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
-import { client, openEventStream, type AuthenticatedEventSource } from '../../api/client'
+import { client, openEventStream, type AuthenticatedEventSource, type Submission } from '../../api/client'
 import CodeEditor from '../../components/CodeEditor.vue'
+import ListPagination from '../../components/ListPagination.vue'
 import MarkdownRenderer from '../../components/MarkdownRenderer.vue'
 import ProblemStatementView from '../../components/ProblemStatementView.vue'
+import ProblemSwitcher from '../../components/ProblemSwitcher.vue'
 import StatusBadge from '../../components/StatusBadge.vue'
 import { formatDateTime } from '../../features/time'
 import { useAuthStore } from '../../stores/auth'
@@ -153,6 +192,12 @@ const detail = ref<any>(null)
 const links = ref<any[]>([])
 const selectedIndex = ref(0)
 const activeTab = ref<'problems' | 'submissions' | 'discussions'>('problems')
+const problemView = ref<'list' | 'detail'>('list')
+const submissions = ref<Submission[]>([])
+const loadingSubmissions = ref(false)
+const submissionPage = ref(1)
+const submissionPageSize = ref(20)
+const submissionFilters = reactive({ username: '', problemID: undefined as number | undefined, status: '', language: '' })
 const discussions = ref<any[]>([])
 const discussionProblemID = ref<number>()
 const discussionContent = ref('')
@@ -169,6 +214,28 @@ const liveStreams = new Set<AuthenticatedEventSource>()
 const teamID = computed(() => Number(route.params.teamId))
 const problemSetID = computed(() => Number(route.params.setId))
 const selectedLink = computed(() => links.value[selectedIndex.value])
+const selectedProblemID = computed({
+  get: () => selectedLink.value?.problem_id,
+  set: (value: number | undefined) => {
+    const index = links.value.findIndex((item) => item.problem_id === value)
+    if (index >= 0) selectedIndex.value = index
+  }
+})
+const switcherItems = computed(() => links.value.map((link, index) => ({ ...link, label: problemSetLabel(index) })))
+const submissionStatusOptions = computed(() => [...new Set(submissions.value.map((item) => item.status).filter(Boolean))])
+const submissionLanguageOptions = computed(() => [...new Set(submissions.value.map((item) => item.language).filter(Boolean))])
+const filteredSubmissions = computed(() => submissions.value.filter((item) => {
+  const username = submissionFilters.username.trim().toLowerCase()
+  if (username && !String(item.user_name || '').toLowerCase().includes(username)) return false
+  if (submissionFilters.problemID && item.problem_id !== submissionFilters.problemID) return false
+  if (submissionFilters.status && item.status !== submissionFilters.status) return false
+  if (submissionFilters.language && item.language !== submissionFilters.language) return false
+  return true
+}))
+const pagedSubmissions = computed(() => {
+  const start = (submissionPage.value - 1) * submissionPageSize.value
+  return filteredSubmissions.value.slice(start, start + submissionPageSize.value)
+})
 const canAuthor = computed(() => auth.role === 'admin' || Boolean(auth.user?.can_author))
 const canOrganize = computed(() => {
   const team = detail.value?.team
@@ -188,6 +255,39 @@ async function load() {
     ElMessage.error(err.response?.data?.error || err.message)
     await router.replace('/teams')
   }
+}
+
+function openProblemList() {
+  activeTab.value = 'problems'
+  problemView.value = 'list'
+}
+
+function showProblem(link: any) {
+  const index = links.value.findIndex((item) => item.id === link.id)
+  if (index >= 0) selectedIndex.value = index
+  activeTab.value = 'problems'
+  problemView.value = 'detail'
+}
+
+async function openSubmissions() {
+  activeTab.value = 'submissions'
+  await loadSubmissions()
+}
+
+async function loadSubmissions() {
+  loadingSubmissions.value = true
+  try {
+    submissions.value = (await client.get(`/teams/${teamID.value}/problem-sets/${problemSetID.value}/submissions`)).data || []
+  } catch (err: any) {
+    ElMessage.error(err.response?.data?.error || err.message)
+  } finally {
+    loadingSubmissions.value = false
+  }
+}
+
+function resetSubmissionFilters() {
+  Object.assign(submissionFilters, { username: '', problemID: undefined, status: '', language: '' })
+  submissionPage.value = 1
 }
 
 function createPrivateProblem() {
@@ -251,6 +351,7 @@ async function submitSolution() {
         stream.close()
         liveStreams.delete(stream)
         await load()
+        if (activeTab.value === 'submissions') await loadSubmissions()
       }
     })
     ElMessage.success('代码已提交评测')
@@ -261,9 +362,9 @@ async function submitSolution() {
   }
 }
 
-function selectAndOpen(link: any) {
-  selectedIndex.value = links.value.findIndex((item) => item.id === link.id)
-  activeTab.value = 'problems'
+function openSubmissionProblem(problemID: number) {
+  const link = links.value.find((item) => item.problem_id === problemID)
+  if (link) showProblem(link)
 }
 
 async function openDiscussions() {
@@ -312,14 +413,42 @@ function statusType(status?: string): 'success' | 'warning' | 'info' | 'danger' 
 function problemLabel(problemID: number) {
   const index = links.value.findIndex((link) => link.problem_id === problemID)
   if (index < 0) return '题单讨论'
-  return problemSetLabel(links.value[index], index)
+  return problemSetLabel(index)
 }
 
-function problemSetLabel(link: any, index: number) {
-  return link?.label?.trim() || `P${String(1001 + index).padStart(4, '0')}`
+function problemSetLabel(index: number) {
+  index += 1
+  let label = ''
+  while (index > 0) {
+    index -= 1
+    label = String.fromCharCode(65 + (index % 26)) + label
+    index = Math.floor(index / 26)
+  }
+  return label
+}
+
+function submissionStatusLabel(status: string) {
+  const labels: Record<string, string> = {
+    accepted: '通过', wrong_answer: '答案错误', compile_error: '编译错误', runtime_error: '运行错误',
+    time_limit: '时间超限', memory_limit: '内存超限', output_limit: '输出超限', queued: '排队中', running: '评测中', system_error: '系统错误'
+  }
+  return labels[status] || status
+}
+
+function languageLabel(language: string) {
+  return ({ cpp: 'C++17', c: 'C', python: 'Python', java: 'Java' } as Record<string, string>)[language] || language
+}
+
+function formatMemory(memoryKB: number) {
+  if (!memoryKB) return '-'
+  return (memoryKB / 1024).toFixed(memoryKB >= 10240 ? 0 : 1)
 }
 
 watch(() => [route.params.teamId, route.params.setId], load, { immediate: true })
+watch(
+  () => [submissionFilters.username, submissionFilters.problemID, submissionFilters.status, submissionFilters.language, submissionPageSize.value],
+  () => { submissionPage.value = 1 }
+)
 onBeforeUnmount(() => { for (const stream of liveStreams) stream.close() })
 </script>
 
@@ -334,15 +463,21 @@ onBeforeUnmount(() => { for (const stream of liveStreams) stream.close() })
 .set-tabs { display: flex; gap: 5px; margin-bottom: 16px; border-bottom: 1px solid var(--border); }
 .set-tabs button { padding: 14px 24px; color: var(--muted); border: 0; border-bottom: 3px solid transparent; background: transparent; cursor: pointer; }
 .set-tabs button.active { color: var(--accent); border-bottom-color: var(--accent); font-weight: 800; }
-.problem-switcher { margin-bottom: 14px; }
-.number-row { display: flex; flex-wrap: wrap; gap: 9px; }
-.number-row button { width: 42px; height: 42px; color: var(--text); border: 1px solid var(--border); border-radius: 8px; background: var(--surface-strong); font-weight: 800; cursor: pointer; }
-.number-row button.accepted { color: #15803d; border-color: #86efac; background: #f0fdf4; }
-.number-row button.active { color: #fff; border-color: var(--accent); background: var(--accent); }
-.problem-quick-actions { display: flex; align-items: center; justify-content: space-between; gap: 15px; margin-top: 14px; padding-top: 14px; border-top: 1px solid var(--border); }
-.problem-quick-actions > div { display: flex; align-items: center; flex-wrap: wrap; gap: 9px; }
-.problem-quick-actions span { color: var(--muted); font-size: 12px; }
-.status-panel { padding: 18px; }
+.problem-list-panel { overflow: hidden; }
+:deep(.problem-row) { cursor: pointer; }
+:deep(.problem-row:hover > td.el-table__cell) { background: color-mix(in srgb, var(--accent) 7%, var(--surface-strong)); }
+.submission-stat, .problem-title-button, .problem-code-button, .user-name { color: #1f9fc2; }
+.problem-title-button, .problem-code-button { padding: 0; border: 0; background: transparent; font: inherit; cursor: pointer; }
+.problem-title-button { font-weight: 700; }
+.problem-detail-toolbar { display: flex; align-items: center; gap: 12px; margin-bottom: 12px; }
+.problem-number-selector { display: grid; gap: 14px; margin-top: 20px; padding-top: 18px; border-top: 1px solid var(--border); }
+.submit-current { width: 100%; }
+.status-panel { min-width: 0; padding: 16px; overflow: hidden; }
+.submission-toolbar { display: flex; align-items: center; gap: 10px; margin-bottom: 14px; }
+.submission-toolbar strong { margin-right: auto; }
+.filter-heading { display: grid; gap: 6px; }
+.filter-heading > span { color: var(--muted); font-size: 12px; font-weight: 700; }
+.filter-heading :deep(.el-select) { width: 100%; }
 .discussion-layout { display: grid; grid-template-columns: minmax(280px, .65fr) minmax(0, 1.35fr); gap: 14px; align-items: start; }
 .discussion-editor { display: grid; gap: 12px; }
 .discussion-editor h3 { margin: 0; }
@@ -354,5 +489,5 @@ onBeforeUnmount(() => { for (const stream of liveStreams) stream.close() })
 .submit-toolbar, .live-status { display: flex; align-items: center; gap: 10px; margin-bottom: 12px; }
 .submit-toolbar span, .live-status span { color: var(--muted); font-size: 12px; }
 .live-status { margin: 12px 0 0; }
-@media (max-width: 760px) { .problem-set-page { padding: 16px 13px 42px; } .set-heading, .problem-quick-actions { align-items: stretch; flex-direction: column; } .heading-actions { flex-direction: column; } .discussion-layout { grid-template-columns: 1fr; } }
+@media (max-width: 760px) { .problem-set-page { padding: 16px 13px 42px; } .set-heading { align-items: stretch; flex-direction: column; } .heading-actions { flex-direction: column; } .discussion-layout { grid-template-columns: 1fr; } .submission-toolbar { align-items: stretch; flex-wrap: wrap; } }
 </style>

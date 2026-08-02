@@ -4,7 +4,7 @@ export type ProblemStatusFilter = 'all' | 'unattempted' | 'attempted' | 'accepte
 
 export interface ProblemFilters {
   keyword: string
-  tag: string
+  tags: string[]
   difficulty: string
   status: ProblemStatusFilter
 }
@@ -90,7 +90,7 @@ export function problemMatchesFilters(problem: Problem, filters: ProblemFilters)
     const haystack = [String(problem.id), problem.display_code, problem.title, ...tags].filter(Boolean).join(' ').toLowerCase()
     if (!haystack.includes(keyword)) return false
   }
-  if (filters.tag && !tags.includes(filters.tag)) return false
+  if (filters.tags.length && !filters.tags.some((tag) => tags.includes(tag))) return false
   if (filters.difficulty && problemDifficulty(problem) !== filters.difficulty) return false
   if (filters.status !== 'all' && problem.progress_status !== filters.status) return false
   return true
