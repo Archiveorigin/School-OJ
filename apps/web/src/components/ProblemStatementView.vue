@@ -1,5 +1,5 @@
 <template>
-  <div class="problem-view-grid">
+  <div class="problem-view-grid" :class="{ single: !showMeta }">
     <section class="panel statement-box">
       <div v-if="showTitle" class="statement-head">
         <h1>{{ problem.title }}</h1>
@@ -7,7 +7,7 @@
       <MarkdownRenderer :source="problem.statement" :problem-id="problem.id" />
     </section>
 
-    <aside class="panel meta-box">
+    <aside v-if="showMeta" class="panel meta-box">
       <div class="meta-title">
         <span class="eyebrow">题目编号</span>
         <strong>{{ displayNumber }}</strong>
@@ -87,11 +87,13 @@ const props = withDefaults(
     showDifficulty?: boolean
     showTitle?: boolean
     showTags?: boolean
+    showMeta?: boolean
   }>(),
   {
     showDifficulty: true,
     showTitle: true,
-    showTags: true
+    showTags: true,
+    showMeta: true
   }
 )
 
@@ -112,6 +114,11 @@ const statusImageAlt = computed(() => {
   grid-template-columns: minmax(360px, 1fr) minmax(362px, 420px);
   gap: 14px;
   align-items: start;
+}
+
+.problem-view-grid.single {
+  grid-template-columns: minmax(0, 980px);
+  justify-content: center;
 }
 
 .statement-box,

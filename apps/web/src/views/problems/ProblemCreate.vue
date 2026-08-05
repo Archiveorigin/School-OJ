@@ -129,8 +129,13 @@
               v-if="testFiles.length"
               type="success"
               :closable="false"
-              :title="`已选择 ${testFiles.length} 个测试文件`"
+              :title="`已选择 ${testFiles.length} 个测试文件，共 ${testFileSizeText}`"
             />
+            <el-alert v-if="usesChunkedUpload" type="info" :closable="false" title="大文件将在提交时自动分块并发上传，可实时查看进度。" />
+            <div v-if="uploadStage" class="upload-progress">
+              <span>{{ uploadStage }}</span>
+              <el-progress :percentage="uploadProgress" :stroke-width="10" />
+            </div>
             <el-alert
               v-else-if="importedCases.length"
               type="info"
@@ -170,6 +175,13 @@ import { client, type ProblemReview } from '../../api/client'
 import MarkdownRenderer from '../../components/MarkdownRenderer.vue'
 import ProblemTagSelector from '../../components/ProblemTagSelector.vue'
 import { problemDifficultyOptions } from '../../features/problems/problemMeta'
+import {
+  MAX_TEST_UPLOAD_SIZE,
+  formatFileSize,
+  shouldUseChunkedUpload,
+  totalTestFileSize,
+  uploadTestFilesInChunks
+} from '../../features/problems/testFileUpload'
 import { useAuthStore } from '../../stores/auth'
 
 type TestCase = { name: string; input: string; output: string; weight: number }
@@ -181,6 +193,8 @@ const auth = useAuthStore()
 const saving = ref(false)
 const importingMarkdown = ref(false)
 const testFiles = ref<any[]>([])
+const uploadProgress = ref(0)
+const uploadStage = ref('')
 const importedCases = ref<TestCase[]>([])
 const cachedProblemId = ref<number>()
 const cachedProblemCode = ref('')
@@ -203,6 +217,10 @@ const teamID = computed(() => Number(route.query.teamId) || 0)
 const problemSetID = computed(() => Number(route.query.problemSetId) || 0)
 const teamScope = computed(() => Boolean(teamID.value && problemSetID.value))
 const draftKey = computed(() => teamScope.value ? `school-oj-team-${teamID.value}-set-${problemSetID.value}-problem-draft-v1` : 'school-oj-problem-author-draft-v2')
+const rawTestFiles = computed(() => testFiles.value.map((item) => item.raw).filter((file): file is File => file instanceof File))
+const testFileSize = computed(() => totalTestFileSize(rawTestFiles.value))
+const testFileSizeText = computed(() => formatFileSize(testFileSize.value))
+const usesChunkedUpload = computed(() => shouldUseChunkedUpload(rawTestFiles.value))
 
 const submitLabel = computed(() => {
   if (teamScope.value) return '创建团队私有题目'
@@ -217,6 +235,12 @@ function normalizeStatement(value: string) {
 }
 
 function syncTestFiles(_file: any, fileList: any[]) {
+  const size = totalTestFileSize(fileList.map((item) => item.raw).filter((file): file is File => file instanceof File))
+  if (size > MAX_TEST_UPLOAD_SIZE) {
+    ElMessage.error('测试点文件总大小不能超过 128MB')
+    testFiles.value = fileList.slice(0, -1)
+    return
+  }
   testFiles.value = fileList
 }
 
@@ -292,7 +316,9 @@ async function submitProblem() {
     }
     const endpoint = resubmitting ? `/problems/${cachedProblemId.value}` : '/problems'
     const request = testFiles.value.length
-      ? buildMultipartRequest(endpoint, draft, resubmitting)
+      ? usesChunkedUpload.value && !resubmitting
+        ? buildChunkedRequest(endpoint, draft)
+        : buildMultipartRequest(endpoint, draft, resubmitting)
       : resubmitting
         ? client.put(endpoint, draft)
         : client.post(endpoint, draft)
@@ -320,6 +346,8 @@ async function submitProblem() {
     ElMessage.error(err.response?.data?.error || err.message)
   } finally {
     saving.value = false
+    uploadStage.value = ''
+    uploadProgress.value = 0
   }
 }
 
@@ -327,7 +355,23 @@ function buildMultipartRequest(endpoint: string, draft: Record<string, unknown>,
   const payload = new FormData()
   payload.append('draft', JSON.stringify(draft))
   testFiles.value.forEach((item) => { if (item.raw) payload.append('test_files', item.raw) })
-  return updating ? client.put(endpoint, payload) : client.post(endpoint, payload)
+  uploadStage.value = '正在上传测试点文件'
+  uploadProgress.value = 0
+  const config = {
+    timeout: 300_000,
+    onUploadProgress: (event: { loaded: number; total?: number }) => {
+      if (event.total) uploadProgress.value = Math.min(100, Math.round((event.loaded / event.total) * 100))
+    }
+  }
+  return updating ? client.put(endpoint, payload, config) : client.post(endpoint, payload, config)
+}
+
+async function buildChunkedRequest(endpoint: string, draft: Record<string, unknown>) {
+  uploadStage.value = '正在分块上传测试点文件'
+  uploadProgress.value = 0
+  const testUploads = await uploadTestFilesInChunks(rawTestFiles.value, (percent) => { uploadProgress.value = percent })
+  uploadStage.value = '上传完成，正在解析并保存题目'
+  return client.post(endpoint, { ...draft, test_uploads: testUploads }, { timeout: 300_000 })
 }
 
 function persistDraft() {
@@ -507,6 +551,7 @@ onMounted(async () => {
 .import-panel { display: grid; gap: 12px; }
 .upload-title { margin-bottom: 6px; font-weight: 700; }
 .cache-note { margin: 0; color: var(--muted); font-size: 12px; line-height: 1.65; }
+.upload-progress { display: grid; gap: 8px; color: var(--muted); font-size: 12px; }
 .create-footer { position: sticky; bottom: 0; z-index: 5; display: flex; align-items: center; justify-content: space-between; gap: 10px; margin-top: 18px; padding: 14px; border: 1px solid var(--border); border-radius: 12px; background: var(--glass); backdrop-filter: blur(14px); }
 .create-footer > div { display: flex; gap: 10px; }
 .draft-state { color: var(--muted); font-size: 12px; }

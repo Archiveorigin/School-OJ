@@ -10,36 +10,34 @@
       <div v-if="detail" class="header-status">
         <el-tag :type="statusType(detail.contest.status)" size="large">{{ statusLabel(detail.contest.status) }}</el-tag>
         <span>{{ detail.problems.length }} 道题目</span>
+        <el-button v-if="detail.can_organize" @click="addVisible = true">添加题目</el-button>
       </div>
     </header>
 
     <div v-if="detail" class="contest-body">
       <nav class="contest-tabs">
-        <button type="button" :class="{ active: activeTab === 'problems' }" @click="activeTab = 'problems'">比赛题目</button>
+        <button type="button" :class="{ active: activeTab === 'overview' }" @click="activeTab = 'overview'">题目概览</button>
+        <button type="button" :class="{ active: activeTab === 'problems' }" @click="activeTab = 'problems'">查看题目</button>
         <button type="button" :class="{ active: activeTab === 'records' }" @click="openRecords">提交记录</button>
         <button type="button" :class="{ active: activeTab === 'ranking' }" @click="openRanking">实时榜单</button>
       </nav>
 
-      <section v-if="activeTab === 'problems'" class="problem-workspace">
-        <div class="panel contest-problem-selector">
-          <div class="selector-heading">
-            <div><strong>题目选择</strong><span>点击题号切换当前题目</span></div>
-            <div v-if="detail.can_organize" class="selector-actions">
-              <el-button @click="addVisible = true">添加题目</el-button>
-              <el-button v-if="selectedLink" type="danger" text @click="removeProblem">移出比赛</el-button>
-            </div>
-          </div>
-          <ProblemSwitcher v-model="activeProblemID" :items="detail.problems" />
-          <div v-if="selectedLink" class="selected-summary">
-            <div>
-              <strong>{{ selectedLink.label }} · {{ selectedLink.problem.title }}</strong>
-              <span>{{ selectedLink.problem.display_code }}</span>
-            </div>
-            <div class="summary-actions">
-              <StatusBadge v-if="selectedLink.submission_status" :status="selectedLink.submission_status" />
-              <el-tag v-else type="info" effect="plain">未提交</el-tag>
-              <el-button type="primary" :disabled="!detail.can_submit" @click="openSubmit">提交本题</el-button>
-            </div>
+      <ProblemOverview
+        v-if="activeTab === 'overview'"
+        :items="detail.problems"
+        :active-problem-id="activeProblemID"
+        @select="openContestProblem"
+      />
+
+      <section v-else-if="activeTab === 'problems'" class="problem-workspace">
+        <div v-if="selectedLink" class="panel current-problem-bar">
+          <div><strong>{{ selectedLink.label }} · {{ selectedLink.problem.title }}</strong><span>{{ selectedLink.problem.display_code }}</span></div>
+          <div class="summary-actions">
+            <StatusBadge v-if="selectedLink.submission_status" :status="selectedLink.submission_status" />
+            <el-tag v-else type="info" effect="plain">未提交</el-tag>
+            <el-button v-if="detail.can_organize" @click="addVisible = true">添加题目</el-button>
+            <el-button v-if="detail.can_organize" type="danger" text @click="removeProblem">移出比赛</el-button>
+            <el-button type="primary" :disabled="!detail.can_submit" @click="openSubmit">提交本题</el-button>
           </div>
         </div>
 
@@ -49,6 +47,7 @@
           :problem-number="selectedLink.label"
           :status-text="problemStatusText(selectedLink.submission_status)"
           :status-type="problemStatusType(selectedLink.submission_status)"
+          :show-meta="false"
         />
         <el-empty v-else description="比赛暂未添加题目">
           <el-button v-if="detail.can_organize" type="primary" @click="addVisible = true">添加第一道题</el-button>
@@ -109,8 +108,8 @@ import { computed, onMounted, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { client, openEventStream, type Submission, type Team } from '../../api/client'
 import CodeEditor from '../../components/CodeEditor.vue'
+import ProblemOverview from '../../components/ProblemOverview.vue'
 import ProblemStatementView from '../../components/ProblemStatementView.vue'
-import ProblemSwitcher from '../../components/ProblemSwitcher.vue'
 import StatusBadge from '../../components/StatusBadge.vue'
 import { formatDateTime } from '../../features/time'
 
@@ -118,7 +117,7 @@ const props = defineProps<{ team: Team }>()
 const route = useRoute()
 const router = useRouter()
 const detail = ref<any>(null)
-const activeTab = ref<'problems' | 'records' | 'ranking'>('problems')
+const activeTab = ref<'overview' | 'problems' | 'records' | 'ranking'>('overview')
 const activeProblemID = ref<number>()
 const submitVisible = ref(false)
 const submitting = ref(false)
@@ -157,6 +156,11 @@ function openSubmit() {
   source.value = ''
   liveStatus.value = null
   submitVisible.value = true
+}
+
+function openContestProblem(problemID: number) {
+  activeProblemID.value = problemID
+  activeTab.value = 'problems'
 }
 
 async function submitSolution() {
@@ -253,12 +257,10 @@ onMounted(loadDetail)
 .contest-tabs button { padding: 13px 22px; color: var(--muted); border: 0; border-bottom: 3px solid transparent; background: transparent; cursor: pointer; }
 .contest-tabs button.active { color: var(--accent); border-bottom-color: var(--accent); font-weight: 800; }
 .problem-workspace { display: grid; gap: 14px; }
-.contest-problem-selector { display: grid; gap: 17px; padding: 18px 20px; }
-.selector-heading, .selected-summary, .ranking-heading, .section-title { display: flex; align-items: center; justify-content: space-between; gap: 16px; }
-.selector-heading > div:first-child, .selected-summary > div:first-child { display: grid; gap: 4px; }
-.selector-heading span, .selected-summary span, .submit-toolbar span { color: var(--muted); font-size: 12px; }
-.selector-actions, .summary-actions, .submit-toolbar, .live-status { display: flex; align-items: center; gap: 10px; }
-.selected-summary { padding-top: 14px; border-top: 1px solid var(--border); }
+.current-problem-bar, .ranking-heading, .section-title { display: flex; align-items: center; justify-content: space-between; gap: 16px; }
+.current-problem-bar > div:first-child { display: grid; gap: 4px; }
+.current-problem-bar span, .submit-toolbar span { color: var(--muted); font-size: 12px; }
+.summary-actions, .submit-toolbar, .live-status { display: flex; align-items: center; flex-wrap: wrap; gap: 10px; }
 .records-panel { padding: 18px; }
 .ranking-panel { display: grid; gap: 16px; }
 .ranking-heading h3 { margin: 5px 0 0; }
@@ -268,7 +270,7 @@ onMounted(loadDetail)
 .dialog-hint { color: var(--muted); }
 @media (max-width: 720px) {
   .contest-detail-view { padding: 20px 14px 44px; }
-  .contest-header, .selector-heading, .selected-summary, .ranking-heading { align-items: stretch; flex-direction: column; }
+  .contest-header, .current-problem-bar, .ranking-heading { align-items: stretch; flex-direction: column; }
   .header-status, .summary-actions { justify-content: space-between; }
 }
 </style>

@@ -15,6 +15,7 @@ const Dashboard = () => import('../views/Dashboard.vue')
 const ExamCreate = () => import('../views/ExamCreate.vue')
 const ExamDetail = () => import('../views/ExamDetail.vue')
 const ExamProblems = () => import('../views/exam/ExamProblems.vue')
+const ExamOverview = () => import('../views/exam/ExamOverview.vue')
 const ExamRanking = () => import('../views/exam/ExamRanking.vue')
 const ExamRecords = () => import('../views/exam/ExamRecords.vue')
 const ExamSubmit = () => import('../views/exam/ExamSubmit.vue')
@@ -98,9 +99,10 @@ const router = createRouter({
     {
       path: '/exams/:id',
       component: ExamDetail,
-      redirect: (to) => `/exams/${to.params.id}/problems`,
+      redirect: (to) => `/exams/${to.params.id}/overview`,
       meta: { title: '考试' },
       children: [
+        { path: 'overview', component: ExamOverview, meta: { title: '题目概览' } },
         { path: 'problems', component: ExamProblems, meta: { title: '考试题目' } },
         { path: 'submit', component: ExamSubmit, meta: { title: '提交代码' } },
         { path: 'records', component: ExamRecords, meta: { title: '提交记录' } },

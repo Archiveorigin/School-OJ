@@ -3,6 +3,7 @@ package services
 import (
 	"archive/zip"
 	"bytes"
+	"os"
 	"strings"
 	"testing"
 )
@@ -257,6 +258,24 @@ func TestBuildProblemCasesFromZip(t *testing.T) {
 		t.Fatal(err)
 	}
 	if len(cases) != 2 || cases[0].Output != "3\n" || cases[1].Output != "4\n" {
+		t.Fatalf("unexpected cases: %+v", cases)
+	}
+}
+
+func TestBuildProblemCasesFromZipPath(t *testing.T) {
+	body := testZip(t, map[string]string{
+		"case_001.in":  "10 20\n",
+		"case_001.out": "30\n",
+	})
+	path := t.TempDir() + "/tests.zip"
+	if err := os.WriteFile(path, body, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	cases, err := BuildProblemCasesFromTestPointFiles([]TestPointUploadFile{{Name: "tests.zip", Path: path}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(cases) != 1 || cases[0].Input != "10 20\n" || cases[0].Output != "30\n" {
 		t.Fatalf("unexpected cases: %+v", cases)
 	}
 }

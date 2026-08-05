@@ -156,6 +156,10 @@ func (s Server) createTeam(c *gin.Context) {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "团队简介不能超过 140 个字符"})
 		return
 	}
+	if !validTeamIconURL(req.IconURL) {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "团队图标格式无效或超过 2MB"})
+		return
+	}
 	if req.Visibility == "" {
 		req.Visibility = "private"
 	}
@@ -237,6 +241,10 @@ func (s Server) updateTeam(c *gin.Context) {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "团队名称或简介过长"})
 		return
 	}
+	if !validTeamIconURL(req.IconURL) {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "团队图标格式无效或超过 2MB"})
+		return
+	}
 	updates := map[string]any{
 		"name":         strings.TrimSpace(req.Name),
 		"description":  strings.TrimSpace(req.Description),
@@ -261,6 +269,21 @@ func (s Server) updateTeam(c *gin.Context) {
 	s.DB.First(&team, team.ID)
 	services.Audit(c, s.DB, "team.update", "team", team.ID, nil)
 	c.JSON(http.StatusOK, s.teamViews([]models.Team{team}, user.ID)[0])
+}
+
+func validTeamIconURL(value string) bool {
+	value = strings.TrimSpace(value)
+	if value == "" {
+		return true
+	}
+	if len(value) > 3<<20 {
+		return false
+	}
+	lower := strings.ToLower(value)
+	return strings.HasPrefix(lower, "data:image/png;base64,") ||
+		strings.HasPrefix(lower, "data:image/jpeg;base64,") ||
+		strings.HasPrefix(lower, "data:image/webp;base64,") ||
+		(len(value) <= 2048 && (strings.HasPrefix(lower, "https://") || strings.HasPrefix(value, "/")))
 }
 
 func (s Server) joinTeam(c *gin.Context) {

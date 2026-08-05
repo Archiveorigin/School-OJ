@@ -10,6 +10,7 @@ import (
 	"io"
 	"math"
 	"net/http"
+	"os"
 	"path/filepath"
 	"sort"
 	"strconv"
@@ -67,19 +68,27 @@ type ParsedProblemAsset struct {
 }
 
 type ProblemPackageDraft struct {
-	Slug          string              `json:"slug"`
-	Title         string              `json:"title"`
-	Statement     string              `json:"statement"`
-	Tags          []string            `json:"tags"`
-	Difficulty    string              `json:"difficulty"`
-	TeamID        *uint               `json:"team_id,omitempty"`
-	ProblemSetID  *uint               `json:"problem_set_id,omitempty"`
-	TimeLimitMS   int                 `json:"time_limit_ms"`
-	MemoryLimitMB int                 `json:"memory_limit_mb"`
-	OutputLimitKB int                 `json:"output_limit_kb"`
-	Checker       CheckerManifest     `json:"checker"`
-	Assets        []ProblemAssetDraft `json:"assets"`
-	Cases         []ProblemCaseDraft  `json:"cases"`
+	Slug          string                `json:"slug"`
+	Title         string                `json:"title"`
+	Statement     string                `json:"statement"`
+	Tags          []string              `json:"tags"`
+	Difficulty    string                `json:"difficulty"`
+	TeamID        *uint                 `json:"team_id,omitempty"`
+	ProblemSetID  *uint                 `json:"problem_set_id,omitempty"`
+	TimeLimitMS   int                   `json:"time_limit_ms"`
+	MemoryLimitMB int                   `json:"memory_limit_mb"`
+	OutputLimitKB int                   `json:"output_limit_kb"`
+	Checker       CheckerManifest       `json:"checker"`
+	Assets        []ProblemAssetDraft   `json:"assets"`
+	Cases         []ProblemCaseDraft    `json:"cases"`
+	TestUploads   []TestUploadReference `json:"test_uploads,omitempty"`
+}
+
+type TestUploadReference struct {
+	ID         string `json:"id"`
+	Name       string `json:"name"`
+	ChunkCount int    `json:"chunk_count"`
+	Size       int64  `json:"size"`
 }
 
 type ProblemAssetDraft struct {
@@ -99,6 +108,7 @@ type ProblemCaseDraft struct {
 type TestPointUploadFile struct {
 	Name string
 	Body []byte
+	Path string
 }
 
 const (
@@ -208,19 +218,23 @@ func expandTestPointUploadFiles(files []TestPointUploadFile) ([]rawTestPointFile
 		}
 		ext := strings.ToLower(filepath.Ext(name))
 		if ext != ".zip" {
-			totalSize += len(file.Body)
+			body, err := readTestPointUpload(file)
+			if err != nil {
+				return nil, err
+			}
+			totalSize += len(body)
 			if totalSize > MaxProblemTestFilesSize {
 				return nil, fmt.Errorf("test files are too large")
 			}
-			expanded = append(expanded, rawTestPointFile{Name: name, Body: file.Body})
+			expanded = append(expanded, rawTestPointFile{Name: name, Body: body})
 			continue
 		}
-		if len(file.Body) > MaxProblemTestFilesSize {
-			return nil, fmt.Errorf("test zip %s is too large", name)
-		}
-		reader, err := zip.NewReader(bytes.NewReader(file.Body), int64(len(file.Body)))
+		reader, closer, err := openTestPointZip(file)
 		if err != nil {
 			return nil, fmt.Errorf("open test zip %s: %w", name, err)
+		}
+		if closer != nil {
+			defer closer.Close()
 		}
 		for _, item := range reader.File {
 			rawPath := filepath.ToSlash(item.Name)
@@ -252,6 +266,50 @@ func expandTestPointUploadFiles(files []TestPointUploadFile) ([]rawTestPointFile
 		}
 	}
 	return expanded, nil
+}
+
+func readTestPointUpload(file TestPointUploadFile) ([]byte, error) {
+	if file.Path == "" {
+		if len(file.Body) > MaxProblemTestFilesSize {
+			return nil, fmt.Errorf("test file %s is too large", file.Name)
+		}
+		return file.Body, nil
+	}
+	src, err := os.Open(file.Path)
+	if err != nil {
+		return nil, err
+	}
+	defer src.Close()
+	return ReadLimited(src, MaxProblemTestFilesSize, "test files")
+}
+
+func openTestPointZip(file TestPointUploadFile) (*zip.Reader, io.Closer, error) {
+	if file.Path == "" {
+		if len(file.Body) > MaxProblemTestFilesSize {
+			return nil, nil, fmt.Errorf("test zip is too large")
+		}
+		reader, err := zip.NewReader(bytes.NewReader(file.Body), int64(len(file.Body)))
+		return reader, nil, err
+	}
+	src, err := os.Open(file.Path)
+	if err != nil {
+		return nil, nil, err
+	}
+	info, err := src.Stat()
+	if err != nil {
+		_ = src.Close()
+		return nil, nil, err
+	}
+	if info.Size() > MaxProblemTestFilesSize {
+		_ = src.Close()
+		return nil, nil, fmt.Errorf("test zip is too large")
+	}
+	reader, err := zip.NewReader(src, info.Size())
+	if err != nil {
+		_ = src.Close()
+		return nil, nil, err
+	}
+	return reader, src, nil
 }
 
 func lastNumber(value string) (int, bool) {

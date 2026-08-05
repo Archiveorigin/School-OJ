@@ -1,15 +1,11 @@
 <template>
   <div class="tag-selector-field">
-    <div class="selected-preview" @click="open">
-      <el-tag v-for="tag in modelValue" :key="tag" size="small" effect="plain">{{ tag }}</el-tag>
-      <span v-if="!modelValue.length" class="placeholder">选择算法、年份和来源标签</span>
-    </div>
-    <el-button @click="open">选择标签</el-button>
+    <el-button @click="open">选择算法标签</el-button>
   </div>
 
   <el-dialog
     v-model="visible"
-    title="选择标签"
+    title="选择算法标签"
     width="min(980px, calc(100vw - 24px))"
     append-to-body
     destroy-on-close
@@ -151,8 +147,6 @@ function confirm() {
 
 <style scoped>
 .tag-selector-field { width: 100%; display: flex; align-items: stretch; gap: 8px; }
-.selected-preview { min-height: 32px; display: flex; align-items: center; flex-wrap: wrap; gap: 6px; flex: 1; padding: 5px 10px; border: 1px solid var(--border); border-radius: 4px; background: var(--surface-strong); cursor: pointer; }
-.placeholder { color: var(--muted); font-size: 13px; }
 .tag-dialog-toolbar { display: flex; align-items: center; justify-content: space-between; gap: 18px; border-bottom: 1px solid var(--border); }
 .tag-dialog-toolbar :deep(.el-tabs__header) { margin: 0; }
 .tag-search { width: min(340px, 46%); }

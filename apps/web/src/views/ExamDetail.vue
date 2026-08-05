@@ -30,6 +30,7 @@
 
     <div v-if="detail" class="exam-workbench">
       <div class="exam-tabs">
+        <el-button :type="tabType('overview')" @click="goExamTab('overview')">题目概览</el-button>
         <el-button :type="tabType('problems')" @click="goExamTab('problems')">查看题目</el-button>
         <el-button :type="tabType('submit')" @click="goExamTab('submit')">提交代码</el-button>
         <el-button :type="tabType('records')" @click="goExamTab('records')">提交记录</el-button>
@@ -85,7 +86,7 @@ type EditorState = {
   live: any
   dirty: boolean
 }
-type ExamTab = 'problems' | 'submit' | 'records' | 'ranking'
+type ExamTab = 'overview' | 'problems' | 'submit' | 'records' | 'ranking'
 
 const auth = useAuthStore()
 const examLock = useExamLockStore()
@@ -140,8 +141,8 @@ const source = computed({
 const live = computed(() => activeState.value?.live)
 const activeTab = computed<ExamTab>(() => {
   const value = route.path.split('/').pop()
-  if (value === 'submit' || value === 'records' || value === 'ranking') return value
-  return 'problems'
+  if (value === 'problems' || value === 'submit' || value === 'records' || value === 'ranking') return value
+  return 'overview'
 })
 const scoreSummary = computed(() => {
   if (!detail.value) return ''

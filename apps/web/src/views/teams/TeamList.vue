@@ -11,7 +11,7 @@
         <div class="team-card-main">
           <div class="team-icon">
             <img v-if="team.icon_url" :src="team.icon_url" alt="" />
-            <span v-else>{{ team.name.slice(0, 1).toUpperCase() }}</span>
+            <img v-else src="/logo1.png" alt="" />
           </div>
           <div class="team-copy">
             <div class="team-name-row">
@@ -44,6 +44,9 @@
 
     <el-dialog v-model="createVisible" title="创建团队" width="min(820px, calc(100vw - 24px))" destroy-on-close>
       <el-form label-width="142px" class="create-team-form">
+        <el-form-item label="团队图标">
+          <TeamIconUpload v-model="form.icon_url" show-help />
+        </el-form-item>
         <el-form-item label="团队名">
           <el-input v-model="form.name" maxlength="120" show-word-limit />
         </el-form-item>
@@ -105,6 +108,7 @@ import { ElMessage } from 'element-plus'
 import { onMounted, reactive, ref, watch } from 'vue'
 import { useRouter } from 'vue-router'
 import { client, type Team, type TeamRole } from '../../api/client'
+import TeamIconUpload from '../../components/TeamIconUpload.vue'
 
 const router = useRouter()
 const activeTab = ref<'mine' | 'discover'>('mine')
@@ -122,7 +126,8 @@ const form = reactive({
   join_mode: 'application',
   contest_permission: 'admin',
   description: '',
-  announcement: ''
+  announcement: '',
+  icon_url: ''
 })
 const joinForm = reactive({ join_code: '', message: '' })
 
@@ -139,7 +144,7 @@ async function load() {
 }
 
 function openCreate() {
-  Object.assign(form, { name: '', slug: '', visibility: 'private', join_mode: 'application', contest_permission: 'admin', description: '', announcement: '' })
+  Object.assign(form, { name: '', slug: '', visibility: 'private', join_mode: 'application', contest_permission: 'admin', description: '', announcement: '', icon_url: '' })
   createVisible.value = true
 }
 
@@ -218,7 +223,7 @@ onMounted(load)
 .team-card:hover { border-color: color-mix(in srgb, var(--accent) 50%, var(--border)); transform: translateY(-2px); }
 .team-card-main { display: grid; grid-template-columns: 88px minmax(0, 1fr); gap: 17px; min-height: 132px; padding: 20px 20px 16px; }
 .team-icon { width: 88px; height: 88px; display: grid; place-items: center; overflow: hidden; color: #fff; border: 1px solid var(--border); border-radius: 9px; background: var(--accent); font-size: 30px; font-weight: 900; }
-.team-icon img { width: 100%; height: 100%; object-fit: cover; }
+.team-icon img { width: 100%; height: 100%; object-fit: cover; background: #fff; }
 .team-name-row { display: flex; align-items: center; flex-wrap: wrap; gap: 10px; }
 .team-name-row h2 { margin: 0; font-size: 20px; }
 .team-copy p { display: -webkit-box; margin: 10px 0 0; overflow: hidden; color: var(--muted); line-height: 1.65; -webkit-box-orient: vertical; -webkit-line-clamp: 2; }

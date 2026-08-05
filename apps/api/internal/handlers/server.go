@@ -1790,6 +1790,21 @@ func (s Server) createProblem(c *gin.Context) {
 	if !s.validateTeamProblemScope(c, user, req.TeamID, req.ProblemSetID) {
 		return
 	}
+	if len(req.TestUploads) > 0 {
+		uploads, cleanup, err := consumeProblemTestUploads(user.ID, req.TestUploads)
+		if err != nil {
+			c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+			return
+		}
+		defer cleanup()
+		cases, err := services.BuildProblemCasesFromTestPointFiles(uploads)
+		if err != nil {
+			c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+			return
+		}
+		req.Cases = cases
+		req.TestUploads = nil
+	}
 	body, pkg, err := services.BuildProblemPackage(req)
 	if err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})

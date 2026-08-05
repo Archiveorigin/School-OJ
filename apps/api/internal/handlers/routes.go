@@ -119,6 +119,7 @@ func (s Server) registerAPIRoutes(api *gin.RouterGroup) {
 	auth.DELETE("/classes/:id/students/:user_id", middleware.RequireRoles(models.RoleAdmin, models.RoleTeacher), s.removeClassStudent)
 	auth.POST("/classes/:id/students/import", middleware.RequireRoles(models.RoleAdmin, models.RoleTeacher), s.importClassStudents)
 	auth.POST("/problems", middleware.RateLimitUser(s.Redis, "problems:create", 20, time.Hour), s.createProblem)
+	auth.PUT("/problem-test-uploads/:upload_id/:chunk_index", s.uploadProblemTestChunk)
 	auth.POST("/problems/parse-markdown", middleware.RateLimitUser(s.Redis, "problems:parse-markdown", 30, time.Hour), s.parseMarkdownBatch)
 	auth.POST("/problems/upload", middleware.RateLimitUser(s.Redis, "problems:upload", 20, time.Hour), s.uploadProblem)
 	auth.PUT("/problems/:id", s.updateProblem)

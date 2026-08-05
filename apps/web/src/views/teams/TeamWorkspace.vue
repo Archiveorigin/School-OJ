@@ -2,10 +2,7 @@
   <section class="team-workspace">
     <aside v-if="team" class="team-sidebar">
       <button type="button" class="back-link" @click="router.push('/teams')">← 返回团队列表</button>
-      <div class="workspace-icon">
-        <img v-if="team.icon_url" :src="team.icon_url" alt="" />
-        <span v-else>{{ team.name.slice(0, 1).toUpperCase() }}</span>
-      </div>
+      <TeamIconUpload :model-value="team.icon_url" :editable="canManage" @change="saveTeamIcon" />
       <h1>{{ team.name }}</h1>
       <code>/{{ team.slug }}</code>
       <p class="description">{{ team.description || '这个团队还没有填写简介。' }}</p>
@@ -49,6 +46,7 @@
     <el-dialog v-if="team" v-model="settingsVisible" title="团队设置" width="min(720px, calc(100vw - 24px))">
       <el-form label-width="120px">
         <el-form-item label="团队名"><el-input v-model="settings.name" maxlength="120" /></el-form-item>
+        <el-form-item label="团队图标"><TeamIconUpload v-model="settings.icon_url" show-help /></el-form-item>
         <el-form-item label="可见性">
           <el-radio-group v-model="settings.visibility" :disabled="team.my_role !== 'owner'">
             <el-radio-button value="private">私有</el-radio-button>
@@ -87,6 +85,7 @@ import { computed, reactive, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { client, type Team, type TeamRole } from '../../api/client'
 import MarkdownRenderer from '../../components/MarkdownRenderer.vue'
+import TeamIconUpload from '../../components/TeamIconUpload.vue'
 
 const route = useRoute()
 const router = useRouter()
@@ -144,6 +143,19 @@ async function saveSettings() {
   }
 }
 
+async function saveTeamIcon(iconURL: string) {
+  if (!team.value || !canManage.value) return
+  settings.icon_url = iconURL
+  try {
+    await client.put(`/teams/${team.value.id}`, settings)
+    ElMessage.success('团队图标已更新')
+    await loadTeam()
+  } catch (err: any) {
+    ElMessage.error(err.response?.data?.error || err.message)
+    await loadTeam()
+  }
+}
+
 async function leaveTeam() {
   if (!team.value) return
   try {
@@ -171,8 +183,7 @@ watch(() => route.params.teamSlug, loadTeam, { immediate: true })
 .team-workspace { min-height: calc(100vh - 64px); display: grid; grid-template-columns: 300px minmax(0, 1fr); background: var(--app-bg); }
 .team-sidebar { min-height: calc(100vh - 64px); display: flex; align-items: stretch; flex-direction: column; gap: 12px; padding: 30px 26px; border-right: 1px solid var(--border); background: var(--surface-strong); }
 .back-link { align-self: flex-start; padding: 0 0 14px; color: var(--accent); border: 0; background: transparent; cursor: pointer; }
-.workspace-icon { width: 82px; height: 82px; display: grid; place-items: center; overflow: hidden; margin-top: 5px; color: #fff; border-radius: 22px; background: linear-gradient(135deg, #0a5ea6, #14b8a6); font-size: 34px; font-weight: 900; }
-.workspace-icon img { width: 100%; height: 100%; object-fit: cover; }
+.team-sidebar :deep(.team-icon-button) { width: 82px; height: 82px; margin-top: 5px; border-radius: 22px; }
 .team-sidebar h1 { margin: 5px 0 -6px; font-size: 24px; }
 .team-sidebar code { color: var(--accent); }
 .description { margin: 4px 0; color: var(--muted); line-height: 1.65; }
