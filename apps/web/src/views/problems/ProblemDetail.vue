@@ -125,7 +125,7 @@ let submissionEvents: AuthenticatedEventSource | null = null
 const canManage = computed(() => auth.role === 'admin' || (Boolean(auth.user?.can_author) && problem.value?.owner_id === auth.user?.id))
 const canDelete = computed(() => Boolean(problem.value && (auth.role === 'admin' || problem.value.owner_id === auth.user?.id)))
 const source = ref('')
-const draftContext = computed(() => ({ resourceType: 'problem' as const, resourceId: problem.value?.id || 0, problemId: problem.value?.id || 0 }))
+const draftContext = computed(() => ({ userId: auth.user?.id || 0, resourceType: 'problem' as const, resourceId: problem.value?.id || 0, problemId: problem.value?.id || 0 }))
 
 async function loadProblem() {
   loading.value = true

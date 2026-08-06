@@ -212,7 +212,7 @@ const liveStreams = new Set<AuthenticatedEventSource>()
 const teamID = computed(() => Number(detail.value?.team?.id))
 const problemSetID = computed(() => Number(route.params.setId))
 const selectedLink = computed(() => links.value[selectedIndex.value])
-const draftContext = computed(() => ({ resourceType: 'problem-set' as const, resourceId: problemSetID.value, problemId: selectedLink.value?.problem_id || 0 }))
+const draftContext = computed(() => ({ userId: auth.user?.id || 0, resourceType: 'problem-set' as const, resourceId: problemSetID.value, problemId: selectedLink.value?.problem_id || 0 }))
 const selectedProblemID = computed({
   get: () => selectedLink.value?.problem_id,
   set: (value: number | undefined) => {

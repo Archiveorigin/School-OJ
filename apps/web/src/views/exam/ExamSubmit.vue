@@ -39,6 +39,7 @@ const props = defineProps<{
   submitting: boolean
   switcherEntries: Array<{ problem: Problem; label?: string; submission_status?: string }>
   activeProblemId?: number
+  userId: number
 }>()
 
 const emit = defineEmits<{
@@ -49,7 +50,7 @@ const emit = defineEmits<{
 }>()
 
 const latestSubmission = computed(() => props.latestHistory?.find((item) => item.problem_id === props.activeProblem?.id))
-const draftContext = computed(() => ({ resourceType: 'exam' as const, resourceId: Number(props.detail?.exam?.id), problemId: props.activeProblem?.id || 0 }))
+const draftContext = computed(() => ({ userId: props.userId, resourceType: 'exam' as const, resourceId: Number(props.detail?.exam?.id), problemId: props.activeProblem?.id || 0 }))
 const currentStatus = computed(() => props.live?.status || latestSubmission.value?.status || '')
 const currentMessage = computed(() => props.live?.message || latestSubmission.value?.message || '')
 const displayNumber = computed(() => {

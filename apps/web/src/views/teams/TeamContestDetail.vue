@@ -125,6 +125,7 @@ import StatusBadge from '../../components/StatusBadge.vue'
 import SubmissionComposer from '../../components/SubmissionComposer.vue'
 import { formatDateTime } from '../../features/time'
 import { loadSubmissionDraft } from '../../features/submissions/drafts'
+import { useAuthStore } from '../../stores/auth'
 
 type ContestTab = 'overview' | 'problems' | 'records' | 'ranking'
 const tabs: Array<{ key: ContestTab; label: string }> = [
@@ -132,6 +133,7 @@ const tabs: Array<{ key: ContestTab; label: string }> = [
 ]
 const route = useRoute()
 const router = useRouter()
+const auth = useAuthStore()
 const detail = ref<any>(null)
 const submitVisible = ref(false)
 const submitting = ref(false)
@@ -158,7 +160,7 @@ const activeTab = computed<ContestTab>(() => {
 })
 const selectedProblemID = computed(() => Number(route.query.problem) || detail.value?.problems?.[0]?.problem_id)
 const selectedLink = computed(() => detail.value?.problems?.find((item: any) => item.problem_id === selectedProblemID.value) || detail.value?.problems?.[0] || null)
-const draftContext = computed(() => ({ resourceType: 'contest' as const, resourceId: contestID.value, problemId: selectedLink.value?.problem_id || 0 }))
+const draftContext = computed(() => ({ userId: auth.user?.id || 0, resourceType: 'contest' as const, resourceId: contestID.value, problemId: selectedLink.value?.problem_id || 0 }))
 const contestTimeText = computed(() => {
   const contest = detail.value?.contest
   if (!contest) return ''

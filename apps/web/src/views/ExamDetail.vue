@@ -45,6 +45,7 @@
           :active-problem="activeProblem"
           :history="history"
           :latest-history="latestHistory"
+          :user-id="auth.user?.id || 0"
           :language="language"
           :source="source"
           :live="live"
@@ -222,7 +223,7 @@ async function submitSolution() {
       language: activeState.value.language,
       source_code: activeState.value.source
     })
-    clearSubmissionDraft({ resourceType: 'exam', resourceId: detail.value.exam.id, problemId: problemID }, activeState.value.language)
+    clearSubmissionDraft({ userId: auth.user?.id || 0, resourceType: 'exam', resourceId: detail.value.exam.id, problemId: problemID }, activeState.value.language)
     watchSubmission(data.id, problemID)
     await loadHistory()
   } catch (err: any) {
@@ -315,7 +316,7 @@ function ensureEditorState(problemID: number) {
     const language = submission?.language || 'cpp'
     editorStates[problemID] = {
       language,
-      source: loadSubmissionDraft({ resourceType: 'exam', resourceId: examID.value, problemId: problemID }, language) ?? submission?.source_code ?? '',
+      source: loadSubmissionDraft({ userId: auth.user?.id || 0, resourceType: 'exam', resourceId: examID.value, problemId: problemID }, language) ?? submission?.source_code ?? '',
       live: null,
       dirty: false
     }
@@ -330,10 +331,10 @@ function hydrateEditorStatesFromHistory() {
     const submission = preferredSubmission(entry.problem.id)
     if (submission) {
       state.language = submission.language
-      state.source = loadSubmissionDraft({ resourceType: 'exam', resourceId: examID.value, problemId: entry.problem.id }, state.language) ?? submission.source_code ?? ''
+      state.source = loadSubmissionDraft({ userId: auth.user?.id || 0, resourceType: 'exam', resourceId: examID.value, problemId: entry.problem.id }, state.language) ?? submission.source_code ?? ''
       continue
     }
-    state.source = loadSubmissionDraft({ resourceType: 'exam', resourceId: examID.value, problemId: entry.problem.id }, state.language) || ''
+    state.source = loadSubmissionDraft({ userId: auth.user?.id || 0, resourceType: 'exam', resourceId: examID.value, problemId: entry.problem.id }, state.language) || ''
   }
 }
 

@@ -136,7 +136,7 @@ const live = computed(() => activeState.value?.live)
 const latestSubmission = computed(() => activeProblem.value ? preferredSubmission(activeProblem.value.id) : null)
 const currentStatus = computed(() => live.value?.status || latestSubmission.value?.status || '')
 const currentMessage = computed(() => live.value?.message || latestSubmission.value?.message || '')
-const draftContext = computed(() => ({ resourceType: 'assignment' as const, resourceId: Number(detail.value?.assignment?.id || route.params.id), problemId: activeProblem.value?.id || 0 }))
+const draftContext = computed(() => ({ userId: auth.user?.id || 0, resourceType: 'assignment' as const, resourceId: Number(detail.value?.assignment?.id || route.params.id), problemId: activeProblem.value?.id || 0 }))
 const pagedHistory = computed(() => history.value.slice((historyPage.value - 1) * historyPageSize.value, historyPage.value * historyPageSize.value))
 
 async function loadDetail() {
@@ -227,7 +227,7 @@ function hydrateEditorStatesFromHistory() {
     if (state.dirty) continue
     const latest = preferredSubmission(entry.problem.id)
     state.language = latest?.language || 'cpp'
-    const scope = { resourceType: 'assignment' as const, resourceId: detail.value.assignment.id, problemId: entry.problem.id }
+    const scope = { userId: auth.user?.id || 0, resourceType: 'assignment' as const, resourceId: detail.value.assignment.id, problemId: entry.problem.id }
     state.source = loadSubmissionDraft(scope, state.language) ?? latest?.source_code ?? ''
   }
 }

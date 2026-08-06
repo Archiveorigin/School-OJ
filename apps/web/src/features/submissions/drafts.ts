@@ -1,4 +1,5 @@
 export type SubmissionDraftScope = {
+  userId: number
   resourceType: 'problem' | 'assignment' | 'exam' | 'contest' | 'problem-set'
   resourceId: number
   problemId: number
@@ -12,7 +13,7 @@ type StoredDraft = {
 const prefix = 'school-oj-submission-draft:v1'
 
 export function submissionDraftKey(scope: SubmissionDraftScope, language: string) {
-  return [prefix, scope.resourceType, scope.resourceId, scope.problemId, language || 'cpp'].join(':')
+  return [prefix, `user-${scope.userId}`, scope.resourceType, scope.resourceId, scope.problemId, language || 'cpp'].join(':')
 }
 
 export function loadSubmissionDraft(scope: SubmissionDraftScope, language: string): string | null {
