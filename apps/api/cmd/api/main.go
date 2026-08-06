@@ -23,7 +23,7 @@ func main() {
 		log.Fatalf("database: %v", err)
 	}
 	if cfg.AutoMigrate {
-		if err := db.AutoMigrate(gdb); err != nil {
+		if err := db.Migrate(gdb); err != nil {
 			log.Fatalf("migrate: %v", err)
 		}
 	}

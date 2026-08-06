@@ -110,7 +110,7 @@ async function createContest() {
 }
 
 function openContest(row: TeamContest) {
-  if (row.status === 'not_started' && !canOrganize.value) {
+  if ((row.status === 'draft' || row.status === 'published') && !canOrganize.value) {
     ElMessage.warning('比赛尚未开始')
     return
   }
@@ -118,13 +118,14 @@ function openContest(row: TeamContest) {
 }
 
 function statusLabel(status?: TeamContest['status']) {
-  if (status === 'not_started') return '未开始'
+  if (status === 'draft') return '草稿'
+  if (status === 'published') return '已发布'
   if (status === 'closed') return '已结束'
   return '进行中'
 }
 
 function statusType(status?: TeamContest['status']): 'success' | 'warning' | 'info' {
-  if (status === 'not_started') return 'warning'
+  if (status === 'draft' || status === 'published') return 'warning'
   if (status === 'closed') return 'info'
   return 'success'
 }

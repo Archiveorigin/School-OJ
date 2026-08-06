@@ -46,12 +46,14 @@
 
       <section v-if="activeProblem" class="panel editor-panel">
         <SubmissionComposer
+          ref="composerRef"
           v-model:language="language"
           v-model:source="source"
           :status="currentStatus"
           :message="currentMessage"
           :submitting="submitting"
           :disabled="!detail.can_submit"
+          :draft-context="draftContext"
           scope-text="本次代码仅计入当前作业"
           @submit="submitSolution"
         />
@@ -78,7 +80,7 @@
 import { ElMessage } from 'element-plus'
 import { computed, onMounted, reactive, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
-import { client, openEventStream, type Problem, type Submission } from '../api/client'
+import { client, getLatestSubmissions, openEventStream, type Problem, type Submission } from '../api/client'
 import ListPagination from '../components/ListPagination.vue'
 import ProblemStatementView from '../components/ProblemStatementView.vue'
 import ProblemTestDownloads from '../components/ProblemTestDownloads.vue'
@@ -86,6 +88,7 @@ import StatusBadge from '../components/StatusBadge.vue'
 import SubmissionComposer from '../components/SubmissionComposer.vue'
 import { formatDateTime, workStatusLabel } from '../features/assignments/assignmentMeta'
 import { problemDisplayCode } from '../features/problems/problemMeta'
+import { loadSubmissionDraft } from '../features/submissions/drafts'
 import { useAuthStore } from '../stores/auth'
 
 type DetailProblem = { problem: Problem; score: number; problem_id: number }
@@ -103,6 +106,8 @@ const assignmentListPath = computed(() => {
 const activeEntry = ref<DetailProblem | null>(null)
 const activeProblem = computed(() => activeEntry.value?.problem || null)
 const history = ref<Submission[]>([])
+const latestByProblem = ref<Record<number, Submission>>({})
+const composerRef = ref<{ clearDraft: () => void } | null>(null)
 const historyPage = ref(1)
 const historyPageSize = ref(10)
 const submitting = ref(false)
@@ -116,10 +121,7 @@ const language = computed({
   get: () => activeState.value?.language || 'cpp',
   set: (value: string) => {
     if (!activeProblem.value || !activeState.value) return
-    saveDraft(activeProblem.value.id, activeState.value.language, activeState.value.source)
     activeState.value.language = value
-    activeState.value.source = preferredSubmission(activeProblem.value.id, value)?.source_code || ''
-    activeState.value.dirty = false
   }
 })
 const source = computed({
@@ -128,13 +130,13 @@ const source = computed({
     if (!activeProblem.value || !activeState.value) return
     activeState.value.source = value
     activeState.value.dirty = true
-    saveDraft(activeProblem.value.id, activeState.value.language, value)
   }
 })
 const live = computed(() => activeState.value?.live)
 const latestSubmission = computed(() => activeProblem.value ? preferredSubmission(activeProblem.value.id) : null)
 const currentStatus = computed(() => live.value?.status || latestSubmission.value?.status || '')
 const currentMessage = computed(() => live.value?.message || latestSubmission.value?.message || '')
+const draftContext = computed(() => ({ resourceType: 'assignment' as const, resourceId: Number(detail.value?.assignment?.id || route.params.id), problemId: activeProblem.value?.id || 0 }))
 const pagedHistory = computed(() => history.value.slice((historyPage.value - 1) * historyPageSize.value, historyPage.value * historyPageSize.value))
 
 async function loadDetail() {
@@ -171,6 +173,7 @@ async function submitSolution() {
       language: activeState.value.language,
       source_code: activeState.value.source
     })
+    composerRef.value?.clearDraft()
     watchSubmission(data.id, problemID)
     await loadHistory()
   } catch (err: any) {
@@ -201,7 +204,12 @@ async function refreshDetail() {
 
 async function loadHistory() {
   if (!detail.value) return
-  history.value = (await client.get('/submissions', { params: { assignment_id: detail.value.assignment.id } })).data
+  const [historyResponse, latest] = await Promise.all([
+    client.get('/submissions', { params: { assignment_id: detail.value.assignment.id } }),
+    getLatestSubmissions({ assignment_id: detail.value.assignment.id })
+  ])
+  history.value = historyResponse.data
+  latestByProblem.value = Object.fromEntries(latest.map((item) => [item.problem_id, item]))
   hydrateEditorStatesFromHistory()
   clampHistoryPage()
 }
@@ -213,27 +221,19 @@ function ensureEditorState(problemID: number) {
   return editorStates[problemID]
 }
 
-function saveDraft(problemID: number, lang: string, value: string) {
-  if (!detail.value) return
-  localStorage.setItem(draftKey(problemID, lang), value)
-}
-
-function draftKey(problemID: number, lang: string) {
-  return `school-oj-draft:assignment:${detail.value.assignment.id}:${problemID}:${lang}`
-}
-
 function hydrateEditorStatesFromHistory() {
   for (const entry of detail.value?.problems || []) {
     const state = ensureEditorState(entry.problem.id)
     if (state.dirty) continue
     const latest = preferredSubmission(entry.problem.id)
     state.language = latest?.language || 'cpp'
-    state.source = latest?.source_code || ''
+    const scope = { resourceType: 'assignment' as const, resourceId: detail.value.assignment.id, problemId: entry.problem.id }
+    state.source = loadSubmissionDraft(scope, state.language) ?? latest?.source_code ?? ''
   }
 }
 
-function preferredSubmission(problemID: number, selectedLanguage?: string) {
-  return history.value.find((item) => item.user_id === auth.user?.id && item.problem_id === problemID && (!selectedLanguage || item.language === selectedLanguage)) || null
+function preferredSubmission(problemID: number) {
+  return latestByProblem.value[problemID] || null
 }
 
 function scoreForProblem(problemID: number) {

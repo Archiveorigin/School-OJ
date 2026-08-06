@@ -327,15 +327,40 @@ func TestNormalizeTeamProblemLabelsUsesStablePPrefix(t *testing.T) {
 
 func TestTeamContestWindow(t *testing.T) {
 	start := time.Date(2026, 8, 2, 10, 0, 0, 0, time.UTC)
-	contest := models.TeamContest{StartsAt: &start, DurationMinutes: 120}
-	if _, status := teamContestWindow(contest, start.Add(-time.Second)); status != "not_started" {
+	contest := models.TeamContest{StartsAt: &start, DurationMinutes: 120, State: models.TeamContestPublished}
+	if _, status := teamContestWindow(contest, start.Add(-time.Second)); status != models.TeamContestPublished {
 		t.Fatalf("before start status = %q", status)
 	}
-	if endsAt, status := teamContestWindow(contest, start.Add(time.Hour)); status != "running" || endsAt == nil || !endsAt.Equal(start.Add(2*time.Hour)) {
+	if endsAt, status := teamContestWindow(contest, start.Add(time.Hour)); status != models.TeamContestRunning || endsAt == nil || !endsAt.Equal(start.Add(2*time.Hour)) {
 		t.Fatalf("running window = %v, %q", endsAt, status)
 	}
-	if _, status := teamContestWindow(contest, start.Add(2*time.Hour)); status != "closed" {
+	if _, status := teamContestWindow(contest, start.Add(2*time.Hour)); status != models.TeamContestClosed {
 		t.Fatalf("at end status = %q", status)
+	}
+	contest.State = models.TeamContestDraft
+	if _, status := teamContestWindow(contest, start.Add(time.Hour)); status != models.TeamContestDraft {
+		t.Fatalf("draft contest advanced to %q", status)
+	}
+}
+
+func TestBuildTeamContestRankingUsesAggregates(t *testing.T) {
+	start := time.Date(2026, 8, 6, 9, 0, 0, 0, time.UTC)
+	solvedAt := start.Add(35 * time.Minute)
+	users := []models.User{{ID: 1, Name: "Alice"}, {ID: 2, Name: "Bob"}}
+	links := []models.TeamContestProblem{{ProblemID: 11}, {ProblemID: 12}}
+	aggregates := []teamContestCellAggregate{
+		{UserID: 1, ProblemID: 11, Attempts: 3, WrongAttempts: 2, BestScore: 100, SolvedAt: &solvedAt, LastSubmission: solvedAt, LatestStatus: string(models.StatusAccepted)},
+		{UserID: 2, ProblemID: 11, Attempts: 1, BestScore: 40, LastSubmission: start.Add(10 * time.Minute), LatestStatus: string(models.StatusWrongAnswer)},
+	}
+	rows := buildTeamContestRanking(users, links, aggregates, start, "penalty")
+	if len(rows) != 2 || rows[0].UserID != 1 {
+		t.Fatalf("ranking order = %#v", rows)
+	}
+	if rows[0].Solved != 1 || rows[0].PenaltyMinutes != 75 || rows[0].SubmissionCount != 3 {
+		t.Fatalf("aggregate totals = %#v", rows[0])
+	}
+	if !rows[0].Problems[0].Fastest || rows[1].Problems[0].Status != string(models.StatusWrongAnswer) {
+		t.Fatalf("problem cells = %#v / %#v", rows[0].Problems[0], rows[1].Problems[0])
 	}
 }
 

@@ -44,6 +44,7 @@
           :active-entry="activeEntry"
           :active-problem="activeProblem"
           :history="history"
+          :latest-history="latestHistory"
           :language="language"
           :source="source"
           :live="live"
@@ -67,10 +68,11 @@
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { computed, onBeforeUnmount, onMounted, reactive, ref, watch } from 'vue'
 import { onBeforeRouteLeave, useRoute, useRouter } from 'vue-router'
-import { AuthenticatedEventSource, client, openEventStream, type Problem, type Submission } from '../api/client'
+import { AuthenticatedEventSource, client, getLatestSubmissions, openEventStream, type Problem, type Submission } from '../api/client'
 import ProblemEditDialog from '../components/ProblemEditDialog.vue'
 import ProblemTestDownloads from '../components/ProblemTestDownloads.vue'
 import { formatDateTime, workStatusLabel } from '../features/assignments/assignmentMeta'
+import { clearSubmissionDraft, loadSubmissionDraft } from '../features/submissions/drafts'
 import { useAuthStore } from '../stores/auth'
 import { useExamLockStore } from '../stores/examLock'
 
@@ -97,6 +99,7 @@ const detail = ref<any>(null)
 const activeEntry = ref<DetailProblem | null>(null)
 const activeProblem = computed(() => activeEntry.value?.problem || null)
 const history = ref<Submission[]>([])
+const latestHistory = ref<Submission[]>([])
 const submitting = ref(false)
 const finishing = ref(false)
 const problemEditorVisible = ref(false)
@@ -126,8 +129,6 @@ const language = computed({
   set: (value: string) => {
     if (!activeProblem.value || !activeState.value) return
     activeState.value.language = value
-    activeState.value.source = preferredSource(activeProblem.value.id, value)
-    activeState.value.dirty = false
   }
 })
 const source = computed({
@@ -221,6 +222,7 @@ async function submitSolution() {
       language: activeState.value.language,
       source_code: activeState.value.source
     })
+    clearSubmissionDraft({ resourceType: 'exam', resourceId: detail.value.exam.id, problemId: problemID }, activeState.value.language)
     watchSubmission(data.id, problemID)
     await loadHistory()
   } catch (err: any) {
@@ -264,11 +266,12 @@ async function refreshDetail() {
 
 async function loadHistory() {
   if (!detail.value) return
-  history.value = (
-    await client.get('/submissions', {
-      params: { exam_id: detail.value.exam.id }
-    })
-  ).data
+  const [historyResponse, latest] = await Promise.all([
+    client.get('/submissions', { params: { exam_id: detail.value.exam.id } }),
+    getLatestSubmissions({ exam_id: detail.value.exam.id })
+  ])
+  history.value = historyResponse.data
+  latestHistory.value = latest
   hydrateEditorStatesFromHistory()
 }
 
@@ -312,7 +315,7 @@ function ensureEditorState(problemID: number) {
     const language = submission?.language || 'cpp'
     editorStates[problemID] = {
       language,
-      source: submission?.source_code || '',
+      source: loadSubmissionDraft({ resourceType: 'exam', resourceId: examID.value, problemId: problemID }, language) ?? submission?.source_code ?? '',
       live: null,
       dirty: false
     }
@@ -324,23 +327,18 @@ function hydrateEditorStatesFromHistory() {
   for (const entry of detail.value?.problems || []) {
     const state = editorStates[entry.problem.id]
     if (!state || state.dirty) continue
-    const submission = preferredSubmission(entry.problem.id, state.language) || preferredSubmission(entry.problem.id)
+    const submission = preferredSubmission(entry.problem.id)
     if (submission) {
       state.language = submission.language
-      state.source = submission.source_code || ''
+      state.source = loadSubmissionDraft({ resourceType: 'exam', resourceId: examID.value, problemId: entry.problem.id }, state.language) ?? submission.source_code ?? ''
       continue
     }
-    state.source = preferredSource(entry.problem.id, state.language)
+    state.source = loadSubmissionDraft({ resourceType: 'exam', resourceId: examID.value, problemId: entry.problem.id }, state.language) || ''
   }
 }
 
-function preferredSubmission(problemID: number, language?: string) {
-  const items = history.value.filter((item) => item.user_id === auth.user?.id && item.problem_id === problemID && (!language || item.language === language))
-	return items[0] || null
-}
-
-function preferredSource(problemID: number, language: string) {
-  return preferredSubmission(problemID, language)?.source_code || ''
+function preferredSubmission(problemID: number) {
+	return latestHistory.value.find((item) => item.problem_id === problemID) || null
 }
 
 function problemScoreText(problemID: number) {

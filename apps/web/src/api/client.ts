@@ -99,9 +99,10 @@ export interface TeamContest {
   ends_at?: string
   duration_minutes: number
   scoring_rule?: 'score' | 'penalty'
+  state?: 'draft' | 'published' | 'running' | 'closed'
   created_by: number
   problem_count?: number
-  status?: 'not_started' | 'running' | 'closed'
+  status?: 'draft' | 'published' | 'running' | 'closed'
   created_at?: string
   updated_at?: string
 }
@@ -161,6 +162,20 @@ export interface Submission {
   exam_title?: string
   created_at: string
   updated_at: string
+}
+
+export type LatestSubmissionContext =
+  | { standalone: true }
+  | { assignment_id: number }
+  | { exam_id: number }
+  | { team_contest_id: number }
+  | { problem_set_id: number }
+
+export async function getLatestSubmissions(context: LatestSubmissionContext, problemID?: number) {
+  const params: Record<string, string | number | boolean> = { ...context }
+  if (problemID) params.problem_id = problemID
+  const { data } = await client.get<Submission[]>('/submissions/latest', { params })
+  return data || []
 }
 
 export interface AuthorApplication {

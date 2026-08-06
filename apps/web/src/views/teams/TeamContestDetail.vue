@@ -11,7 +11,9 @@
         <div v-if="detail" class="header-status">
           <el-tag :type="statusType(detail.contest.status)" size="large">{{ statusLabel(detail.contest.status) }}</el-tag>
           <span>{{ detail.problems.length }} 道题目</span>
-          <el-button v-if="detail.can_organize" @click="addVisible = true">添加题目</el-button>
+          <el-button v-if="detail.can_edit" @click="openEditContest">编辑设置</el-button>
+          <el-button v-if="detail.can_edit" @click="addVisible = true">添加题目</el-button>
+          <el-button v-if="detail.can_publish" type="success" @click="publishContest">发布并冻结</el-button>
         </div>
       </header>
 
@@ -25,8 +27,8 @@
         <section v-else-if="activeTab === 'problems'" class="problem-workspace">
           <div v-if="selectedLink" class="problem-actions">
             <div class="manage-actions">
-              <el-button v-if="detail.can_organize" @click="addVisible = true">添加题目</el-button>
-              <el-button v-if="detail.can_organize" type="danger" text @click="removeProblem">移出比赛</el-button>
+              <el-button v-if="detail.can_edit" @click="addVisible = true">添加题目</el-button>
+              <el-button v-if="detail.can_edit" type="danger" text @click="removeProblem">移出比赛</el-button>
             </div>
             <el-button type="primary" :disabled="!detail.can_submit" @click="openSubmit">提交代码</el-button>
           </div>
@@ -41,7 +43,7 @@
           <div v-if="detail.problems.length > 1" class="problem-switcher">
             <button v-for="link in detail.problems" :key="link.problem_id" type="button" :class="{ active: link.problem_id === selectedLink?.problem_id }" @click="openContestProblem(link.problem_id)">{{ link.label }}</button>
           </div>
-          <el-empty v-if="!selectedLink" description="比赛暂未添加题目"><el-button v-if="detail.can_organize" type="primary" @click="addVisible = true">添加第一道题</el-button></el-empty>
+          <el-empty v-if="!selectedLink" description="比赛暂未添加题目"><el-button v-if="detail.can_edit" type="primary" @click="addVisible = true">添加第一道题</el-button></el-empty>
         </section>
 
         <section v-else-if="activeTab === 'records'" class="panel records-panel">
@@ -88,7 +90,7 @@
       <el-skeleton v-else :rows="10" animated class="loading-panel" />
 
       <el-dialog v-model="submitVisible" :title="`提交 ${selectedLink?.label || ''} ${selectedLink?.problem?.title || ''}`" width="min(980px, calc(100vw - 24px))" destroy-on-close align-center>
-        <SubmissionComposer v-model:language="language" v-model:source="source" :status="liveStatus?.status" :message="liveStatus?.message" :submitting="submitting" scope-text="代码仅计入本场团队比赛" @submit="submitSolution" />
+        <SubmissionComposer ref="composerRef" v-model:language="language" v-model:source="source" :draft-context="draftContext" :status="liveStatus?.status" :message="liveStatus?.message" :submitting="submitting" scope-text="代码仅计入本场团队比赛" @submit="submitSolution" />
         <template #footer><el-button @click="submitVisible = false">关闭</el-button></template>
       </el-dialog>
 
@@ -97,20 +99,32 @@
         <el-input v-model="problemCode" placeholder="例如 T001" @keyup.enter="addProblem" />
         <template #footer><el-button @click="addVisible = false">取消</el-button><el-button type="primary" :loading="adding" @click="addProblem">添加</el-button></template>
       </el-dialog>
+
+      <el-dialog v-model="editVisible" title="编辑比赛草稿" width="560px">
+        <el-form label-position="top">
+          <el-form-item label="比赛标题"><el-input v-model="editForm.title" maxlength="200" /></el-form-item>
+          <el-form-item label="开始时间"><el-date-picker v-model="editForm.starts_at" type="datetime" value-format="YYYY-MM-DDTHH:mm:ssZ" /></el-form-item>
+          <el-form-item label="比赛时长"><el-input-number v-model="editForm.duration_minutes" :min="15" :step="15" /></el-form-item>
+          <el-form-item label="排名规则"><el-radio-group v-model="editForm.scoring_rule"><el-radio-button value="penalty">通过数 + 罚时</el-radio-button><el-radio-button value="score">通过数 + 总分</el-radio-button></el-radio-group></el-form-item>
+          <el-form-item label="说明"><el-input v-model="editForm.description" type="textarea" :rows="4" /></el-form-item>
+        </el-form>
+        <template #footer><el-button @click="editVisible = false">取消</el-button><el-button type="primary" :loading="editing" @click="saveContest">保存</el-button></template>
+      </el-dialog>
     </div>
   </section>
 </template>
 
 <script setup lang="ts">
 import { ElMessage, ElMessageBox } from 'element-plus'
-import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
+import { computed, onBeforeUnmount, onMounted, reactive, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
-import { client, openEventStream, type AuthenticatedEventSource, type Submission } from '../../api/client'
+import { client, getLatestSubmissions, openEventStream, type AuthenticatedEventSource, type Submission } from '../../api/client'
 import ProblemOverview from '../../components/ProblemOverview.vue'
 import ProblemStatementView from '../../components/ProblemStatementView.vue'
 import StatusBadge from '../../components/StatusBadge.vue'
 import SubmissionComposer from '../../components/SubmissionComposer.vue'
 import { formatDateTime } from '../../features/time'
+import { loadSubmissionDraft } from '../../features/submissions/drafts'
 
 type ContestTab = 'overview' | 'problems' | 'records' | 'ranking'
 const tabs: Array<{ key: ContestTab; label: string }> = [
@@ -124,6 +138,7 @@ const submitting = ref(false)
 const language = ref('cpp')
 const source = ref('')
 const liveStatus = ref<any>(null)
+const composerRef = ref<{ clearDraft: () => void } | null>(null)
 const records = ref<Submission[]>([])
 const recordsLoading = ref(false)
 const ranking = ref<any>({ rows: [], problems: [], scoring_rule: 'penalty' })
@@ -131,6 +146,9 @@ const rankingLoading = ref(false)
 const addVisible = ref(false)
 const adding = ref(false)
 const problemCode = ref('')
+const editVisible = ref(false)
+const editing = ref(false)
+const editForm = reactive({ title: '', description: '', starts_at: '', duration_minutes: 120, scoring_rule: 'penalty' })
 let submissionStream: AuthenticatedEventSource | null = null
 
 const contestID = computed(() => Number(route.params.contestId))
@@ -140,6 +158,7 @@ const activeTab = computed<ContestTab>(() => {
 })
 const selectedProblemID = computed(() => Number(route.query.problem) || detail.value?.problems?.[0]?.problem_id)
 const selectedLink = computed(() => detail.value?.problems?.find((item: any) => item.problem_id === selectedProblemID.value) || detail.value?.problems?.[0] || null)
+const draftContext = computed(() => ({ resourceType: 'contest' as const, resourceId: contestID.value, problemId: selectedLink.value?.problem_id || 0 }))
 const contestTimeText = computed(() => {
   const contest = detail.value?.contest
   if (!contest) return ''
@@ -164,10 +183,9 @@ function openContestProblem(problemID: number) { router.push({ path: route.path,
 
 async function openSubmit() {
   if (!detail.value?.can_submit || !selectedLink.value) return
-  if (!records.value.length) await loadRecords()
-  const latest = records.value.find((item) => item.problem_id === selectedLink.value.problem_id)
+  const latest = (await getLatestSubmissions({ team_contest_id: contestID.value }, selectedLink.value.problem_id))[0]
   language.value = latest?.language || 'cpp'
-  source.value = latest?.source_code || ''
+  source.value = loadSubmissionDraft(draftContext.value, language.value) ?? latest?.source_code ?? ''
   liveStatus.value = latest || null
   submitVisible.value = true
 }
@@ -177,6 +195,7 @@ async function submitSolution() {
   submitting.value = true
   try {
     const { data } = await client.post(`/contests/${contestID.value}/submissions`, { problem_id: selectedLink.value.problem_id, language: language.value, source_code: source.value })
+    composerRef.value?.clearDraft()
     liveStatus.value = data
     submissionStream?.close()
     submissionStream = openEventStream(`/submissions/${data.id}/events`)
@@ -190,6 +209,36 @@ async function submitSolution() {
     ElMessage.success('代码已提交评测')
   } catch (err: any) { ElMessage.error(err.response?.data?.error || err.message) }
   finally { submitting.value = false }
+}
+
+async function publishContest() {
+  try {
+    await ElMessageBox.confirm('发布后将冻结题目、开始时间和评分规则，且不能撤回。确认发布？', '发布比赛', { type: 'warning' })
+    await client.post(`/contests/${contestID.value}/publish`)
+    ElMessage.success('比赛已发布，题目与评分规则已冻结')
+    await loadDetail()
+  } catch (err: any) {
+    if (err !== 'cancel' && err !== 'close') ElMessage.error(err.response?.data?.error || err.message)
+  }
+}
+
+function openEditContest() {
+  const contest = detail.value?.contest
+  if (!contest) return
+  Object.assign(editForm, { title: contest.title, description: contest.description || '', starts_at: contest.starts_at || '', duration_minutes: contest.duration_minutes, scoring_rule: contest.scoring_rule || 'penalty' })
+  editVisible.value = true
+}
+
+async function saveContest() {
+  if (!editForm.title.trim() || !editForm.starts_at) return ElMessage.warning('请填写标题和开始时间')
+  editing.value = true
+  try {
+    await client.put(`/contests/${contestID.value}`, editForm)
+    editVisible.value = false
+    ElMessage.success('比赛草稿已保存')
+    await loadDetail()
+  } catch (err: any) { ElMessage.error(err.response?.data?.error || err.message) }
+  finally { editing.value = false }
 }
 
 async function addProblem() {
@@ -229,8 +278,8 @@ async function loadRanking() {
 function problemLabel(problemID: number) { return detail.value?.problems?.find((item: any) => item.problem_id === problemID)?.label || '-' }
 function rankingCell(row: any, problemID: number) { return row.problems?.find((item: any) => item.problem_id === problemID) }
 function rankingCellClass(cell: any) { return { fastest: Boolean(cell?.fastest), passed: cell?.status === 'accepted' && !cell?.fastest, failed: Boolean(cell?.attempts && cell?.status !== 'accepted') } }
-function statusLabel(status: string) { return status === 'not_started' ? '未开始' : status === 'closed' ? '已结束' : '进行中' }
-function statusType(status: string): 'success' | 'warning' | 'info' { return status === 'not_started' ? 'warning' : status === 'closed' ? 'info' : 'success' }
+function statusLabel(status: string) { return status === 'draft' ? '草稿' : status === 'published' ? '已发布' : status === 'closed' ? '已结束' : '进行中' }
+function statusType(status: string): 'success' | 'warning' | 'info' { return status === 'draft' || status === 'published' ? 'warning' : status === 'closed' ? 'info' : 'success' }
 function problemStatusText(status?: string) { return !status ? '未提交' : status === 'accepted' ? '已通过' : ['queued', 'running'].includes(status) ? '评测中' : '未通过' }
 function problemStatusType(status?: string): 'success' | 'warning' | 'info' | 'danger' { return status === 'accepted' ? 'success' : ['queued', 'running'].includes(status || '') ? 'warning' : status ? 'danger' : 'info' }
 

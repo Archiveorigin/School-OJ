@@ -150,11 +150,13 @@
 
     <el-dialog v-model="submitVisible" :title="`提交 ${selectedLink ? problemSetLabel(selectedIndex) : ''} ${selectedLink?.problem?.title || ''}`" width="min(900px, calc(100vw - 24px))" destroy-on-close>
       <SubmissionComposer
+        ref="composerRef"
         v-model:language="language"
         v-model:source="source"
         :status="liveStatus?.status"
         :message="liveStatus?.message"
         :submitting="submitting"
+        :draft-context="draftContext"
         scope-text="本次代码仅计入当前团队题单"
         @submit="submitSolution"
       />
@@ -169,7 +171,7 @@
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { computed, onBeforeUnmount, reactive, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
-import { client, openEventStream, type AuthenticatedEventSource, type Submission } from '../../api/client'
+import { client, getLatestSubmissions, openEventStream, type AuthenticatedEventSource, type Submission } from '../../api/client'
 import ListPagination from '../../components/ListPagination.vue'
 import MarkdownRenderer from '../../components/MarkdownRenderer.vue'
 import ProblemStatementView from '../../components/ProblemStatementView.vue'
@@ -177,6 +179,7 @@ import ProblemSwitcher from '../../components/ProblemSwitcher.vue'
 import StatusBadge from '../../components/StatusBadge.vue'
 import SubmissionComposer from '../../components/SubmissionComposer.vue'
 import { formatDateTime } from '../../features/time'
+import { loadSubmissionDraft } from '../../features/submissions/drafts'
 import { useAuthStore } from '../../stores/auth'
 
 const route = useRoute()
@@ -204,10 +207,12 @@ const submitting = ref(false)
 const language = ref('cpp')
 const source = ref('')
 const liveStatus = ref<any>(null)
+const composerRef = ref<{ clearDraft: () => void } | null>(null)
 const liveStreams = new Set<AuthenticatedEventSource>()
 const teamID = computed(() => Number(detail.value?.team?.id))
 const problemSetID = computed(() => Number(route.params.setId))
 const selectedLink = computed(() => links.value[selectedIndex.value])
+const draftContext = computed(() => ({ resourceType: 'problem-set' as const, resourceId: problemSetID.value, problemId: selectedLink.value?.problem_id || 0 }))
 const selectedProblemID = computed({
   get: () => selectedLink.value?.problem_id,
   set: (value: number | undefined) => {
@@ -330,10 +335,9 @@ async function removeProblem(link: any) {
 
 async function openSubmit(link: any) {
   selectedIndex.value = links.value.findIndex((item) => item.id === link.id)
-  if (!submissions.value.length) await loadSubmissions()
-  const latest = submissions.value.find((item) => item.problem_id === link.problem_id && item.user_id === auth.user?.id)
+  const latest = (await getLatestSubmissions({ problem_set_id: problemSetID.value }, link.problem_id))[0]
   language.value = latest?.language || 'cpp'
-  source.value = latest?.source_code || ''
+  source.value = loadSubmissionDraft(draftContext.value, language.value) ?? latest?.source_code ?? ''
   liveStatus.value = latest || null
   submitVisible.value = true
 }
@@ -350,6 +354,7 @@ async function submitSolution() {
       language: language.value,
       source_code: source.value
     })
+    composerRef.value?.clearDraft()
     liveStatus.value = data
     const stream = openEventStream(`/submissions/${data.id}/events`)
     liveStreams.add(stream)

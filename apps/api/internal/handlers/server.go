@@ -9,6 +9,7 @@ import (
 	"encoding/csv"
 	"encoding/json"
 	"encoding/xml"
+	"errors"
 	"fmt"
 	"io"
 	"mime/multipart"
@@ -2620,6 +2621,16 @@ func (s Server) deleteProblem(c *gin.Context) {
 	}
 	now := time.Now()
 	if err := s.DB.Transaction(func(tx *gorm.DB) error {
+		linkedContestIDs := tx.Model(&models.TeamContestProblem{}).Select("contest_id").Where("problem_id = ?", problem.ID)
+		var linkedContests []models.TeamContest
+		if err := tx.Clauses(clause.Locking{Strength: "UPDATE"}).Where("id IN (?)", linkedContestIDs).Find(&linkedContests).Error; err != nil {
+			return err
+		}
+		for _, contest := range linkedContests {
+			if contest.State != "" && contest.State != models.TeamContestDraft {
+				return errTeamContestFrozen
+			}
+		}
 		if err := tx.Model(&models.Problem{}).Where("id = ?", problem.ID).Update("deleted_at", now).Error; err != nil {
 			return err
 		}
@@ -2628,6 +2639,10 @@ func (s Server) deleteProblem(c *gin.Context) {
 		}
 		return tx.Where("problem_id = ?", problem.ID).Delete(&models.TeamContestProblem{}).Error
 	}); err != nil {
+		if errors.Is(err, errTeamContestFrozen) {
+			c.JSON(http.StatusConflict, gin.H{"error": "题目已用于发布后的比赛，不能删除"})
+			return
+		}
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 		return
 	}
@@ -4287,6 +4302,61 @@ func (s Server) listSubmissions(c *gin.Context) {
 		}
 	}
 	c.JSON(http.StatusOK, views)
+}
+
+func (s Server) latestSubmissions(c *gin.Context) {
+	user, _ := middleware.CurrentUser(c)
+	q := s.DB.Model(&models.Submission{}).Where("user_id = ?", user.ID)
+	contexts := 0
+	for _, item := range []struct {
+		Query  string
+		Column string
+	}{
+		{Query: "assignment_id", Column: "assignment_id"},
+		{Query: "exam_id", Column: "exam_id"},
+		{Query: "team_contest_id", Column: "team_contest_id"},
+		{Query: "problem_set_id", Column: "problem_set_id"},
+	} {
+		raw := strings.TrimSpace(c.Query(item.Query))
+		if raw == "" {
+			continue
+		}
+		value, err := strconv.ParseUint(raw, 10, 64)
+		if err != nil || value == 0 {
+			c.JSON(http.StatusBadRequest, gin.H{"error": item.Query + " is invalid"})
+			return
+		}
+		contexts++
+		q = q.Where(item.Column+" = ?", uint(value))
+	}
+	if raw := strings.TrimSpace(c.Query("standalone")); raw != "" {
+		standalone, err := strconv.ParseBool(raw)
+		if err != nil || !standalone {
+			c.JSON(http.StatusBadRequest, gin.H{"error": "standalone must be true"})
+			return
+		}
+		contexts++
+		q = q.Where("assignment_id IS NULL AND exam_id IS NULL AND team_contest_id IS NULL AND problem_set_id IS NULL")
+	}
+	if contexts != 1 {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "exactly one submission context is required"})
+		return
+	}
+	if rawProblemID := strings.TrimSpace(c.Query("problem_id")); rawProblemID != "" {
+		problemID, err := strconv.ParseUint(rawProblemID, 10, 64)
+		if err != nil || problemID == 0 {
+			c.JSON(http.StatusBadRequest, gin.H{"error": "problem_id is invalid"})
+			return
+		}
+		q = q.Where("problem_id = ?", uint(problemID))
+	}
+	latestIDs := q.Select("MAX(id)").Group("problem_id")
+	var items []models.Submission
+	if err := s.DB.Where("id IN (?)", latestIDs).Order("id DESC").Find(&items).Error; err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		return
+	}
+	c.JSON(http.StatusOK, s.submissionListViews(items))
 }
 
 func (s Server) submissionListViews(items []models.Submission) []submissionListView {

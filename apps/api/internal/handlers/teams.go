@@ -3,6 +3,7 @@ package handlers
 import (
 	"crypto/rand"
 	"encoding/hex"
+	"errors"
 	"fmt"
 	"net/http"
 	"regexp"
@@ -22,6 +23,7 @@ import (
 )
 
 var teamSlugPattern = regexp.MustCompile(`^[a-z][a-z0-9-]{1,29}$`)
+var errTeamContestFrozen = errors.New("team contest is frozen")
 
 type teamView struct {
 	models.Team
@@ -74,6 +76,39 @@ type teamSubmissionInput struct {
 	ProblemID  uint   `json:"problem_id" binding:"required"`
 	Language   string `json:"language" binding:"required"`
 	SourceCode string `json:"source_code" binding:"required"`
+}
+
+type teamContestRankingCell struct {
+	ProblemID      uint       `json:"problem_id"`
+	Status         string     `json:"status"`
+	Attempts       int        `json:"attempts"`
+	WrongAttempts  int        `json:"wrong_attempts"`
+	BestScore      int        `json:"best_score"`
+	ElapsedMinutes int        `json:"elapsed_minutes"`
+	SolvedAt       *time.Time `json:"solved_at,omitempty"`
+	Fastest        bool       `json:"fastest"`
+}
+
+type teamContestRankingRow struct {
+	UserID          uint                     `json:"user_id"`
+	Name            string                   `json:"name"`
+	Solved          int                      `json:"solved"`
+	TotalScore      int                      `json:"total_score"`
+	PenaltyMinutes  int                      `json:"penalty_minutes"`
+	SubmissionCount int                      `json:"submission_count"`
+	LastSubmission  *time.Time               `json:"last_submission,omitempty"`
+	Problems        []teamContestRankingCell `json:"problems"`
+}
+
+type teamContestCellAggregate struct {
+	UserID         uint
+	ProblemID      uint
+	Attempts       int
+	WrongAttempts  int
+	BestScore      int
+	SolvedAt       *time.Time
+	LastSubmission time.Time
+	LatestStatus   string
 }
 
 type teamDiscussionView struct {
@@ -551,13 +586,107 @@ func (s Server) createTeamContest(c *gin.Context) {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "评分规则必须为 score 或 penalty"})
 		return
 	}
-	item := models.TeamContest{TeamID: team.ID, Title: strings.TrimSpace(req.Title), Description: strings.TrimSpace(req.Description), StartsAt: req.StartsAt, DurationMinutes: req.DurationMinutes, ScoringRule: req.ScoringRule, CreatedBy: user.ID}
+	item := models.TeamContest{TeamID: team.ID, Title: strings.TrimSpace(req.Title), Description: strings.TrimSpace(req.Description), StartsAt: req.StartsAt, DurationMinutes: req.DurationMinutes, ScoringRule: req.ScoringRule, State: models.TeamContestDraft, CreatedBy: user.ID}
 	if err := s.DB.Create(&item).Error; err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 		return
 	}
 	services.Audit(c, s.DB, "team.contest.create", "team_contest", item.ID, datatypes.JSONMap{"team_id": team.ID})
 	c.JSON(http.StatusCreated, item)
+}
+
+func (s Server) updateTeamContest(c *gin.Context) {
+	user, _ := middleware.CurrentUser(c)
+	contest, team, ok := s.teamContestByParams(c)
+	if !ok || !s.requireTeamContentPermission(c, user, team) {
+		return
+	}
+	if !requireDraftTeamContest(c, contest) {
+		return
+	}
+	var req struct {
+		Title           string     `json:"title" binding:"required"`
+		Description     string     `json:"description"`
+		StartsAt        *time.Time `json:"starts_at"`
+		DurationMinutes int        `json:"duration_minutes"`
+		ScoringRule     string     `json:"scoring_rule"`
+	}
+	if !bind(c, &req) {
+		return
+	}
+	req.Title = strings.TrimSpace(req.Title)
+	req.ScoringRule = strings.ToLower(strings.TrimSpace(req.ScoringRule))
+	if req.DurationMinutes <= 0 || (req.ScoringRule != "score" && req.ScoringRule != "penalty") {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "比赛时长和评分规则无效"})
+		return
+	}
+	updates := map[string]any{"title": req.Title, "description": strings.TrimSpace(req.Description), "starts_at": req.StartsAt, "duration_minutes": req.DurationMinutes, "scoring_rule": req.ScoringRule}
+	result := s.DB.Model(&models.TeamContest{}).Where("id = ? AND state = ?", contest.ID, models.TeamContestDraft).Updates(updates)
+	if result.Error != nil || result.RowsAffected != 1 {
+		c.JSON(http.StatusConflict, gin.H{"error": "比赛已发布，设置已冻结"})
+		return
+	}
+	_ = s.DB.First(&contest, contest.ID).Error
+	c.JSON(http.StatusOK, contest)
+}
+
+func (s Server) publishTeamContest(c *gin.Context) {
+	user, _ := middleware.CurrentUser(c)
+	contest, team, ok := s.teamContestByParams(c)
+	if !ok || !s.requireTeamContentPermission(c, user, team) {
+		return
+	}
+	now := time.Now()
+	if contest.State != models.TeamContestDraft {
+		c.JSON(http.StatusConflict, gin.H{"error": "比赛已发布，题目和评分规则已冻结"})
+		return
+	}
+	if contest.StartsAt == nil || !contest.StartsAt.After(now) {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "发布前必须设置晚于当前时间的开始时间"})
+		return
+	}
+	var problemCount int64
+	if err := s.DB.Transaction(func(tx *gorm.DB) error {
+		var locked models.TeamContest
+		if err := tx.Clauses(clause.Locking{Strength: "UPDATE"}).First(&locked, contest.ID).Error; err != nil {
+			return err
+		}
+		if locked.State != models.TeamContestDraft {
+			return errTeamContestFrozen
+		}
+		if locked.StartsAt == nil || !locked.StartsAt.After(now) {
+			return gorm.ErrInvalidData
+		}
+		contest = locked
+		if err := tx.Model(&models.TeamContestProblem{}).Where("contest_id = ?", contest.ID).Count(&problemCount).Error; err != nil {
+			return err
+		}
+		if problemCount == 0 {
+			return gorm.ErrRecordNotFound
+		}
+		if err := tx.Exec(`
+INSERT INTO team_contest_participants(contest_id, user_id)
+SELECT ?, user_id FROM team_memberships WHERE team_id = ?
+ON CONFLICT (contest_id, user_id) DO NOTHING`, contest.ID, team.ID).Error; err != nil {
+			return err
+		}
+		return tx.Model(&locked).Updates(map[string]any{"state": models.TeamContestPublished, "published_at": now}).Error
+	}); err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			c.JSON(http.StatusBadRequest, gin.H{"error": "发布前至少添加一道题目"})
+			return
+		}
+		if errors.Is(err, gorm.ErrInvalidData) {
+			c.JSON(http.StatusBadRequest, gin.H{"error": "发布前必须设置晚于当前时间的开始时间"})
+			return
+		}
+		c.JSON(http.StatusConflict, gin.H{"error": "比赛状态已变化，请刷新后重试"})
+		return
+	}
+	services.Audit(c, s.DB, "team.contest.publish", "team_contest", contest.ID, datatypes.JSONMap{"team_id": team.ID, "problem_count": problemCount, "scoring_rule": contest.ScoringRule})
+	contest.State = models.TeamContestPublished
+	contest.PublishedAt = &now
+	c.JSON(http.StatusOK, contest)
 }
 
 func (s Server) getTeamContest(c *gin.Context) {
@@ -568,7 +697,7 @@ func (s Server) getTeamContest(c *gin.Context) {
 	}
 	endsAt, status := teamContestWindow(contest, time.Now())
 	canOrganize := s.canTeamContentPermission(user, team)
-	if status == "not_started" && !canOrganize {
+	if (status == models.TeamContestDraft || status == models.TeamContestPublished) && !canOrganize {
 		c.JSON(http.StatusForbidden, gin.H{"error": "比赛尚未开始"})
 		return
 	}
@@ -577,6 +706,8 @@ func (s Server) getTeamContest(c *gin.Context) {
 	links = filterActiveTeamContestProblemLinks(links)
 	normalizeTeamContestProblemLabels(links)
 	views := make([]teamContestProblemView, 0, len(links))
+	var participantCount int64
+	s.DB.Model(&models.TeamContestParticipant{}).Where("contest_id = ? AND user_id = ?", contest.ID, user.ID).Count(&participantCount)
 	for _, link := range links {
 		var latest models.Submission
 		view := teamContestProblemView{TeamContestProblem: link}
@@ -593,11 +724,14 @@ func (s Server) getTeamContest(c *gin.Context) {
 		views = append(views, view)
 	}
 	c.JSON(http.StatusOK, gin.H{
-		"contest":      teamContestView{TeamContest: contest, EndsAt: endsAt, Status: status, ProblemCount: int64(len(views))},
-		"team":         s.teamViews([]models.Team{team}, user.ID)[0],
-		"problems":     views,
-		"can_organize": canOrganize,
-		"can_submit":   status == "running",
+		"contest":        teamContestView{TeamContest: contest, EndsAt: endsAt, Status: status, ProblemCount: int64(len(views))},
+		"team":           s.teamViews([]models.Team{team}, user.ID)[0],
+		"problems":       views,
+		"can_organize":   canOrganize,
+		"can_submit":     status == models.TeamContestRunning && participantCount > 0,
+		"is_participant": participantCount > 0,
+		"can_edit":       canOrganize && status == models.TeamContestDraft,
+		"can_publish":    canOrganize && status == models.TeamContestDraft,
 	})
 }
 
@@ -605,6 +739,9 @@ func (s Server) addTeamContestProblem(c *gin.Context) {
 	user, _ := middleware.CurrentUser(c)
 	contest, team, ok := s.teamContestByParams(c)
 	if !ok || !s.requireTeamContentPermission(c, user, team) {
+		return
+	}
+	if !requireDraftTeamContest(c, contest) {
 		return
 	}
 	var req struct {
@@ -619,10 +756,26 @@ func (s Server) addTeamContestProblem(c *gin.Context) {
 	if !found {
 		return
 	}
-	var count int64
-	s.DB.Model(&models.TeamContestProblem{}).Where("contest_id = ?", contest.ID).Count(&count)
-	link := models.TeamContestProblem{ContestID: contest.ID, ProblemID: problem.ID, Label: strings.TrimSpace(req.Label), SortOrder: int(count)}
-	if err := s.DB.Create(&link).Error; err != nil {
+	link := models.TeamContestProblem{ContestID: contest.ID, ProblemID: problem.ID, Label: strings.TrimSpace(req.Label)}
+	if err := s.DB.Transaction(func(tx *gorm.DB) error {
+		var locked models.TeamContest
+		if err := tx.Clauses(clause.Locking{Strength: "UPDATE"}).First(&locked, contest.ID).Error; err != nil {
+			return err
+		}
+		if locked.State != models.TeamContestDraft {
+			return errTeamContestFrozen
+		}
+		var count int64
+		if err := tx.Model(&models.TeamContestProblem{}).Where("contest_id = ?", contest.ID).Count(&count).Error; err != nil {
+			return err
+		}
+		link.SortOrder = int(count)
+		return tx.Create(&link).Error
+	}); err != nil {
+		if errors.Is(err, errTeamContestFrozen) {
+			c.JSON(http.StatusConflict, gin.H{"error": "比赛发布后题目已冻结"})
+			return
+		}
 		c.JSON(http.StatusConflict, gin.H{"error": "题目已在该比赛中"})
 		return
 	}
@@ -635,16 +788,35 @@ func (s Server) removeTeamContestProblem(c *gin.Context) {
 	if !ok || !s.requireTeamContentPermission(c, user, team) {
 		return
 	}
+	if !requireDraftTeamContest(c, contest) {
+		return
+	}
 	problemID, ok := idParam(c, "problem_id")
 	if !ok {
 		return
 	}
-	result := s.DB.Where("contest_id = ? AND problem_id = ?", contest.ID, problemID).Delete(&models.TeamContestProblem{})
-	if result.Error != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": result.Error.Error()})
+	var removed bool
+	err := s.DB.Transaction(func(tx *gorm.DB) error {
+		var locked models.TeamContest
+		if err := tx.Clauses(clause.Locking{Strength: "UPDATE"}).First(&locked, contest.ID).Error; err != nil {
+			return err
+		}
+		if locked.State != models.TeamContestDraft {
+			return errTeamContestFrozen
+		}
+		result := tx.Where("contest_id = ? AND problem_id = ?", contest.ID, problemID).Delete(&models.TeamContestProblem{})
+		removed = result.RowsAffected > 0
+		return result.Error
+	})
+	if err != nil {
+		if errors.Is(err, errTeamContestFrozen) {
+			c.JSON(http.StatusConflict, gin.H{"error": "比赛发布后题目已冻结"})
+			return
+		}
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 		return
 	}
-	c.JSON(http.StatusOK, gin.H{"removed": result.RowsAffected > 0})
+	c.JSON(http.StatusOK, gin.H{"removed": removed})
 }
 
 func (s Server) listTeamContestSubmissions(c *gin.Context) {
@@ -665,12 +837,18 @@ func (s Server) createTeamContestSubmission(c *gin.Context) {
 		return
 	}
 	_, status := teamContestWindow(contest, time.Now())
-	if status != "running" {
+	if status != models.TeamContestRunning {
 		message := "比赛已结束"
-		if status == "not_started" {
+		if status == models.TeamContestDraft || status == models.TeamContestPublished {
 			message = "比赛尚未开始"
 		}
 		c.JSON(http.StatusForbidden, gin.H{"error": message})
+		return
+	}
+	var participantCount int64
+	s.DB.Model(&models.TeamContestParticipant{}).Where("contest_id = ? AND user_id = ?", contest.ID, user.ID).Count(&participantCount)
+	if participantCount == 0 {
+		c.JSON(http.StatusForbidden, gin.H{"error": "你不在比赛发布时冻结的参赛名单中"})
 		return
 	}
 	var req teamSubmissionInput
@@ -693,7 +871,7 @@ func (s Server) teamContestRanking(c *gin.Context) {
 		return
 	}
 	_, contestStatus := teamContestWindow(contest, time.Now())
-	if contestStatus == "not_started" && !s.canTeamContentPermission(user, team) {
+	if (contestStatus == models.TeamContestDraft || contestStatus == models.TeamContestPublished) && !s.canTeamContentPermission(user, team) {
 		c.JSON(http.StatusForbidden, gin.H{"error": "比赛尚未开始"})
 		return
 	}
@@ -701,75 +879,106 @@ func (s Server) teamContestRanking(c *gin.Context) {
 	s.DB.Preload("Problem").Where("contest_id = ?", contest.ID).Order("sort_order, id").Find(&links)
 	links = filterActiveTeamContestProblemLinks(links)
 	normalizeTeamContestProblemLabels(links)
-	var memberships []models.TeamMembership
-	s.DB.Where("team_id = ?", team.ID).Find(&memberships)
-	userIDs := make([]uint, 0, len(memberships))
-	for _, membership := range memberships {
-		userIDs = append(userIDs, membership.UserID)
+	var userIDs []uint
+	if contest.State == models.TeamContestDraft {
+		s.DB.Model(&models.TeamMembership{}).Where("team_id = ?", team.ID).Pluck("user_id", &userIDs)
+	} else {
+		s.DB.Model(&models.TeamContestParticipant{}).Where("contest_id = ?", contest.ID).Pluck("user_id", &userIDs)
 	}
 	var users []models.User
 	if len(userIDs) > 0 {
-		s.DB.Where("id IN ? AND account_deleted = false", userIDs).Find(&users)
+		s.DB.Where("id IN ?", userIDs).Order("lower(name), id").Find(&users)
 	}
-	var submissions []models.Submission
-	s.DB.Where("team_contest_id = ?", contest.ID).Order("created_at asc").Find(&submissions)
-	type problemCell struct {
-		ProblemID      uint       `json:"problem_id"`
-		Status         string     `json:"status"`
-		Attempts       int        `json:"attempts"`
-		WrongAttempts  int        `json:"wrong_attempts"`
-		BestScore      int        `json:"best_score"`
-		ElapsedMinutes int        `json:"elapsed_minutes"`
-		SolvedAt       *time.Time `json:"solved_at,omitempty"`
-		Fastest        bool       `json:"fastest"`
-	}
-	type rankingRow struct {
-		UserID          uint          `json:"user_id"`
-		Name            string        `json:"name"`
-		Solved          int           `json:"solved"`
-		TotalScore      int           `json:"total_score"`
-		PenaltyMinutes  int           `json:"penalty_minutes"`
-		SubmissionCount int           `json:"submission_count"`
-		LastSubmission  *time.Time    `json:"last_submission,omitempty"`
-		Problems        []problemCell `json:"problems"`
+	aggregates, err := s.loadTeamContestCellAggregates(contest.ID)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		return
 	}
 	contestStart := contest.CreatedAt
 	if contest.StartsAt != nil {
 		contestStart = *contest.StartsAt
 	}
-	rows := make([]rankingRow, 0, len(users))
+	rows := buildTeamContestRanking(users, links, aggregates, contestStart, contest.ScoringRule)
+
+	problems := make([]gin.H, 0, len(links))
+	for _, link := range links {
+		problems = append(problems, gin.H{"problem_id": link.ProblemID, "label": link.Label, "title": link.Problem.Title})
+	}
+	c.JSON(http.StatusOK, gin.H{"contest": contest, "scoring_rule": contest.ScoringRule, "problems": problems, "rows": rows})
+}
+
+func (s Server) loadTeamContestCellAggregates(contestID uint) ([]teamContestCellAggregate, error) {
+	var rows []teamContestCellAggregate
+	err := s.DB.Raw(`
+WITH scoped AS (
+  SELECT user_id, problem_id, status, score, created_at, id
+  FROM submissions
+  WHERE team_contest_id = ?
+), first_accept AS (
+  SELECT user_id, problem_id, MIN(created_at) AS solved_at
+  FROM scoped
+  WHERE status = ?
+  GROUP BY user_id, problem_id
+), latest AS (
+  SELECT DISTINCT ON (user_id, problem_id) user_id, problem_id, status
+  FROM scoped
+  ORDER BY user_id, problem_id, id DESC
+)
+SELECT scoped.user_id,
+       scoped.problem_id,
+       COUNT(*)::integer AS attempts,
+       COUNT(*) FILTER (
+         WHERE first_accept.solved_at IS NOT NULL
+           AND scoped.created_at < first_accept.solved_at
+           AND scoped.status NOT IN (?, ?, ?)
+       )::integer AS wrong_attempts,
+       COALESCE(MAX(scoped.score), 0)::integer AS best_score,
+       first_accept.solved_at,
+       MAX(scoped.created_at) AS last_submission,
+       CASE WHEN first_accept.solved_at IS NOT NULL THEN ? ELSE latest.status END AS latest_status
+FROM scoped
+LEFT JOIN first_accept USING (user_id, problem_id)
+JOIN latest USING (user_id, problem_id)
+GROUP BY scoped.user_id, scoped.problem_id, first_accept.solved_at, latest.status`,
+		contestID,
+		models.StatusAccepted,
+		models.StatusQueued,
+		models.StatusRunning,
+		models.StatusAccepted,
+		models.StatusAccepted,
+	).Scan(&rows).Error
+	return rows, err
+}
+
+func buildTeamContestRanking(users []models.User, links []models.TeamContestProblem, aggregates []teamContestCellAggregate, contestStart time.Time, scoringRule string) []teamContestRankingRow {
+	byUserProblem := make(map[[2]uint]teamContestCellAggregate, len(aggregates))
+	for _, aggregate := range aggregates {
+		byUserProblem[[2]uint{aggregate.UserID, aggregate.ProblemID}] = aggregate
+	}
+	rows := make([]teamContestRankingRow, 0, len(users))
 	for _, member := range users {
-		row := rankingRow{UserID: member.ID, Name: member.Name, Problems: make([]problemCell, 0, len(links))}
+		row := teamContestRankingRow{UserID: member.ID, Name: member.Name, Problems: make([]teamContestRankingCell, 0, len(links))}
 		for _, link := range links {
-			cell := problemCell{ProblemID: link.ProblemID}
-			for _, sub := range submissions {
-				if sub.UserID != member.ID || sub.ProblemID != link.ProblemID {
-					continue
+			cell := teamContestRankingCell{ProblemID: link.ProblemID}
+			if aggregate, ok := byUserProblem[[2]uint{member.ID, link.ProblemID}]; ok {
+				cell.Status = aggregate.LatestStatus
+				cell.Attempts = aggregate.Attempts
+				cell.WrongAttempts = aggregate.WrongAttempts
+				cell.BestScore = aggregate.BestScore
+				cell.SolvedAt = aggregate.SolvedAt
+				cell.ElapsedMinutes = elapsedContestMinutes(contestStart, aggregate.LastSubmission)
+				row.SubmissionCount += aggregate.Attempts
+				last := aggregate.LastSubmission
+				if row.LastSubmission == nil || last.After(*row.LastSubmission) {
+					row.LastSubmission = &last
 				}
-				cell.Attempts++
-				row.SubmissionCount++
-				value := sub.CreatedAt
-				row.LastSubmission = &value
-				if cell.SolvedAt == nil {
-					cell.ElapsedMinutes = elapsedContestMinutes(contestStart, value)
-				}
-				if sub.Score > cell.BestScore {
-					cell.BestScore = sub.Score
-				}
-				if cell.Status != string(models.StatusAccepted) {
-					cell.Status = string(sub.Status)
-				}
-				if sub.Status == models.StatusAccepted && cell.SolvedAt == nil {
-					cell.Status = string(models.StatusAccepted)
-					cell.SolvedAt = &value
-					cell.ElapsedMinutes = elapsedContestMinutes(contestStart, value)
+				if aggregate.SolvedAt != nil {
+					cell.ElapsedMinutes = elapsedContestMinutes(contestStart, *aggregate.SolvedAt)
 					row.Solved++
 					row.PenaltyMinutes += cell.ElapsedMinutes + cell.WrongAttempts*20
-				} else if cell.SolvedAt == nil && sub.Status != models.StatusQueued && sub.Status != models.StatusRunning {
-					cell.WrongAttempts++
 				}
+				row.TotalScore += cell.BestScore
 			}
-			row.TotalScore += cell.BestScore
 			row.Problems = append(row.Problems, cell)
 		}
 		rows = append(rows, row)
@@ -797,7 +1006,7 @@ func (s Server) teamContestRanking(c *gin.Context) {
 		if rows[i].Solved != rows[j].Solved {
 			return rows[i].Solved > rows[j].Solved
 		}
-		if contest.ScoringRule == "score" {
+		if scoringRule == "score" {
 			if rows[i].TotalScore != rows[j].TotalScore {
 				return rows[i].TotalScore > rows[j].TotalScore
 			}
@@ -806,11 +1015,7 @@ func (s Server) teamContestRanking(c *gin.Context) {
 		}
 		return strings.ToLower(rows[i].Name) < strings.ToLower(rows[j].Name)
 	})
-	problems := make([]gin.H, 0, len(links))
-	for _, link := range links {
-		problems = append(problems, gin.H{"problem_id": link.ProblemID, "label": link.Label, "title": link.Problem.Title})
-	}
-	c.JSON(http.StatusOK, gin.H{"contest": contest, "scoring_rule": contest.ScoringRule, "problems": problems, "rows": rows})
+	return rows
 }
 
 func elapsedContestMinutes(start, submittedAt time.Time) int {
@@ -1120,6 +1325,7 @@ func (s Server) teamContestByParams(c *gin.Context) (models.TeamContest, models.
 		c.JSON(http.StatusNotFound, gin.H{"error": "contest not found"})
 		return models.TeamContest{}, models.Team{}, false
 	}
+	s.syncTeamContestState(&contest, time.Now())
 	var team models.Team
 	if err := s.DB.First(&team, contest.TeamID).Error; err != nil {
 		c.JSON(http.StatusNotFound, gin.H{"error": "team not found"})
@@ -1395,17 +1601,58 @@ func teamAlphaLabel(index int) string {
 }
 
 func teamContestWindow(contest models.TeamContest, now time.Time) (*time.Time, string) {
+	if contest.State == "" {
+		contest.State = models.TeamContestPublished
+	}
+	if contest.State == models.TeamContestDraft {
+		return contestEndAt(contest), models.TeamContestDraft
+	}
+	if contest.State == models.TeamContestClosed {
+		return contestEndAt(contest), models.TeamContestClosed
+	}
 	if contest.StartsAt == nil {
-		return nil, "running"
+		return nil, models.TeamContestPublished
 	}
 	endsAt := contest.StartsAt.Add(time.Duration(contest.DurationMinutes) * time.Minute)
 	if now.Before(*contest.StartsAt) {
-		return &endsAt, "not_started"
+		return &endsAt, models.TeamContestPublished
 	}
 	if !now.Before(endsAt) {
-		return &endsAt, "closed"
+		return &endsAt, models.TeamContestClosed
 	}
-	return &endsAt, "running"
+	return &endsAt, models.TeamContestRunning
+}
+
+func contestEndAt(contest models.TeamContest) *time.Time {
+	if contest.StartsAt == nil {
+		return nil
+	}
+	value := contest.StartsAt.Add(time.Duration(contest.DurationMinutes) * time.Minute)
+	return &value
+}
+
+func requireDraftTeamContest(c *gin.Context, contest models.TeamContest) bool {
+	if contest.State == "" || contest.State == models.TeamContestDraft {
+		return true
+	}
+	c.JSON(http.StatusConflict, gin.H{"error": "比赛发布后题目和评分规则已冻结"})
+	return false
+}
+
+func (s Server) syncTeamContestState(contest *models.TeamContest, now time.Time) {
+	_, state := teamContestWindow(*contest, now)
+	if contest.State == "" {
+		contest.State = state
+		return
+	}
+	if state == contest.State || contest.State == models.TeamContestDraft {
+		return
+	}
+	if state == models.TeamContestRunning || state == models.TeamContestClosed {
+		if result := s.DB.Model(contest).Where("state = ?", contest.State).Update("state", state); result.Error == nil && result.RowsAffected == 1 {
+			contest.State = state
+		}
+	}
 }
 
 func filterActiveTeamProblemLinks(links []models.TeamProblemSetProblem) []models.TeamProblemSetProblem {

@@ -46,7 +46,7 @@ func Connect(ctx context.Context, cfg config.Config) (*gorm.DB, error) {
 	return nil, fmt.Errorf("connect database: %w", lastErr)
 }
 
-func AutoMigrate(gdb *gorm.DB) error {
+func runModelCompatibilityMigrations(gdb *gorm.DB) error {
 	if err := cleanupOrphanProblemLinks(gdb); err != nil {
 		return err
 	}

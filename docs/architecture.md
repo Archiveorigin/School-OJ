@@ -51,7 +51,10 @@ Persistence ownership:
 - API owns submission creation and enqueueing.
 - Worker owns transitions from `queued`/`running` to a judge verdict and writes `submission_results` and `problem_progresses`.
 - Worker verdict writes are transactional. A per-submission Redis lease prevents concurrent workers from accepting the same job, is renewed during long runs, and expires after a crash so pending messages can be reclaimed.
-- API owns team contest/problem-set link validation and submission context assignment. `team_contest_problems`, `submissions.team_contest_id`, and `submissions.problem_set_id` are introduced by migration `018_team_contest_workspaces.sql`.
+- API owns team contest/problem-set link validation and submission context assignment. A contest moves through `draft → published → running → closed`; publishing freezes its problem links and scoring rule and snapshots eligible participants.
+- Submission editors read the caller's last code from `/submissions/latest`, backed by context-specific composite indexes. Full submission lists are presentation history only and are never used as the source of truth for editor recovery.
+- Contest ranking uses a PostgreSQL grouped query per participant/problem and performs only final row shaping in the API. It does not load every raw contest submission into application memory.
+- Startup migrations are ordered embedded SQL files recorded in `schema_migrations` with SHA-256 checksums. Existing AutoMigrate-era installations are baselined through migration 019, then upgraded by the same versioned runner.
 
 RBAC:
 

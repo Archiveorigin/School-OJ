@@ -64,8 +64,20 @@ docker container prune -f
 curl -fsS http://127.0.0.1:25565/healthz
 ```
 
-The API startup applies the repository migrations, including the team contest
-workspace tables and submission context columns. Keep the API and worker images
+When the Docker host is low on disk, use the repository cleanup helper. It
+removes stopped containers, dangling images, and build cache older than seven
+days, but deliberately never removes volumes:
+
+```bash
+./scripts/cleanup_docker.sh
+```
+
+Set `DOCKER_CACHE_MAX_AGE` to change the build-cache age, for example
+`DOCKER_CACHE_MAX_AGE=336h`. Review `docker system df` before any more aggressive
+unused-image cleanup.
+
+The API startup applies ordered, checksum-verified repository migrations and
+records them in `schema_migrations`. Keep the API and worker images
 on the same revision so newly scoped submissions are consumed by a compatible
 worker.
 

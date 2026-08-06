@@ -58,11 +58,13 @@
           align-center
         >
           <SubmissionComposer
+            ref="composerRef"
             v-model:language="language"
             v-model:source="source"
             :status="live?.status"
             :message="live?.message"
             :submitting="submitting"
+            :draft-context="draftContext"
             @submit="submit"
           >
             <template #options>
@@ -92,7 +94,7 @@
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { computed, onBeforeUnmount, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
-import { AuthenticatedEventSource, client, openEventStream, type Problem, type Submission } from '../../api/client'
+import { AuthenticatedEventSource, client, getLatestSubmissions, openEventStream, type Problem } from '../../api/client'
 import MarkdownRenderer from '../../components/MarkdownRenderer.vue'
 import ProblemEditDialog from '../../components/ProblemEditDialog.vue'
 import ProblemMetaCard from '../../components/ProblemMetaCard.vue'
@@ -100,6 +102,7 @@ import ProblemTestDownloads from '../../components/ProblemTestDownloads.vue'
 import StatusBadge from '../../components/StatusBadge.vue'
 import SubmissionComposer from '../../components/SubmissionComposer.vue'
 import { problemDisplayCode, progressLabel, progressTag } from '../../features/problems/problemMeta'
+import { loadSubmissionDraft, saveSubmissionDraft } from '../../features/submissions/drafts'
 import { useAuthStore } from '../../stores/auth'
 
 const auth = useAuthStore()
@@ -116,11 +119,13 @@ const submitting = ref(false)
 const live = ref<any>(null)
 const codeFileInput = ref<HTMLInputElement>()
 const codeFileName = ref('')
+const composerRef = ref<{ clearDraft: () => void } | null>(null)
 let submissionEvents: AuthenticatedEventSource | null = null
 
 const canManage = computed(() => auth.role === 'admin' || (Boolean(auth.user?.can_author) && problem.value?.owner_id === auth.user?.id))
 const canDelete = computed(() => Boolean(problem.value && (auth.role === 'admin' || problem.value.owner_id === auth.user?.id)))
 const source = ref('')
+const draftContext = computed(() => ({ resourceType: 'problem' as const, resourceId: problem.value?.id || 0, problemId: problem.value?.id || 0 }))
 
 async function loadProblem() {
   loading.value = true
@@ -170,6 +175,7 @@ async function submit() {
       source_code: source.value,
       is_public: isPublic.value
     })
+    composerRef.value?.clearDraft()
     live.value = data
     ElMessage.success('提交已进入评测队列')
     watchSubmission(data.id)
@@ -199,17 +205,14 @@ async function loadLastSubmission() {
     live.value = null
     return
   }
-  const { data } = await client.get<Submission[]>('/submissions', {
-    params: { visibility: 'problem', problem_id: problem.value.id }
-  })
-  const latest = data.find((item) => item.user_id === auth.user?.id)
+  const latest = (await getLatestSubmissions({ standalone: true }, problem.value.id))[0]
   if (!latest) {
-    source.value = ''
+    source.value = loadSubmissionDraft(draftContext.value, 'cpp') || ''
     live.value = null
     return
   }
   language.value = latest.language || 'cpp'
-  source.value = latest.source_code || ''
+  source.value = loadSubmissionDraft(draftContext.value, language.value) ?? latest.source_code ?? ''
   live.value = latest
 }
 
@@ -229,6 +232,7 @@ async function loadCodeFile(event: Event) {
   else if (['cc', 'cpp', 'cxx', 'h', 'hpp'].includes(extension || '')) language.value = 'cpp'
   else if (extension === 'py') language.value = 'python'
   else if (extension === 'java') language.value = 'java'
+  saveSubmissionDraft(draftContext.value, language.value, source.value)
   input.value = ''
 }
 

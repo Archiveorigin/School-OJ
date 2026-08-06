@@ -443,9 +443,25 @@ type TeamContest struct {
 	StartsAt        *time.Time `json:"starts_at" gorm:"index"`
 	DurationMinutes int        `json:"duration_minutes" gorm:"not null;default:120"`
 	ScoringRule     string     `json:"scoring_rule" gorm:"size:16;not null;default:'penalty'"`
+	State           string     `json:"state" gorm:"size:16;index;not null;default:'draft'"`
+	PublishedAt     *time.Time `json:"published_at" gorm:"index"`
 	CreatedBy       uint       `json:"created_by" gorm:"index;not null"`
 	CreatedAt       time.Time  `json:"created_at"`
 	UpdatedAt       time.Time  `json:"updated_at"`
+}
+
+const (
+	TeamContestDraft     = "draft"
+	TeamContestPublished = "published"
+	TeamContestRunning   = "running"
+	TeamContestClosed    = "closed"
+)
+
+type TeamContestParticipant struct {
+	ID        uint      `json:"id" gorm:"primaryKey"`
+	ContestID uint      `json:"contest_id" gorm:"uniqueIndex:idx_team_contest_participant;index;not null"`
+	UserID    uint      `json:"user_id" gorm:"uniqueIndex:idx_team_contest_participant;index;not null"`
+	CreatedAt time.Time `json:"created_at"`
 }
 
 type TeamContestProblem struct {
@@ -518,6 +534,7 @@ func AllModels() []any {
 		&TeamMembership{},
 		&TeamJoinApplication{},
 		&TeamContest{},
+		&TeamContestParticipant{},
 		&TeamContestProblem{},
 		&TeamProblemSet{},
 		&TeamProblemSetProblem{},
