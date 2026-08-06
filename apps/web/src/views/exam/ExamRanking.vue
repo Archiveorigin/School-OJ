@@ -12,13 +12,6 @@
       </div>
     </div>
 
-    <div v-if="ranking" class="ranking-stats">
-      <div><strong>{{ ranking.stats?.total_students || 0 }}</strong><span>学生</span></div>
-      <div><strong>{{ ranking.stats?.finished || 0 }}</strong><span>已结束</span></div>
-      <div><strong>{{ ranking.stats?.pending || 0 }}</strong><span>待评分</span></div>
-      <div><strong>{{ ranking.stats?.max_score || 0 }}</strong><span>总分</span></div>
-    </div>
-
     <div v-if="error" class="empty-ranking">
       <strong>榜单暂不可用</strong><span>{{ error }}</span>
     </div>
@@ -108,11 +101,8 @@ onBeforeUnmount(() => { if (refreshTimer) window.clearInterval(refreshTimer) })
 .ranking-toolbar { display: flex; align-items: center; justify-content: space-between; gap: 18px; }
 .ranking-toolbar h3 { margin: 5px 0 0; }
 .eyebrow { color: var(--accent); font-size: 10px; font-weight: 800; letter-spacing: .14em; }
-.ranking-stats { display: grid; grid-template-columns: repeat(4, 1fr); gap: 12px; }
-.ranking-stats div { display: grid; gap: 3px; padding: 16px; border: 1px solid var(--border); border-radius: 10px; background: var(--surface-strong); }
-.ranking-stats strong { color: var(--accent); font-size: 24px; }
-.ranking-stats span, .student-cell span, .problem-score small, .empty-ranking span { color: var(--muted); font-size: 12px; }
+.student-cell span, .problem-score small, .empty-ranking span { color: var(--muted); font-size: 12px; }
 .student-cell, .problem-score, .empty-ranking { display: grid; gap: 3px; }
 .empty-ranking { place-items: center; padding: 52px 20px; border: 1px dashed var(--border); border-radius: 12px; }
-@media (max-width: 760px) { .ranking-toolbar { align-items: stretch; flex-direction: column; } .ranking-stats { grid-template-columns: repeat(2, 1fr); } }
+@media (max-width: 760px) { .ranking-toolbar { align-items: stretch; flex-direction: column; } }
 </style>

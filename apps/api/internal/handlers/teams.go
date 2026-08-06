@@ -535,6 +535,7 @@ func (s Server) createTeamContest(c *gin.Context) {
 		Description     string     `json:"description"`
 		StartsAt        *time.Time `json:"starts_at"`
 		DurationMinutes int        `json:"duration_minutes"`
+		ScoringRule     string     `json:"scoring_rule"`
 	}
 	if !bind(c, &req) {
 		return
@@ -542,7 +543,15 @@ func (s Server) createTeamContest(c *gin.Context) {
 	if req.DurationMinutes <= 0 {
 		req.DurationMinutes = 120
 	}
-	item := models.TeamContest{TeamID: team.ID, Title: strings.TrimSpace(req.Title), Description: strings.TrimSpace(req.Description), StartsAt: req.StartsAt, DurationMinutes: req.DurationMinutes, CreatedBy: user.ID}
+	req.ScoringRule = strings.ToLower(strings.TrimSpace(req.ScoringRule))
+	if req.ScoringRule == "" {
+		req.ScoringRule = "penalty"
+	}
+	if req.ScoringRule != "score" && req.ScoringRule != "penalty" {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "评分规则必须为 score 或 penalty"})
+		return
+	}
+	item := models.TeamContest{TeamID: team.ID, Title: strings.TrimSpace(req.Title), Description: strings.TrimSpace(req.Description), StartsAt: req.StartsAt, DurationMinutes: req.DurationMinutes, ScoringRule: req.ScoringRule, CreatedBy: user.ID}
 	if err := s.DB.Create(&item).Error; err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 		return
@@ -683,6 +692,11 @@ func (s Server) teamContestRanking(c *gin.Context) {
 	if !ok || !s.requireTeamMember(c, user, team) {
 		return
 	}
+	_, contestStatus := teamContestWindow(contest, time.Now())
+	if contestStatus == "not_started" && !s.canTeamContentPermission(user, team) {
+		c.JSON(http.StatusForbidden, gin.H{"error": "比赛尚未开始"})
+		return
+	}
 	var links []models.TeamContestProblem
 	s.DB.Preload("Problem").Where("contest_id = ?", contest.ID).Order("sort_order, id").Find(&links)
 	links = filterActiveTeamContestProblemLinks(links)
@@ -700,18 +714,28 @@ func (s Server) teamContestRanking(c *gin.Context) {
 	var submissions []models.Submission
 	s.DB.Where("team_contest_id = ?", contest.ID).Order("created_at asc").Find(&submissions)
 	type problemCell struct {
-		ProblemID uint       `json:"problem_id"`
-		Status    string     `json:"status"`
-		Attempts  int        `json:"attempts"`
-		SolvedAt  *time.Time `json:"solved_at,omitempty"`
+		ProblemID      uint       `json:"problem_id"`
+		Status         string     `json:"status"`
+		Attempts       int        `json:"attempts"`
+		WrongAttempts  int        `json:"wrong_attempts"`
+		BestScore      int        `json:"best_score"`
+		ElapsedMinutes int        `json:"elapsed_minutes"`
+		SolvedAt       *time.Time `json:"solved_at,omitempty"`
+		Fastest        bool       `json:"fastest"`
 	}
 	type rankingRow struct {
 		UserID          uint          `json:"user_id"`
 		Name            string        `json:"name"`
 		Solved          int           `json:"solved"`
+		TotalScore      int           `json:"total_score"`
+		PenaltyMinutes  int           `json:"penalty_minutes"`
 		SubmissionCount int           `json:"submission_count"`
 		LastSubmission  *time.Time    `json:"last_submission,omitempty"`
 		Problems        []problemCell `json:"problems"`
+	}
+	contestStart := contest.CreatedAt
+	if contest.StartsAt != nil {
+		contestStart = *contest.StartsAt
 	}
 	rows := make([]rankingRow, 0, len(users))
 	for _, member := range users {
@@ -726,25 +750,59 @@ func (s Server) teamContestRanking(c *gin.Context) {
 				row.SubmissionCount++
 				value := sub.CreatedAt
 				row.LastSubmission = &value
+				if cell.SolvedAt == nil {
+					cell.ElapsedMinutes = elapsedContestMinutes(contestStart, value)
+				}
+				if sub.Score > cell.BestScore {
+					cell.BestScore = sub.Score
+				}
 				if cell.Status != string(models.StatusAccepted) {
 					cell.Status = string(sub.Status)
 				}
 				if sub.Status == models.StatusAccepted && cell.SolvedAt == nil {
 					cell.Status = string(models.StatusAccepted)
 					cell.SolvedAt = &value
+					cell.ElapsedMinutes = elapsedContestMinutes(contestStart, value)
 					row.Solved++
+					row.PenaltyMinutes += cell.ElapsedMinutes + cell.WrongAttempts*20
+				} else if cell.SolvedAt == nil && sub.Status != models.StatusQueued && sub.Status != models.StatusRunning {
+					cell.WrongAttempts++
 				}
 			}
+			row.TotalScore += cell.BestScore
 			row.Problems = append(row.Problems, cell)
 		}
 		rows = append(rows, row)
+	}
+	fastestByProblem := map[uint]time.Time{}
+	for _, row := range rows {
+		for _, cell := range row.Problems {
+			if cell.SolvedAt == nil {
+				continue
+			}
+			if fastest, ok := fastestByProblem[cell.ProblemID]; !ok || cell.SolvedAt.Before(fastest) {
+				fastestByProblem[cell.ProblemID] = *cell.SolvedAt
+			}
+		}
+	}
+	for rowIndex := range rows {
+		for cellIndex := range rows[rowIndex].Problems {
+			cell := &rows[rowIndex].Problems[cellIndex]
+			if cell.SolvedAt != nil && cell.SolvedAt.Equal(fastestByProblem[cell.ProblemID]) {
+				cell.Fastest = true
+			}
+		}
 	}
 	sort.SliceStable(rows, func(i, j int) bool {
 		if rows[i].Solved != rows[j].Solved {
 			return rows[i].Solved > rows[j].Solved
 		}
-		if rows[i].SubmissionCount != rows[j].SubmissionCount {
-			return rows[i].SubmissionCount < rows[j].SubmissionCount
+		if contest.ScoringRule == "score" {
+			if rows[i].TotalScore != rows[j].TotalScore {
+				return rows[i].TotalScore > rows[j].TotalScore
+			}
+		} else if rows[i].PenaltyMinutes != rows[j].PenaltyMinutes {
+			return rows[i].PenaltyMinutes < rows[j].PenaltyMinutes
 		}
 		return strings.ToLower(rows[i].Name) < strings.ToLower(rows[j].Name)
 	})
@@ -752,7 +810,14 @@ func (s Server) teamContestRanking(c *gin.Context) {
 	for _, link := range links {
 		problems = append(problems, gin.H{"problem_id": link.ProblemID, "label": link.Label, "title": link.Problem.Title})
 	}
-	c.JSON(http.StatusOK, gin.H{"contest": contest, "problems": problems, "rows": rows})
+	c.JSON(http.StatusOK, gin.H{"contest": contest, "scoring_rule": contest.ScoringRule, "problems": problems, "rows": rows})
+}
+
+func elapsedContestMinutes(start, submittedAt time.Time) int {
+	if submittedAt.Before(start) {
+		return 0
+	}
+	return int(submittedAt.Sub(start) / time.Minute)
 }
 
 func (s Server) listTeamProblemSets(c *gin.Context) {
@@ -911,7 +976,9 @@ func (s Server) listTeamProblemSetSubmissions(c *gin.Context) {
 	s.DB.Where("problem_set_id = ?", set.ID).Order("id desc").Limit(500).Find(&items)
 	views := s.submissionListViews(items)
 	for index := range views {
-		views[index].SourceCode = ""
+		if views[index].UserID != user.ID {
+			views[index].SourceCode = ""
+		}
 	}
 	c.JSON(http.StatusOK, views)
 }
@@ -1018,34 +1085,44 @@ func (s Server) teamByIDParam(c *gin.Context) (models.Team, bool) {
 }
 
 func (s Server) teamProblemSetByParams(c *gin.Context) (models.TeamProblemSet, models.Team, bool) {
-	team, ok := s.teamByIDParam(c)
-	if !ok {
-		return models.TeamProblemSet{}, models.Team{}, false
-	}
 	setID, ok := idParam(c, "set_id")
 	if !ok {
 		return models.TeamProblemSet{}, models.Team{}, false
 	}
 	var set models.TeamProblemSet
-	if err := s.DB.Where("id = ? AND team_id = ?", setID, team.ID).First(&set).Error; err != nil {
+	query := s.DB.Where("id = ?", setID)
+	if rawTeamID := strings.TrimSpace(c.Param("id")); rawTeamID != "" {
+		query = query.Where("team_id = ?", rawTeamID)
+	}
+	if err := query.First(&set).Error; err != nil {
 		c.JSON(http.StatusNotFound, gin.H{"error": "problem set not found"})
+		return models.TeamProblemSet{}, models.Team{}, false
+	}
+	var team models.Team
+	if err := s.DB.First(&team, set.TeamID).Error; err != nil {
+		c.JSON(http.StatusNotFound, gin.H{"error": "team not found"})
 		return models.TeamProblemSet{}, models.Team{}, false
 	}
 	return set, team, true
 }
 
 func (s Server) teamContestByParams(c *gin.Context) (models.TeamContest, models.Team, bool) {
-	team, ok := s.teamByIDParam(c)
-	if !ok {
-		return models.TeamContest{}, models.Team{}, false
-	}
 	contestID, ok := idParam(c, "contest_id")
 	if !ok {
 		return models.TeamContest{}, models.Team{}, false
 	}
 	var contest models.TeamContest
-	if err := s.DB.Where("id = ? AND team_id = ?", contestID, team.ID).First(&contest).Error; err != nil {
+	query := s.DB.Where("id = ?", contestID)
+	if rawTeamID := strings.TrimSpace(c.Param("id")); rawTeamID != "" {
+		query = query.Where("team_id = ?", rawTeamID)
+	}
+	if err := query.First(&contest).Error; err != nil {
 		c.JSON(http.StatusNotFound, gin.H{"error": "contest not found"})
+		return models.TeamContest{}, models.Team{}, false
+	}
+	var team models.Team
+	if err := s.DB.First(&team, contest.TeamID).Error; err != nil {
+		c.JSON(http.StatusNotFound, gin.H{"error": "team not found"})
 		return models.TeamContest{}, models.Team{}, false
 	}
 	return contest, team, true

@@ -98,6 +98,7 @@ export interface TeamContest {
   starts_at?: string
   ends_at?: string
   duration_minutes: number
+  scoring_rule?: 'score' | 'penalty'
   created_by: number
   problem_count?: number
   status?: 'not_started' | 'running' | 'closed'

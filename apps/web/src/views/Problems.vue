@@ -36,7 +36,7 @@
           <el-option v-for="option in problemStatusOptions" :key="option.value" :label="option.label" :value="option.value" />
         </el-select>
         <el-button @click="resetFilters">重置</el-button>
-        <span class="muted filter-count">{{ filteredProblems.length }} / {{ problems.length }}</span>
+        <!-- <span class="muted filter-count">{{ filteredProblems.length }} / {{ problems.length }}</span> -->
       </div>
 
       <section class="panel problem-list-panel">

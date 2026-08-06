@@ -208,6 +208,10 @@ function tabType(tab: ExamTab) {
 
 async function submitSolution() {
   if (!activeProblem.value || !detail.value || !activeState.value) return
+  if (!activeState.value.source.trim()) {
+    ElMessage.warning('请输入代码')
+    return
+  }
   const problemID = activeProblem.value.id
   submitting.value = true
   try {
@@ -331,8 +335,8 @@ function hydrateEditorStatesFromHistory() {
 }
 
 function preferredSubmission(problemID: number, language?: string) {
-  const items = history.value.filter((item) => item.problem_id === problemID && (!language || item.language === language))
-  return items.find((item) => item.status === 'accepted') || items[0] || null
+  const items = history.value.filter((item) => item.user_id === auth.user?.id && item.problem_id === problemID && (!language || item.language === language))
+	return items[0] || null
 }
 
 function preferredSource(problemID: number, language: string) {

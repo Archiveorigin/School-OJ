@@ -4231,7 +4231,7 @@ func (s Server) listSubmissions(c *gin.Context) {
 			q = q.Where("problem_id = ? AND user_id = ?", problemID, user.ID)
 		} else {
 			q = q.Where(
-				"problem_id = ? AND assignment_id IS NULL AND exam_id IS NULL AND (user_id = ? OR is_public = true)",
+				"problem_id = ? AND assignment_id IS NULL AND exam_id IS NULL AND team_contest_id IS NULL AND problem_set_id IS NULL AND (user_id = ? OR is_public = true)",
 				problemID,
 				user.ID,
 			)
@@ -4971,10 +4971,11 @@ func (s Server) activeExamIDsForStudent(userID uint) []uint {
 	now := time.Now()
 	var ids []uint
 	s.DB.Table("exams").
-		Select("exams.id").
-		Joins("join class_memberships on class_memberships.class_id = exams.class_id").
+		Select("distinct exams.id").
+		Joins("left join class_memberships on class_memberships.class_id = exams.class_id and class_memberships.user_id = ?", userID).
+		Joins("left join course_memberships on course_memberships.course_id = exams.course_id and course_memberships.user_id = ? and course_memberships.role = ?", userID, models.RoleStudent).
 		Joins("left join exam_attempts on exam_attempts.exam_id = exams.id and exam_attempts.user_id = ?", userID).
-		Where("class_memberships.user_id = ? AND exams.deleted_at IS NULL", userID).
+		Where("exams.deleted_at IS NULL AND ((exams.class_id IS NOT NULL AND class_memberships.user_id IS NOT NULL) OR (exams.class_id IS NULL AND course_memberships.user_id IS NOT NULL))").
 		Where("(exams.starts_at IS NULL OR exams.starts_at <= ?) AND (exams.ends_at IS NULL OR exams.ends_at > ?)", now, now).
 		Where("exam_attempts.finished_at IS NULL").
 		Pluck("exams.id", &ids)
@@ -5009,8 +5010,11 @@ func (s Server) canStudentSubmitExam(userID uint, examID uint, problemID uint) (
 	if err := s.DB.Where("deleted_at IS NULL").First(&exam, examID).Error; err != nil {
 		return false, "exam not found"
 	}
-	if exam.ClassID == nil || !s.studentInClass(userID, *exam.ClassID) {
+	if exam.ClassID != nil && !s.studentInClass(userID, *exam.ClassID) {
 		return false, "exam is not available in your class"
+	}
+	if exam.ClassID == nil && !s.studentInCourse(userID, exam.CourseID) {
+		return false, "exam is not available in your course"
 	}
 	var count int64
 	s.DB.Model(&models.ExamProblem{}).Where("exam_id = ? AND problem_id = ?", examID, problemID).Count(&count)

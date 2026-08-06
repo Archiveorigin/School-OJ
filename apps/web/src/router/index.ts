@@ -65,7 +65,9 @@ const router = createRouter({
     },
     { path: '/profile', component: Profile, meta: { title: '个人中心' } },
     { path: '/teams', component: TeamList, meta: { title: '团队', activeMenu: '/teams' } },
-    { path: '/teams/:teamId/problem-sets/:setId', component: TeamProblemSetDetail, meta: { title: '团队题单', activeMenu: '/teams' } },
+    { path: '/contest/:contestId', component: TeamContestDetail, meta: { title: '团队比赛', activeMenu: '/teams' } },
+    { path: '/problem-set/:setId', component: TeamProblemSetDetail, meta: { title: '团队题单', activeMenu: '/teams' } },
+    { path: '/teams/:teamId/problem-sets/:setId', redirect: (to) => ({ path: `/problem-set/${to.params.setId}`, query: to.query, hash: to.hash }) },
     {
       path: '/teams/:teamSlug',
       component: TeamWorkspace,
@@ -73,7 +75,7 @@ const router = createRouter({
       meta: { title: '团队空间', activeMenu: '/teams' },
       children: [
         { path: 'contests', component: TeamContests, meta: { title: '团队比赛' } },
-        { path: 'contests/:contestId', component: TeamContestDetail, meta: { title: '团队比赛详情' } },
+        { path: 'contests/:contestId', redirect: (to) => ({ path: `/contest/${to.params.contestId}`, query: to.query, hash: to.hash }) },
         { path: 'problem-sets', component: TeamProblemSets, meta: { title: '团队题单' } },
         { path: 'members', component: TeamMembers, meta: { title: '团队成员' } }
       ]

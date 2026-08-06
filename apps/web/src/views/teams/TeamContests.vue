@@ -1,7 +1,7 @@
 <template>
   <section class="workspace-view">
     <div class="view-heading">
-      <div><h3>团队比赛</h3><p>比赛仅对团队成员可见，不会出现在公共比赛列表。</p></div>
+      <div><h3>团队比赛</h3><p>比赛仅对团队成员开放</p></div>
       <el-button v-if="canOrganize" type="primary" @click="createVisible = true">创建比赛</el-button>
     </div>
     <div v-loading="loading" class="panel list-panel">
@@ -15,6 +15,9 @@
         </el-table-column>
         <el-table-column label="题目" width="90">
           <template #default="{ row }">{{ row.problem_count || 0 }} 题</template>
+        </el-table-column>
+        <el-table-column label="排名规则" width="170">
+          <template #default="{ row }">{{ row.scoring_rule === 'score' ? '通过数 + 总分' : '通过数 + 罚时' }}</template>
         </el-table-column>
         <el-table-column label="状态" width="110">
           <template #default="{ row }"><el-tag :type="statusType(row.status)">{{ statusLabel(row.status) }}</el-tag></template>
@@ -33,6 +36,13 @@
         <el-form-item label="比赛时长">
           <el-input-number v-model="form.duration_minutes" :min="15" :step="15" />
           <span class="unit">分钟</span>
+        </el-form-item>
+        <el-form-item label="排名规则">
+          <el-radio-group v-model="form.scoring_rule">
+            <el-radio-button value="penalty">通过数 + 罚时</el-radio-button>
+            <el-radio-button value="score">通过数 + 总分</el-radio-button>
+          </el-radio-group>
+          <p class="rule-hint">创建后用于整场比赛排名；罚时规则按首次通过分钟数并加上未通过提交罚时。</p>
         </el-form-item>
         <el-form-item label="说明"><el-input v-model="form.description" type="textarea" :rows="4" /></el-form-item>
       </el-form>
@@ -57,7 +67,7 @@ const contests = ref<TeamContest[]>([])
 const loading = ref(false)
 const createVisible = ref(false)
 const creating = ref(false)
-const form = reactive({ title: '', description: '', starts_at: '', duration_minutes: 120 })
+const form = reactive({ title: '', description: '', starts_at: '', duration_minutes: 120, scoring_rule: 'penalty' })
 const canOrganize = computed(() => {
   if (props.team.my_role === 'owner') return true
   if (props.team.contest_permission === 'all') return Boolean(props.team.my_role)
@@ -87,11 +97,11 @@ async function createContest() {
   creating.value = true
   try {
     const { data } = await client.post<TeamContest>(`/teams/${props.team.id}/contests`, form)
-    Object.assign(form, { title: '', description: '', starts_at: '', duration_minutes: 120 })
+    Object.assign(form, { title: '', description: '', starts_at: '', duration_minutes: 120, scoring_rule: 'penalty' })
     createVisible.value = false
     ElMessage.success('团队比赛已创建')
     await load()
-    await router.push(`/teams/${props.team.slug}/contests/${data.id}`)
+    await router.push(`/contest/${data.id}#overview`)
   } catch (err: any) {
     ElMessage.error(err.response?.data?.error || err.message)
   } finally {
@@ -104,7 +114,7 @@ function openContest(row: TeamContest) {
     ElMessage.warning('比赛尚未开始')
     return
   }
-  router.push(`/teams/${props.team.slug}/contests/${row.id}`)
+  router.push(`/contest/${row.id}#overview`)
 }
 
 function statusLabel(status?: TeamContest['status']) {
@@ -139,5 +149,6 @@ onMounted(load)
 .list-panel { padding: 18px; }
 .list-panel :deep(.contest-row) { cursor: pointer; }
 .unit { margin-left: 8px; color: var(--muted); }
+.rule-hint { margin: 8px 0 0; color: var(--muted); font-size: 12px; line-height: 1.5; }
 @media (max-width: 680px) { .workspace-view { padding: 22px 14px 44px; } .view-heading { align-items: stretch; flex-direction: column; } }
 </style>

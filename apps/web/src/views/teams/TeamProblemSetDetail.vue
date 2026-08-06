@@ -149,23 +149,17 @@
     </el-dialog>
 
     <el-dialog v-model="submitVisible" :title="`提交 ${selectedLink ? problemSetLabel(selectedIndex) : ''} ${selectedLink?.problem?.title || ''}`" width="min(900px, calc(100vw - 24px))" destroy-on-close>
-      <div class="submit-toolbar">
-        <el-select v-model="language" style="width: 140px">
-          <el-option label="C++17" value="cpp" />
-          <el-option label="C" value="c" />
-          <el-option label="Python" value="python" />
-          <el-option label="Java" value="java" />
-        </el-select>
-        <span>本次代码仅计入当前团队题单</span>
-      </div>
-      <CodeEditor v-model="source" :language="language" />
-      <div v-if="liveStatus" class="live-status">
-        <StatusBadge :status="liveStatus.status" />
-        <span>{{ liveStatus.message || '评测中' }}</span>
-      </div>
+      <SubmissionComposer
+        v-model:language="language"
+        v-model:source="source"
+        :status="liveStatus?.status"
+        :message="liveStatus?.message"
+        :submitting="submitting"
+        scope-text="本次代码仅计入当前团队题单"
+        @submit="submitSolution"
+      />
       <template #footer>
-        <el-button @click="submitVisible = false">取消</el-button>
-        <el-button type="primary" :loading="submitting" @click="submitSolution">提交评测</el-button>
+        <el-button @click="submitVisible = false">关闭</el-button>
       </template>
     </el-dialog>
   </section>
@@ -176,12 +170,12 @@ import { ElMessage, ElMessageBox } from 'element-plus'
 import { computed, onBeforeUnmount, reactive, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { client, openEventStream, type AuthenticatedEventSource, type Submission } from '../../api/client'
-import CodeEditor from '../../components/CodeEditor.vue'
 import ListPagination from '../../components/ListPagination.vue'
 import MarkdownRenderer from '../../components/MarkdownRenderer.vue'
 import ProblemStatementView from '../../components/ProblemStatementView.vue'
 import ProblemSwitcher from '../../components/ProblemSwitcher.vue'
 import StatusBadge from '../../components/StatusBadge.vue'
+import SubmissionComposer from '../../components/SubmissionComposer.vue'
 import { formatDateTime } from '../../features/time'
 import { useAuthStore } from '../../stores/auth'
 
@@ -211,14 +205,17 @@ const language = ref('cpp')
 const source = ref('')
 const liveStatus = ref<any>(null)
 const liveStreams = new Set<AuthenticatedEventSource>()
-const teamID = computed(() => Number(route.params.teamId))
+const teamID = computed(() => Number(detail.value?.team?.id))
 const problemSetID = computed(() => Number(route.params.setId))
 const selectedLink = computed(() => links.value[selectedIndex.value])
 const selectedProblemID = computed({
   get: () => selectedLink.value?.problem_id,
   set: (value: number | undefined) => {
     const index = links.value.findIndex((item) => item.problem_id === value)
-    if (index >= 0) selectedIndex.value = index
+    if (index >= 0) {
+      selectedIndex.value = index
+      void router.replace({ path: route.path, query: { ...route.query, problem: String(value) }, hash: '#problems' })
+    }
   }
 })
 const switcherItems = computed(() => links.value.map((link, index) => ({ ...link, label: problemSetLabel(index) })))
@@ -247,10 +244,14 @@ const canOrganize = computed(() => {
 
 async function load() {
   try {
-    const { data } = await client.get(`/teams/${teamID.value}/problem-sets/${problemSetID.value}`)
+    const { data } = await client.get(`/problem-sets/${problemSetID.value}`)
     detail.value = data
     links.value = data.problems || []
     if (selectedIndex.value >= links.value.length) selectedIndex.value = 0
+    const routeProblemIndex = links.value.findIndex((item) => item.problem_id === Number(route.query.problem))
+    if (routeProblemIndex >= 0) { selectedIndex.value = routeProblemIndex; problemView.value = 'detail' }
+    await loadSubmissions()
+    if (activeTab.value === 'discussions') await openDiscussions()
   } catch (err: any) {
     ElMessage.error(err.response?.data?.error || err.message)
     await router.replace('/teams')
@@ -260,6 +261,7 @@ async function load() {
 function openProblemList() {
   activeTab.value = 'problems'
   problemView.value = 'list'
+  void router.push({ path: route.path, hash: '#problems' })
 }
 
 function showProblem(link: any) {
@@ -267,17 +269,19 @@ function showProblem(link: any) {
   if (index >= 0) selectedIndex.value = index
   activeTab.value = 'problems'
   problemView.value = 'detail'
+  void router.push({ path: route.path, query: { problem: String(link.problem_id) }, hash: '#problems' })
 }
 
 async function openSubmissions() {
   activeTab.value = 'submissions'
+  await router.push({ path: route.path, hash: '#submissions' })
   await loadSubmissions()
 }
 
 async function loadSubmissions() {
   loadingSubmissions.value = true
   try {
-    submissions.value = (await client.get(`/teams/${teamID.value}/problem-sets/${problemSetID.value}/submissions`)).data || []
+    submissions.value = (await client.get(`/problem-sets/${problemSetID.value}/submissions`)).data || []
   } catch (err: any) {
     ElMessage.error(err.response?.data?.error || err.message)
   } finally {
@@ -301,7 +305,7 @@ async function addProblem() {
   }
   adding.value = true
   try {
-    await client.post(`/teams/${teamID.value}/problem-sets/${problemSetID.value}/problems`, { problem_code: problemCode.value.trim() })
+    await client.post(`/problem-sets/${problemSetID.value}/problems`, { problem_code: problemCode.value.trim() })
     problemCode.value = ''
     addVisible.value = false
     ElMessage.success('题目已加入题单')
@@ -316,7 +320,7 @@ async function addProblem() {
 async function removeProblem(link: any) {
   try {
     await ElMessageBox.confirm(`确认将 ${link.problem.title} 移出当前题单？题目本身不会被删除。`, '移出题单', { type: 'warning' })
-    await client.delete(`/teams/${teamID.value}/problem-sets/${problemSetID.value}/problems/${link.problem_id}`)
+    await client.delete(`/problem-sets/${problemSetID.value}/problems/${link.problem_id}`)
     ElMessage.success('题目已移出题单')
     await load()
   } catch (err: any) {
@@ -324,10 +328,13 @@ async function removeProblem(link: any) {
   }
 }
 
-function openSubmit(link: any) {
+async function openSubmit(link: any) {
   selectedIndex.value = links.value.findIndex((item) => item.id === link.id)
-  source.value = ''
-  liveStatus.value = null
+  if (!submissions.value.length) await loadSubmissions()
+  const latest = submissions.value.find((item) => item.problem_id === link.problem_id && item.user_id === auth.user?.id)
+  language.value = latest?.language || 'cpp'
+  source.value = latest?.source_code || ''
+  liveStatus.value = latest || null
   submitVisible.value = true
 }
 
@@ -338,11 +345,12 @@ async function submitSolution() {
   }
   submitting.value = true
   try {
-    const { data } = await client.post(`/teams/${teamID.value}/problem-sets/${problemSetID.value}/submissions`, {
+    const { data } = await client.post(`/problem-sets/${problemSetID.value}/submissions`, {
       problem_id: selectedLink.value.problem.id,
       language: language.value,
       source_code: source.value
     })
+    liveStatus.value = data
     const stream = openEventStream(`/submissions/${data.id}/events`)
     liveStreams.add(stream)
     stream.addEventListener('status', async (event) => {
@@ -369,8 +377,9 @@ function openSubmissionProblem(problemID: number) {
 
 async function openDiscussions() {
   activeTab.value = 'discussions'
+  await router.push({ path: route.path, hash: '#discussions' })
   try {
-    discussions.value = (await client.get(`/teams/${teamID.value}/problem-sets/${problemSetID.value}/discussions`)).data || []
+    discussions.value = (await client.get(`/problem-sets/${problemSetID.value}/discussions`)).data || []
   } catch (err: any) {
     ElMessage.error(err.response?.data?.error || err.message)
   }
@@ -383,7 +392,7 @@ async function postDiscussion() {
   }
   posting.value = true
   try {
-    await client.post(`/teams/${teamID.value}/problem-sets/${problemSetID.value}/discussions`, {
+    await client.post(`/problem-sets/${problemSetID.value}/discussions`, {
       problem_id: discussionProblemID.value || null,
       content: discussionContent.value
     })
@@ -444,7 +453,15 @@ function formatMemory(memoryKB: number) {
   return (memoryKB / 1024).toFixed(memoryKB >= 10240 ? 0 : 1)
 }
 
-watch(() => [route.params.teamId, route.params.setId], load, { immediate: true })
+watch(() => route.params.setId, load, { immediate: true })
+watch(() => route.hash, (hash) => {
+  const tab = hash.replace(/^#/, '')
+  if (tab === 'submissions' || tab === 'discussions' || tab === 'problems') activeTab.value = tab
+}, { immediate: true })
+watch(() => route.query.problem, (value) => {
+  const index = links.value.findIndex((item) => item.problem_id === Number(value))
+  if (index >= 0) { selectedIndex.value = index; problemView.value = 'detail' }
+})
 watch(
   () => [submissionFilters.username, submissionFilters.problemID, submissionFilters.status, submissionFilters.language, submissionPageSize.value],
   () => { submissionPage.value = 1 }
@@ -486,8 +503,5 @@ onBeforeUnmount(() => { for (const stream of liveStreams) stream.close() })
 .discussion-author > div { display: grid; gap: 2px; margin-right: auto; }
 .discussion-author span { color: var(--muted); font-size: 12px; }
 .dialog-hint { color: var(--muted); }
-.submit-toolbar, .live-status { display: flex; align-items: center; gap: 10px; margin-bottom: 12px; }
-.submit-toolbar span, .live-status span { color: var(--muted); font-size: 12px; }
-.live-status { margin: 12px 0 0; }
 @media (max-width: 760px) { .problem-set-page { padding: 16px 13px 42px; } .set-heading { align-items: stretch; flex-direction: column; } .heading-actions { flex-direction: column; } .discussion-layout { grid-template-columns: 1fr; } .submission-toolbar { align-items: stretch; flex-wrap: wrap; } }
 </style>

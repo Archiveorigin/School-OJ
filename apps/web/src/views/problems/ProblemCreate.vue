@@ -326,7 +326,7 @@ async function submitProblem() {
     if (teamScope.value) {
       localStorage.removeItem(draftKey.value)
       ElMessage.success('团队私有题目已创建并加入题单')
-      await router.push(`/teams/${teamID.value}/problem-sets/${problemSetID.value}`)
+      await router.push(`/problem-set/${problemSetID.value}#problems`)
       return
     }
     if (auth.role === 'admin') {
@@ -485,7 +485,7 @@ function checkerTolerance(value: unknown) {
 
 function goBack() {
   if (teamScope.value) {
-    router.push(`/teams/${teamID.value}/problem-sets/${problemSetID.value}`)
+    router.push(`/problem-set/${problemSetID.value}#problems`)
     return
   }
   router.push('/problems')

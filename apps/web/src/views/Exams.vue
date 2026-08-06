@@ -62,8 +62,8 @@
           </el-table-column>
           <el-table-column label="操作" width="330">
             <template #default="{ row }">
-              <el-button size="small" type="primary" :disabled="!canManage && Boolean(row.finished_at)" @click="openDetail(row)">
-                {{ !canManage && row.finished_at ? '已结束' : '进入' }}
+              <el-button size="small" type="primary" :disabled="!canManage && examWindowStatus(row) !== 'running'" @click="openDetail(row)">
+                {{ !canManage && examWindowStatus(row) === 'not_started' ? '未开始' : !canManage && examWindowStatus(row) === 'closed' ? '已结束' : '进入' }}
               </el-button>
               <el-button v-if="canManage || row.settings?.ranking_visible" size="small" @click="router.push(`/exams/${row.id}/ranking`)">榜单</el-button>
               <el-button v-if="canManage" size="small" @click="openReport(row)">完成情况</el-button>
@@ -192,8 +192,8 @@ const reportEnded = computed(() => {
   return new Date(report.value.exam.ends_at).getTime() <= Date.now()
 })
 const pagedItems = computed(() => items.value.slice((page.value - 1) * pageSize.value, page.value * pageSize.value))
-const activeExams = computed(() => items.value.filter((e) => !e.finished_at && new Date(e.starts_at) <= new Date()).length)
-const endedExams = computed(() => items.value.filter((e) => e.finished_at || new Date(e.ends_at) < new Date()).length)
+const activeExams = computed(() => items.value.filter((item) => examWindowStatus(item) === 'running').length)
+const endedExams = computed(() => items.value.filter((item) => examWindowStatus(item) === 'closed').length)
 
 async function load() {
   const params = courseID.value ? { course_id: courseID.value } : {}
@@ -207,19 +207,15 @@ function createExam() {
 }
 
 function openDetail(row: any) {
-  if (!canManage.value && isFutureTime(row.starts_at)) {
+  if (!canManage.value && examWindowStatus(row) === 'not_started') {
     ElMessage.warning('考试未开始，不能进入')
     return
   }
-  if (!canManage.value && row.finished_at) {
+  if (!canManage.value && examWindowStatus(row) === 'closed') {
     ElMessage.warning('考试已结束，不能再次进入')
     return
   }
   router.push(`/exams/${row.id}`)
-}
-
-function isFutureTime(value?: string | null) {
-  return Boolean(value && new Date(value).getTime() > Date.now())
 }
 
 async function openReport(row: any) {
@@ -315,13 +311,23 @@ function courseText(row: any) {
 }
 
 function examStatusLabel(row: any) {
-  if (row.finished_at) return '已结束'
+  if (examWindowStatus(row) === 'not_started') return '未开始'
+  if (examWindowStatus(row) === 'closed') return '已结束'
   return workStatusLabel(row.work_status)
 }
 
 function examStatusType(row: any): 'success' | 'warning' | 'info' {
-  if (row.finished_at) return 'info'
+  if (examWindowStatus(row) === 'not_started') return 'warning'
+  if (examWindowStatus(row) === 'closed') return 'info'
   return workStatusType(row.work_status)
+}
+
+function examWindowStatus(row: any): 'not_started' | 'running' | 'closed' {
+  const now = Date.now()
+  if (row.finished_at) return 'closed'
+  if (row.starts_at && new Date(row.starts_at).getTime() > now) return 'not_started'
+  if (row.ends_at && new Date(row.ends_at).getTime() <= now) return 'closed'
+  return 'running'
 }
 
 function workStatusLabel(status: string) {

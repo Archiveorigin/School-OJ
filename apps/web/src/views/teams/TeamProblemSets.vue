@@ -71,7 +71,7 @@ async function createSet() {
     Object.assign(form, { title: '', description: '' })
     createVisible.value = false
     ElMessage.success('团队题单已创建')
-    await router.push(`/teams/${props.team.id}/problem-sets/${data.id}`)
+    await router.push(`/problem-set/${data.id}#problems`)
   } catch (err: any) {
     ElMessage.error(err.response?.data?.error || err.message)
   } finally {
@@ -80,7 +80,7 @@ async function createSet() {
 }
 
 function openSet(item: TeamProblemSet) {
-  router.push(`/teams/${props.team.id}/problem-sets/${item.id}`)
+  router.push(`/problem-set/${item.id}#problems`)
 }
 
 onMounted(load)

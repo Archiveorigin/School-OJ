@@ -338,3 +338,13 @@ func TestTeamContestWindow(t *testing.T) {
 		t.Fatalf("at end status = %q", status)
 	}
 }
+
+func TestElapsedContestMinutesUsesWholeMinutesAndClampsEarlySubmissions(t *testing.T) {
+	start := time.Date(2026, 8, 6, 9, 0, 0, 0, time.UTC)
+	if got := elapsedContestMinutes(start, start.Add(17*time.Minute+59*time.Second)); got != 17 {
+		t.Fatalf("elapsed minutes = %d, want 17", got)
+	}
+	if got := elapsedContestMinutes(start, start.Add(-time.Second)); got != 0 {
+		t.Fatalf("early submission minutes = %d, want 0", got)
+	}
+}

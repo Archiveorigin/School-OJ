@@ -442,6 +442,7 @@ type TeamContest struct {
 	Description     string     `json:"description" gorm:"type:text"`
 	StartsAt        *time.Time `json:"starts_at" gorm:"index"`
 	DurationMinutes int        `json:"duration_minutes" gorm:"not null;default:120"`
+	ScoringRule     string     `json:"scoring_rule" gorm:"size:16;not null;default:'penalty'"`
 	CreatedBy       uint       `json:"created_by" gorm:"index;not null"`
 	CreatedAt       time.Time  `json:"created_at"`
 	UpdatedAt       time.Time  `json:"updated_at"`

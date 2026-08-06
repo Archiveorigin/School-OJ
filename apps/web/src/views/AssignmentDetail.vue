@@ -45,18 +45,16 @@
       </section>
 
       <section v-if="activeProblem" class="panel editor-panel">
-        <div class="toolbar editor-toolbar">
-          <el-select v-model="language" style="width: 130px">
-            <el-option label="C++17" value="cpp" />
-            <el-option label="C" value="c" />
-            <el-option label="Python" value="python" />
-            <el-option label="Java" value="java" />
-          </el-select>
-          <el-button @click="formatSource">自动格式化</el-button>
-          <el-button type="primary" :loading="submitting" :disabled="!detail.can_submit" @click="submitSolution">提交</el-button>
-        </div>
-        <CodeEditor ref="editorRef" v-model="source" :language="language" />
-        <div v-if="live" class="live"><StatusBadge :status="live.status" /> 分数 {{ live.score }}，{{ live.message }}</div>
+        <SubmissionComposer
+          v-model:language="language"
+          v-model:source="source"
+          :status="currentStatus"
+          :message="currentMessage"
+          :submitting="submitting"
+          :disabled="!detail.can_submit"
+          scope-text="本次代码仅计入当前作业"
+          @submit="submitSolution"
+        />
       </section>
 
       <div class="panel history-panel">
@@ -81,17 +79,17 @@ import { ElMessage } from 'element-plus'
 import { computed, onMounted, reactive, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { client, openEventStream, type Problem, type Submission } from '../api/client'
-import CodeEditor from '../components/CodeEditor.vue'
 import ListPagination from '../components/ListPagination.vue'
 import ProblemStatementView from '../components/ProblemStatementView.vue'
 import ProblemTestDownloads from '../components/ProblemTestDownloads.vue'
 import StatusBadge from '../components/StatusBadge.vue'
+import SubmissionComposer from '../components/SubmissionComposer.vue'
 import { formatDateTime, workStatusLabel } from '../features/assignments/assignmentMeta'
 import { problemDisplayCode } from '../features/problems/problemMeta'
 import { useAuthStore } from '../stores/auth'
 
 type DetailProblem = { problem: Problem; score: number; problem_id: number }
-type EditorState = { language: string; source: string; live: any }
+type EditorState = { language: string; source: string; live: any; dirty: boolean }
 
 const route = useRoute()
 const router = useRouter()
@@ -108,7 +106,6 @@ const history = ref<Submission[]>([])
 const historyPage = ref(1)
 const historyPageSize = ref(10)
 const submitting = ref(false)
-const editorRef = ref<InstanceType<typeof CodeEditor> | null>(null)
 const editorStates = reactive<Record<number, EditorState>>({})
 
 const activeState = computed(() => {
@@ -121,7 +118,8 @@ const language = computed({
     if (!activeProblem.value || !activeState.value) return
     saveDraft(activeProblem.value.id, activeState.value.language, activeState.value.source)
     activeState.value.language = value
-    activeState.value.source = loadDraft(activeProblem.value.id, value)
+    activeState.value.source = preferredSubmission(activeProblem.value.id, value)?.source_code || ''
+    activeState.value.dirty = false
   }
 })
 const source = computed({
@@ -129,10 +127,14 @@ const source = computed({
   set: (value: string) => {
     if (!activeProblem.value || !activeState.value) return
     activeState.value.source = value
+    activeState.value.dirty = true
     saveDraft(activeProblem.value.id, activeState.value.language, value)
   }
 })
 const live = computed(() => activeState.value?.live)
+const latestSubmission = computed(() => activeProblem.value ? preferredSubmission(activeProblem.value.id) : null)
+const currentStatus = computed(() => live.value?.status || latestSubmission.value?.status || '')
+const currentMessage = computed(() => live.value?.message || latestSubmission.value?.message || '')
 const pagedHistory = computed(() => history.value.slice((historyPage.value - 1) * historyPageSize.value, historyPage.value * historyPageSize.value))
 
 async function loadDetail() {
@@ -156,6 +158,10 @@ function selectDetailProblem(entry: DetailProblem) {
 
 async function submitSolution() {
   if (!activeProblem.value || !detail.value || !activeState.value) return
+  if (!activeState.value.source.trim()) {
+    ElMessage.warning('请输入代码')
+    return
+  }
   const problemID = activeProblem.value.id
   submitting.value = true
   try {
@@ -196,19 +202,15 @@ async function refreshDetail() {
 async function loadHistory() {
   if (!detail.value) return
   history.value = (await client.get('/submissions', { params: { assignment_id: detail.value.assignment.id } })).data
+  hydrateEditorStatesFromHistory()
   clampHistoryPage()
 }
 
 function ensureEditorState(problemID: number) {
   if (!editorStates[problemID]) {
-    editorStates[problemID] = { language: 'cpp', source: loadDraft(problemID, 'cpp'), live: null }
+    editorStates[problemID] = { language: 'cpp', source: '', live: null, dirty: false }
   }
   return editorStates[problemID]
-}
-
-function loadDraft(problemID: number, lang: string) {
-  if (!detail.value) return defaultSource(lang)
-  return localStorage.getItem(draftKey(problemID, lang)) || defaultSource(lang)
 }
 
 function saveDraft(problemID: number, lang: string, value: string) {
@@ -220,15 +222,18 @@ function draftKey(problemID: number, lang: string) {
   return `school-oj-draft:assignment:${detail.value.assignment.id}:${problemID}:${lang}`
 }
 
-function defaultSource(lang: string) {
-  if (lang === 'python') return 'a, b = map(int, input().split())\nprint(a + b)\n'
-  if (lang === 'java') return 'import java.util.*;\npublic class Main { public static void main(String[] args) { Scanner sc = new Scanner(System.in); long a = sc.nextLong(), b = sc.nextLong(); System.out.println(a + b); } }\n'
-  if (lang === 'c') return '#include <stdio.h>\nint main(){ long long a,b; scanf("%lld%lld",&a,&b); printf("%lld\\n", a+b); return 0; }\n'
-  return '#include <bits/stdc++.h>\nusing namespace std;\nint main(){ long long a,b; cin>>a>>b; cout<<a+b<<"\\n"; return 0; }\n'
+function hydrateEditorStatesFromHistory() {
+  for (const entry of detail.value?.problems || []) {
+    const state = ensureEditorState(entry.problem.id)
+    if (state.dirty) continue
+    const latest = preferredSubmission(entry.problem.id)
+    state.language = latest?.language || 'cpp'
+    state.source = latest?.source_code || ''
+  }
 }
 
-function formatSource() {
-  editorRef.value?.format()
+function preferredSubmission(problemID: number, selectedLanguage?: string) {
+  return history.value.find((item) => item.user_id === auth.user?.id && item.problem_id === problemID && (!selectedLanguage || item.language === selectedLanguage)) || null
 }
 
 function scoreForProblem(problemID: number) {
@@ -307,7 +312,6 @@ onMounted(loadDetail)
 
 .editor-panel {
   display: grid;
-  grid-template-rows: auto minmax(420px, 1fr) auto;
   gap: 10px;
 }
 
@@ -316,15 +320,6 @@ onMounted(loadDetail)
   justify-content: flex-end;
 }
 
-.editor-toolbar {
-  justify-content: flex-end;
-}
-
-.live {
-  display: flex;
-  gap: 10px;
-  align-items: center;
-}
 
 @media (max-width: 1100px) {
   .problem-pick {

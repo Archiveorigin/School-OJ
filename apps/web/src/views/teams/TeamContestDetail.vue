@@ -1,124 +1,124 @@
 <template>
-  <section class="contest-detail-view">
-    <header class="contest-header">
-      <div>
-        <button type="button" class="back-button" @click="router.push(`/teams/${team.slug}/contests`)">返回比赛列表</button>
-        <span class="eyebrow">TEAM CONTEST</span>
-        <h1>{{ detail?.contest?.title || '团队比赛' }}</h1>
-        <p v-if="detail">{{ contestTimeText }}</p>
-      </div>
-      <div v-if="detail" class="header-status">
-        <el-tag :type="statusType(detail.contest.status)" size="large">{{ statusLabel(detail.contest.status) }}</el-tag>
-        <span>{{ detail.problems.length }} 道题目</span>
-        <el-button v-if="detail.can_organize" @click="addVisible = true">添加题目</el-button>
-      </div>
-    </header>
-
-    <div v-if="detail" class="contest-body">
-      <nav class="contest-tabs">
-        <button type="button" :class="{ active: activeTab === 'overview' }" @click="activeTab = 'overview'">题目概览</button>
-        <button type="button" :class="{ active: activeTab === 'problems' }" @click="activeTab = 'problems'">查看题目</button>
-        <button type="button" :class="{ active: activeTab === 'records' }" @click="openRecords">提交记录</button>
-        <button type="button" :class="{ active: activeTab === 'ranking' }" @click="openRanking">实时榜单</button>
-      </nav>
-
-      <ProblemOverview
-        v-if="activeTab === 'overview'"
-        :items="detail.problems"
-        :active-problem-id="activeProblemID"
-        @select="openContestProblem"
-      />
-
-      <section v-else-if="activeTab === 'problems'" class="problem-workspace">
-        <div v-if="selectedLink" class="panel current-problem-bar">
-          <div><strong>{{ selectedLink.label }} · {{ selectedLink.problem.title }}</strong><span>{{ selectedLink.problem.display_code }}</span></div>
-          <div class="summary-actions">
-            <StatusBadge v-if="selectedLink.submission_status" :status="selectedLink.submission_status" />
-            <el-tag v-else type="info" effect="plain">未提交</el-tag>
-            <el-button v-if="detail.can_organize" @click="addVisible = true">添加题目</el-button>
-            <el-button v-if="detail.can_organize" type="danger" text @click="removeProblem">移出比赛</el-button>
-            <el-button type="primary" :disabled="!detail.can_submit" @click="openSubmit">提交本题</el-button>
-          </div>
+  <section class="page contest-page">
+    <div class="contest-container">
+      <header class="contest-header">
+        <div>
+          <button type="button" class="back-button" @click="goBack">← 返回团队比赛</button>
+          <span class="eyebrow">TEAM CONTEST</span>
+          <h1>{{ detail?.contest?.title || '团队比赛' }}</h1>
+          <p v-if="detail">{{ contestTimeText }}</p>
         </div>
+        <div v-if="detail" class="header-status">
+          <el-tag :type="statusType(detail.contest.status)" size="large">{{ statusLabel(detail.contest.status) }}</el-tag>
+          <span>{{ detail.problems.length }} 道题目</span>
+          <el-button v-if="detail.can_organize" @click="addVisible = true">添加题目</el-button>
+        </div>
+      </header>
 
-        <ProblemStatementView
-          v-if="selectedLink"
-          :problem="selectedLink.problem"
-          :problem-number="selectedLink.label"
-          :status-text="problemStatusText(selectedLink.submission_status)"
-          :status-type="problemStatusType(selectedLink.submission_status)"
-          :show-meta="false"
-        />
-        <el-empty v-else description="比赛暂未添加题目">
-          <el-button v-if="detail.can_organize" type="primary" @click="addVisible = true">添加第一道题</el-button>
-        </el-empty>
-      </section>
+      <div v-if="detail" class="contest-body">
+        <nav class="contest-tabs" aria-label="比赛功能">
+          <button v-for="tab in tabs" :key="tab.key" type="button" :class="{ active: activeTab === tab.key }" @click="openTab(tab.key)">{{ tab.label }}</button>
+        </nav>
 
-      <section v-else-if="activeTab === 'records'" class="panel records-panel">
-        <div class="section-title"><h3>我的比赛提交</h3><el-button :loading="recordsLoading" @click="loadRecords">刷新</el-button></div>
-        <el-table :data="records">
-          <el-table-column label="题号" width="90"><template #default="{ row }">{{ problemLabel(row.problem_id) }}</template></el-table-column>
-          <el-table-column prop="problem_title" label="题目" min-width="190" />
-          <el-table-column prop="language" label="语言" width="90" />
-          <el-table-column label="状态" width="140"><template #default="{ row }"><StatusBadge :status="row.status" /></template></el-table-column>
-          <el-table-column label="提交时间" min-width="180"><template #default="{ row }">{{ formatDateTime(row.created_at) }}</template></el-table-column>
-        </el-table>
-        <el-empty v-if="!recordsLoading && !records.length" description="还没有比赛提交" />
-      </section>
+        <ProblemOverview v-if="activeTab === 'overview'" :items="detail.problems" :active-problem-id="selectedLink?.problem_id" @select="openContestProblem" />
 
-      <section v-else class="ranking-panel">
-        <div class="ranking-heading"><div><span class="eyebrow">LIVE SCOREBOARD</span><h3>团队实时榜单</h3></div><el-button :loading="rankingLoading" @click="loadRanking">刷新</el-button></div>
-        <el-table :data="ranking.rows || []" v-loading="rankingLoading">
-          <el-table-column type="index" label="排名" width="76" />
-          <el-table-column prop="name" label="成员" min-width="170" />
-          <el-table-column prop="solved" label="通过" width="86" />
-          <el-table-column prop="submission_count" label="提交" width="86" />
-          <el-table-column v-for="problem in ranking.problems || []" :key="problem.problem_id" :label="problem.label" width="100" align="center">
-            <template #default="{ row }"><StatusBadge v-if="rankingCell(row, problem.problem_id)?.status" :status="rankingCell(row, problem.problem_id).status" /><span v-else>-</span></template>
-          </el-table-column>
-          <el-table-column label="最后提交" min-width="180"><template #default="{ row }">{{ row.last_submission ? formatDateTime(row.last_submission) : '-' }}</template></el-table-column>
-        </el-table>
-      </section>
-    </div>
-    <el-skeleton v-else :rows="10" animated class="loading-panel" />
+        <section v-else-if="activeTab === 'problems'" class="problem-workspace">
+          <div v-if="selectedLink" class="problem-actions">
+            <div class="manage-actions">
+              <el-button v-if="detail.can_organize" @click="addVisible = true">添加题目</el-button>
+              <el-button v-if="detail.can_organize" type="danger" text @click="removeProblem">移出比赛</el-button>
+            </div>
+            <el-button type="primary" :disabled="!detail.can_submit" @click="openSubmit">提交代码</el-button>
+          </div>
+          <ProblemStatementView
+            v-if="selectedLink"
+            :problem="selectedLink.problem"
+            :problem-number="selectedLink.label"
+            :status-text="problemStatusText(selectedLink.submission_status)"
+            :status-type="problemStatusType(selectedLink.submission_status)"
+            :show-meta="false"
+          />
+          <div v-if="detail.problems.length > 1" class="problem-switcher">
+            <button v-for="link in detail.problems" :key="link.problem_id" type="button" :class="{ active: link.problem_id === selectedLink?.problem_id }" @click="openContestProblem(link.problem_id)">{{ link.label }}</button>
+          </div>
+          <el-empty v-if="!selectedLink" description="比赛暂未添加题目"><el-button v-if="detail.can_organize" type="primary" @click="addVisible = true">添加第一道题</el-button></el-empty>
+        </section>
 
-    <el-dialog v-model="submitVisible" :title="`提交 ${selectedLink?.label || ''} ${selectedLink?.problem?.title || ''}`" width="min(900px, calc(100vw - 24px))" destroy-on-close>
-      <div class="submit-toolbar">
-        <el-select v-model="language" style="width: 140px">
-          <el-option label="C++17" value="cpp" /><el-option label="C" value="c" /><el-option label="Python" value="python" /><el-option label="Java" value="java" />
-        </el-select>
-        <span>代码仅计入本场团队比赛</span>
+        <section v-else-if="activeTab === 'records'" class="panel records-panel">
+          <div class="section-title"><h3>我的比赛提交</h3><el-button :loading="recordsLoading" @click="loadRecords">刷新</el-button></div>
+          <el-table :data="records">
+            <el-table-column label="题号" width="90"><template #default="{ row }">{{ problemLabel(row.problem_id) }}</template></el-table-column>
+            <el-table-column prop="problem_title" label="题目" min-width="190" />
+            <el-table-column prop="language" label="语言" width="90" />
+            <el-table-column label="状态" width="140"><template #default="{ row }"><StatusBadge :status="row.status" /></template></el-table-column>
+            <el-table-column label="提交时间" min-width="180"><template #default="{ row }">{{ formatDateTime(row.created_at) }}</template></el-table-column>
+          </el-table>
+          <el-empty v-if="!recordsLoading && !records.length" description="还没有比赛提交" />
+        </section>
+
+        <section v-else class="ranking-panel">
+          <div class="ranking-heading">
+            <div><span class="eyebrow">LIVE SCOREBOARD</span><h3>实时榜单</h3><p>{{ scoringRuleText }}</p></div>
+            <el-button :loading="rankingLoading" @click="loadRanking">刷新</el-button>
+          </div>
+          <div class="scoreboard-scroll" v-loading="rankingLoading">
+            <table class="scoreboard">
+              <thead><tr><th class="rank-column">排名</th><th class="name-column">参赛者</th><th>通过</th><th>{{ ranking.scoring_rule === 'score' ? '总分' : '罚时' }}</th><th v-for="problem in ranking.problems || []" :key="problem.problem_id" :title="problem.title">{{ problem.label }}</th></tr></thead>
+              <tbody>
+                <tr v-for="(row, index) in ranking.rows || []" :key="row.user_id">
+                  <td class="rank-column"><strong>{{ index + 1 }}</strong></td>
+                  <td class="name-column"><strong>{{ row.name }}</strong></td>
+                  <td><strong>{{ row.solved }}</strong></td>
+                  <td><strong>{{ ranking.scoring_rule === 'score' ? row.total_score : row.penalty_minutes }}</strong></td>
+                  <td v-for="problem in ranking.problems || []" :key="problem.problem_id">
+                    <div class="score-cell" :class="rankingCellClass(rankingCell(row, problem.problem_id))">
+                      <strong>{{ rankingCell(row, problem.problem_id)?.attempts || 0 }}</strong>
+                      <small v-if="rankingCell(row, problem.problem_id)?.attempts">{{ rankingCell(row, problem.problem_id)?.elapsed_minutes ?? 0 }}'</small>
+                      <small v-else>-</small>
+                    </div>
+                  </td>
+                </tr>
+                <tr v-if="!rankingLoading && !(ranking.rows || []).length"><td :colspan="4 + (ranking.problems || []).length" class="empty-scoreboard">暂无参赛记录</td></tr>
+              </tbody>
+            </table>
+          </div>
+          <div class="score-legend"><span class="passed">已通过</span><span class="failed">未通过</span><span class="fastest">最快通过</span><small>题目格：提交次数 / 距比赛开始分钟数</small></div>
+        </section>
       </div>
-      <CodeEditor v-model="source" :language="language" />
-      <div v-if="liveStatus" class="live-status"><StatusBadge :status="liveStatus.status" /><span>{{ liveStatus.message || '评测中' }}</span></div>
-      <template #footer><el-button @click="submitVisible = false">取消</el-button><el-button type="primary" :loading="submitting" @click="submitSolution">提交评测</el-button></template>
-    </el-dialog>
+      <el-skeleton v-else :rows="10" animated class="loading-panel" />
 
-    <el-dialog v-model="addVisible" title="添加比赛题目" width="480px">
-      <p class="dialog-hint">输入公共题目或本团队私有题目的题号。</p>
-      <el-input v-model="problemCode" placeholder="例如 T001" @keyup.enter="addProblem" />
-      <template #footer><el-button @click="addVisible = false">取消</el-button><el-button type="primary" :loading="adding" @click="addProblem">添加</el-button></template>
-    </el-dialog>
+      <el-dialog v-model="submitVisible" :title="`提交 ${selectedLink?.label || ''} ${selectedLink?.problem?.title || ''}`" width="min(980px, calc(100vw - 24px))" destroy-on-close align-center>
+        <SubmissionComposer v-model:language="language" v-model:source="source" :status="liveStatus?.status" :message="liveStatus?.message" :submitting="submitting" scope-text="代码仅计入本场团队比赛" @submit="submitSolution" />
+        <template #footer><el-button @click="submitVisible = false">关闭</el-button></template>
+      </el-dialog>
+
+      <el-dialog v-model="addVisible" title="添加比赛题目" width="480px">
+        <p class="dialog-hint">输入公共题目或本团队私有题目的题号。</p>
+        <el-input v-model="problemCode" placeholder="例如 T001" @keyup.enter="addProblem" />
+        <template #footer><el-button @click="addVisible = false">取消</el-button><el-button type="primary" :loading="adding" @click="addProblem">添加</el-button></template>
+      </el-dialog>
+    </div>
   </section>
 </template>
 
 <script setup lang="ts">
 import { ElMessage, ElMessageBox } from 'element-plus'
-import { computed, onMounted, ref, watch } from 'vue'
+import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
-import { client, openEventStream, type Submission, type Team } from '../../api/client'
-import CodeEditor from '../../components/CodeEditor.vue'
+import { client, openEventStream, type AuthenticatedEventSource, type Submission } from '../../api/client'
 import ProblemOverview from '../../components/ProblemOverview.vue'
 import ProblemStatementView from '../../components/ProblemStatementView.vue'
 import StatusBadge from '../../components/StatusBadge.vue'
+import SubmissionComposer from '../../components/SubmissionComposer.vue'
 import { formatDateTime } from '../../features/time'
 
-const props = defineProps<{ team: Team }>()
+type ContestTab = 'overview' | 'problems' | 'records' | 'ranking'
+const tabs: Array<{ key: ContestTab; label: string }> = [
+  { key: 'overview', label: '题目概览' }, { key: 'problems', label: '查看题目' }, { key: 'records', label: '提交记录' }, { key: 'ranking', label: '实时榜单' }
+]
 const route = useRoute()
 const router = useRouter()
 const detail = ref<any>(null)
-const activeTab = ref<'overview' | 'problems' | 'records' | 'ranking'>('overview')
-const activeProblemID = ref<number>()
 const submitVisible = ref(false)
 const submitting = ref(false)
 const language = ref('cpp')
@@ -126,151 +126,169 @@ const source = ref('')
 const liveStatus = ref<any>(null)
 const records = ref<Submission[]>([])
 const recordsLoading = ref(false)
-const ranking = ref<any>({ rows: [], problems: [] })
+const ranking = ref<any>({ rows: [], problems: [], scoring_rule: 'penalty' })
 const rankingLoading = ref(false)
 const addVisible = ref(false)
 const adding = ref(false)
 const problemCode = ref('')
+let submissionStream: AuthenticatedEventSource | null = null
+
 const contestID = computed(() => Number(route.params.contestId))
-const selectedLink = computed(() => detail.value?.problems?.find((item: any) => item.problem.id === activeProblemID.value) || null)
-const contestTimeText = computed(() => {
-  if (!detail.value?.contest) return ''
-  const start = detail.value.contest.starts_at ? formatDateTime(detail.value.contest.starts_at) : '立即开始'
-  const end = detail.value.contest.ends_at ? formatDateTime(detail.value.contest.ends_at) : '不限时'
-  return `${start} — ${end}`
+const activeTab = computed<ContestTab>(() => {
+  const value = route.hash.replace(/^#/, '') as ContestTab
+  return tabs.some((tab) => tab.key === value) ? value : 'overview'
 })
+const selectedProblemID = computed(() => Number(route.query.problem) || detail.value?.problems?.[0]?.problem_id)
+const selectedLink = computed(() => detail.value?.problems?.find((item: any) => item.problem_id === selectedProblemID.value) || detail.value?.problems?.[0] || null)
+const contestTimeText = computed(() => {
+  const contest = detail.value?.contest
+  if (!contest) return ''
+  return `${contest.starts_at ? formatDateTime(contest.starts_at) : '立即开始'} — ${contest.ends_at ? formatDateTime(contest.ends_at) : '不限时'}`
+})
+const scoringRuleText = computed(() => ranking.value.scoring_rule === 'score' ? '按通过题目数优先，其次按总分排名' : '按通过题目数优先，其次按罚时排名')
 
 async function loadDetail() {
+  if (!contestID.value) return
   try {
-    const { data } = await client.get(`/teams/${props.team.id}/contests/${contestID.value}`)
-    detail.value = data
-    if (!data.problems?.some((item: any) => item.problem.id === activeProblemID.value)) activeProblemID.value = data.problems?.[0]?.problem.id
+    detail.value = (await client.get(`/contests/${contestID.value}`)).data
+    await loadRecords()
   } catch (err: any) {
     ElMessage.error(err.response?.data?.error || err.message)
-    await router.replace(`/teams/${props.team.slug}/contests`)
+    await router.replace('/teams')
   }
 }
 
-function openSubmit() {
+function goBack() { router.push(detail.value?.team?.slug ? `/teams/${detail.value.team.slug}/contests` : '/teams') }
+function openTab(tab: ContestTab) { router.push({ path: route.path, query: route.query, hash: `#${tab}` }) }
+function openContestProblem(problemID: number) { router.push({ path: route.path, query: { ...route.query, problem: String(problemID) }, hash: '#problems' }) }
+
+async function openSubmit() {
   if (!detail.value?.can_submit || !selectedLink.value) return
-  source.value = ''
-  liveStatus.value = null
+  if (!records.value.length) await loadRecords()
+  const latest = records.value.find((item) => item.problem_id === selectedLink.value.problem_id)
+  language.value = latest?.language || 'cpp'
+  source.value = latest?.source_code || ''
+  liveStatus.value = latest || null
   submitVisible.value = true
 }
 
-function openContestProblem(problemID: number) {
-  activeProblemID.value = problemID
-  activeTab.value = 'problems'
-}
-
 async function submitSolution() {
-  if (!selectedLink.value || !source.value.trim()) {
-    ElMessage.warning('请输入代码')
-    return
-  }
+  if (!selectedLink.value || !source.value.trim()) return ElMessage.warning('请输入代码')
   submitting.value = true
   try {
-    const { data } = await client.post(`/teams/${props.team.id}/contests/${contestID.value}/submissions`, {
-      problem_id: selectedLink.value.problem.id,
-      language: language.value,
-      source_code: source.value
-    })
-    const stream = openEventStream(`/submissions/${data.id}/events`)
-    stream.addEventListener('status', async (event) => {
+    const { data } = await client.post(`/contests/${contestID.value}/submissions`, { problem_id: selectedLink.value.problem_id, language: language.value, source_code: source.value })
+    liveStatus.value = data
+    submissionStream?.close()
+    submissionStream = openEventStream(`/submissions/${data.id}/events`)
+    submissionStream.addEventListener('status', async (event) => {
       liveStatus.value = JSON.parse((event as MessageEvent).data)
       if (!['queued', 'running'].includes(liveStatus.value.status)) {
-        stream.close()
-        await loadDetail()
-        await loadRecords()
+        submissionStream?.close(); submissionStream = null
+        await Promise.all([loadDetail(), loadRanking()])
       }
     })
     ElMessage.success('代码已提交评测')
-  } catch (err: any) {
-    ElMessage.error(err.response?.data?.error || err.message)
-  } finally {
-    submitting.value = false
-  }
+  } catch (err: any) { ElMessage.error(err.response?.data?.error || err.message) }
+  finally { submitting.value = false }
 }
 
 async function addProblem() {
   if (!problemCode.value.trim()) return ElMessage.warning('请输入题目编号')
   adding.value = true
   try {
-    await client.post(`/teams/${props.team.id}/contests/${contestID.value}/problems`, { problem_code: problemCode.value.trim() })
-    problemCode.value = ''
-    addVisible.value = false
-    ElMessage.success('题目已加入比赛')
-    await loadDetail()
-  } catch (err: any) {
-    ElMessage.error(err.response?.data?.error || err.message)
-  } finally {
-    adding.value = false
-  }
+    await client.post(`/contests/${contestID.value}/problems`, { problem_code: problemCode.value.trim() })
+    problemCode.value = ''; addVisible.value = false; ElMessage.success('题目已加入比赛'); await loadDetail()
+  } catch (err: any) { ElMessage.error(err.response?.data?.error || err.message) }
+  finally { adding.value = false }
 }
 
 async function removeProblem() {
   if (!selectedLink.value) return
   try {
     await ElMessageBox.confirm(`确认将 ${selectedLink.value.problem.title} 移出比赛？`, '移出比赛', { type: 'warning' })
-    await client.delete(`/teams/${props.team.id}/contests/${contestID.value}/problems/${selectedLink.value.problem.id}`)
-    ElMessage.success('题目已移出比赛')
-    await loadDetail()
-  } catch (err: any) {
-    if (err !== 'cancel' && err !== 'close') ElMessage.error(err.response?.data?.error || err.message)
-  }
+    await client.delete(`/contests/${contestID.value}/problems/${selectedLink.value.problem_id}`)
+    ElMessage.success('题目已移出比赛'); await router.replace({ path: route.path, hash: '#problems' }); await loadDetail()
+  } catch (err: any) { if (err !== 'cancel' && err !== 'close') ElMessage.error(err.response?.data?.error || err.message) }
 }
 
-async function openRecords() { activeTab.value = 'records'; await loadRecords() }
 async function loadRecords() {
+  if (!contestID.value) return
   recordsLoading.value = true
-  try { records.value = (await client.get(`/teams/${props.team.id}/contests/${contestID.value}/submissions`)).data || [] }
+  try { records.value = (await client.get(`/contests/${contestID.value}/submissions`)).data || [] }
+  catch (err: any) { ElMessage.error(err.response?.data?.error || err.message) }
   finally { recordsLoading.value = false }
 }
-async function openRanking() { activeTab.value = 'ranking'; await loadRanking() }
 async function loadRanking() {
+  if (!contestID.value) return
   rankingLoading.value = true
-  try { ranking.value = (await client.get(`/teams/${props.team.id}/contests/${contestID.value}/ranking`)).data || { rows: [], problems: [] } }
+  try { ranking.value = (await client.get(`/contests/${contestID.value}/ranking`)).data || { rows: [], problems: [], scoring_rule: detail.value?.contest?.scoring_rule || 'penalty' } }
+  catch (err: any) { ElMessage.error(err.response?.data?.error || err.message) }
   finally { rankingLoading.value = false }
 }
 
-function problemLabel(problemID: number) { return detail.value?.problems?.find((item: any) => item.problem.id === problemID)?.label || '-' }
+function problemLabel(problemID: number) { return detail.value?.problems?.find((item: any) => item.problem_id === problemID)?.label || '-' }
 function rankingCell(row: any, problemID: number) { return row.problems?.find((item: any) => item.problem_id === problemID) }
+function rankingCellClass(cell: any) { return { fastest: Boolean(cell?.fastest), passed: cell?.status === 'accepted' && !cell?.fastest, failed: Boolean(cell?.attempts && cell?.status !== 'accepted') } }
 function statusLabel(status: string) { return status === 'not_started' ? '未开始' : status === 'closed' ? '已结束' : '进行中' }
 function statusType(status: string): 'success' | 'warning' | 'info' { return status === 'not_started' ? 'warning' : status === 'closed' ? 'info' : 'success' }
 function problemStatusText(status?: string) { return !status ? '未提交' : status === 'accepted' ? '已通过' : ['queued', 'running'].includes(status) ? '评测中' : '未通过' }
 function problemStatusType(status?: string): 'success' | 'warning' | 'info' | 'danger' { return status === 'accepted' ? 'success' : ['queued', 'running'].includes(status || '') ? 'warning' : status ? 'danger' : 'info' }
 
 watch(contestID, loadDetail)
-onMounted(loadDetail)
+watch(activeTab, (tab) => { if (tab === 'ranking') void loadRanking(); if (tab === 'records') void loadRecords() })
+onMounted(async () => { await loadDetail(); if (activeTab.value === 'ranking') await loadRanking() })
+onBeforeUnmount(() => submissionStream?.close())
 </script>
 
 <style scoped>
-.contest-detail-view { padding: 28px 34px 58px; }
+.contest-page { padding: 24px 20px 58px; }
+.contest-container { width: min(1480px, 100%); margin: 0 auto; }
 .contest-header { display: flex; align-items: end; justify-content: space-between; gap: 24px; padding: 8px 0 24px; border-bottom: 1px solid var(--border); }
 .contest-header h1 { margin: 8px 0 6px; font-size: 30px; }
-.contest-header p { margin: 0; color: var(--muted); }
+.contest-header p, .ranking-heading p { margin: 0; color: var(--muted); }
 .back-button { display: block; margin: 0 0 18px; padding: 0; color: var(--muted); border: 0; background: transparent; cursor: pointer; }
 .eyebrow { color: var(--accent); font-size: 11px; font-weight: 800; letter-spacing: .14em; }
-.header-status { display: flex; align-items: center; gap: 12px; color: var(--muted); }
+.header-status, .problem-actions, .ranking-heading, .section-title { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
 .contest-body { display: grid; gap: 18px; padding-top: 18px; }
-.contest-tabs { display: flex; gap: 5px; border-bottom: 1px solid var(--border); }
-.contest-tabs button { padding: 13px 22px; color: var(--muted); border: 0; border-bottom: 3px solid transparent; background: transparent; cursor: pointer; }
+.contest-tabs { display: flex; gap: 5px; overflow-x: auto; border-bottom: 1px solid var(--border); }
+.contest-tabs button { padding: 13px 22px; white-space: nowrap; color: var(--muted); border: 0; border-bottom: 3px solid transparent; background: transparent; cursor: pointer; }
 .contest-tabs button.active { color: var(--accent); border-bottom-color: var(--accent); font-weight: 800; }
 .problem-workspace { display: grid; gap: 14px; }
-.current-problem-bar, .ranking-heading, .section-title { display: flex; align-items: center; justify-content: space-between; gap: 16px; }
-.current-problem-bar > div:first-child { display: grid; gap: 4px; }
-.current-problem-bar span, .submit-toolbar span { color: var(--muted); font-size: 12px; }
-.summary-actions, .submit-toolbar, .live-status { display: flex; align-items: center; flex-wrap: wrap; gap: 10px; }
+.problem-actions { justify-content: flex-end; }
+.manage-actions { display: flex; gap: 8px; margin-right: auto; }
+.problem-switcher { display: flex; justify-content: center; flex-wrap: wrap; gap: 8px; }
+.problem-switcher button { min-width: 38px; padding: 8px 11px; border: 1px solid var(--border); border-radius: 7px; background: var(--surface-strong); color: var(--text); cursor: pointer; }
+.problem-switcher button.active { color: white; border-color: var(--accent); background: var(--accent); }
 .records-panel { padding: 18px; }
-.ranking-panel { display: grid; gap: 16px; }
-.ranking-heading h3 { margin: 5px 0 0; }
+.ranking-panel { display: grid; gap: 16px; min-width: 0; }
+.ranking-heading h3 { margin: 5px 0 2px; }
+.scoreboard-scroll { max-width: 100%; overflow: auto; border: 1px solid var(--border); border-radius: 12px; background: var(--surface-strong); }
+.scoreboard { width: 100%; min-width: 720px; border-collapse: separate; border-spacing: 0; table-layout: fixed; }
+.scoreboard th, .scoreboard td { height: 62px; padding: 8px; border-right: 1px solid var(--border); border-bottom: 1px solid var(--border); text-align: center; }
+.scoreboard th { position: sticky; top: 0; z-index: 2; height: 48px; background: var(--surface-strong); color: var(--muted); font-size: 12px; }
+.scoreboard tr:last-child td { border-bottom: 0; }
+.scoreboard th:last-child, .scoreboard td:last-child { border-right: 0; }
+.scoreboard .rank-column { width: 70px; }
+.scoreboard .name-column { position: sticky; left: 0; z-index: 1; width: 180px; background: var(--surface-strong); text-align: left; }
+.scoreboard th.name-column { z-index: 3; }
+.score-cell { display: grid; place-content: center; min-height: 44px; border-radius: 7px; color: var(--muted); }
+.score-cell strong { font-size: 15px; }
+.score-cell small { font-size: 11px; }
+.score-cell.passed { color: #166534; background: #dcfce7; }
+.score-cell.failed { color: #991b1b; background: #fee2e2; }
+.score-cell.fastest { color: #075985; background: #dbeafe; box-shadow: inset 0 0 0 1px #7dd3fc; }
+.score-legend { display: flex; align-items: center; flex-wrap: wrap; gap: 9px; color: var(--muted); }
+.score-legend span { padding: 4px 8px; border-radius: 5px; font-size: 12px; }
+.score-legend .passed { color: #166534; background: #dcfce7; }
+.score-legend .failed { color: #991b1b; background: #fee2e2; }
+.score-legend .fastest { color: #075985; background: #dbeafe; }
+.empty-scoreboard { color: var(--muted); }
 .loading-panel { padding: 30px; }
-.submit-toolbar { margin-bottom: 12px; }
-.live-status { margin-top: 12px; }
 .dialog-hint { color: var(--muted); }
 @media (max-width: 720px) {
-  .contest-detail-view { padding: 20px 14px 44px; }
-  .contest-header, .current-problem-bar, .ranking-heading { align-items: stretch; flex-direction: column; }
-  .header-status, .summary-actions { justify-content: space-between; }
+  .contest-page { padding: 16px 12px 44px; }
+  .contest-header, .problem-actions, .ranking-heading { align-items: stretch; flex-direction: column; }
+  .header-status, .manage-actions { flex-wrap: wrap; }
+  .problem-actions > .el-button { width: 100%; }
 }
 </style>

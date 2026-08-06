@@ -1,5 +1,8 @@
 <template>
   <template v-if="activeProblem">
+    <div class="problem-submit-action">
+      <el-button type="primary" :disabled="!detail.can_submit" @click="router.push(`/exams/${route.params.id}/submit`)">提交代码</el-button>
+    </div>
     <ProblemStatementView
       :problem="activeProblem"
       :problem-number="displayNumber"
@@ -16,6 +19,7 @@
 
 <script setup lang="ts">
 import { computed } from 'vue'
+import { useRoute, useRouter } from 'vue-router'
 import type { Problem } from '../../api/client'
 import ProblemStatementView from '../../components/ProblemStatementView.vue'
 
@@ -32,6 +36,8 @@ const props = defineProps<{
   switcherEntries: Array<{ problem: Problem; label?: string; submission_status?: string }>
   activeProblemId?: number
 }>()
+const route = useRoute()
+const router = useRouter()
 
 const scoreItem = computed(() => {
   return props.detail?.problem_scores?.find((item: any) => item.problem.id === props.activeProblem?.id)
@@ -80,5 +86,7 @@ function defaultProblemLabel(index: number) {
   min-height: 260px;
   place-items: center;
 }
+
+.problem-submit-action { display: flex; justify-content: flex-end; margin-bottom: 12px; }
 
 </style>

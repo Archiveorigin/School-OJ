@@ -57,42 +57,28 @@
           destroy-on-close
           align-center
         >
-          <div class="submit-dialog-body">
-            <div class="submit-options">
-              <el-form-item label="提交语言">
-                <el-select v-model="language" aria-label="编程语言" class="language-select">
-                  <el-option label="C++17" value="cpp" />
-                  <el-option label="C" value="c" />
-                  <el-option label="Python 3" value="python" />
-                  <el-option label="Java 21" value="java" />
-                </el-select>
-              </el-form-item>
-              <el-form-item v-if="!problem.team_id" label="公开代码">
-                <el-switch v-model="isPublic" active-text="所有登录用户可查看" inactive-text="仅自己可见" />
-              </el-form-item>
-              <el-form-item v-else label="代码可见性">
-                <el-tag type="info" effect="plain">团队私有，仅自己可见</el-tag>
-              </el-form-item>
-            </div>
-            <CodeEditor ref="editorRef" v-model="source" :language="language" />
-            <el-input :model-value="codeFileName" readonly placeholder="可从本地代码文件载入文本框">
-              <template #prepend>代码文件</template>
-              <template #append>
-                <el-button @click="codeFileInput?.click()">选择文件</el-button>
-              </template>
-            </el-input>
-            <input
-              ref="codeFileInput"
-              class="hidden-file-input"
-              type="file"
-              accept=".c,.cc,.cpp,.cxx,.h,.hpp,.py,.java,.txt"
-              @change="loadCodeFile"
-            />
-          </div>
+          <SubmissionComposer
+            v-model:language="language"
+            v-model:source="source"
+            :status="live?.status"
+            :message="live?.message"
+            :submitting="submitting"
+            @submit="submit"
+          >
+            <template #options>
+              <el-switch v-if="!problem.team_id" v-model="isPublic" active-text="公开代码" inactive-text="仅自己可见" />
+              <el-tag v-else type="info" effect="plain">团队私有，仅自己可见</el-tag>
+            </template>
+            <template #after-editor>
+              <el-input :model-value="codeFileName" readonly placeholder="可从本地代码文件载入文本框">
+                <template #prepend>代码文件</template>
+                <template #append><el-button @click="codeFileInput?.click()">选择文件</el-button></template>
+              </el-input>
+              <input ref="codeFileInput" class="hidden-file-input" type="file" accept=".c,.cc,.cpp,.cxx,.h,.hpp,.py,.java,.txt" @change="loadCodeFile" />
+            </template>
+          </SubmissionComposer>
           <template #footer>
-            <el-button @click="formatSource">自动格式化</el-button>
-            <el-button @click="submitVisible = false">取消</el-button>
-            <el-button type="primary" :loading="submitting" @click="submit">确认提交</el-button>
+            <el-button @click="submitVisible = false">关闭</el-button>
           </template>
         </el-dialog>
 
@@ -106,13 +92,13 @@
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { computed, onBeforeUnmount, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
-import { AuthenticatedEventSource, client, openEventStream, type Problem } from '../../api/client'
-import CodeEditor from '../../components/CodeEditor.vue'
+import { AuthenticatedEventSource, client, openEventStream, type Problem, type Submission } from '../../api/client'
 import MarkdownRenderer from '../../components/MarkdownRenderer.vue'
 import ProblemEditDialog from '../../components/ProblemEditDialog.vue'
 import ProblemMetaCard from '../../components/ProblemMetaCard.vue'
 import ProblemTestDownloads from '../../components/ProblemTestDownloads.vue'
 import StatusBadge from '../../components/StatusBadge.vue'
+import SubmissionComposer from '../../components/SubmissionComposer.vue'
 import { problemDisplayCode, progressLabel, progressTag } from '../../features/problems/problemMeta'
 import { useAuthStore } from '../../stores/auth'
 
@@ -128,19 +114,13 @@ const language = ref('cpp')
 const isPublic = ref(false)
 const submitting = ref(false)
 const live = ref<any>(null)
-const editorRef = ref<InstanceType<typeof CodeEditor> | null>(null)
 const codeFileInput = ref<HTMLInputElement>()
 const codeFileName = ref('')
 let submissionEvents: AuthenticatedEventSource | null = null
 
 const canManage = computed(() => auth.role === 'admin' || (Boolean(auth.user?.can_author) && problem.value?.owner_id === auth.user?.id))
 const canDelete = computed(() => Boolean(problem.value && (auth.role === 'admin' || problem.value.owner_id === auth.user?.id)))
-const source = ref(`#include <bits/stdc++.h>
-using namespace std;
-int main() {
-  return 0;
-}
-`)
+const source = ref('')
 
 async function loadProblem() {
   loading.value = true
@@ -150,15 +130,12 @@ async function loadProblem() {
   try {
     const { data } = await client.get(`/problems/${encodeURIComponent(String(route.params.id))}`)
     problem.value = data
+    await loadLastSubmission()
   } catch (err: any) {
     loadError.value = err.response?.status === 404 ? '该题目不存在或尚未公开' : err.response?.data?.error || err.message
   } finally {
     loading.value = false
   }
-}
-
-function formatSource() {
-  editorRef.value?.format()
 }
 
 async function requireLogin() {
@@ -169,6 +146,7 @@ async function requireLogin() {
 
 async function openSubmitDialog() {
   if (!(await requireLogin())) return
+  await loadLastSubmission()
   submitVisible.value = true
 }
 
@@ -192,7 +170,7 @@ async function submit() {
       source_code: source.value,
       is_public: isPublic.value
     })
-    submitVisible.value = false
+    live.value = data
     ElMessage.success('提交已进入评测队列')
     watchSubmission(data.id)
   } catch (err: any) {
@@ -210,8 +188,29 @@ function watchSubmission(id: number) {
     if (!['queued', 'running'].includes(live.value.status)) {
       submissionEvents?.close()
       submissionEvents = null
+      void loadLastSubmission()
     }
   })
+}
+
+async function loadLastSubmission() {
+  if (!auth.isAuthed || !problem.value) {
+    source.value = ''
+    live.value = null
+    return
+  }
+  const { data } = await client.get<Submission[]>('/submissions', {
+    params: { visibility: 'problem', problem_id: problem.value.id }
+  })
+  const latest = data.find((item) => item.user_id === auth.user?.id)
+  if (!latest) {
+    source.value = ''
+    live.value = null
+    return
+  }
+  language.value = latest.language || 'cpp'
+  source.value = latest.source_code || ''
+  live.value = latest
 }
 
 async function loadCodeFile(event: Event) {
@@ -338,28 +337,9 @@ onBeforeUnmount(() => submissionEvents?.close())
   min-width: 0;
 }
 
-.language-select {
-  width: 140px;
-}
-
 .submission-result {
   margin-top: 14px;
   padding: 14px 18px;
-}
-
-.submit-dialog-body {
-  display: grid;
-  gap: 14px;
-}
-
-.submit-options {
-  display: grid;
-  grid-template-columns: minmax(180px, 240px) minmax(280px, 1fr);
-  gap: 16px;
-}
-
-.submit-options :deep(.el-form-item) {
-  margin-bottom: 0;
 }
 
 .hidden-file-input {
@@ -382,11 +362,6 @@ onBeforeUnmount(() => submissionEvents?.close())
   }
 
   .problem-detail-grid {
-    grid-template-columns: 1fr;
-  }
-
-  .submit-options {
-    align-items: stretch;
     grid-template-columns: 1fr;
   }
 
@@ -416,8 +391,5 @@ onBeforeUnmount(() => submissionEvents?.close())
     margin-left: 0;
   }
 
-  .language-select {
-    width: 100%;
-  }
 }
 </style>
