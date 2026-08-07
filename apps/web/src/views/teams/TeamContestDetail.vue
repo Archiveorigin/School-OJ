@@ -59,32 +59,14 @@
         </section>
 
         <section v-else class="ranking-panel">
-          <div class="ranking-heading">
-            <div><span class="eyebrow">LIVE SCOREBOARD</span><h3>实时榜单</h3><p>{{ scoringRuleText }}</p></div>
-            <el-button :loading="rankingLoading" @click="loadRanking">刷新</el-button>
-          </div>
-          <div class="scoreboard-scroll" v-loading="rankingLoading">
-            <table class="scoreboard">
-              <thead><tr><th class="rank-column">排名</th><th class="name-column">参赛者</th><th>通过</th><th>{{ ranking.scoring_rule === 'score' ? '总分' : '罚时' }}</th><th v-for="problem in ranking.problems || []" :key="problem.problem_id" :title="problem.title">{{ problem.label }}</th></tr></thead>
-              <tbody>
-                <tr v-for="(row, index) in ranking.rows || []" :key="row.user_id">
-                  <td class="rank-column"><strong>{{ index + 1 }}</strong></td>
-                  <td class="name-column"><strong>{{ row.name }}</strong></td>
-                  <td><strong>{{ row.solved }}</strong></td>
-                  <td><strong>{{ ranking.scoring_rule === 'score' ? row.total_score : row.penalty_minutes }}</strong></td>
-                  <td v-for="problem in ranking.problems || []" :key="problem.problem_id">
-                    <div class="score-cell" :class="rankingCellClass(rankingCell(row, problem.problem_id))">
-                      <strong>{{ rankingCell(row, problem.problem_id)?.attempts || 0 }}</strong>
-                      <small v-if="rankingCell(row, problem.problem_id)?.attempts">{{ rankingCell(row, problem.problem_id)?.elapsed_minutes ?? 0 }}'</small>
-                      <small v-else>-</small>
-                    </div>
-                  </td>
-                </tr>
-                <tr v-if="!rankingLoading && !(ranking.rows || []).length"><td :colspan="4 + (ranking.problems || []).length" class="empty-scoreboard">暂无参赛记录</td></tr>
-              </tbody>
-            </table>
-          </div>
-          <div class="score-legend"><span class="passed">已通过</span><span class="failed">未通过</span><span class="fastest">最快通过</span><small>题目格：提交次数 / 距比赛开始分钟数</small></div>
+          <LeaderboardBoard
+            :data="scoreboardData"
+            :loading="rankingLoading"
+            :updated-at="rankingUpdatedAt"
+            show-auto-refresh
+            v-model:auto-refresh="rankingAutoRefresh"
+            @refresh="loadRanking"
+          />
         </section>
       </div>
       <el-skeleton v-else :rows="10" animated class="loading-panel" />
@@ -119,11 +101,13 @@ import { ElMessage, ElMessageBox } from 'element-plus'
 import { computed, onBeforeUnmount, onMounted, reactive, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { client, getLatestSubmissions, openEventStream, type AuthenticatedEventSource, type Submission } from '../../api/client'
+import LeaderboardBoard from '../../components/LeaderboardBoard.vue'
 import ProblemOverview from '../../components/ProblemOverview.vue'
 import ProblemStatementView from '../../components/ProblemStatementView.vue'
 import StatusBadge from '../../components/StatusBadge.vue'
 import SubmissionComposer from '../../components/SubmissionComposer.vue'
 import { formatDateTime } from '../../features/time'
+import { adaptTeamContestRanking } from '../../features/leaderboard/adapters'
 import { loadSubmissionDraft } from '../../features/submissions/drafts'
 import { useAuthStore } from '../../stores/auth'
 
@@ -145,6 +129,8 @@ const records = ref<Submission[]>([])
 const recordsLoading = ref(false)
 const ranking = ref<any>({ rows: [], problems: [], scoring_rule: 'penalty' })
 const rankingLoading = ref(false)
+const rankingAutoRefresh = ref(true)
+const rankingLoadedAt = ref<Date | null>(null)
 const addVisible = ref(false)
 const adding = ref(false)
 const problemCode = ref('')
@@ -152,6 +138,7 @@ const editVisible = ref(false)
 const editing = ref(false)
 const editForm = reactive({ title: '', description: '', starts_at: '', duration_minutes: 120, scoring_rule: 'penalty' })
 let submissionStream: AuthenticatedEventSource | null = null
+let rankingRefreshTimer: number | undefined
 
 const contestID = computed(() => Number(route.params.contestId))
 const activeTab = computed<ContestTab>(() => {
@@ -166,7 +153,8 @@ const contestTimeText = computed(() => {
   if (!contest) return ''
   return `${contest.starts_at ? formatDateTime(contest.starts_at) : '立即开始'} — ${contest.ends_at ? formatDateTime(contest.ends_at) : '不限时'}`
 })
-const scoringRuleText = computed(() => ranking.value.scoring_rule === 'score' ? '按通过题目数优先，其次按总分排名' : '按通过题目数优先，其次按罚时排名')
+const scoreboardData = computed(() => adaptTeamContestRanking(ranking.value, detail.value || {}))
+const rankingUpdatedAt = computed(() => rankingLoadedAt.value ? formatDateTime(rankingLoadedAt.value) : '')
 
 async function loadDetail() {
   if (!contestID.value) return
@@ -270,25 +258,56 @@ async function loadRecords() {
   finally { recordsLoading.value = false }
 }
 async function loadRanking() {
-  if (!contestID.value) return
+  if (!contestID.value || rankingLoading.value) return
   rankingLoading.value = true
-  try { ranking.value = (await client.get(`/contests/${contestID.value}/ranking`)).data || { rows: [], problems: [], scoring_rule: detail.value?.contest?.scoring_rule || 'penalty' } }
+  try {
+    ranking.value = (await client.get(`/contests/${contestID.value}/ranking`)).data || { rows: [], problems: [], scoring_rule: detail.value?.contest?.scoring_rule || 'penalty' }
+    rankingLoadedAt.value = new Date()
+  }
   catch (err: any) { ElMessage.error(err.response?.data?.error || err.message) }
-  finally { rankingLoading.value = false }
+  finally { rankingLoading.value = false; scheduleRankingRefresh() }
+}
+
+function contestEnded() {
+  const contest = ranking.value?.contest || detail.value?.contest
+  if (!contest) return false
+  if (contest.status === 'closed' || contest.state === 'closed') return true
+  const end = contest.ends_at ? new Date(contest.ends_at).getTime() : Number.NaN
+  return Number.isFinite(end) && Date.now() >= end
+}
+
+function clearRankingRefresh() {
+  if (rankingRefreshTimer) window.clearTimeout(rankingRefreshTimer)
+  rankingRefreshTimer = undefined
+}
+
+function scheduleRankingRefresh() {
+  clearRankingRefresh()
+  if (!rankingAutoRefresh.value || activeTab.value !== 'ranking' || contestEnded()) return
+  rankingRefreshTimer = window.setTimeout(() => {
+    if (contestEnded()) {
+      clearRankingRefresh()
+      return
+    }
+    void loadRanking()
+  }, 5000)
 }
 
 function problemLabel(problemID: number) { return detail.value?.problems?.find((item: any) => item.problem_id === problemID)?.label || '-' }
-function rankingCell(row: any, problemID: number) { return row.problems?.find((item: any) => item.problem_id === problemID) }
-function rankingCellClass(cell: any) { return { fastest: Boolean(cell?.fastest), passed: cell?.status === 'accepted' && !cell?.fastest, failed: Boolean(cell?.attempts && cell?.status !== 'accepted') } }
 function statusLabel(status: string) { return status === 'draft' ? '草稿' : status === 'published' ? '已发布' : status === 'closed' ? '已结束' : '进行中' }
 function statusType(status: string): 'success' | 'warning' | 'info' { return status === 'draft' || status === 'published' ? 'warning' : status === 'closed' ? 'info' : 'success' }
 function problemStatusText(status?: string) { return !status ? '未提交' : status === 'accepted' ? '已通过' : ['queued', 'running'].includes(status) ? '评测中' : '未通过' }
 function problemStatusType(status?: string): 'success' | 'warning' | 'info' | 'danger' { return status === 'accepted' ? 'success' : ['queued', 'running'].includes(status || '') ? 'warning' : status ? 'danger' : 'info' }
 
 watch(contestID, loadDetail)
-watch(activeTab, (tab) => { if (tab === 'ranking') void loadRanking(); if (tab === 'records') void loadRecords() })
+watch(rankingAutoRefresh, scheduleRankingRefresh)
+watch(activeTab, (tab) => {
+  clearRankingRefresh()
+  if (tab === 'ranking') void loadRanking()
+  if (tab === 'records') void loadRecords()
+})
 onMounted(async () => { await loadDetail(); if (activeTab.value === 'ranking') await loadRanking() })
-onBeforeUnmount(() => submissionStream?.close())
+onBeforeUnmount(() => { submissionStream?.close(); clearRankingRefresh() })
 </script>
 
 <style scoped>
@@ -296,10 +315,10 @@ onBeforeUnmount(() => submissionStream?.close())
 .contest-container { width: min(1480px, 100%); margin: 0 auto; }
 .contest-header { display: flex; align-items: end; justify-content: space-between; gap: 24px; padding: 8px 0 24px; border-bottom: 1px solid var(--border); }
 .contest-header h1 { margin: 8px 0 6px; font-size: 30px; }
-.contest-header p, .ranking-heading p { margin: 0; color: var(--muted); }
+.contest-header p { margin: 0; color: var(--muted); }
 .back-button { display: block; margin: 0 0 18px; padding: 0; color: var(--muted); border: 0; background: transparent; cursor: pointer; }
 .eyebrow { color: var(--accent); font-size: 11px; font-weight: 800; letter-spacing: .14em; }
-.header-status, .problem-actions, .ranking-heading, .section-title { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+.header-status, .problem-actions, .section-title { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
 .contest-body { display: grid; gap: 18px; padding-top: 18px; }
 .contest-tabs { display: flex; gap: 5px; overflow-x: auto; border-bottom: 1px solid var(--border); }
 .contest-tabs button { padding: 13px 22px; white-space: nowrap; color: var(--muted); border: 0; border-bottom: 3px solid transparent; background: transparent; cursor: pointer; }
@@ -312,33 +331,11 @@ onBeforeUnmount(() => submissionStream?.close())
 .problem-switcher button.active { color: white; border-color: var(--accent); background: var(--accent); }
 .records-panel { padding: 18px; }
 .ranking-panel { display: grid; gap: 16px; min-width: 0; }
-.ranking-heading h3 { margin: 5px 0 2px; }
-.scoreboard-scroll { max-width: 100%; overflow: auto; border: 1px solid var(--border); border-radius: 12px; background: var(--surface-strong); }
-.scoreboard { width: 100%; min-width: 720px; border-collapse: separate; border-spacing: 0; table-layout: fixed; }
-.scoreboard th, .scoreboard td { height: 62px; padding: 8px; border-right: 1px solid var(--border); border-bottom: 1px solid var(--border); text-align: center; }
-.scoreboard th { position: sticky; top: 0; z-index: 2; height: 48px; background: var(--surface-strong); color: var(--muted); font-size: 12px; }
-.scoreboard tr:last-child td { border-bottom: 0; }
-.scoreboard th:last-child, .scoreboard td:last-child { border-right: 0; }
-.scoreboard .rank-column { width: 70px; }
-.scoreboard .name-column { position: sticky; left: 0; z-index: 1; width: 180px; background: var(--surface-strong); text-align: left; }
-.scoreboard th.name-column { z-index: 3; }
-.score-cell { display: grid; place-content: center; min-height: 44px; border-radius: 7px; color: var(--muted); }
-.score-cell strong { font-size: 15px; }
-.score-cell small { font-size: 11px; }
-.score-cell.passed { color: #166534; background: #dcfce7; }
-.score-cell.failed { color: #991b1b; background: #fee2e2; }
-.score-cell.fastest { color: #075985; background: #dbeafe; box-shadow: inset 0 0 0 1px #7dd3fc; }
-.score-legend { display: flex; align-items: center; flex-wrap: wrap; gap: 9px; color: var(--muted); }
-.score-legend span { padding: 4px 8px; border-radius: 5px; font-size: 12px; }
-.score-legend .passed { color: #166534; background: #dcfce7; }
-.score-legend .failed { color: #991b1b; background: #fee2e2; }
-.score-legend .fastest { color: #075985; background: #dbeafe; }
-.empty-scoreboard { color: var(--muted); }
 .loading-panel { padding: 30px; }
 .dialog-hint { color: var(--muted); }
 @media (max-width: 720px) {
   .contest-page { padding: 16px 12px 44px; }
-  .contest-header, .problem-actions, .ranking-heading { align-items: stretch; flex-direction: column; }
+  .contest-header, .problem-actions { align-items: stretch; flex-direction: column; }
   .header-status, .manage-actions { flex-wrap: wrap; }
   .problem-actions > .el-button { width: 100%; }
 }
