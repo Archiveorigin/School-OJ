@@ -16,8 +16,8 @@
         <el-table-column label="题目" width="90">
           <template #default="{ row }">{{ row.problem_count || 0 }} 题</template>
         </el-table-column>
-        <el-table-column label="排名规则" width="170">
-          <template #default="{ row }">{{ row.scoring_rule === 'score' ? '通过数 + 总分' : '通过数 + 罚时' }}</template>
+        <el-table-column label="计分方式" width="170">
+          <template #default="{ row }">{{ row.scoring_rule === 'score' ? '总分数' : '通过数 + 罚时' }}</template>
         </el-table-column>
         <el-table-column label="状态" width="110">
           <template #default="{ row }"><el-tag :type="statusType(row.status)">{{ statusLabel(row.status) }}</el-tag></template>
@@ -37,12 +37,12 @@
           <el-input-number v-model="form.duration_minutes" :min="15" :step="15" />
           <span class="unit">分钟</span>
         </el-form-item>
-        <el-form-item label="排名规则">
+        <el-form-item label="计分方式">
           <el-radio-group v-model="form.scoring_rule">
             <el-radio-button value="penalty">通过数 + 罚时</el-radio-button>
-            <el-radio-button value="score">通过数 + 总分</el-radio-button>
+            <el-radio-button value="score">总分数</el-radio-button>
           </el-radio-group>
-          <p class="rule-hint">创建后用于整场比赛排名；罚时规则按首次通过分钟数并加上未通过提交罚时。</p>
+          <p class="rule-hint">罚时按首次通过分钟数并累计通过前的错误提交；总分数按各题最高得分合计排序。</p>
         </el-form-item>
         <el-form-item label="说明"><el-input v-model="form.description" type="textarea" :rows="4" /></el-form-item>
       </el-form>

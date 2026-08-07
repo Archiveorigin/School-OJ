@@ -178,6 +178,7 @@ type Exam struct {
 	Description string            `json:"description"`
 	StartsAt    *time.Time        `json:"starts_at"`
 	EndsAt      *time.Time        `json:"ends_at"`
+	ScoringRule string            `json:"scoring_rule" gorm:"size:16;not null;default:'penalty'"`
 	Settings    datatypes.JSONMap `json:"settings" gorm:"type:jsonb"`
 	Problems    []ExamProblem     `json:"problems,omitempty"`
 	CreatedAt   time.Time         `json:"created_at"`

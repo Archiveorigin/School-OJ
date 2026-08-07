@@ -1,5 +1,6 @@
 import { mount } from '@vue/test-utils'
 import { describe, expect, it } from 'vitest'
+import ProblemMetaCard from '../src/components/ProblemMetaCard.vue'
 import ProblemStatementView from '../src/components/ProblemStatementView.vue'
 
 const problem = {
@@ -7,7 +8,8 @@ const problem = {
   title: 'A + B Problem',
   statement: '',
   time_limit_ms: 1000,
-  memory_limit_kb: 262144,
+  memory_limit_mb: 256,
+  output_limit_kb: 1024,
   tags: ''
 }
 
@@ -68,5 +70,23 @@ describe('ProblemStatementView status icon', () => {
 
     expect(wrapper.find('svg.status-icon').exists()).toBe(false)
     expect(wrapper.text()).toContain('未提交')
+  })
+
+  it('reuses the same accessible svg in the problem metadata card', () => {
+    const wrapper = mount(ProblemMetaCard, {
+      props: {
+        problem,
+        statusText: '已通过',
+        statusImage: 'ac'
+      },
+      global: {
+        stubs: globalStubs
+      }
+    })
+
+    expect(wrapper.find('svg.status-icon').exists()).toBe(true)
+    expect(wrapper.get('svg.status-icon').attributes('role')).toBe('img')
+    expect(wrapper.get('svg.status-icon').attributes('aria-label')).toBe('通过')
+    expect(wrapper.text()).toContain('Accepted')
   })
 })

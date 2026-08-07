@@ -87,7 +87,7 @@
           <el-form-item label="比赛标题"><el-input v-model="editForm.title" maxlength="200" /></el-form-item>
           <el-form-item label="开始时间"><el-date-picker v-model="editForm.starts_at" type="datetime" value-format="YYYY-MM-DDTHH:mm:ssZ" /></el-form-item>
           <el-form-item label="比赛时长"><el-input-number v-model="editForm.duration_minutes" :min="15" :step="15" /></el-form-item>
-          <el-form-item label="排名规则"><el-radio-group v-model="editForm.scoring_rule"><el-radio-button value="penalty">通过数 + 罚时</el-radio-button><el-radio-button value="score">通过数 + 总分</el-radio-button></el-radio-group></el-form-item>
+          <el-form-item label="计分方式"><el-radio-group v-model="editForm.scoring_rule"><el-radio-button value="penalty">通过数 + 罚时</el-radio-button><el-radio-button value="score">总分数</el-radio-button></el-radio-group></el-form-item>
           <el-form-item label="说明"><el-input v-model="editForm.description" type="textarea" :rows="4" /></el-form-item>
         </el-form>
         <template #footer><el-button @click="editVisible = false">取消</el-button><el-button type="primary" :loading="editing" @click="saveContest">保存</el-button></template>

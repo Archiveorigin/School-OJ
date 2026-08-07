@@ -68,28 +68,7 @@
       </section>
     </div>
 
-    <el-dialog v-model="detailVisible" title="提交代码" width="min(900px, calc(100vw - 28px))">
-      <div v-if="detail" class="detail-body">
-        <div class="detail-summary">
-          <div><span>提交人</span><strong>{{ detail.submission.user_name }}</strong></div>
-          <div><span>语言</span><strong>{{ languageLabel(detail.submission.language) }}</strong></div>
-          <div><span>状态</span><StatusBadge :status="detail.submission.status" /></div>
-          <div><span>提交时间</span><strong>{{ formatDateTime(detail.submission.created_at) }}</strong></div>
-        </div>
-        <div class="source-heading">
-          <strong>源代码</strong>
-          <el-button size="small" @click="copySource">复制代码</el-button>
-        </div>
-        <pre class="source-code">{{ detail.submission.source_code }}</pre>
-        <el-alert
-          v-if="detail.submission.message"
-          :title="detail.submission.message"
-          type="info"
-          :closable="false"
-          show-icon
-        />
-      </div>
-    </el-dialog>
+    <SubmissionDetailDialog v-model="detailVisible" :detail="detail" />
   </section>
 </template>
 
@@ -99,8 +78,8 @@ import { onMounted, reactive, ref, computed, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { client, type Problem, type Submission } from '../../api/client'
 import ListPagination from '../../components/ListPagination.vue'
+import SubmissionDetailDialog from '../../components/SubmissionDetailDialog.vue'
 import StatusBadge from '../../components/StatusBadge.vue'
-import { copyTextToClipboard } from '../../features/clipboard'
 import { problemDisplayCode } from '../../features/problems/problemMeta'
 import { formatDateTime } from '../../features/time'
 import { useAuthStore } from '../../stores/auth'
@@ -160,15 +139,6 @@ async function openDetail(row: Submission) {
   }
 }
 
-async function copySource() {
-  try {
-    await copyTextToClipboard(detail.value?.submission?.source_code || '')
-    ElMessage.success('代码已复制')
-  } catch {
-    ElMessage.error('复制失败')
-  }
-}
-
 function goBack() {
   router.push(`/problems/${encodeURIComponent(String(route.params.id))}`)
 }
@@ -197,15 +167,9 @@ onMounted(async () => {
 .eyebrow { color: var(--accent); font-size: 11px; font-weight: 800; letter-spacing: .16em; }
 .record-filters { display: grid; grid-template-columns: 180px minmax(220px, 1fr) auto auto; gap: 12px; margin-bottom: 16px; }
 .records-table { overflow: hidden; }
-.detail-body { display: grid; gap: 14px; }
-.detail-summary { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 10px; }
-.detail-summary div { display: grid; gap: 5px; padding: 12px; border: 1px solid var(--border); border-radius: 9px; }
-.detail-summary span { color: var(--muted); font-size: 12px; }
-.source-heading { display: flex; align-items: center; justify-content: space-between; }
-.source-code { max-height: 520px; min-height: 260px; margin: 0; padding: 16px; overflow: auto; color: #e2e8f0; border-radius: 10px; background: #0f172a; font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; white-space: pre; }
 @media (max-width: 760px) {
   .problem-records-page { padding: 16px 12px 36px; }
   .records-heading { align-items: stretch; flex-direction: column; }
-  .record-filters, .detail-summary { grid-template-columns: 1fr; }
+  .record-filters { grid-template-columns: 1fr; }
 }
 </style>

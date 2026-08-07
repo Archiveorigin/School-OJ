@@ -1,11 +1,13 @@
 export type LeaderboardStatus = 'accepted' | 'wrong' | 'pending' | 'frozen' | 'none'
 export type LeaderboardMetricDirection = 'ascending' | 'descending'
+export type LeaderboardScoringRule = 'penalty' | 'score'
 
 export interface LeaderboardProblem {
   id: number | string
   label: string
   title?: string
   color: string
+  maxScore: number
 }
 
 export interface LeaderboardResult {
@@ -21,16 +23,18 @@ export interface LeaderboardRow {
   id: number | string
   rank: number
   name: string
-  organization?: string
+  studentNo: string
   meta?: string
   solved: number
   metric: number
   metricDisplay?: string
+  maxScore?: number
   submissions: number
   results: Record<string, LeaderboardResult>
 }
 
 export interface LeaderboardData {
+  scoringRule: LeaderboardScoringRule
   title: string
   subtitle?: string
   durationSeconds: number

@@ -33,8 +33,8 @@ const lastLoadedAt = ref<Date | null>(null)
 let refreshTimer: number | undefined
 
 const scoreboardData = computed(() => adaptExamRanking(ranking.value))
-const emptyText = computed(() => ranking.value && !ranking.value.has_class
-  ? '该考试未绑定班级，实时榜单需要按班级学生生成。'
+const emptyText = computed(() => ranking.value?.has_class === false
+  ? '暂无课程学生的考试记录'
   : '暂无考试记录')
 const updatedAtLabel = computed(() => lastLoadedAt.value ? formatDateTime(lastLoadedAt.value) : '')
 
@@ -73,9 +73,10 @@ async function loadRanking() {
     lastLoadedAt.value = new Date()
   } catch (err: any) {
     ranking.value = null
+    const apiError = err.response?.data?.error
     error.value = err.response?.status === 403
-      ? '创建者未向考生开放该榜单。'
-      : (err.response?.data?.error || err.message)
+      ? (apiError === 'exam has not started' ? '考试尚未开始，开始后可查看榜单。' : '创建者未向考生开放该榜单。')
+      : (apiError || err.message)
   } finally {
     loading.value = false
     scheduleRefresh()
@@ -83,6 +84,11 @@ async function loadRanking() {
 }
 
 watch(autoRefresh, scheduleRefresh)
+watch(() => route.params.id, () => {
+  clearRefreshTimer()
+  ranking.value = null
+  void loadRanking()
+})
 onMounted(loadRanking)
 onBeforeUnmount(clearRefreshTimer)
 </script>

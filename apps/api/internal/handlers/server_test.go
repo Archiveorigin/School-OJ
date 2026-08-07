@@ -4,6 +4,8 @@ import (
 	"archive/zip"
 	"bytes"
 	"io"
+	"net/http"
+	"net/http/httptest"
 	"strings"
 	"testing"
 	"time"
@@ -11,6 +13,7 @@ import (
 	"school-oj/apps/api/internal/models"
 	"school-oj/apps/api/internal/services"
 
+	"github.com/gin-gonic/gin"
 	"gorm.io/datatypes"
 )
 
@@ -18,7 +21,7 @@ func TestRouterBuilds(t *testing.T) {
 	_ = (Server{}).Router()
 }
 
-func TestSortExamRankingRows(t *testing.T) {
+func TestSortExamRankingRowsByScore(t *testing.T) {
 	base := time.Date(2026, 6, 7, 10, 0, 0, 0, time.UTC)
 	later := base.Add(time.Minute)
 	finished := base.Add(2 * time.Minute)
@@ -29,7 +32,7 @@ func TestSortExamRankingRows(t *testing.T) {
 		{Name: "Ada", StudentNo: "S0", TotalScore: 100, Solved: 2, LastSubmission: &base},
 	}
 
-	sortExamRankingRows(rows)
+	sortExamRankingRows(rows, "score")
 
 	got := []string{rows[0].Name, rows[1].Name, rows[2].Name, rows[3].Name}
 	want := []string{"Ada", "Bob", "Alice", "Charlie"}
@@ -37,6 +40,176 @@ func TestSortExamRankingRows(t *testing.T) {
 		if got[i] != want[i] {
 			t.Fatalf("rank %d = %s, want %s; full order=%v", i+1, got[i], want[i], got)
 		}
+	}
+}
+
+func TestSortExamRankingRowsByPenalty(t *testing.T) {
+	rows := []examRankingRow{
+		{Name: "One", Solved: 1, PenaltyMinutes: 10, TotalScore: 100},
+		{Name: "Slow", Solved: 2, PenaltyMinutes: 90, TotalScore: 300},
+		{Name: "Fast", Solved: 2, PenaltyMinutes: 45, TotalScore: 10},
+	}
+
+	sortExamRankingRows(rows, "penalty")
+
+	got := []string{rows[0].Name, rows[1].Name, rows[2].Name}
+	want := []string{"Fast", "Slow", "One"}
+	for index := range want {
+		if got[index] != want[index] {
+			t.Fatalf("rank %d = %s, want %s; full order=%v", index+1, got[index], want[index], got)
+		}
+	}
+}
+
+func TestExamScoringRuleDefaultsAndRejectsInvalidInput(t *testing.T) {
+	for _, test := range []struct {
+		name string
+		exam models.Exam
+		want string
+	}{
+		{name: "missing", exam: models.Exam{}, want: "penalty"},
+		{name: "score", exam: models.Exam{ScoringRule: "score"}, want: "score"},
+		{name: "penalty", exam: models.Exam{ScoringRule: "penalty"}, want: "penalty"},
+		{name: "invalid", exam: models.Exam{ScoringRule: "points"}, want: "penalty"},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			if got := examScoringRule(test.exam); got != test.want {
+				t.Fatalf("examScoringRule() = %q, want %q", got, test.want)
+			}
+		})
+	}
+	if got, valid := parseScoringRule(""); !valid || got != "penalty" {
+		t.Fatalf("empty scoring rule = %q, %v; want penalty, true", got, valid)
+	}
+	if got, valid := parseScoringRule("not-a-rule"); valid || got != "" {
+		t.Fatalf("invalid scoring rule = %q, %v; want empty, false", got, valid)
+	}
+}
+
+func TestCreateExamRejectsInvalidScoringRule(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	recorder := httptest.NewRecorder()
+	context, _ := gin.CreateTestContext(recorder)
+	context.Request = httptest.NewRequest(http.MethodPost, "/exams", strings.NewReader(`{"title":"Invalid rule","scoring_rule":"points"}`))
+	context.Request.Header.Set("Content-Type", "application/json")
+
+	(Server{}).createExam(context)
+
+	if recorder.Code != http.StatusBadRequest {
+		t.Fatalf("status = %d, want %d; body=%s", recorder.Code, http.StatusBadRequest, recorder.Body.String())
+	}
+}
+
+func TestExamPenaltyStatsUsesFirstAcceptedAndIgnoresPendingFailures(t *testing.T) {
+	start := time.Date(2026, 8, 7, 9, 0, 0, 0, time.UTC)
+	submissions := []models.Submission{
+		{ID: 8, Status: models.StatusSystemError, CreatedAt: start.Add(2 * time.Minute)},
+		{ID: 7, Status: models.StatusWrongAnswer, CreatedAt: start.Add(50 * time.Minute)},
+		{ID: 6, Status: models.StatusAccepted, CreatedAt: start.Add(35 * time.Minute)},
+		{ID: 5, Status: models.StatusCompileError, CreatedAt: start.Add(20 * time.Minute)},
+		{ID: 4, Status: models.StatusRunning, CreatedAt: start.Add(15 * time.Minute)},
+		{ID: 3, Status: models.StatusPendingReview, CreatedAt: start.Add(12 * time.Minute)},
+		{ID: 2, Status: models.StatusQueued, CreatedAt: start.Add(10 * time.Minute)},
+		{ID: 1, Status: models.StatusWrongAnswer, CreatedAt: start.Add(5 * time.Minute)},
+	}
+
+	stats := examPenaltyStats(submissions, start, false, 100)
+	if stats.Attempts != 6 || stats.WrongAttempts != 2 || stats.ElapsedMinutes != 35 {
+		t.Fatalf("penalty stats = %#v, want attempts=6 wrong=2 elapsed=35", stats)
+	}
+	if stats.FirstAccepted == nil || !stats.FirstAccepted.Equal(start.Add(35*time.Minute)) {
+		t.Fatalf("first accepted = %v", stats.FirstAccepted)
+	}
+	if got := stats.ElapsedMinutes + stats.WrongAttempts*20; got != 75 {
+		t.Fatalf("penalty = %d, want 75", got)
+	}
+}
+
+func TestExamPenaltyStatsUsesFirstFullManualGradeAsAccepted(t *testing.T) {
+	start := time.Date(2026, 8, 7, 9, 0, 0, 0, time.UTC)
+	partial := 60
+	full := 100
+	pending := models.Submission{ID: 1, Status: models.StatusPendingReview, CreatedAt: start.Add(5 * time.Minute)}
+	submissions := []models.Submission{
+		pending,
+		{ID: 2, Status: models.StatusManualGraded, ManualScore: &partial, CreatedAt: start.Add(12 * time.Minute)},
+		{ID: 3, Status: models.StatusManualGraded, ManualScore: &full, CreatedAt: start.Add(30 * time.Minute)},
+		{ID: 4, Status: models.StatusPendingReview, CreatedAt: start.Add(40 * time.Minute)},
+	}
+
+	stats := examPenaltyStats(submissions, start, true, 100)
+	if stats.Attempts != 3 || stats.WrongAttempts != 1 || stats.ElapsedMinutes != 30 {
+		t.Fatalf("manual penalty stats = %#v, want attempts=3 wrong=1 elapsed=30", stats)
+	}
+	if stats.FirstAccepted == nil || !stats.FirstAccepted.Equal(start.Add(30*time.Minute)) {
+		t.Fatalf("first manually accepted = %v", stats.FirstAccepted)
+	}
+	if isExamPenaltyAccepted(pending, true, 100) {
+		t.Fatal("an ungraded manual-review submission must not count as accepted")
+	}
+}
+
+func TestExamRankingAccessReasonBlocksViewerBeforeStart(t *testing.T) {
+	now := time.Date(2026, 8, 7, 9, 0, 0, 0, time.UTC)
+	start := now.Add(time.Hour)
+	exam := models.Exam{StartsAt: &start}
+
+	if got := examRankingAccessReason(exam, false, true, true, now); got != "exam has not started" {
+		t.Fatalf("viewer access reason = %q, want exam has not started", got)
+	}
+	if got := examRankingAccessReason(exam, true, false, false, now); got != "" {
+		t.Fatalf("manager access reason = %q, want empty", got)
+	}
+	if got := examRankingAccessReason(exam, false, true, true, start); got != "" {
+		t.Fatalf("started exam access reason = %q, want empty", got)
+	}
+	if got := examRankingAccessReason(exam, false, false, true, start); got != "forbidden" {
+		t.Fatalf("hidden ranking access reason = %q, want forbidden", got)
+	}
+}
+
+func TestExamRankingCellPendingDoesNotOverrideFullScore(t *testing.T) {
+	if !isExamFullScore(100, 100) || isExamFullScore(60, 100) {
+		t.Fatal("full-score detection must be independent of later pending submissions")
+	}
+	if examRankingCellPending("score", true, 100, 100) {
+		t.Fatal("a later pending submission must not hide an already-full score")
+	}
+	if !examRankingCellPending("score", true, 60, 100) {
+		t.Fatal("a pending submission must remain visible while it can improve a partial score")
+	}
+	if !examRankingCellPending("penalty", true, 100, 100) {
+		t.Fatal("penalty pending state is resolved from first acceptance separately")
+	}
+}
+
+func TestStandaloneProblemSubmissionExcludesScopedWork(t *testing.T) {
+	if !isStandaloneProblemSubmission(models.Submission{IsPublic: true}) {
+		t.Fatal("public practice submission should be standalone")
+	}
+	contestID := uint(9)
+	if isStandaloneProblemSubmission(models.Submission{IsPublic: true, TeamContestID: &contestID}) {
+		t.Fatal("team contest submission must not be exposed as standalone public practice")
+	}
+	problemSetID := uint(10)
+	if isStandaloneProblemSubmission(models.Submission{IsPublic: true, ProblemSetID: &problemSetID}) {
+		t.Fatal("problem-set submission must not be exposed as standalone public practice")
+	}
+}
+
+func TestMarkExamFastestCells(t *testing.T) {
+	start := time.Date(2026, 8, 7, 9, 0, 0, 0, time.UTC)
+	fast := start.Add(10 * time.Minute)
+	slow := start.Add(20 * time.Minute)
+	rows := []examRankingRow{
+		{Problems: []examRankingCell{{ProblemID: 1, firstAccepted: &slow}}},
+		{Problems: []examRankingCell{{ProblemID: 1, firstAccepted: &fast}}},
+	}
+
+	markExamFastestCells(rows)
+
+	if rows[0].Problems[0].Fastest || !rows[1].Problems[0].Fastest {
+		t.Fatalf("fastest flags = %v, %v", rows[0].Problems[0].Fastest, rows[1].Problems[0].Fastest)
 	}
 }
 
@@ -346,21 +519,44 @@ func TestTeamContestWindow(t *testing.T) {
 func TestBuildTeamContestRankingUsesAggregates(t *testing.T) {
 	start := time.Date(2026, 8, 6, 9, 0, 0, 0, time.UTC)
 	solvedAt := start.Add(35 * time.Minute)
-	users := []models.User{{ID: 1, Name: "Alice"}, {ID: 2, Name: "Bob"}}
+	users := []models.User{{ID: 1, Name: "Alice", StudentNo: "S001"}, {ID: 2, Name: "Bob", StudentNo: "S002"}}
 	links := []models.TeamContestProblem{{ProblemID: 11}, {ProblemID: 12}}
 	aggregates := []teamContestCellAggregate{
-		{UserID: 1, ProblemID: 11, Attempts: 3, WrongAttempts: 2, BestScore: 100, SolvedAt: &solvedAt, LastSubmission: solvedAt, LatestStatus: string(models.StatusAccepted)},
-		{UserID: 2, ProblemID: 11, Attempts: 1, BestScore: 40, LastSubmission: start.Add(10 * time.Minute), LatestStatus: string(models.StatusWrongAnswer)},
+		{UserID: 1, ProblemID: 11, Attempts: 3, SubmissionCount: 4, WrongAttempts: 2, BestScore: 100, SolvedAt: &solvedAt, LastSubmission: solvedAt, LatestStatus: string(models.StatusAccepted)},
+		{UserID: 2, ProblemID: 11, Attempts: 1, SubmissionCount: 1, BestScore: 40, LastSubmission: start.Add(10 * time.Minute), LatestStatus: string(models.StatusWrongAnswer)},
 	}
 	rows := buildTeamContestRanking(users, links, aggregates, start, "penalty")
 	if len(rows) != 2 || rows[0].UserID != 1 {
 		t.Fatalf("ranking order = %#v", rows)
 	}
-	if rows[0].Solved != 1 || rows[0].PenaltyMinutes != 75 || rows[0].SubmissionCount != 3 {
+	if rows[0].Solved != 1 || rows[0].PenaltyMinutes != 75 || rows[0].SubmissionCount != 4 {
 		t.Fatalf("aggregate totals = %#v", rows[0])
+	}
+	if rows[0].StudentNo != "S001" {
+		t.Fatalf("student_no = %q, want S001", rows[0].StudentNo)
+	}
+	if rows[0].MaxScore != 200 || rows[0].Problems[0].MaxScore != 100 {
+		t.Fatalf("score maxima = row %d, cell %d", rows[0].MaxScore, rows[0].Problems[0].MaxScore)
 	}
 	if !rows[0].Problems[0].Fastest || rows[1].Problems[0].Status != string(models.StatusWrongAnswer) {
 		t.Fatalf("problem cells = %#v / %#v", rows[0].Problems[0], rows[1].Problems[0])
+	}
+}
+
+func TestBuildTeamContestRankingScoreUsesTotalBeforeSolved(t *testing.T) {
+	start := time.Date(2026, 8, 7, 9, 0, 0, 0, time.UTC)
+	acceptedAt := start.Add(10 * time.Minute)
+	users := []models.User{{ID: 1, Name: "More solved"}, {ID: 2, Name: "Higher score"}}
+	links := []models.TeamContestProblem{{ProblemID: 11}, {ProblemID: 12}}
+	aggregates := []teamContestCellAggregate{
+		{UserID: 1, ProblemID: 11, Attempts: 1, BestScore: 30, SolvedAt: &acceptedAt, LastSubmission: acceptedAt, LatestStatus: string(models.StatusAccepted)},
+		{UserID: 1, ProblemID: 12, Attempts: 1, BestScore: 30, SolvedAt: &acceptedAt, LastSubmission: acceptedAt, LatestStatus: string(models.StatusAccepted)},
+		{UserID: 2, ProblemID: 11, Attempts: 1, BestScore: 100, SolvedAt: &acceptedAt, LastSubmission: acceptedAt, LatestStatus: string(models.StatusAccepted)},
+	}
+
+	rows := buildTeamContestRanking(users, links, aggregates, start, "score")
+	if len(rows) != 2 || rows[0].UserID != 2 {
+		t.Fatalf("score ranking = %#v; total score must precede solved count", rows)
 	}
 }
 

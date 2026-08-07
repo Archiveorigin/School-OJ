@@ -44,10 +44,6 @@
               :status-type="progressTag(problem.progress_status)"
             />
           </div>
-          <div v-if="live" class="panel submission-result">
-            <StatusBadge :status="live.status" />
-            <span>{{ live.message }}</span>
-          </div>
         </main>
 
         <el-dialog
@@ -99,7 +95,6 @@ import MarkdownRenderer from '../../components/MarkdownRenderer.vue'
 import ProblemEditDialog from '../../components/ProblemEditDialog.vue'
 import ProblemMetaCard from '../../components/ProblemMetaCard.vue'
 import ProblemTestDownloads from '../../components/ProblemTestDownloads.vue'
-import StatusBadge from '../../components/StatusBadge.vue'
 import SubmissionComposer from '../../components/SubmissionComposer.vue'
 import { problemDisplayCode, progressLabel, progressTag } from '../../features/problems/problemMeta'
 import { loadSubmissionDraft, saveSubmissionDraft } from '../../features/submissions/drafts'
@@ -305,13 +300,6 @@ onBeforeUnmount(() => submissionEvents?.close())
   line-height: 1.25;
 }
 
-.submission-result {
-  display: flex;
-  align-items: center;
-  flex-wrap: wrap;
-  gap: 10px;
-}
-
 .heading-actions {
   display: flex;
   align-items: center;
@@ -339,11 +327,6 @@ onBeforeUnmount(() => submissionEvents?.close())
 
 .statement-section {
   min-width: 0;
-}
-
-.submission-result {
-  margin-top: 14px;
-  padding: 14px 18px;
 }
 
 .hidden-file-input {

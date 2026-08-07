@@ -221,14 +221,19 @@ type examRankingProblem struct {
 }
 
 type examRankingCell struct {
-	ProblemID   uint                    `json:"problem_id"`
-	Label       string                  `json:"label"`
-	BestScore   int                     `json:"best_score"`
-	MaxScore    int                     `json:"max_score"`
-	Status      models.SubmissionStatus `json:"status,omitempty"`
-	ScoreReady  bool                    `json:"score_ready"`
-	Pending     bool                    `json:"pending"`
-	SubmittedAt *time.Time              `json:"submitted_at,omitempty"`
+	ProblemID      uint                    `json:"problem_id"`
+	Label          string                  `json:"label"`
+	BestScore      int                     `json:"best_score"`
+	MaxScore       int                     `json:"max_score"`
+	Status         models.SubmissionStatus `json:"status,omitempty"`
+	ScoreReady     bool                    `json:"score_ready"`
+	Pending        bool                    `json:"pending"`
+	Attempts       int                     `json:"attempts"`
+	WrongAttempts  int                     `json:"wrong_attempts"`
+	ElapsedMinutes int                     `json:"elapsed_minutes"`
+	Fastest        bool                    `json:"fastest"`
+	SubmittedAt    *time.Time              `json:"submitted_at,omitempty"`
+	firstAccepted  *time.Time
 }
 
 type examRankingRow struct {
@@ -239,6 +244,7 @@ type examRankingRow struct {
 	TotalScore      int               `json:"total_score"`
 	MaxScore        int               `json:"max_score"`
 	Solved          int               `json:"solved"`
+	PenaltyMinutes  int               `json:"penalty_minutes"`
 	Attempted       int               `json:"attempted"`
 	SubmissionCount int               `json:"submission_count"`
 	PendingCount    int               `json:"pending_count"`
@@ -258,6 +264,13 @@ type examSubmissionLookup struct {
 type examAttemptState struct {
 	Attempted  bool
 	FinishedAt *time.Time
+}
+
+type examPenaltyCellStats struct {
+	Attempts       int
+	WrongAttempts  int
+	ElapsedMinutes int
+	FirstAccepted  *time.Time
 }
 
 func (req preparedProblemInput) draft() services.ProblemPackageDraft {
@@ -3159,8 +3172,14 @@ func (s Server) createExam(c *gin.Context) {
 		ManualReview   bool               `json:"manual_review"`
 		LockExit       bool               `json:"lock_exit"`
 		RankingVisible bool               `json:"ranking_visible"`
+		ScoringRule    string             `json:"scoring_rule"`
 	}
 	if !bind(c, &req) {
+		return
+	}
+	scoringRule, validScoringRule := parseScoringRule(req.ScoringRule)
+	if !validScoringRule {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "scoring_rule must be score or penalty"})
 		return
 	}
 	problemItems := normalizeWorkProblemInputs(req.Problems, req.ProblemIDs)
@@ -3198,7 +3217,7 @@ func (s Server) createExam(c *gin.Context) {
 	if req.RankingVisible {
 		settings["ranking_visible"] = true
 	}
-	item := models.Exam{CourseID: req.CourseID, ClassID: req.ClassID, Title: req.Title, Description: req.Description, StartsAt: req.StartsAt, EndsAt: req.EndsAt, Settings: settings}
+	item := models.Exam{CourseID: req.CourseID, ClassID: req.ClassID, Title: req.Title, Description: req.Description, StartsAt: req.StartsAt, EndsAt: req.EndsAt, ScoringRule: scoringRule, Settings: settings}
 	if err := s.DB.Transaction(func(tx *gorm.DB) error {
 		if err := tx.Create(&item).Error; err != nil {
 			return err
@@ -3278,6 +3297,7 @@ func (s Server) getExam(c *gin.Context) {
 		"manual_review":   examManualReview(item),
 		"lock_exit":       examLockExit(item),
 		"ranking_visible": examRankingVisible(item),
+		"scoring_rule":    examScoringRule(item),
 		"all_submitted":   allSubmitted,
 		"finished_at":     finishedAt,
 		"work_status":     summary.WorkStatus,
@@ -3351,7 +3371,7 @@ func (s Server) examReport(c *gin.Context) {
 		c.JSON(http.StatusForbidden, gin.H{"error": "forbidden"})
 		return
 	}
-	students := s.classStudents(item.ClassID)
+	students := s.examStudents(item)
 	rows := make([]gin.H, 0, len(students))
 	for _, student := range students {
 		summary := s.examSummary(item.ID, student.ID, true)
@@ -3375,10 +3395,16 @@ func (s Server) examRanking(c *gin.Context) {
 		return
 	}
 	canManage := s.canManageCourse(user, item.CourseID)
-	if !canManage && (!examRankingVisible(item) || !s.canAccessExam(user, item)) {
-		c.JSON(http.StatusForbidden, gin.H{"error": "forbidden"})
+	now := time.Now()
+	if reason := examRankingAccessReason(item, canManage, examRankingVisible(item), s.canAccessExam(user, item), now); reason != "" {
+		response := gin.H{"error": reason}
+		if reason == "exam has not started" {
+			response["starts_at"] = item.StartsAt
+		}
+		c.JSON(http.StatusForbidden, response)
 		return
 	}
+	scoringRule := examScoringRule(item)
 	examViews := s.examListViews([]models.Exam{item})
 	examView := examListView{Exam: item}
 	if len(examViews) > 0 {
@@ -3400,7 +3426,6 @@ func (s Server) examRanking(c *gin.Context) {
 		})
 		maxScore += problem.Score
 	}
-	now := time.Now()
 	status := "进行中"
 	if item.StartsAt != nil && now.Before(*item.StartsAt) {
 		status = "未开始"
@@ -3408,44 +3433,24 @@ func (s Server) examRanking(c *gin.Context) {
 	if item.EndsAt != nil && now.After(*item.EndsAt) {
 		status = "已结束"
 	}
-	if item.ClassID == nil {
-		c.JSON(http.StatusOK, gin.H{
-			"exam": gin.H{
-				"id":          item.ID,
-				"title":       item.Title,
-				"description": item.Description,
-				"starts_at":   item.StartsAt,
-				"ends_at":     item.EndsAt,
-				"course_code": examView.CourseCode,
-				"course_name": examView.CourseName,
-				"class_name":  examView.ClassName,
-				"status":      status,
-			},
-			"has_class":     false,
-			"manual_review": examManualReview(item),
-			"problems":      problems,
-			"rows":          []examRankingRow{},
-			"stats":         gin.H{"total_students": 0, "max_score": maxScore, "updated_at": now},
-			"now":           now,
-		})
-		return
-	}
-	students := s.classStudents(item.ClassID)
-	rows, pendingRows, finishedRows := s.examRankingRows(item, students)
+	students := s.examStudents(item)
+	rows, pendingRows, finishedRows := s.examRankingRows(item, students, scoringRule)
 	c.JSON(http.StatusOK, gin.H{
 		"exam": gin.H{
-			"id":          item.ID,
-			"title":       item.Title,
-			"description": item.Description,
-			"starts_at":   item.StartsAt,
-			"ends_at":     item.EndsAt,
-			"course_code": examView.CourseCode,
-			"course_name": examView.CourseName,
-			"class_name":  examView.ClassName,
-			"status":      status,
+			"id":           item.ID,
+			"title":        item.Title,
+			"description":  item.Description,
+			"starts_at":    item.StartsAt,
+			"ends_at":      item.EndsAt,
+			"course_code":  examView.CourseCode,
+			"course_name":  examView.CourseName,
+			"class_name":   examView.ClassName,
+			"status":       status,
+			"scoring_rule": scoringRule,
 		},
-		"has_class":     true,
+		"has_class":     item.ClassID != nil,
 		"manual_review": examManualReview(item),
+		"scoring_rule":  scoringRule,
 		"problems":      problems,
 		"rows":          rows,
 		"stats": gin.H{
@@ -3459,12 +3464,34 @@ func (s Server) examRanking(c *gin.Context) {
 	})
 }
 
-func (s Server) examRankingRows(item models.Exam, students []models.User) ([]examRankingRow, int, int) {
+func examRankingAccessReason(item models.Exam, canManage bool, rankingVisible bool, canAccess bool, now time.Time) string {
+	if canManage {
+		return ""
+	}
+	if !rankingVisible || !canAccess {
+		return "forbidden"
+	}
+	if item.StartsAt != nil && now.Before(*item.StartsAt) {
+		return "exam has not started"
+	}
+	return ""
+}
+
+func (s Server) examRankingRows(item models.Exam, students []models.User, scoringRule string) ([]examRankingRow, int, int) {
+	if normalized, valid := parseScoringRule(scoringRule); valid {
+		scoringRule = normalized
+	} else {
+		scoringRule = "penalty"
+	}
 	studentIDs := userIDs(students)
 	problemIDs := examProblemIDs(item)
 	submissions := s.examSubmissionsLookup(item.ID, studentIDs, problemIDs, false)
 	attempts := s.examAttemptStates(item.ID, studentIDs)
 	manualReview := examManualReview(item)
+	rankingStart := item.CreatedAt
+	if item.StartsAt != nil {
+		rankingStart = *item.StartsAt
+	}
 	rows := make([]examRankingRow, 0, len(students))
 	pendingRows := 0
 	finishedRows := 0
@@ -3479,12 +3506,8 @@ func (s Server) examRankingRows(item models.Exam, students []models.User) ([]exa
 			if problemScore.SubmissionID != nil {
 				row.Attempted++
 			}
-			if problemScore.ScoreReady {
-				if problemScore.Score != 0 {
-					if problemScore.BestScore == problemScore.Score {
-						row.Solved++
-					}
-				}
+			if scoringRule == "score" && isExamFullScore(problemScore.BestScore, problemScore.Score) {
+				row.Solved++
 			}
 			pending := problemScore.PendingReview
 			if problemScore.SubmissionID != nil {
@@ -3492,21 +3515,61 @@ func (s Server) examRankingRows(item models.Exam, students []models.User) ([]exa
 					pending = true
 				}
 			}
-			if pending {
+			problemID := problemScore.Problem.ID
+			penaltyStats := examPenaltyStats(submissions.ByUserProblem[student.ID][problemID], rankingStart, manualReview, problemScore.Score)
+			cell := examRankingCell{
+				ProblemID:      problemID,
+				Label:          problemScore.Label,
+				BestScore:      problemScore.BestScore,
+				MaxScore:       problemScore.Score,
+				Status:         problemScore.SubmissionStatus,
+				ScoreReady:     problemScore.ScoreReady,
+				Pending:        pending,
+				Attempts:       penaltyStats.Attempts,
+				WrongAttempts:  penaltyStats.WrongAttempts,
+				ElapsedMinutes: penaltyStats.ElapsedMinutes,
+				SubmittedAt:    problemScore.SubmittedAt,
+				firstAccepted:  penaltyStats.FirstAccepted,
+			}
+			cell.Pending = examRankingCellPending(scoringRule, cell.Pending, cell.BestScore, cell.MaxScore)
+			if penaltyStats.FirstAccepted != nil {
+				row.PenaltyMinutes += penaltyStats.ElapsedMinutes + penaltyStats.WrongAttempts*20
+				if scoringRule == "penalty" {
+					row.Solved++
+					cell.Status = models.StatusAccepted
+					cell.ScoreReady = true
+					cell.Pending = false
+					cell.SubmittedAt = penaltyStats.FirstAccepted
+				}
+			}
+			if cell.Pending {
 				row.PendingCount++
 			}
-			row.Problems = append(row.Problems, examRankingCell{ProblemID: problemScore.Problem.ID, Label: problemScore.Label, BestScore: problemScore.BestScore, MaxScore: problemScore.Score, Status: problemScore.SubmissionStatus, ScoreReady: problemScore.ScoreReady, Pending: pending, SubmittedAt: problemScore.SubmittedAt})
+			row.Problems = append(row.Problems, cell)
 		}
+		row.ScoreReady = row.SubmissionCount > 0 && row.PendingCount == 0
 		if row.PendingCount != 0 {
 			pendingRows++
 		}
 		rows = append(rows, row)
 	}
-	sortExamRankingRows(rows)
+	markExamFastestCells(rows)
+	sortExamRankingRows(rows, scoringRule)
 	for i := range rows {
 		rows[i].Rank = i + 1
 	}
 	return rows, pendingRows, finishedRows
+}
+
+func examRankingCellPending(scoringRule string, pending bool, bestScore int, maxScore int) bool {
+	if scoringRule == "score" && isExamFullScore(bestScore, maxScore) {
+		return false
+	}
+	return pending
+}
+
+func isExamFullScore(bestScore int, maxScore int) bool {
+	return maxScore > 0 && bestScore >= maxScore
 }
 
 func workSummaryForExamLinksFromSubmissions(examLinks []models.ExamProblem, userProblemSubmissions map[uint][]models.Submission, manualReview bool, attempted bool, includeProblems bool) workSummary {
@@ -3579,15 +3642,102 @@ func (s Server) examSubmissionStats(examID uint, userID uint) (int, *time.Time) 
 	return int(count), row.LastSubmission
 }
 
-func sortExamRankingRows(rows []examRankingRow) {
+func examPenaltyStats(submissions []models.Submission, start time.Time, manualReview bool, maxScore int) examPenaltyCellStats {
+	if len(submissions) == 0 {
+		return examPenaltyCellStats{}
+	}
+	ordered := append([]models.Submission(nil), submissions...)
+	sort.SliceStable(ordered, func(i, j int) bool {
+		if !ordered[i].CreatedAt.Equal(ordered[j].CreatedAt) {
+			return ordered[i].CreatedAt.Before(ordered[j].CreatedAt)
+		}
+		return ordered[i].ID < ordered[j].ID
+	})
+
+	stats := examPenaltyCellStats{}
+	acceptedIndex := -1
+	for index, submission := range ordered {
+		if submission.Status == models.StatusSystemError {
+			continue
+		}
+		stats.Attempts++
+		stats.ElapsedMinutes = elapsedContestMinutes(start, submission.CreatedAt)
+		if isExamPenaltyAccepted(submission, manualReview, maxScore) {
+			acceptedIndex = index
+			acceptedAt := submission.CreatedAt
+			stats.FirstAccepted = &acceptedAt
+			stats.ElapsedMinutes = elapsedContestMinutes(start, acceptedAt)
+			break
+		}
+	}
+	limit := len(ordered)
+	if acceptedIndex >= 0 {
+		limit = acceptedIndex
+	}
+	for _, submission := range ordered[:limit] {
+		if isCompletedPenaltyFailure(submission.Status) {
+			stats.WrongAttempts++
+		}
+	}
+	return stats
+}
+
+func isExamPenaltyAccepted(submission models.Submission, manualReview bool, maxScore int) bool {
+	if !manualReview {
+		return submission.Status == models.StatusAccepted
+	}
+	return submission.ManualScore != nil && clamp(*submission.ManualScore, 0, maxScore) == maxScore
+}
+
+func isCompletedPenaltyFailure(status models.SubmissionStatus) bool {
+	switch status {
+	case models.StatusQueued, models.StatusRunning, models.StatusPendingReview, models.StatusAccepted, models.StatusSystemError:
+		return false
+	default:
+		return true
+	}
+}
+
+func markExamFastestCells(rows []examRankingRow) {
+	fastestByProblem := make(map[uint]time.Time)
+	for _, row := range rows {
+		for _, cell := range row.Problems {
+			if cell.firstAccepted == nil {
+				continue
+			}
+			if fastest, exists := fastestByProblem[cell.ProblemID]; !exists || cell.firstAccepted.Before(fastest) {
+				fastestByProblem[cell.ProblemID] = *cell.firstAccepted
+			}
+		}
+	}
+	for rowIndex := range rows {
+		for cellIndex := range rows[rowIndex].Problems {
+			cell := &rows[rowIndex].Problems[cellIndex]
+			if cell.firstAccepted != nil && cell.firstAccepted.Equal(fastestByProblem[cell.ProblemID]) {
+				cell.Fastest = true
+			}
+		}
+	}
+}
+
+func sortExamRankingRows(rows []examRankingRow, scoringRule string) {
 	sort.SliceStable(rows, func(i, j int) bool {
 		left := rows[i]
 		right := rows[j]
-		if left.TotalScore != right.TotalScore {
-			return left.TotalScore > right.TotalScore
-		}
-		if left.Solved != right.Solved {
-			return left.Solved > right.Solved
+		if scoringRule == "score" {
+			if left.TotalScore != right.TotalScore {
+				return left.TotalScore > right.TotalScore
+			}
+			if left.Solved != right.Solved {
+				return left.Solved > right.Solved
+			}
+		} else {
+			if left.Solved != right.Solved {
+				return left.Solved > right.Solved
+			}
+			if left.PenaltyMinutes != right.PenaltyMinutes {
+				return left.PenaltyMinutes < right.PenaltyMinutes
+			}
 		}
 		if cmp := compareTimePtr(left.LastSubmission, right.LastSubmission); cmp != 0 {
 			return cmp < 0
@@ -3710,7 +3860,7 @@ func (s Server) exportExamReport(c *gin.Context) {
 			return
 		}
 	}
-	students := s.classStudents(item.ClassID)
+	students := s.examStudents(item)
 	if format == "markdown" {
 		body, err := s.buildExamMarkdownReport(item, students)
 		if err != nil {
@@ -3722,7 +3872,7 @@ func (s Server) exportExamReport(c *gin.Context) {
 		return
 	}
 	rows := [][]xlsxCell{{xlsxString("学生姓名"), xlsxString("学号"), xlsxString("通过题目数"), xlsxString("所得分数")}}
-	rankingRows, _, _ := s.examRankingRows(item, students)
+	rankingRows, _, _ := s.examRankingRows(item, students, "score")
 	for _, row := range rankingRows {
 		rows = append(rows, []xlsxCell{xlsxString(row.Name), xlsxString(row.StudentNo), xlsxNumber(row.Solved), xlsxNumber(row.TotalScore)})
 	}
@@ -3736,7 +3886,7 @@ func (s Server) exportExamReport(c *gin.Context) {
 }
 
 func (s Server) buildExamMarkdownReport(item models.Exam, students []models.User) (string, error) {
-	rankingRows, _, _ := s.examRankingRows(item, students)
+	rankingRows, _, _ := s.examRankingRows(item, students, "score")
 	submissions, err := s.examSubmissionsForUsers(item.ID, userIDs(students), examProblemIDs(item), true, "user_id asc, problem_id asc, created_at asc, id asc")
 	if err != nil {
 		return "", err
@@ -4501,6 +4651,9 @@ func (s Server) getSubmission(c *gin.Context) {
 		s.DB.Where("submission_id = ?", sub.ID).Order("id asc").Find(&results)
 	}
 	submission := s.enrichSubmissionViews([]submissionListView{{Submission: sub}})
+	if sub.UserID != user.ID && isStandaloneProblemSubmission(sub) && s.isProblemPublic(sub.ProblemID) {
+		submission[0].StudentNo = ""
+	}
 	c.JSON(http.StatusOK, gin.H{"submission": submission[0], "results": results})
 }
 
@@ -5273,6 +5426,25 @@ func examRankingVisible(exam models.Exam) bool {
 	return false
 }
 
+func parseScoringRule(value string) (string, bool) {
+	value = strings.ToLower(strings.TrimSpace(value))
+	if value == "" {
+		return "penalty", true
+	}
+	if value != "penalty" && value != "score" {
+		return "", false
+	}
+	return value, true
+}
+
+func examScoringRule(exam models.Exam) string {
+	value, valid := parseScoringRule(exam.ScoringRule)
+	if !valid {
+		return "penalty"
+	}
+	return value
+}
+
 func (s Server) recordAssignmentAttempt(assignmentID uint, userID uint) error {
 	attempt := models.AssignmentAttempt{AssignmentID: assignmentID, UserID: userID}
 	return s.DB.Where("assignment_id = ? AND user_id = ?", assignmentID, userID).FirstOrCreate(&attempt).Error
@@ -5592,6 +5764,23 @@ func (s Server) classStudents(classID *uint) []models.User {
 	return students
 }
 
+func (s Server) courseStudents(courseID uint) []models.User {
+	var students []models.User
+	s.DB.Model(&models.User{}).
+		Joins("join course_memberships on course_memberships.user_id = users.id").
+		Where("course_memberships.course_id = ? AND course_memberships.role = ? AND users.role = ? AND users.account_deleted = false", courseID, models.RoleStudent, models.RoleStudent).
+		Order("users.id asc").
+		Find(&students)
+	return students
+}
+
+func (s Server) examStudents(item models.Exam) []models.User {
+	if item.ClassID != nil {
+		return s.classStudents(item.ClassID)
+	}
+	return s.courseStudents(item.CourseID)
+}
+
 func (s Server) cleanupFutureReleaseRows(tx *gorm.DB, kind string, workID uint, classID *uint, releaseAt *time.Time) error {
 	now := time.Now()
 	if classID == nil || releaseAt == nil || !releaseAt.After(now) {
@@ -5712,7 +5901,7 @@ func (s Server) canAccessSubmission(user models.User, sub models.Submission) boo
 	if user.Role == models.RoleAdmin {
 		return true
 	}
-	if sub.IsPublic && sub.AssignmentID == nil && sub.ExamID == nil && s.isProblemPublic(sub.ProblemID) {
+	if isStandaloneProblemSubmission(sub) && s.isProblemPublic(sub.ProblemID) {
 		return true
 	}
 	if user.Role == models.RoleStudent {
@@ -5744,6 +5933,10 @@ func (s Server) canAccessSubmission(user models.User, sub models.Submission) boo
 		return false
 	}
 	return problem.OwnerID == user.ID
+}
+
+func isStandaloneProblemSubmission(sub models.Submission) bool {
+	return sub.IsPublic && sub.AssignmentID == nil && sub.ExamID == nil && sub.TeamContestID == nil && sub.ProblemSetID == nil
 }
 
 func (s Server) canViewSubmissionResults(user models.User, sub models.Submission) bool {

@@ -57,6 +57,7 @@ export interface Problem {
 }
 
 export type TeamRole = 'owner' | 'admin' | 'member'
+export type ScoringRule = 'penalty' | 'score'
 
 export interface Team {
   id: number
@@ -98,7 +99,7 @@ export interface TeamContest {
   starts_at?: string
   ends_at?: string
   duration_minutes: number
-  scoring_rule?: 'score' | 'penalty'
+  scoring_rule?: ScoringRule
   state?: 'draft' | 'published' | 'running' | 'closed'
   created_by: number
   problem_count?: number

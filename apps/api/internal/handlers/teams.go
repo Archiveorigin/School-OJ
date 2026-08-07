@@ -84,6 +84,7 @@ type teamContestRankingCell struct {
 	Attempts       int        `json:"attempts"`
 	WrongAttempts  int        `json:"wrong_attempts"`
 	BestScore      int        `json:"best_score"`
+	MaxScore       int        `json:"max_score"`
 	ElapsedMinutes int        `json:"elapsed_minutes"`
 	SolvedAt       *time.Time `json:"solved_at,omitempty"`
 	Fastest        bool       `json:"fastest"`
@@ -92,8 +93,10 @@ type teamContestRankingCell struct {
 type teamContestRankingRow struct {
 	UserID          uint                     `json:"user_id"`
 	Name            string                   `json:"name"`
+	StudentNo       string                   `json:"student_no"`
 	Solved          int                      `json:"solved"`
 	TotalScore      int                      `json:"total_score"`
+	MaxScore        int                      `json:"max_score"`
 	PenaltyMinutes  int                      `json:"penalty_minutes"`
 	SubmissionCount int                      `json:"submission_count"`
 	LastSubmission  *time.Time               `json:"last_submission,omitempty"`
@@ -101,14 +104,15 @@ type teamContestRankingRow struct {
 }
 
 type teamContestCellAggregate struct {
-	UserID         uint
-	ProblemID      uint
-	Attempts       int
-	WrongAttempts  int
-	BestScore      int
-	SolvedAt       *time.Time
-	LastSubmission time.Time
-	LatestStatus   string
+	UserID          uint
+	ProblemID       uint
+	Attempts        int
+	SubmissionCount int
+	WrongAttempts   int
+	BestScore       int
+	SolvedAt        *time.Time
+	LastSubmission  time.Time
+	LatestStatus    string
 }
 
 type teamDiscussionView struct {
@@ -902,7 +906,7 @@ func (s Server) teamContestRanking(c *gin.Context) {
 
 	problems := make([]gin.H, 0, len(links))
 	for _, link := range links {
-		problems = append(problems, gin.H{"problem_id": link.ProblemID, "label": link.Label, "title": link.Problem.Title})
+		problems = append(problems, gin.H{"problem_id": link.ProblemID, "label": link.Label, "title": link.Problem.Title, "score": 100})
 	}
 	c.JSON(http.StatusOK, gin.H{"contest": contest, "scoring_rule": contest.ScoringRule, "problems": problems, "rows": rows})
 }
@@ -915,22 +919,30 @@ WITH scoped AS (
   FROM submissions
   WHERE team_contest_id = ?
 ), first_accept AS (
-  SELECT user_id, problem_id, MIN(created_at) AS solved_at
+  SELECT DISTINCT ON (user_id, problem_id)
+         user_id, problem_id, created_at AS solved_at, id AS solved_id
   FROM scoped
   WHERE status = ?
-  GROUP BY user_id, problem_id
+  ORDER BY user_id, problem_id, created_at, id
 ), latest AS (
   SELECT DISTINCT ON (user_id, problem_id) user_id, problem_id, status
   FROM scoped
-  ORDER BY user_id, problem_id, id DESC
+  ORDER BY user_id, problem_id, created_at DESC, id DESC
 )
 SELECT scoped.user_id,
        scoped.problem_id,
-       COUNT(*)::integer AS attempts,
+       COUNT(*) FILTER (
+         WHERE scoped.status <> ?
+           AND (
+             first_accept.solved_at IS NULL
+             OR (scoped.created_at, scoped.id) <= (first_accept.solved_at, first_accept.solved_id)
+           )
+       )::integer AS attempts,
+       COUNT(*)::integer AS submission_count,
        COUNT(*) FILTER (
          WHERE first_accept.solved_at IS NOT NULL
-           AND scoped.created_at < first_accept.solved_at
-           AND scoped.status NOT IN (?, ?, ?)
+           AND (scoped.created_at, scoped.id) < (first_accept.solved_at, first_accept.solved_id)
+           AND scoped.status NOT IN (?, ?, ?, ?, ?)
        )::integer AS wrong_attempts,
        COALESCE(MAX(scoped.score), 0)::integer AS best_score,
        first_accept.solved_at,
@@ -939,12 +951,15 @@ SELECT scoped.user_id,
 FROM scoped
 LEFT JOIN first_accept USING (user_id, problem_id)
 JOIN latest USING (user_id, problem_id)
-GROUP BY scoped.user_id, scoped.problem_id, first_accept.solved_at, latest.status`,
+GROUP BY scoped.user_id, scoped.problem_id, first_accept.solved_at, first_accept.solved_id, latest.status`,
 		contestID,
 		models.StatusAccepted,
+		models.StatusSystemError,
 		models.StatusQueued,
 		models.StatusRunning,
+		models.StatusPendingReview,
 		models.StatusAccepted,
+		models.StatusSystemError,
 		models.StatusAccepted,
 	).Scan(&rows).Error
 	return rows, err
@@ -957,9 +972,9 @@ func buildTeamContestRanking(users []models.User, links []models.TeamContestProb
 	}
 	rows := make([]teamContestRankingRow, 0, len(users))
 	for _, member := range users {
-		row := teamContestRankingRow{UserID: member.ID, Name: member.Name, Problems: make([]teamContestRankingCell, 0, len(links))}
+		row := teamContestRankingRow{UserID: member.ID, Name: member.Name, StudentNo: member.StudentNo, MaxScore: len(links) * 100, Problems: make([]teamContestRankingCell, 0, len(links))}
 		for _, link := range links {
-			cell := teamContestRankingCell{ProblemID: link.ProblemID}
+			cell := teamContestRankingCell{ProblemID: link.ProblemID, MaxScore: 100}
 			if aggregate, ok := byUserProblem[[2]uint{member.ID, link.ProblemID}]; ok {
 				cell.Status = aggregate.LatestStatus
 				cell.Attempts = aggregate.Attempts
@@ -967,7 +982,7 @@ func buildTeamContestRanking(users []models.User, links []models.TeamContestProb
 				cell.BestScore = aggregate.BestScore
 				cell.SolvedAt = aggregate.SolvedAt
 				cell.ElapsedMinutes = elapsedContestMinutes(contestStart, aggregate.LastSubmission)
-				row.SubmissionCount += aggregate.Attempts
+				row.SubmissionCount += aggregate.SubmissionCount
 				last := aggregate.LastSubmission
 				if row.LastSubmission == nil || last.After(*row.LastSubmission) {
 					row.LastSubmission = &last
@@ -1003,15 +1018,20 @@ func buildTeamContestRanking(users []models.User, links []models.TeamContestProb
 		}
 	}
 	sort.SliceStable(rows, func(i, j int) bool {
-		if rows[i].Solved != rows[j].Solved {
-			return rows[i].Solved > rows[j].Solved
-		}
 		if scoringRule == "score" {
 			if rows[i].TotalScore != rows[j].TotalScore {
 				return rows[i].TotalScore > rows[j].TotalScore
 			}
-		} else if rows[i].PenaltyMinutes != rows[j].PenaltyMinutes {
-			return rows[i].PenaltyMinutes < rows[j].PenaltyMinutes
+			if rows[i].Solved != rows[j].Solved {
+				return rows[i].Solved > rows[j].Solved
+			}
+		} else {
+			if rows[i].Solved != rows[j].Solved {
+				return rows[i].Solved > rows[j].Solved
+			}
+			if rows[i].PenaltyMinutes != rows[j].PenaltyMinutes {
+				return rows[i].PenaltyMinutes < rows[j].PenaltyMinutes
+			}
 		}
 		return strings.ToLower(rows[i].Name) < strings.ToLower(rows[j].Name)
 	})

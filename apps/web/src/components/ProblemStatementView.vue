@@ -14,37 +14,8 @@
       </div>
       <div class="meta-grid">
         <span>提交状态</span>
-        <div v-if="statusImageAlt" class="status-image-wrap" role="img" :aria-label="statusImageAlt">
-          <svg
-            v-if="statusImage === 'ac'"
-            class="status-icon"
-            xmlns="http://www.w3.org/2000/svg"
-            viewBox="0 0 156 48"
-            width="156"
-            height="48"
-            fill="none"
-            aria-hidden="true"
-          >
-            <rect width="156" height="48" rx="14" fill="#22c55e" />
-            <text x="78" y="30" fill="white" text-anchor="middle" font-size="17" font-weight="800" font-family="Inter, Arial, sans-serif">
-              Accepted
-            </text>
-          </svg>
-          <svg
-            v-else
-            class="status-icon"
-            xmlns="http://www.w3.org/2000/svg"
-            viewBox="0 0 156 48"
-            width="156"
-            height="48"
-            fill="none"
-            aria-hidden="true"
-          >
-            <rect width="156" height="48" rx="14" fill="#ef4444" />
-            <text x="78" y="30" fill="white" text-anchor="middle" font-size="17" font-weight="800" font-family="Inter, Arial, sans-serif">
-              Unaccepted
-            </text>
-          </svg>
+        <div v-if="statusImage" class="status-image-wrap">
+          <SubmissionStatusMark :status="statusImage" class="status-icon" />
         </div>
         <el-tag v-else :type="statusType || 'info'" effect="light">{{ statusText || '未提交' }}</el-tag>
         <span>分值</span>
@@ -75,6 +46,7 @@ import { computed } from 'vue'
 import type { Problem } from '../api/client'
 import { difficultyTagType, problemDisplayCode, problemDifficulty, problemLimitLines, tagList } from '../features/problems/problemMeta'
 import MarkdownRenderer from './MarkdownRenderer.vue'
+import SubmissionStatusMark from './SubmissionStatusMark.vue'
 
 const props = withDefaults(
   defineProps<{
@@ -101,11 +73,6 @@ const tags = computed(() => tagList(props.problem.tags))
 const difficulty = computed(() => problemDifficulty(props.problem))
 const displayNumber = computed(() => props.problemNumber || problemDisplayCode(props.problem))
 const statusImage = computed(() => props.statusImage || '')
-const statusImageAlt = computed(() => {
-  if (statusImage.value === 'ac') return '通过'
-  if (statusImage.value === 'uac') return '未通过'
-  return ''
-})
 </script>
 
 <style scoped>

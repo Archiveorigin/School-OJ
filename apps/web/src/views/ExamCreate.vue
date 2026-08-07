@@ -84,12 +84,20 @@
             <el-form-item label="实时榜单">
               <el-checkbox v-model="form.ranking_visible">允许考生在考试内查看实时排名</el-checkbox>
             </el-form-item>
+            <el-form-item label="计分方式">
+              <el-radio-group v-model="form.scoring_rule">
+                <el-radio-button value="penalty">通过数 + 罚时</el-radio-button>
+                <el-radio-button value="score">总分数</el-radio-button>
+              </el-radio-group>
+              <p class="muted form-note scoring-note">罚时按首次通过时间，并累计通过前的错误提交罚时。</p>
+            </el-form-item>
             <el-divider />
             <el-form-item label="考试规则">
               <ul class="rule-list">
                 <li>学生进入考试后必须点击"结束考试"才能退出</li>
                 <li>结束后不能再次进入</li>
                 <li v-if="form.manual_review">教师需人工确认每道题的最终分数</li>
+                <li>{{ form.scoring_rule === 'score' ? '榜单按总分数排序，满分题数用于同分次序' : '榜单按通过题数与罚时排序' }}</li>
               </ul>
             </el-form-item>
           </el-form>
@@ -254,6 +262,7 @@
               {{ form.manual_review ? '人工阅卷' : '自动阅卷' }}
             </el-descriptions-item>
             <el-descriptions-item label="实时榜单">{{ form.ranking_visible ? '考生可见' : '仅教师可见' }}</el-descriptions-item>
+            <el-descriptions-item label="计分方式">{{ form.scoring_rule === 'score' ? '总分数' : '通过数 + 罚时' }}</el-descriptions-item>
             <el-descriptions-item label="开始时间">
               {{ form.starts_at ? formatDate(form.starts_at) : '立即开始' }}
             </el-descriptions-item>
@@ -569,7 +578,8 @@ const form = reactive<any>({
   starts_at: null,
   ends_at: null,
   manual_review: false,
-  ranking_visible: false
+  ranking_visible: false,
+  scoring_rule: 'penalty'
 })
 
 const problemForm = reactive({
@@ -789,6 +799,7 @@ async function submitCreate() {
       ends_at: form.ends_at,
       manual_review: form.manual_review,
       ranking_visible: form.ranking_visible,
+      scoring_rule: form.scoring_rule,
       problems: selectedProblems.value.map((item) => ({
         problem_id: item.problem_id,
         score: item.score,
@@ -1162,6 +1173,12 @@ function returnToExams() {
 
 .form-note {
   margin: 10px 0 0;
+}
+
+.scoring-note {
+  flex-basis: 100%;
+  font-size: 12px;
+  line-height: 1.5;
 }
 
 .selected-stats {

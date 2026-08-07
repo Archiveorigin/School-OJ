@@ -3,6 +3,7 @@ import type {
   LeaderboardProblem,
   LeaderboardResult,
   LeaderboardRow,
+  LeaderboardScoringRule,
   LeaderboardStatus
 } from './types'
 
@@ -16,6 +17,10 @@ type UnknownRecord = Record<string, any>
 function safeNumber(value: unknown, fallback = 0) {
   const number = Number(value)
   return Number.isFinite(number) ? number : fallback
+}
+
+function scoringRule(value: unknown): LeaderboardScoringRule {
+  return value === 'score' ? 'score' : 'penalty'
 }
 
 function parseTime(value: unknown) {
@@ -45,33 +50,35 @@ function elapsedFromStart(startsAt: unknown, submittedAt: unknown) {
   return Math.max(0, Math.round((submitted - start) / 1000))
 }
 
-function problemList(items: UnknownRecord[] = []): LeaderboardProblem[] {
+function problemList(items: UnknownRecord[] = [], defaultMaxScore = 100): LeaderboardProblem[] {
   return items.map((problem, index) => ({
     id: problem.problem_id ?? problem.id ?? index,
     label: String(problem.label || problem.display_code || String.fromCharCode(65 + index)),
     title: problem.title ? String(problem.title) : undefined,
-    color: problemColors[index % problemColors.length]
+    color: problemColors[index % problemColors.length],
+    maxScore: Math.max(0, safeNumber(problem.score, defaultMaxScore))
   }))
 }
 
-function teamStatus(cell: UnknownRecord | undefined): LeaderboardStatus {
+function penaltyStatus(cell: UnknownRecord | undefined): LeaderboardStatus {
   if (!cell || !safeNumber(cell.attempts)) return 'none'
-  if (cell.status === 'accepted') return 'accepted'
-  if (cell.status === 'queued' || cell.status === 'running') return 'pending'
+  if (cell.solved_at || cell.status === 'accepted') return 'accepted'
+  if (cell.pending || cell.status === 'queued' || cell.status === 'running') return 'pending'
   return 'wrong'
 }
 
-function examStatus(cell: UnknownRecord | undefined): LeaderboardStatus {
-  if (!cell || (!cell.status && !cell.submitted_at)) return 'none'
-  if (cell.pending || !cell.score_ready) return 'pending'
-  if (safeNumber(cell.max_score) > 0 && safeNumber(cell.best_score) >= safeNumber(cell.max_score)) return 'accepted'
+function scoreStatus(cell: UnknownRecord | undefined, maxScore: number): LeaderboardStatus {
+  if (!cell || (!cell.status && !cell.submitted_at && !safeNumber(cell.attempts))) return 'none'
+  if (maxScore > 0 && safeNumber(cell.best_score) >= maxScore) return 'accepted'
+  const awaitingManualScore = cell.pending === true || cell.score_ready === false
+  if (awaitingManualScore || cell.status === 'queued' || cell.status === 'running') return 'pending'
   return 'wrong'
 }
 
 export function adaptTeamContestRanking(source: UnknownRecord | null | undefined, fallback: UnknownRecord = {}): LeaderboardData {
   const contest = source?.contest || fallback.contest || {}
-  const scoringRule = String(source?.scoring_rule || contest.scoring_rule || fallback.scoring_rule || 'penalty')
-  const problems = problemList(source?.problems || [])
+  const rule = scoringRule(source?.scoring_rule ?? contest.scoring_rule ?? fallback.scoring_rule)
+  const problems = problemList(source?.problems || [], 100)
   const durationSeconds = Math.max(0, Math.round(safeNumber(contest.duration_minutes, 0) * 60))
   const rows: LeaderboardRow[] = (source?.rows || []).map((row: UnknownRecord, index: number) => {
     const rawResults = new Map<string, UnknownRecord>((row.problems || []).map((cell: UnknownRecord) => [String(cell.problem_id), cell]))
@@ -80,38 +87,54 @@ export function adaptTeamContestRanking(source: UnknownRecord | null | undefined
       const cell = rawResults.get(String(problem.id))
       const attempts = safeNumber(cell?.attempts)
       const elapsedMinutes = safeNumber(cell?.elapsed_minutes)
-      results[String(problem.id)] = {
-        status: teamStatus(cell),
-        attempts,
-        timeSeconds: attempts ? elapsedMinutes * 60 : undefined,
-        firstBlood: Boolean(cell?.fastest),
-        primary: attempts ? String(attempts) : undefined,
-        secondary: attempts ? `${elapsedMinutes}'` : undefined
+      if (rule === 'score') {
+        const bestScore = safeNumber(cell?.best_score)
+        const status = scoreStatus(cell, problem.maxScore)
+        results[String(problem.id)] = {
+          status,
+          attempts,
+          primary: status === 'none' ? undefined : `${bestScore}/${problem.maxScore}`,
+          secondary: status === 'pending' ? '待评分' : status === 'accepted' ? '满分' : status === 'wrong' ? '未满分' : undefined
+        }
+      } else {
+        results[String(problem.id)] = {
+          status: penaltyStatus(cell),
+          attempts,
+          timeSeconds: attempts ? elapsedMinutes * 60 : undefined,
+          firstBlood: Boolean(cell?.fastest),
+          primary: attempts ? String(attempts) : undefined,
+          secondary: attempts ? `${elapsedMinutes}'` : undefined
+        }
       }
     }
-    const metric = scoringRule === 'score' ? safeNumber(row.total_score) : safeNumber(row.penalty_minutes)
+    const metric = rule === 'score' ? safeNumber(row.total_score) : safeNumber(row.penalty_minutes)
+    const maxScore = rule === 'score'
+      ? safeNumber(row.max_score, problems.reduce((sum, problem) => sum + problem.maxScore, 0))
+      : undefined
     return {
       id: row.user_id ?? index,
-      rank: index + 1,
+      rank: safeNumber(row.rank, index + 1),
       name: String(row.name || `参赛者 ${index + 1}`),
-      organization: String(fallback.team?.name || fallback.team_name || '团队成员'),
+      studentNo: String(row.student_no || '-'),
       meta: `提交 ${safeNumber(row.submission_count)} 次`,
       solved: safeNumber(row.solved),
       metric,
-      metricDisplay: scoringRule === 'score' ? String(metric) : `${metric}'`,
+      metricDisplay: rule === 'score' ? `${metric}/${maxScore}` : String(metric),
+      maxScore,
       submissions: safeNumber(row.submission_count),
       results
     }
   })
   return {
+    scoringRule: rule,
     title: String(contest.title || fallback.title || '团队比赛实时榜单'),
-    subtitle: scoringRule === 'score' ? '通过数优先 · 总分排名' : '通过数优先 · 罚时排名',
+    subtitle: rule === 'score' ? '总分优先 · 满分题数次序' : '题数优先 · 罚时排名',
     durationSeconds,
     currentTimeSeconds: currentTimeFromRange(contest.starts_at, durationSeconds),
-    identityLabel: '参赛者 / 团队',
-    solvedLabel: '通过',
-    metricLabel: scoringRule === 'score' ? '总分' : '罚时',
-    metricDirection: scoringRule === 'score' ? 'descending' : 'ascending',
+    identityLabel: '学生 / 学号',
+    solvedLabel: rule === 'score' ? '满分' : '题数',
+    metricLabel: rule === 'score' ? '总分' : '罚时',
+    metricDirection: rule === 'score' ? 'descending' : 'ascending',
     problems,
     rows
   }
@@ -119,48 +142,65 @@ export function adaptTeamContestRanking(source: UnknownRecord | null | undefined
 
 export function adaptExamRanking(source: UnknownRecord | null | undefined): LeaderboardData {
   const exam = source?.exam || {}
-  const problems = problemList(source?.problems || [])
+  const rule = scoringRule(source?.scoring_rule ?? exam.scoring_rule)
+  const problems = problemList(source?.problems || [], 100)
   const durationSeconds = durationFromRange(exam.starts_at, exam.ends_at)
   const rows: LeaderboardRow[] = (source?.rows || []).map((row: UnknownRecord, index: number) => {
     const rawResults = new Map<string, UnknownRecord>((row.problems || []).map((cell: UnknownRecord) => [String(cell.problem_id), cell]))
     const results: Record<string, LeaderboardResult> = {}
     for (const problem of problems) {
       const cell = rawResults.get(String(problem.id))
-      const status = examStatus(cell)
-      const bestScore = safeNumber(cell?.best_score)
-      const maxScore = safeNumber(cell?.max_score)
-      results[String(problem.id)] = {
-        status,
-        attempts: status === 'none' ? 0 : 1,
-        timeSeconds: elapsedFromStart(exam.starts_at, cell?.submitted_at),
-        primary: status === 'none' ? undefined : cell?.score_ready ? `${bestScore}/${maxScore}` : '…',
-        secondary: status === 'pending' ? '待评分' : status === 'accepted' ? '满分' : status === 'wrong' ? '未满分' : undefined
+      const attempts = safeNumber(cell?.attempts, cell?.status || cell?.submitted_at ? 1 : 0)
+      if (rule === 'score') {
+        const maxScore = safeNumber(cell?.max_score, problem.maxScore)
+        const bestScore = safeNumber(cell?.best_score)
+        const status = scoreStatus(cell, maxScore)
+        results[String(problem.id)] = {
+          status,
+          attempts,
+          timeSeconds: elapsedFromStart(exam.starts_at, cell?.submitted_at),
+          primary: status === 'none' ? undefined : `${bestScore}/${maxScore}`,
+          secondary: status === 'pending' ? '待评分' : status === 'accepted' ? '满分' : status === 'wrong' ? '未满分' : undefined
+        }
+      } else {
+        const elapsedMinutes = safeNumber(cell?.elapsed_minutes)
+        results[String(problem.id)] = {
+          status: penaltyStatus(cell),
+          attempts,
+          timeSeconds: attempts ? elapsedMinutes * 60 : undefined,
+          firstBlood: Boolean(cell?.fastest),
+          primary: attempts ? String(attempts) : undefined,
+          secondary: attempts ? `${elapsedMinutes}'` : undefined
+        }
       }
     }
     const totalScore = safeNumber(row.total_score)
     const maxScore = safeNumber(row.max_score, safeNumber(source?.stats?.max_score))
+    const metric = rule === 'score' ? totalScore : safeNumber(row.penalty_minutes)
     return {
       id: row.user_id ?? index,
       rank: safeNumber(row.rank, index + 1),
       name: String(row.name || `学生 ${index + 1}`),
-      organization: row.student_no ? `学号 ${row.student_no}` : String(exam.class_name || '课程学生'),
+      studentNo: String(row.student_no || '-'),
       meta: `提交 ${safeNumber(row.submission_count)} 次${safeNumber(row.pending_count) ? ` · ${safeNumber(row.pending_count)} 项待评分` : ''}`,
       solved: safeNumber(row.solved),
-      metric: totalScore,
-      metricDisplay: `${totalScore}/${maxScore}`,
+      metric,
+      metricDisplay: rule === 'score' ? `${totalScore}/${maxScore}` : String(metric),
+      maxScore: rule === 'score' ? maxScore : undefined,
       submissions: safeNumber(row.submission_count),
       results
     }
   })
   return {
+    scoringRule: rule,
     title: String(exam.title || '考试实时榜单'),
     subtitle: [exam.course_name, exam.class_name].filter(Boolean).join(' · ') || '课程考试',
     durationSeconds,
     currentTimeSeconds: currentTimeFromRange(exam.starts_at, durationSeconds, source?.now),
-    identityLabel: '学生 / 班级',
-    solvedLabel: '满分',
-    metricLabel: '总分',
-    metricDirection: 'descending',
+    identityLabel: '学生 / 学号',
+    solvedLabel: rule === 'score' ? '满分' : '题数',
+    metricLabel: rule === 'score' ? '总分' : '罚时',
+    metricDirection: rule === 'score' ? 'descending' : 'ascending',
     problems,
     rows
   }
