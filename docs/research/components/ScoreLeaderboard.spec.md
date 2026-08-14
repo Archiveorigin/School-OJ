@@ -8,19 +8,19 @@
 
 ## DOM structure
 
-Shared scoreboard shell > score table > sticky header viewport + sibling horizontal body scroller > repeated score rows. The body scroller synchronizes its `scrollLeft` to the header track, while the sticky viewport remains on the natural page-scroll chain. The header contains the student identity label, rank, full-score problem count, total score, and problem headers. Each row uses the same columns and a student-only identity block.
+Shared scoreboard shell > score table > sticky header viewport + sibling horizontal body scroller > repeated score rows. The body scroller synchronizes its `scrollLeft` to the header track, while the sticky viewport remains on the natural page-scroll chain. The header contains rank, full-score problem count, total score, and problem headers. Each row renders the participant name in its own upper line and the complete metric grid beneath it; identity is not a separate column.
 
 ## Reference geometry and styles
 
 - Reference crop: 1951 × 227 px.
 - Header band: approximately 79 px high, light gray `#f7f8fa`, with an 8 px bottom separator.
-- Student identity region: approximately 625 px wide in the reference; production uses 560 px on desktop to retain the reference proportions.
+- The user-requested live-scoreboard revision removes the identity column; the metric grid begins at the row's left inset.
 - Row: approximately 118 px high, white background, blue 1 px active border in the captured state.
 - Rank cell: approximately 86 × 44 px; full-score cell approximately 96 × 44 px; total-score cell approximately 122 × 44 px.
 - Problem score cells: at least 104 × 44 px with 7–8 px gaps.
 - Header cards: white, `#d9e0e8` border, 6 px radius; problem headers use a 4 px colored top bar.
-- Student avatar: 70 px circle, very low-contrast blue/gray initial.
-- Student metadata: muted 13 px submission count; main identity: bold student number and bold name separated by a blue-gray diamond.
+- Participant line: bold name only. No avatar, student number, email, metadata, organization, or team text.
+- Decorative college watermark: `/logo1.png`, centered toward the row's right edge at roughly 3–5% opacity.
 - Metric text: 16–18 px, weight 800–900.
 - Full score: green `#198754`; partial/non-full score: red `#dc3545`; no submission: gray `#adb5bd`; pending: blue `#0d6efd`.
 
@@ -34,11 +34,12 @@ Shared scoreboard shell > score table > sticky header viewport + sibling horizon
 
 ## Student identity customization
 
-- Do not render team, class, organization, school, coach, or player identity.
-- Render only student name, student number, and submission-count metadata.
+- Render only the participant name.
+- Do not render student number, email, avatar, submission-count metadata, team, class, organization, school, coach, or player identity.
+- Award row ranges are calculated from configured cumulative gold/silver/bronze percentages and the actual unfiltered participant count.
 
 ## Responsive behavior
 
 - Preserve the reference’s fixed column proportions and horizontal scrolling.
-- At application widths below the reference crop, reduce only the identity region to 500 px at 991.98 px and 420 px at 576 px; never stack result columns.
+- Never stack result columns. The fixed metric/result grid scrolls horizontally when wider than its viewport.
 - Only `.score-body-scroller` owns horizontal overflow. The sticky header is its sibling, and the page does not gain a fixed-height/internal vertical scroll area.

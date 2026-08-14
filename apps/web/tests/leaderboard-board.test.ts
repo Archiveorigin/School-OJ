@@ -9,8 +9,8 @@ function row(overrides: Partial<LeaderboardRow> = {}): LeaderboardRow {
     id: 1,
     rank: 1,
     name: '章佳荣',
-    studentNo: '202530011014',
-    meta: '提交 4 次',
+    studentNo: 'STUDENT-NUMBER-MUST-NOT-RENDER',
+    meta: 'SUBMISSION-METADATA-MUST-NOT-RENDER',
     solved: 1,
     metric: 75,
     metricDisplay: '75',
@@ -19,7 +19,7 @@ function row(overrides: Partial<LeaderboardRow> = {}): LeaderboardRow {
       '1': { status: 'accepted', attempts: 2, primary: '2', secondary: "35'", firstBlood: true }
     },
     ...overrides
-  }
+  } as LeaderboardRow
 }
 
 function data(scoringRule: LeaderboardData['scoringRule']): LeaderboardData {
@@ -29,10 +29,11 @@ function data(scoringRule: LeaderboardData['scoringRule']): LeaderboardData {
     title: score ? '总分榜' : '罚时榜',
     durationSeconds: 7200,
     currentTimeSeconds: 3600,
-    identityLabel: '学生 / 学号',
     solvedLabel: score ? '满分' : '题数',
     metricLabel: score ? '总分' : '罚时',
     metricDirection: score ? 'descending' : 'ascending',
+    participantCount: 10,
+    awardPercents: { gold: 10, silver: 10, bronze: 10 },
     problems: [{ id: 1, label: 'A', color: '#ff46a0', maxScore: 100 }],
     rows: [score ? row({ metric: 100, metricDisplay: '100/100', maxScore: 100, results: { '1': { status: 'accepted', attempts: 1, primary: '100/100', secondary: '满分' } } }) : row()]
   }
@@ -46,7 +47,7 @@ function mountBoard(boardData: LeaderboardData) {
 }
 
 describe('LeaderboardBoard variants', () => {
-  it('renders the penalty table with student-only identity', () => {
+  it('renders the penalty table with name-only participant identity', () => {
     const wrapper = mountBoard(data('penalty'))
 
     expect(wrapper.find('[data-scoreboard-branch="penalty"]').exists()).toBe(true)
@@ -54,8 +55,11 @@ describe('LeaderboardBoard variants', () => {
     expect(wrapper.text()).toContain('排名Rank')
     expect(wrapper.text()).toContain('题数Solved')
     expect(wrapper.text()).toContain('罚时Penalty')
-    expect(wrapper.text()).toContain('学号 202530011014')
     expect(wrapper.text()).toContain('章佳荣')
+    expect(wrapper.text()).not.toContain('STUDENT-NUMBER-MUST-NOT-RENDER')
+    expect(wrapper.text()).not.toContain('SUBMISSION-METADATA-MUST-NOT-RENDER')
+    expect(wrapper.find('.student-avatar').exists()).toBe(false)
+    expect(wrapper.text()).not.toContain('学生 / 学号')
     expect(wrapper.text()).not.toContain('团队')
     expect(wrapper.text()).not.toContain('组织')
 
@@ -66,6 +70,7 @@ describe('LeaderboardBoard variants', () => {
     expect(wrapper.find('.penalty-solved-stat').exists()).toBe(true)
     expect(wrapper.find('.penalty-time-stat').exists()).toBe(true)
     expect(wrapper.find('.penalty-result.result-accepted.is-first').exists()).toBe(true)
+    expect(wrapper.text()).toContain('金 10%')
   })
 
   it('renders the score table and full-score cells', () => {
@@ -73,7 +78,9 @@ describe('LeaderboardBoard variants', () => {
 
     expect(wrapper.find('[data-scoreboard-branch="score"]').exists()).toBe(true)
     expect(wrapper.find('[data-scoreboard-branch="penalty"]').exists()).toBe(false)
-    expect(wrapper.text()).toContain('排名满分总分')
+    expect(wrapper.text()).toContain('排名Rank')
+    expect(wrapper.text()).toContain('满分Full')
+    expect(wrapper.text()).toContain('总分Score')
     expect(wrapper.text()).toContain('100/100')
     expect(wrapper.text()).toContain('满分')
   })

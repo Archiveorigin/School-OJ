@@ -9,7 +9,7 @@
 
 ## DOM structure
 
-Shared scoreboard shell > title > controls > penalty table > sticky header viewport + sibling horizontal body scroller > repeated student rows > footer legend. The header track mirrors the body scroller's `scrollLeft`, so the header remains attached to natural page scrolling instead of an overflow ancestor. Each row contains a student identity region, rank, solved count, penalty, and one result cell per problem.
+Shared scoreboard shell > title > controls > penalty table > sticky header viewport + sibling horizontal body scroller > repeated participant rows > footer legend. The header track mirrors the body scroller's `scrollLeft`, so the header remains attached to natural page scrolling instead of an overflow ancestor. Each row has one full-width participant-name line followed by rank, solved count, penalty, and one result cell per problem. Identity is not a dedicated table column.
 
 ## Extracted styles
 
@@ -17,23 +17,23 @@ Shared scoreboard shell > title > controls > penalty table > sticky header viewp
 - Source row: minimum height 85 px with a 1323 × 85 px main area.
 - Rows use flat alternating white/light-gray stripes and fine separators. They do not use rounded outer cards, vertical gaps, or per-row drop shadows.
 - Metric groups: flex layout with 5 px gaps.
-- Identity width: 560 px on desktop; rank width: 64 px; solved width: 72 px; penalty width: 88 px; problem width: 80 px with an 85 px stride.
+- The header and result grid begin at the same left edge: rank width 64 px; solved width 72 px; penalty width 88 px; problem width 80 px with an 85 px stride.
 - Result cell: 80 × 32 px, 4 px radius, bold centered content.
 - Accepted: background `#198754`, border `#146c43`, white text.
 - Wrong: background `#dc3545`, border `#b02a37`, white text.
 - No submission: background `#adb5bd`, border `#e9ecef`, dark text.
 - Pending/frozen: background `#0d6efd`, border `#0a58ca`, white text.
 - Result hover transition: 150 ms transform, shadow, and saturation.
-- The first three rank cells preserve the source gold, silver, and bronze treatments. Solved cells use a pale-blue fill; penalty cells use a pale-orange fill.
+- Gold, silver, and bronze treatment applies to percentage-based row ranges. Solved cells use a pale-blue fill; penalty cells use a pale-orange fill.
 
 ## Student identity customization
 
 - The original logo/team/organization/coach/player content must not render.
-- Identity label is `学生 / 学号`.
-- A low-opacity circular initial is decorative only.
-- Top metadata line is the submission count.
-- Main line is `学号 {studentNo or '-'}` followed by the student name.
-- Search indexes student name, student number, and submission metadata only.
+- There is no identity header or identity property column.
+- The upper line inside each row renders only the participant name.
+- Student number, email, avatar, submission metadata, team, class, school, organization, coach, and player identity do not render.
+- Search indexes the participant name only.
+- A large `/logo1.png` college mark is positioned behind the row at roughly 3–5% opacity with `pointer-events:none`.
 
 ## States and content
 
@@ -47,6 +47,6 @@ Shared scoreboard shell > title > controls > penalty table > sticky header viewp
 ## Responsive behavior
 
 - Desktop keeps the extracted fixed-width row geometry.
-- Below 1100 px controls wrap; below 520 px they use the compact control button. The table identity width changes to 500 px at 991.98 px and 420 px at 576 px.
+- Below 1100 px controls wrap; below 520 px they use the compact control button. Metric/result columns never collapse or stack.
 - The table does not reflow at tablet/mobile widths and remains horizontally scrollable.
 - The page keeps natural vertical scrolling. The sticky header is outside the horizontal overflow element; only `.penalty-body-scroller` scrolls horizontally, and no fixed-height/internal vertical viewport is introduced.

@@ -1,6 +1,13 @@
 export type LeaderboardStatus = 'accepted' | 'wrong' | 'pending' | 'frozen' | 'none'
 export type LeaderboardMetricDirection = 'ascending' | 'descending'
 export type LeaderboardScoringRule = 'penalty' | 'score'
+export type LeaderboardAwardTier = 'gold' | 'silver' | 'bronze' | 'none'
+
+export interface LeaderboardAwardPercents {
+  gold: number
+  silver: number
+  bronze: number
+}
 
 export interface LeaderboardProblem {
   id: number | string
@@ -23,8 +30,6 @@ export interface LeaderboardRow {
   id: number | string
   rank: number
   name: string
-  studentNo: string
-  meta?: string
   solved: number
   metric: number
   metricDisplay?: string
@@ -39,10 +44,11 @@ export interface LeaderboardData {
   subtitle?: string
   durationSeconds: number
   currentTimeSeconds: number
-  identityLabel: string
   solvedLabel: string
   metricLabel: string
   metricDirection: LeaderboardMetricDirection
+  participantCount?: number
+  awardPercents?: LeaderboardAwardPercents
   problems: LeaderboardProblem[]
   rows: LeaderboardRow[]
 }

@@ -9,12 +9,11 @@
       <div class="hero-side">
         <div class="course-count"><strong>{{ courses.length }}</strong><span>门课程</span></div>
         <div v-if="auth.role === 'student'" class="join-shortcuts">
-          <img src="/course.jpg" alt="加入新课程" />
+          <img :src="courseAddIcon" alt="添加课程" />
           <div class="join-shortcut-copy">
             <strong>加入新课程</strong>
             <div class="join-shortcut-actions">
-              <el-button class="scan-button" @click="joinDialogs?.openScanner()">扫码加入</el-button>
-              <el-button class="invite-button" @click="joinDialogs?.openInvite()">邀请码加入</el-button>
+              <el-button class="invite-button" @click="joinDialogs?.openInvite()">输入课程邀请码</el-button>
             </div>
           </div>
         </div>
@@ -48,14 +47,14 @@
 <script setup lang="ts">
 import { ElMessage } from 'element-plus'
 import { computed, onMounted, ref, watch } from 'vue'
-import { useRoute, useRouter } from 'vue-router'
+import { useRouter } from 'vue-router'
 import { client } from '../../api/client'
+import courseAddIcon from '../../assets/course-add.svg'
 import CourseJoinDialogs from '../../components/CourseJoinDialogs.vue'
 import ListPagination from '../../components/ListPagination.vue'
 import { useAuthStore } from '../../stores/auth'
 
 const auth = useAuthStore()
-const route = useRoute()
 const router = useRouter()
 const courses = ref<any[]>([])
 const keyword = ref('')
@@ -87,12 +86,6 @@ async function load() {
 
 async function handleJoined() {
   await load()
-  if (route.query.join_code) {
-    const query = { ...route.query }
-    delete query.join_code
-    delete query.course
-    await router.replace({ query })
-  }
 }
 
 function openCourse(course: any) {
@@ -101,8 +94,6 @@ function openCourse(course: any) {
 
 watch([keyword, pageSize], () => { page.value = 1 })
 onMounted(() => {
-  const queryCode = typeof route.query.join_code === 'string' ? route.query.join_code : ''
-  if (queryCode) joinDialogs.value?.openInvite(queryCode)
   void load()
 })
 </script>
@@ -118,7 +109,7 @@ onMounted(() => {
 .course-count strong { font-size: 44px; line-height: 1; }
 .course-count span { color: #dbeafe; }
 .join-shortcuts { display: flex; align-items: center; gap: 13px; padding: 10px 12px; border: 1px solid rgba(255,255,255,.28); border-radius: 16px; background: rgba(255,255,255,.1); backdrop-filter: blur(10px); }
-.join-shortcuts img { width: 54px; height: 61px; object-fit: cover; border-radius: 9px; background: #fff; }
+.join-shortcuts img { width: 54px; height: 54px; padding: 8px; object-fit: contain; border-radius: 12px; background: #fff; }
 .join-shortcut-copy { display: grid; gap: 8px; }
 .join-shortcut-actions, .table-tools { display: flex; gap: 8px; }
 .join-shortcut-actions :deep(.el-button) { margin: 0; color: #fff; border-color: rgba(255,255,255,.54); background: rgba(255,255,255,.12); }
@@ -129,5 +120,5 @@ onMounted(() => {
 .table-tools .el-input { width: min(420px, 100%); }
 .course-table-panel :deep(.el-table__row) { cursor: pointer; }
 @media (max-width: 860px) { .course-list-hero { align-items: stretch; flex-direction: column; } .hero-side { justify-content: space-between; } }
-@media (max-width: 680px) { .course-list-page { padding: 20px 14px 48px; } .hero-side { align-items: stretch; flex-direction: column; } .course-count { text-align: left; } .join-shortcuts { align-items: stretch; } .join-shortcuts img { width: 48px; height: 54px; } .join-shortcut-actions, .table-tools { width: 100%; } .join-shortcut-actions { flex-wrap: wrap; } }
+@media (max-width: 680px) { .course-list-page { padding: 20px 14px 48px; } .hero-side { align-items: stretch; flex-direction: column; } .course-count { text-align: left; } .join-shortcuts { align-items: center; } .join-shortcuts img { width: 48px; height: 48px; } .join-shortcut-actions, .table-tools { width: 100%; } .join-shortcut-actions { flex-wrap: wrap; } }
 </style>

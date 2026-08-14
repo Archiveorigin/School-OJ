@@ -7,6 +7,9 @@
 - Header cells remain sticky at the top of the scoreboard scroll viewport.
 - Result cells retain the extracted 150 ms hover transition and use accepted green, wrong/partial red, pending blue, and no-submission gray.
 - The shared controls wrap below approximately 1100 px. The scoreboard itself never collapses columns; it scrolls horizontally.
+- Participant filtering matches names only and never recalculates award membership.
+- Award cutoffs use the actual unfiltered participant count and cumulative ceiling thresholds. Default gold/silver/bronze values are 10% each; contest managers can change them while their sum remains at most 100%.
+- Rows display only a participant name; student number, email, avatar, organization, team and submission metadata are absent.
 - Submission records open the code dialog by row click or the explicit “查看代码” action.
 - The copy action copies the exact source text and reports success/failure.
 - The verdict graphic is semantic (`role="img"` plus an accessible label) and maps accepted to green, queued/running to blue, and all completed non-accepted states to red.

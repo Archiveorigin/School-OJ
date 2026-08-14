@@ -1,5 +1,11 @@
 <template>
-  <div class="problem-view-grid" :class="{ single: !showMeta }">
+  <div
+    class="problem-view-grid"
+    :class="{
+      'problem-view-grid--single': !showMeta,
+      'problem-view-grid--embedded': embedded
+    }"
+  >
     <section class="panel statement-box">
       <div v-if="showTitle" class="statement-head">
         <h1>{{ problem.title }}</h1>
@@ -60,12 +66,14 @@ const props = withDefaults(
     showTitle?: boolean
     showTags?: boolean
     showMeta?: boolean
+    embedded?: boolean
   }>(),
   {
     showDifficulty: true,
     showTitle: true,
     showTags: true,
-    showMeta: true
+    showMeta: true,
+    embedded: false
   }
 )
 
@@ -83,9 +91,41 @@ const statusImage = computed(() => props.statusImage || '')
   align-items: start;
 }
 
-.problem-view-grid.single {
+.problem-view-grid--single {
   grid-template-columns: minmax(0, 980px);
   justify-content: center;
+}
+
+.problem-view-grid--embedded {
+  width: 100%;
+  grid-template-columns: minmax(0, 1fr) minmax(300px, 360px);
+  gap: 24px;
+}
+
+.problem-view-grid--embedded.problem-view-grid--single {
+  grid-template-columns: minmax(0, 1fr);
+  justify-content: stretch;
+}
+
+.problem-view-grid--embedded .statement-box,
+.problem-view-grid--embedded .meta-box {
+  padding: 0;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  box-shadow: none;
+  backdrop-filter: none;
+}
+
+.problem-view-grid--embedded .statement-box:hover,
+.problem-view-grid--embedded .meta-box:hover {
+  border-color: transparent;
+  box-shadow: none;
+}
+
+.problem-view-grid--embedded .statement-head {
+  margin-bottom: 22px;
+  padding: 4px 0 16px;
 }
 
 .statement-box,

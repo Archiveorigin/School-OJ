@@ -437,18 +437,22 @@ type TeamJoinApplication struct {
 }
 
 type TeamContest struct {
-	ID              uint       `json:"id" gorm:"primaryKey"`
-	TeamID          uint       `json:"team_id" gorm:"index;not null"`
-	Title           string     `json:"title" gorm:"size:200;not null"`
-	Description     string     `json:"description" gorm:"type:text"`
-	StartsAt        *time.Time `json:"starts_at" gorm:"index"`
-	DurationMinutes int        `json:"duration_minutes" gorm:"not null;default:120"`
-	ScoringRule     string     `json:"scoring_rule" gorm:"size:16;not null;default:'penalty'"`
-	State           string     `json:"state" gorm:"size:16;index;not null;default:'draft'"`
-	PublishedAt     *time.Time `json:"published_at" gorm:"index"`
-	CreatedBy       uint       `json:"created_by" gorm:"index;not null"`
-	CreatedAt       time.Time  `json:"created_at"`
-	UpdatedAt       time.Time  `json:"updated_at"`
+	ID                 uint       `json:"id" gorm:"primaryKey"`
+	TeamID             uint       `json:"team_id" gorm:"index;not null"`
+	Title              string     `json:"title" gorm:"size:200;not null"`
+	Description        string     `json:"description" gorm:"type:text"`
+	StartsAt           *time.Time `json:"starts_at" gorm:"index"`
+	DurationMinutes    int        `json:"duration_minutes" gorm:"not null;default:120"`
+	ScoringRule        string     `json:"scoring_rule" gorm:"size:16;not null;default:'penalty'"`
+	GoldAwardPercent   *int       `json:"gold_award_percent" gorm:"not null;default:10"`
+	SilverAwardPercent *int       `json:"silver_award_percent" gorm:"not null;default:10"`
+	BronzeAwardPercent *int       `json:"bronze_award_percent" gorm:"not null;default:10"`
+	State              string     `json:"state" gorm:"size:16;index;not null;default:'draft'"`
+	PublishedAt        *time.Time `json:"published_at" gorm:"index"`
+	CreatedBy          uint       `json:"created_by" gorm:"index;not null"`
+	CreatedAt          time.Time  `json:"created_at"`
+	UpdatedAt          time.Time  `json:"updated_at"`
+	DeletedAt          *time.Time `json:"deleted_at,omitempty" gorm:"index"`
 }
 
 const (
@@ -476,13 +480,14 @@ type TeamContestProblem struct {
 }
 
 type TeamProblemSet struct {
-	ID          uint      `json:"id" gorm:"primaryKey"`
-	TeamID      uint      `json:"team_id" gorm:"index;not null"`
-	Title       string    `json:"title" gorm:"size:200;not null"`
-	Description string    `json:"description" gorm:"type:text"`
-	CreatedBy   uint      `json:"created_by" gorm:"index;not null"`
-	CreatedAt   time.Time `json:"created_at"`
-	UpdatedAt   time.Time `json:"updated_at"`
+	ID          uint       `json:"id" gorm:"primaryKey"`
+	TeamID      uint       `json:"team_id" gorm:"index;not null"`
+	Title       string     `json:"title" gorm:"size:200;not null"`
+	Description string     `json:"description" gorm:"type:text"`
+	CreatedBy   uint       `json:"created_by" gorm:"index;not null"`
+	CreatedAt   time.Time  `json:"created_at"`
+	UpdatedAt   time.Time  `json:"updated_at"`
+	DeletedAt   *time.Time `json:"deleted_at,omitempty" gorm:"index"`
 }
 
 type TeamProblemSetProblem struct {

@@ -11,9 +11,11 @@
           <h1>{{ detail.problem_set.title }}</h1>
           <p>{{ detail.problem_set.description || '团队私有训练题单' }}</p>
         </div>
-        <div v-if="canOrganize" class="heading-actions">
-          <el-button @click="addVisible = true">添加已有题目</el-button>
-          <el-button v-if="canAuthor" type="primary" @click="createPrivateProblem">新建私有题目</el-button>
+        <div v-if="canOrganize || detail.can_edit || detail.can_delete" class="heading-actions">
+          <el-button v-if="detail.can_edit" @click="openEditSet">编辑题单信息</el-button>
+          <el-button v-if="canOrganize" @click="addVisible = true">添加已有题目</el-button>
+          <el-button v-if="canOrganize && canAuthor" type="primary" @click="createPrivateProblem">新建私有题目</el-button>
+          <el-button v-if="detail.can_delete" type="danger" plain :loading="deleting" @click="deleteSet">删除题单</el-button>
         </div>
       </header>
 
@@ -148,6 +150,17 @@
       </template>
     </el-dialog>
 
+    <el-dialog v-model="editVisible" title="编辑题单信息" width="min(520px, calc(100vw - 24px))">
+      <el-form label-position="top">
+        <el-form-item label="题单标题"><el-input v-model="editForm.title" maxlength="200" /></el-form-item>
+        <el-form-item label="题单说明"><el-input v-model="editForm.description" type="textarea" :rows="5" /></el-form-item>
+      </el-form>
+      <template #footer>
+        <el-button @click="editVisible = false">取消</el-button>
+        <el-button type="primary" :loading="editing" @click="saveSet">保存修改</el-button>
+      </template>
+    </el-dialog>
+
     <el-dialog v-model="submitVisible" :title="`提交 ${selectedLink ? problemSetLabel(selectedIndex) : ''} ${selectedLink?.problem?.title || ''}`" width="min(900px, calc(100vw - 24px))" destroy-on-close>
       <SubmissionComposer
         ref="composerRef"
@@ -202,6 +215,10 @@ const posting = ref(false)
 const addVisible = ref(false)
 const adding = ref(false)
 const problemCode = ref('')
+const editVisible = ref(false)
+const editing = ref(false)
+const deleting = ref(false)
+const editForm = reactive({ title: '', description: '' })
 const submitVisible = ref(false)
 const submitting = ref(false)
 const language = ref('cpp')
@@ -301,6 +318,51 @@ function resetSubmissionFilters() {
 
 function createPrivateProblem() {
   router.push({ path: '/problems/create', query: { teamId: teamID.value, problemSetId: problemSetID.value } })
+}
+
+function openEditSet() {
+  const set = detail.value?.problem_set
+  if (!set) return
+  Object.assign(editForm, { title: set.title, description: set.description || '' })
+  editVisible.value = true
+}
+
+async function saveSet() {
+  if (!editForm.title.trim()) {
+    ElMessage.warning('请输入题单标题')
+    return
+  }
+  editing.value = true
+  try {
+    await client.put(`/problem-sets/${problemSetID.value}`, editForm)
+    editVisible.value = false
+    ElMessage.success('题单信息已更新')
+    await load()
+  } catch (err: any) {
+    ElMessage.error(err.response?.data?.error || err.message)
+  } finally {
+    editing.value = false
+  }
+}
+
+async function deleteSet() {
+  const set = detail.value?.problem_set
+  if (!set) return
+  try {
+    await ElMessageBox.confirm(
+      `确认删除题单“${set.title}”？题单内的题目本身不会被删除，此操作不可撤销。`,
+      '删除团队题单',
+      { type: 'error', confirmButtonText: '确认删除', cancelButtonText: '取消', confirmButtonClass: 'el-button--danger' },
+    )
+    deleting.value = true
+    await client.delete(`/problem-sets/${problemSetID.value}`)
+    ElMessage.success('团队题单已删除')
+    await router.replace(detail.value?.team?.slug ? `/teams/${detail.value.team.slug}/problem-sets` : '/teams')
+  } catch (err: any) {
+    if (err !== 'cancel' && err !== 'close') ElMessage.error(err.response?.data?.error || err.message)
+  } finally {
+    deleting.value = false
+  }
 }
 
 async function addProblem() {
@@ -481,7 +543,7 @@ onBeforeUnmount(() => { for (const stream of liveStreams) stream.close() })
 .set-heading > div > span { color: var(--accent); font-size: 11px; font-weight: 800; letter-spacing: .15em; }
 .set-heading h1 { margin: 8px 0 5px; font-size: 31px; }
 .set-heading p { margin: 0; color: var(--muted); }
-.heading-actions { display: flex; gap: 9px; }
+.heading-actions { display: flex; justify-content: flex-end; flex-wrap: wrap; gap: 9px; }
 .set-tabs { display: flex; gap: 5px; margin-bottom: 16px; border-bottom: 1px solid var(--border); }
 .set-tabs button { padding: 14px 24px; color: var(--muted); border: 0; border-bottom: 3px solid transparent; background: transparent; cursor: pointer; }
 .set-tabs button.active { color: var(--accent); border-bottom-color: var(--accent); font-weight: 800; }
@@ -508,5 +570,5 @@ onBeforeUnmount(() => { for (const stream of liveStreams) stream.close() })
 .discussion-author > div { display: grid; gap: 2px; margin-right: auto; }
 .discussion-author span { color: var(--muted); font-size: 12px; }
 .dialog-hint { color: var(--muted); }
-@media (max-width: 760px) { .problem-set-page { padding: 16px 13px 42px; } .set-heading { align-items: stretch; flex-direction: column; } .heading-actions { flex-direction: column; } .discussion-layout { grid-template-columns: 1fr; } .submission-toolbar { align-items: stretch; flex-wrap: wrap; } }
+@media (max-width: 760px) { .problem-set-page { padding: 16px 13px 42px; } .set-heading { align-items: stretch; flex-direction: column; } .heading-actions { flex-direction: column; } .heading-actions :deep(.el-button) { width: 100%; margin: 0; } .discussion-layout { grid-template-columns: 1fr; } .submission-toolbar { align-items: stretch; flex-wrap: wrap; } }
 </style>

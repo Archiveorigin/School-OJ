@@ -6,6 +6,7 @@ import type {
   LeaderboardScoringRule,
   LeaderboardStatus
 } from './types'
+import { normalizeAwardPercents } from './awards'
 
 const problemColors = [
   '#ff46a0', '#ff7a45', '#f4c430', '#46b96b', '#23b7c8', '#3b82f6', '#6f76d9',
@@ -115,8 +116,6 @@ export function adaptTeamContestRanking(source: UnknownRecord | null | undefined
       id: row.user_id ?? index,
       rank: safeNumber(row.rank, index + 1),
       name: String(row.name || `参赛者 ${index + 1}`),
-      studentNo: String(row.student_no || '-'),
-      meta: `提交 ${safeNumber(row.submission_count)} 次`,
       solved: safeNumber(row.solved),
       metric,
       metricDisplay: rule === 'score' ? `${metric}/${maxScore}` : String(metric),
@@ -125,16 +124,23 @@ export function adaptTeamContestRanking(source: UnknownRecord | null | undefined
       results
     }
   })
+  const awardSource = source?.award_percentages || source?.awards || contest
+  const awardPercents = normalizeAwardPercents({
+    gold: awardSource?.gold_award_percent,
+    silver: awardSource?.silver_award_percent,
+    bronze: awardSource?.bronze_award_percent
+  })
   return {
     scoringRule: rule,
     title: String(contest.title || fallback.title || '团队比赛实时榜单'),
     subtitle: rule === 'score' ? '总分优先 · 满分题数次序' : '题数优先 · 罚时排名',
     durationSeconds,
     currentTimeSeconds: currentTimeFromRange(contest.starts_at, durationSeconds),
-    identityLabel: '学生 / 学号',
     solvedLabel: rule === 'score' ? '满分' : '题数',
     metricLabel: rule === 'score' ? '总分' : '罚时',
     metricDirection: rule === 'score' ? 'descending' : 'ascending',
+    participantCount: Math.max(rows.length, safeNumber(source?.participant_count ?? source?.total_participants, rows.length)),
+    awardPercents,
     problems,
     rows
   }
@@ -181,8 +187,6 @@ export function adaptExamRanking(source: UnknownRecord | null | undefined): Lead
       id: row.user_id ?? index,
       rank: safeNumber(row.rank, index + 1),
       name: String(row.name || `学生 ${index + 1}`),
-      studentNo: String(row.student_no || '-'),
-      meta: `提交 ${safeNumber(row.submission_count)} 次${safeNumber(row.pending_count) ? ` · ${safeNumber(row.pending_count)} 项待评分` : ''}`,
       solved: safeNumber(row.solved),
       metric,
       metricDisplay: rule === 'score' ? `${totalScore}/${maxScore}` : String(metric),
@@ -197,10 +201,11 @@ export function adaptExamRanking(source: UnknownRecord | null | undefined): Lead
     subtitle: [exam.course_name, exam.class_name].filter(Boolean).join(' · ') || '课程考试',
     durationSeconds,
     currentTimeSeconds: currentTimeFromRange(exam.starts_at, durationSeconds, source?.now),
-    identityLabel: '学生 / 学号',
     solvedLabel: rule === 'score' ? '满分' : '题数',
     metricLabel: rule === 'score' ? '总分' : '罚时',
     metricDirection: rule === 'score' ? 'descending' : 'ascending',
+    participantCount: Math.max(rows.length, safeNumber(source?.participant_count ?? source?.total_participants, rows.length)),
+    awardPercents: normalizeAwardPercents(),
     problems,
     rows
   }

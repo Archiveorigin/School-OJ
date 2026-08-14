@@ -11,10 +11,11 @@ References used for this update:
 
 1. Shared title and control area: title, ranking display mode, time slider, participant filter, refresh, summary, theme, and fullscreen controls.
 2. Scoring-rule router: `penalty` renders the penalty table; `score` renders the score table. The rule is fixed by the exam/contest creation choice and is not a viewer-side toggle.
-3. Sticky scoreboard header: student identity, ranking metrics, and one column per problem. The sticky viewport is outside all horizontal overflow ancestors.
-4. Horizontally scrollable rows: each scoring branch owns a body-only horizontal scroller and mirrors its `scrollLeft` onto the header track. Student name and student number replace all team, coach, player, school, class, and organization identity from the source pages.
+3. Sticky scoreboard header: ranking metrics and one column per problem. There is no separate identity property column. The sticky viewport is outside all horizontal overflow ancestors.
+4. Horizontally scrollable rows: each scoring branch owns a body-only horizontal scroller and mirrors its `scrollLeft` onto the header track. Every row contains a full-width name line above its metric cells and a low-opacity college watermark; only the user's name is rendered.
 5. Footer legend and last-updated time.
 6. Summary overlay.
+7. Award derivation: the full, unfiltered participant list is partitioned by cumulative gold/silver/bronze percentages; the default 10/10/10 allocation marks the top 30%.
 
 The scoreboard document keeps a fixed minimum table width and scrolls horizontally on narrow screens. The page scrolls vertically at its natural height; there is no 650 px internal vertical viewport. Horizontal overflow belongs only to the row-body scroller, while its sibling header stays sticky and follows the body scroller's horizontal offset.
 

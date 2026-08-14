@@ -1,5 +1,5 @@
 <template>
-  <section class="panel problem-overview">
+  <section class="panel problem-overview" :class="{ 'problem-overview--embedded': embedded }">
     <header>
       <div>
         <span class="eyebrow">PROBLEM OVERVIEW</span>
@@ -34,10 +34,13 @@
 <script setup lang="ts">
 import type { Problem } from '../api/client'
 
-defineProps<{
+withDefaults(defineProps<{
   items: Array<{ problem: Problem; label?: string; score?: number; submission_status?: string }>
   activeProblemId?: number
-}>()
+  embedded?: boolean
+}>(), {
+  embedded: false
+})
 const emit = defineEmits<{ select: [problemID: number] }>()
 
 function statusClass(status?: string) {
@@ -60,6 +63,23 @@ function defaultProblemLabel(index: number) {
 <style scoped>
 .problem-overview { width: min(1120px, 100%); margin: 0 auto; padding: 22px 26px; }
 .problem-overview > header { display: flex; align-items: end; justify-content: space-between; gap: 20px; margin-bottom: 18px; }
+.problem-overview--embedded {
+  width: 100%;
+  margin: 0;
+  padding: 0;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  box-shadow: none;
+  backdrop-filter: none;
+}
+.problem-overview--embedded:hover { border-color: transparent; box-shadow: none; }
+.problem-overview--embedded > header {
+  margin-bottom: 0;
+  padding: 6px 0 18px;
+  border-bottom: 1px solid var(--border);
+}
+.problem-overview--embedded .overview-table-wrap { width: 100%; }
 .eyebrow { color: var(--accent); font-size: 11px; font-weight: 800; letter-spacing: .14em; }
 h2 { margin: 5px 0 0; font-size: 23px; }
 .legend { display: flex; align-items: center; flex-wrap: wrap; gap: 14px; color: var(--muted); font-size: 12px; }
@@ -79,7 +99,9 @@ td button { padding: 0; color: #2494dd; border: 0; background: transparent; font
 :global(.dark) tbody tr.attempted { background: color-mix(in srgb, #ef4444 20%, var(--surface-strong)); }
 @media (max-width: 680px) {
   .problem-overview { padding: 16px 12px; }
+  .problem-overview--embedded { padding: 0; }
   .problem-overview > header { align-items: flex-start; flex-direction: column; }
+  .problem-overview--embedded > header { padding: 4px 0 14px; }
   th, td { padding: 13px 10px; }
 }
 </style>

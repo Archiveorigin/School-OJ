@@ -240,7 +240,6 @@ type examRankingRow struct {
 	Rank            int               `json:"rank"`
 	UserID          uint              `json:"user_id"`
 	Name            string            `json:"name"`
-	StudentNo       string            `json:"student_no"`
 	TotalScore      int               `json:"total_score"`
 	MaxScore        int               `json:"max_score"`
 	Solved          int               `json:"solved"`
@@ -253,6 +252,7 @@ type examRankingRow struct {
 	LastSubmission  *time.Time        `json:"last_submission"`
 	FinishedAt      *time.Time        `json:"finished_at"`
 	Problems        []examRankingCell `json:"problems"`
+	studentNo       string
 }
 
 type examSubmissionLookup struct {
@@ -2636,7 +2636,7 @@ func (s Server) deleteProblem(c *gin.Context) {
 	if err := s.DB.Transaction(func(tx *gorm.DB) error {
 		linkedContestIDs := tx.Model(&models.TeamContestProblem{}).Select("contest_id").Where("problem_id = ?", problem.ID)
 		var linkedContests []models.TeamContest
-		if err := tx.Clauses(clause.Locking{Strength: "UPDATE"}).Where("id IN (?)", linkedContestIDs).Find(&linkedContests).Error; err != nil {
+		if err := tx.Clauses(clause.Locking{Strength: "UPDATE"}).Where("id IN (?) AND deleted_at IS NULL", linkedContestIDs).Find(&linkedContests).Error; err != nil {
 			return err
 		}
 		for _, contest := range linkedContests {
@@ -3498,7 +3498,7 @@ func (s Server) examRankingRows(item models.Exam, students []models.User, scorin
 	for _, student := range students {
 		attempt := attempts[student.ID]
 		summary := workSummaryForExamLinksFromSubmissions(item.Problems, submissions.ByUserProblem[student.ID], manualReview, attempt.Attempted, true)
-		row := examRankingRow{UserID: student.ID, Name: student.Name, StudentNo: student.StudentNo, TotalScore: summary.TotalScore, MaxScore: summary.MaxScore, SubmissionCount: submissions.CountByUser[student.ID], LastSubmission: submissions.LastByUser[student.ID], ScoreReady: summary.ScoreReady, WorkStatus: summary.WorkStatus, FinishedAt: attempt.FinishedAt, Problems: make([]examRankingCell, 0, len(summary.Problems))}
+		row := examRankingRow{UserID: student.ID, Name: student.Name, TotalScore: summary.TotalScore, MaxScore: summary.MaxScore, SubmissionCount: submissions.CountByUser[student.ID], LastSubmission: submissions.LastByUser[student.ID], ScoreReady: summary.ScoreReady, WorkStatus: summary.WorkStatus, FinishedAt: attempt.FinishedAt, Problems: make([]examRankingCell, 0, len(summary.Problems)), studentNo: student.StudentNo}
 		if row.FinishedAt != nil {
 			finishedRows++
 		}
@@ -3745,8 +3745,8 @@ func sortExamRankingRows(rows []examRankingRow, scoringRule string) {
 		if cmp := compareTimePtr(left.FinishedAt, right.FinishedAt); cmp != 0 {
 			return cmp < 0
 		}
-		if left.StudentNo != right.StudentNo {
-			return left.StudentNo < right.StudentNo
+		if left.studentNo != right.studentNo {
+			return left.studentNo < right.studentNo
 		}
 		if left.Name != right.Name {
 			return left.Name < right.Name
@@ -3874,7 +3874,7 @@ func (s Server) exportExamReport(c *gin.Context) {
 	rows := [][]xlsxCell{{xlsxString("学生姓名"), xlsxString("学号"), xlsxString("通过题目数"), xlsxString("所得分数")}}
 	rankingRows, _, _ := s.examRankingRows(item, students, "score")
 	for _, row := range rankingRows {
-		rows = append(rows, []xlsxCell{xlsxString(row.Name), xlsxString(row.StudentNo), xlsxNumber(row.Solved), xlsxNumber(row.TotalScore)})
+		rows = append(rows, []xlsxCell{xlsxString(row.Name), xlsxString(row.studentNo), xlsxNumber(row.Solved), xlsxNumber(row.TotalScore)})
 	}
 	body, err := buildXLSX(rows)
 	if err != nil {
@@ -4007,7 +4007,7 @@ func studentDisplayName(student models.User, row examRankingRow) string {
 	}
 	studentNo := student.StudentNo
 	if studentNo == "" {
-		studentNo = row.StudentNo
+		studentNo = row.studentNo
 	}
 	if studentNo != "" {
 		return fmt.Sprintf("%s（%s）", name, studentNo)

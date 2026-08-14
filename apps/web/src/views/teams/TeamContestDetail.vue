@@ -12,8 +12,9 @@
           <el-tag :type="statusType(detail.contest.status)" size="large">{{ statusLabel(detail.contest.status) }}</el-tag>
           <span>{{ detail.problems.length }} 道题目</span>
           <el-button v-if="detail.can_edit" @click="openEditContest">编辑设置</el-button>
-          <el-button v-if="detail.can_edit" @click="addVisible = true">添加题目</el-button>
+          <el-button v-if="detail.can_publish" @click="addVisible = true">添加题目</el-button>
           <el-button v-if="detail.can_publish" type="success" @click="publishContest">发布并冻结</el-button>
+          <el-button v-if="detail.can_delete" type="danger" plain :loading="deleting" @click="deleteContest">删除比赛</el-button>
         </div>
       </header>
 
@@ -22,18 +23,19 @@
           <button v-for="tab in tabs" :key="tab.key" type="button" :class="{ active: activeTab === tab.key }" @click="openTab(tab.key)">{{ tab.label }}</button>
         </nav>
 
-        <ProblemOverview v-if="activeTab === 'overview'" :items="detail.problems" :active-problem-id="selectedLink?.problem_id" @select="openContestProblem" />
+        <ProblemOverview v-if="activeTab === 'overview'" embedded :items="detail.problems" :active-problem-id="selectedLink?.problem_id" @select="openContestProblem" />
 
         <section v-else-if="activeTab === 'problems'" class="problem-workspace">
           <div v-if="selectedLink" class="problem-actions">
             <div class="manage-actions">
-              <el-button v-if="detail.can_edit" @click="addVisible = true">添加题目</el-button>
-              <el-button v-if="detail.can_edit" type="danger" text @click="removeProblem">移出比赛</el-button>
+              <el-button v-if="detail.can_publish" @click="addVisible = true">添加题目</el-button>
+              <el-button v-if="detail.can_publish" type="danger" text @click="removeProblem">移出比赛</el-button>
             </div>
             <el-button type="primary" :disabled="!detail.can_submit" @click="openSubmit">提交代码</el-button>
           </div>
           <ProblemStatementView
             v-if="selectedLink"
+            embedded
             :problem="selectedLink.problem"
             :problem-number="selectedLink.label"
             :status-text="problemStatusText(selectedLink.submission_status)"
@@ -43,7 +45,7 @@
           <div v-if="detail.problems.length > 1" class="problem-switcher">
             <button v-for="link in detail.problems" :key="link.problem_id" type="button" :class="{ active: link.problem_id === selectedLink?.problem_id }" @click="openContestProblem(link.problem_id)">{{ link.label }}</button>
           </div>
-          <el-empty v-if="!selectedLink" description="比赛暂未添加题目"><el-button v-if="detail.can_edit" type="primary" @click="addVisible = true">添加第一道题</el-button></el-empty>
+          <el-empty v-if="!selectedLink" description="比赛暂未添加题目"><el-button v-if="detail.can_publish" type="primary" @click="addVisible = true">添加第一道题</el-button></el-empty>
         </section>
 
         <section v-else-if="activeTab === 'records'" class="panel records-panel">
@@ -82,12 +84,19 @@
         <template #footer><el-button @click="addVisible = false">取消</el-button><el-button type="primary" :loading="adding" @click="addProblem">添加</el-button></template>
       </el-dialog>
 
-      <el-dialog v-model="editVisible" title="编辑比赛草稿" width="560px">
+      <el-dialog v-model="editVisible" title="编辑比赛设置" width="min(640px, calc(100vw - 24px))">
         <el-form label-position="top">
           <el-form-item label="比赛标题"><el-input v-model="editForm.title" maxlength="200" /></el-form-item>
           <el-form-item label="开始时间"><el-date-picker v-model="editForm.starts_at" type="datetime" value-format="YYYY-MM-DDTHH:mm:ssZ" /></el-form-item>
           <el-form-item label="比赛时长"><el-input-number v-model="editForm.duration_minutes" :min="15" :step="15" /></el-form-item>
           <el-form-item label="计分方式"><el-radio-group v-model="editForm.scoring_rule"><el-radio-button value="penalty">通过数 + 罚时</el-radio-button><el-radio-button value="score">总分数</el-radio-button></el-radio-group></el-form-item>
+          <el-form-item label="奖项比例">
+            <TeamContestAwardFields
+              v-model:gold-award-percent="editForm.gold_award_percent"
+              v-model:silver-award-percent="editForm.silver_award_percent"
+              v-model:bronze-award-percent="editForm.bronze_award_percent"
+            />
+          </el-form-item>
           <el-form-item label="说明"><el-input v-model="editForm.description" type="textarea" :rows="4" /></el-form-item>
         </el-form>
         <template #footer><el-button @click="editVisible = false">取消</el-button><el-button type="primary" :loading="editing" @click="saveContest">保存</el-button></template>
@@ -106,9 +115,11 @@ import ProblemOverview from '../../components/ProblemOverview.vue'
 import ProblemStatementView from '../../components/ProblemStatementView.vue'
 import StatusBadge from '../../components/StatusBadge.vue'
 import SubmissionComposer from '../../components/SubmissionComposer.vue'
+import TeamContestAwardFields from '../../components/TeamContestAwardFields.vue'
 import { formatDateTime } from '../../features/time'
 import { adaptTeamContestRanking } from '../../features/leaderboard/adapters'
 import { loadSubmissionDraft } from '../../features/submissions/drafts'
+import { contestAwardValidationError, defaultContestAwardPercents } from '../../features/teams/contestAwards'
 import { useAuthStore } from '../../stores/auth'
 
 type ContestTab = 'overview' | 'problems' | 'records' | 'ranking'
@@ -136,7 +147,8 @@ const adding = ref(false)
 const problemCode = ref('')
 const editVisible = ref(false)
 const editing = ref(false)
-const editForm = reactive({ title: '', description: '', starts_at: '', duration_minutes: 120, scoring_rule: 'penalty' })
+const deleting = ref(false)
+const editForm = reactive({ title: '', description: '', starts_at: '', duration_minutes: 120, scoring_rule: 'penalty', ...defaultContestAwardPercents() })
 let submissionStream: AuthenticatedEventSource | null = null
 let rankingRefreshTimer: number | undefined
 
@@ -161,6 +173,11 @@ async function loadDetail() {
   try {
     detail.value = (await client.get(`/contests/${contestID.value}`)).data
     await loadRecords()
+    if (route.query.manage === 'edit' && detail.value?.can_edit) {
+      openEditContest()
+      const { manage: _manage, ...query } = route.query
+      await router.replace({ path: route.path, query, hash: route.hash || '#overview' })
+    }
   } catch (err: any) {
     ElMessage.error(err.response?.data?.error || err.message)
     await router.replace('/teams')
@@ -215,12 +232,23 @@ async function publishContest() {
 function openEditContest() {
   const contest = detail.value?.contest
   if (!contest) return
-  Object.assign(editForm, { title: contest.title, description: contest.description || '', starts_at: contest.starts_at || '', duration_minutes: contest.duration_minutes, scoring_rule: contest.scoring_rule || 'penalty' })
+  Object.assign(editForm, {
+    title: contest.title,
+    description: contest.description || '',
+    starts_at: contest.starts_at || '',
+    duration_minutes: contest.duration_minutes,
+    scoring_rule: contest.scoring_rule || 'penalty',
+    gold_award_percent: contest.gold_award_percent ?? 10,
+    silver_award_percent: contest.silver_award_percent ?? 10,
+    bronze_award_percent: contest.bronze_award_percent ?? 10,
+  })
   editVisible.value = true
 }
 
 async function saveContest() {
   if (!editForm.title.trim() || !editForm.starts_at) return ElMessage.warning('请填写标题和开始时间')
+  const awardError = contestAwardValidationError(editForm)
+  if (awardError) return ElMessage.warning(awardError)
   editing.value = true
   try {
     await client.put(`/contests/${contestID.value}`, editForm)
@@ -229,6 +257,26 @@ async function saveContest() {
     await loadDetail()
   } catch (err: any) { ElMessage.error(err.response?.data?.error || err.message) }
   finally { editing.value = false }
+}
+
+async function deleteContest() {
+  const contest = detail.value?.contest
+  if (!contest) return
+  try {
+    await ElMessageBox.confirm(
+      `确认删除比赛“${contest.title}”？比赛题目关联与榜单将不再对团队成员显示，此操作不可撤销。`,
+      '删除团队比赛',
+      { type: 'error', confirmButtonText: '确认删除', cancelButtonText: '取消', confirmButtonClass: 'el-button--danger' },
+    )
+    deleting.value = true
+    await client.delete(`/contests/${contestID.value}`)
+    ElMessage.success('团队比赛已删除')
+    await router.replace(detail.value?.team?.slug ? `/teams/${detail.value.team.slug}/contests` : '/teams')
+  } catch (err: any) {
+    if (err !== 'cancel' && err !== 'close') ElMessage.error(err.response?.data?.error || err.message)
+  } finally {
+    deleting.value = false
+  }
 }
 
 async function addProblem() {
@@ -324,7 +372,7 @@ onBeforeUnmount(() => { submissionStream?.close(); clearRankingRefresh() })
 .contest-tabs button { padding: 13px 22px; white-space: nowrap; color: var(--muted); border: 0; border-bottom: 3px solid transparent; background: transparent; cursor: pointer; }
 .contest-tabs button.active { color: var(--accent); border-bottom-color: var(--accent); font-weight: 800; }
 .problem-workspace { display: grid; gap: 14px; }
-.problem-actions { justify-content: flex-end; }
+.problem-actions { justify-content: flex-end; padding-bottom: 14px; border-bottom: 1px solid var(--border); }
 .manage-actions { display: flex; gap: 8px; margin-right: auto; }
 .problem-switcher { display: flex; justify-content: center; flex-wrap: wrap; gap: 8px; }
 .problem-switcher button { min-width: 38px; padding: 8px 11px; border: 1px solid var(--border); border-radius: 7px; background: var(--surface-strong); color: var(--text); cursor: pointer; }
@@ -336,7 +384,8 @@ onBeforeUnmount(() => { submissionStream?.close(); clearRankingRefresh() })
 @media (max-width: 720px) {
   .contest-page { padding: 16px 12px 44px; }
   .contest-header, .problem-actions { align-items: stretch; flex-direction: column; }
-  .header-status, .manage-actions { flex-wrap: wrap; }
+  .header-status, .manage-actions { justify-content: flex-start; flex-wrap: wrap; }
+  .header-status :deep(.el-button), .manage-actions :deep(.el-button) { margin-left: 0; }
   .problem-actions > .el-button { width: 100%; }
 }
 </style>

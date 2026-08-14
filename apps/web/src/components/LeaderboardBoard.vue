@@ -37,7 +37,7 @@
             </div>
 
             <div class="score-filter-group">
-              <input v-model="query" class="score-query-input" type="search" placeholder="筛选学生…" aria-label="筛选学生" />
+              <input v-model="query" class="score-query-input" type="search" placeholder="筛选姓名…" aria-label="筛选姓名" />
               <label class="score-check"><input v-model="attemptedOnly" type="checkbox" /><span>有提交</span></label>
               <label class="score-check"><input v-model="solvedOnly" type="checkbox" /><span>{{ data.scoringRule === 'score' ? '有满分' : '有通过' }}</span></label>
               <label v-if="showAutoRefresh" class="score-check"><input :checked="autoRefresh" type="checkbox" @change="updateAutoRefresh" /><span>自动刷新</span></label>
@@ -73,23 +73,34 @@
           :data="data"
           :rows="filteredRows"
           :mode="mode"
+          :rankByID="rankByID"
+          :awardByID="awardByID"
         />
         <ScoreLeaderboardTable
           v-else
           :data="data"
           :rows="filteredRows"
           :mode="mode"
+          :rankByID="rankByID"
+          :awardByID="awardByID"
         />
         <div v-if="error" class="rank-empty"><strong>榜单暂不可用</strong><span>{{ error }}</span></div>
         <div v-else-if="!loading && !filteredRows.length" class="rank-empty">{{ emptyText }}</div>
       </div>
 
       <footer class="scoreboard-footer">
-        <div v-if="data.scoringRule === 'penalty'" class="score-legend">
-          <span class="accepted">已通过</span><span class="wrong">未通过</span><span class="pending">评测中</span><span class="first">★ 最快通过</span>
-        </div>
-        <div v-else class="score-legend">
-          <span class="accepted">满分</span><span class="wrong">未满分</span><span class="pending">待评分</span>
+        <div class="scoreboard-legends">
+          <div class="award-legend" aria-label="奖项百分比">
+            <span class="award-gold">金 {{ awardPercents.gold }}%</span>
+            <span class="award-silver">银 {{ awardPercents.silver }}%</span>
+            <span class="award-bronze">铜 {{ awardPercents.bronze }}%</span>
+          </div>
+          <div v-if="data.scoringRule === 'penalty'" class="score-legend">
+            <span class="accepted">已通过</span><span class="wrong">未通过</span><span class="pending">评测中</span><span class="first">★ 最快通过</span>
+          </div>
+          <div v-else class="score-legend">
+            <span class="accepted">满分</span><span class="wrong">未满分</span><span class="pending">待评分</span>
+          </div>
         </div>
         <small v-if="updatedAt">更新于 {{ updatedAt }}</small>
       </footer>
@@ -100,7 +111,7 @@
         <button type="button" class="summary-close" aria-label="关闭汇总" @click="summaryOpen = false">×</button>
         <h2 id="scoreboard-summary-title">榜单汇总</h2>
         <div class="summary-cards">
-          <div class="summary-card"><strong>{{ filteredRows.length }}</strong><span>学生</span></div>
+          <div class="summary-card"><strong>{{ filteredRows.length }}</strong><span>参赛者</span></div>
           <div class="summary-card"><strong>{{ summary.attempted }}</strong><span>有提交</span></div>
           <div class="summary-card"><strong>{{ summary.solved }}</strong><span>{{ data.scoringRule === 'score' ? '有满分' : '有通过' }}</span></div>
           <div class="summary-card"><strong>{{ data.problems.length }}</strong><span>题目</span></div>
@@ -114,7 +125,8 @@
 import { computed, ref, watch } from 'vue'
 import PenaltyLeaderboardTable from './PenaltyLeaderboardTable.vue'
 import ScoreLeaderboardTable from './ScoreLeaderboardTable.vue'
-import type { LeaderboardData } from '../features/leaderboard/types'
+import { awardTierForRank, normalizeAwardPercents } from '../features/leaderboard/awards'
+import type { LeaderboardAwardTier, LeaderboardData } from '../features/leaderboard/types'
 import { sortLeaderboardRows, type LeaderboardViewMode } from '../features/leaderboard/sorting'
 
 const props = withDefaults(defineProps<{
@@ -152,15 +164,26 @@ const moreOpen = ref(false)
 watch(() => props.data.currentTimeSeconds, (value) => { currentTime.value = value })
 
 const progress = computed(() => props.data.durationSeconds ? Math.min(100, Math.max(0, currentTime.value / props.data.durationSeconds * 100)) : 0)
+const rankedRows = computed(() => sortLeaderboardRows(props.data.rows, props.data.scoringRule, mode.value))
+const actualParticipantCount = computed(() => Math.max(props.data.rows.length, Number(props.data.participantCount) || 0))
+const awardPercents = computed(() => normalizeAwardPercents(props.data.awardPercents))
+const rankByID = computed<Record<string, number>>(() => Object.fromEntries(
+  rankedRows.value.map((row, index) => [String(row.id), mode.value === 'performance' ? index + 1 : row.rank])
+))
+const awardByID = computed<Record<string, LeaderboardAwardTier>>(() => Object.fromEntries(
+  rankedRows.value.map((row) => {
+    const rank = rankByID.value[String(row.id)] ?? row.rank
+    return [String(row.id), awardTierForRank(rank, actualParticipantCount.value, awardPercents.value)]
+  })
+))
 const filteredRows = computed(() => {
   const keyword = query.value.trim().toLocaleLowerCase()
-  const rows = props.data.rows.filter((row) => {
+  return rankedRows.value.filter((row) => {
     if (attemptedOnly.value && row.submissions <= 0) return false
     if (solvedOnly.value && row.solved <= 0) return false
     if (!keyword) return true
-    return [row.name, row.studentNo, row.meta].filter(Boolean).join('\n').toLocaleLowerCase().includes(keyword)
+    return row.name.toLocaleLowerCase().includes(keyword)
   })
-  return sortLeaderboardRows(rows, props.data.scoringRule, mode.value)
 })
 const summary = computed(() => ({
   attempted: filteredRows.value.filter((row) => row.submissions > 0).length,
@@ -199,13 +222,11 @@ async function toggleFullscreen() {
   --score-header-bg: #f7f8fa;
   --score-header-separator: #e8edf3;
   --score-card-border: #d9e0e8;
-  --student-avatar-color: #5b78a1;
-  --student-avatar-bg: #e8f0fb;
   position: relative;
   min-width: 0;
   overflow: visible;
-  border: 1px solid var(--score-border);
-  border-radius: 10px;
+  border: 0;
+  border-radius: 0;
   color: var(--score-text);
   background: #eef2f7;
   font-family: Inter, ui-sans-serif, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
@@ -220,8 +241,6 @@ async function toggleFullscreen() {
   --score-header-bg: #121c2d;
   --score-header-separator: #243149;
   --score-card-border: #46546a;
-  --student-avatar-color: #9cbdf0;
-  --student-avatar-bg: #263a59;
   background: #0b1220;
 }
 .scoreboard-shell[data-theme="macaron"] {
@@ -234,12 +253,10 @@ async function toggleFullscreen() {
   --score-header-bg: #fff7fb;
   --score-header-separator: #eee3ee;
   --score-card-border: #e9d9e7;
-  --student-avatar-color: #8b6c91;
-  --student-avatar-bg: #f1e4f0;
   background: #f7f1fb;
 }
-.scoreboard-title { min-height: 68px; display: flex; align-items: center; gap: 12px; padding: 12px clamp(16px, 4vw, 40px); border-bottom: 1px solid var(--score-border); background: var(--score-card); }
-.scoreboard-title-icon { flex: none; width: 38px; height: 38px; display: grid; place-items: center; border-radius: 8px; color: #fff; background: linear-gradient(135deg, #0d6efd, #2451a4); font-size: 22px; font-weight: 900; }
+.scoreboard-title { min-height: 73px; display: flex; align-items: center; gap: 14px; padding: 10px clamp(16px, 4vw, 40px); border-bottom: 1px solid var(--score-border); background: var(--score-card); }
+.scoreboard-title-icon { flex: none; width: 48px; height: 48px; display: grid; place-items: center; border-radius: 0; color: #fff; background: #2563eb; font-size: 23px; font-weight: 900; }
 .scoreboard-title-text { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: clamp(17px, 2vw, 24px); font-weight: 800; }
 .scoreboard-subtitle { margin-left: auto; color: var(--score-muted); font-size: 13px; }
 .controls-time-section { padding: 8px clamp(16px, 4vw, 40px); border-bottom: 1px solid var(--score-border); background: var(--score-surface); }
@@ -267,6 +284,12 @@ async function toggleFullscreen() {
 .rank-table-region { width: 100%; min-width: 0; background: var(--score-surface); }
 .rank-empty { display: grid; gap: 5px; margin: 16px; padding: 48px; border: 1px dashed var(--score-border); border-radius: 8px; color: var(--score-muted); background: var(--score-card); text-align: center; }
 .scoreboard-footer { display: flex; align-items: center; justify-content: space-between; gap: 16px; padding: 10px 18px; border-top: 1px solid var(--score-border); color: var(--score-muted); background: var(--score-card); }
+.scoreboard-legends { min-width: 0; display: flex; align-items: center; flex-wrap: wrap; gap: 8px 16px; }
+.award-legend { display: flex; align-items: center; flex-wrap: wrap; gap: 6px; }
+.award-legend span { padding: 3px 8px; border: 1px solid transparent; border-radius: 999px; font-size: 11px; font-weight: 800; }
+.award-gold { border-color: #d6a700 !important; color: #765500; background: #fff4b8; }
+.award-silver { border-color: #a3a9b2 !important; color: #4b5563; background: #eef1f5; }
+.award-bronze { border-color: #b86f2e !important; color: #7c3f13; background: #f8ddc4; }
 .score-legend { display: flex; align-items: center; flex-wrap: wrap; gap: 8px; }
 .score-legend span { padding: 3px 7px; border-radius: 4px; font-size: 11px; }
 .score-legend .accepted { color: #166534; background: #dcfce7; }

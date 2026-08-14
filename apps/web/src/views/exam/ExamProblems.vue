@@ -1,9 +1,10 @@
 <template>
-  <template v-if="activeProblem">
+  <section v-if="activeProblem" class="embedded-problem-workspace">
     <div class="problem-submit-action">
       <el-button type="primary" :disabled="!detail.can_submit" @click="router.push(`/exams/${route.params.id}/submit`)">提交代码</el-button>
     </div>
     <ProblemStatementView
+      embedded
       :problem="activeProblem"
       :problem-number="displayNumber"
       :score="activeEntry?.score"
@@ -13,7 +14,7 @@
       :show-difficulty="false"
       :show-meta="false"
     />
-  </template>
+  </section>
   <div v-else class="panel empty-detail muted">请选择题目</div>
 </template>
 
@@ -87,6 +88,13 @@ function defaultProblemLabel(index: number) {
   place-items: center;
 }
 
-.problem-submit-action { display: flex; justify-content: flex-end; margin-bottom: 12px; }
+.embedded-problem-workspace { min-width: 0; }
+.problem-submit-action {
+  display: flex;
+  justify-content: flex-end;
+  margin-bottom: 22px;
+  padding-bottom: 14px;
+  border-bottom: 1px solid var(--border);
+}
 
 </style>

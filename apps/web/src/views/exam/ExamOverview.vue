@@ -1,5 +1,5 @@
 <template>
-  <ProblemOverview :items="switcherEntries" :active-problem-id="activeProblemId" @select="openProblem" />
+  <ProblemOverview embedded :items="switcherEntries" :active-problem-id="activeProblemId" @select="openProblem" />
 </template>
 
 <script setup lang="ts">

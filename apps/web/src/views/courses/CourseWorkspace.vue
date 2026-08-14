@@ -17,17 +17,15 @@
           <el-skeleton v-else :rows="2" animated class="course-heading" />
           <div class="course-functions">
             <span>课程功能</span>
-            <el-dropdown trigger="click" placement="bottom-end" @command="handleCourseCommand">
-              <button class="qr-menu-button" type="button" aria-label="打开课程扫码功能">
-                <img src="/course.jpg" alt="" />
-              </button>
-              <template #dropdown>
-                <el-dropdown-menu>
-                  <el-dropdown-item command="qr">扫码加入课程</el-dropdown-item>
-                  <el-dropdown-item command="invite">课程邀请码登录</el-dropdown-item>
-                </el-dropdown-menu>
-              </template>
-            </el-dropdown>
+            <button
+              class="course-add-button"
+              type="button"
+              aria-label="输入课程邀请码"
+              title="输入课程邀请码"
+              @click="joinDialogs?.openInvite()"
+            >
+              <img :src="courseAddIcon" alt="" />
+            </button>
             <el-button v-if="canManage" text @click="router.push('/admin/courses')">管理课程</el-button>
           </div>
         </div>
@@ -41,61 +39,27 @@
     </nav>
     <main class="course-view"><router-view :key="route.fullPath" /></main>
 
-    <el-dialog v-model="qrVisible" title="扫码加入课程" width="420px" align-center class="course-qr-dialog">
-      <div class="qr-dialog-content">
-        <div class="qr-code-frame">
-          <QrcodeVue v-if="qrValue" :value="qrValue" :size="224" level="H" render-as="svg" :margin="2" />
-        </div>
-        <h3>{{ course?.name || '课程' }}</h3>
-        <p>{{ course?.code }} · {{ course?.term || '学期未设置' }}</p>
-        <div class="invite-code">
-          <span>课程邀请码</span>
-          <strong>{{ course?.join_code || '暂未生成' }}</strong>
-        </div>
-        <small>二维码与本课程邀请码唯一绑定，扫码后将进入课程加入页面。</small>
-      </div>
-    </el-dialog>
-
-    <el-dialog v-model="inviteVisible" title="课程邀请码登录" width="440px" align-center>
-      <div class="invite-dialog-content">
-        <p>输入任课教师提供的课程邀请码，也可以使用兼容的班级邀请码。</p>
-        <el-input v-model="inviteCode" size="large" clearable placeholder="请输入课程邀请码" @keyup.enter="joinCourse" />
-      </div>
-      <template #footer>
-        <el-button @click="inviteVisible = false">取消</el-button>
-        <el-button type="primary" :loading="joining" @click="joinCourse">进入课程</el-button>
-      </template>
-    </el-dialog>
+    <CourseJoinDialogs ref="joinDialogs" @joined="handleJoined" />
   </section>
 </template>
 
 <script setup lang="ts">
 import { ElMessage } from 'element-plus'
-import QrcodeVue from 'qrcode.vue'
 import { computed, onMounted, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { client } from '../../api/client'
+import courseAddIcon from '../../assets/course-add.svg'
+import CourseJoinDialogs from '../../components/CourseJoinDialogs.vue'
 import { useAuthStore } from '../../stores/auth'
 
 const auth = useAuthStore()
 const route = useRoute()
 const router = useRouter()
 const course = ref<any>(null)
-const qrVisible = ref(false)
-const inviteVisible = ref(false)
-const inviteCode = ref('')
-const joining = ref(false)
+const joinDialogs = ref<InstanceType<typeof CourseJoinDialogs> | null>(null)
 const courseID = computed(() => Number(route.params.courseId))
 const basePath = computed(() => `/my/courses/${courseID.value}`)
 const canManage = computed(() => auth.role === 'teacher' || auth.role === 'admin')
-const qrValue = computed(() => {
-  const code = course.value?.join_code || course.value?.code
-  if (!code) return ''
-  const url = new URL('/my/courses', window.location.origin)
-  url.searchParams.set('join_code', code)
-  url.searchParams.set('course', String(course.value?.code || courseID.value))
-  return url.toString()
-})
 
 async function loadCourse() {
   try {
@@ -110,43 +74,12 @@ async function loadCourse() {
   }
 }
 
-function handleCourseCommand(command: string) {
-  if (command === 'qr') {
-    qrVisible.value = true
+function handleJoined(joinedCourseID: number) {
+  if (Number.isInteger(joinedCourseID) && joinedCourseID > 0) {
+    router.push(`/my/courses/${joinedCourseID}`)
     return
   }
-  if (command === 'invite') {
-    inviteCode.value = ''
-    inviteVisible.value = true
-  }
-}
-
-async function joinCourse() {
-  const code = inviteCode.value.trim()
-  if (!code) {
-    ElMessage.warning('请输入课程邀请码')
-    return
-  }
-  joining.value = true
-  try {
-    try {
-      await client.post('/courses/join', { join_code: code })
-    } catch (courseError: any) {
-      if (courseError.response?.status !== 404) throw courseError
-      await client.post('/classes/join', { join_code: code })
-    }
-    const items = (await client.get('/courses')).data || []
-    const joined = items.find((item: any) => item.join_code === code)
-    inviteVisible.value = false
-    inviteCode.value = ''
-    ElMessage.success('课程登录成功')
-    if (joined) router.push(`/my/courses/${joined.id}`)
-    else router.push('/my/courses')
-  } catch (err: any) {
-    ElMessage.error(err.response?.data?.error || '邀请码无效')
-  } finally {
-    joining.value = false
-  }
+  router.push('/my/courses')
 }
 
 watch(courseID, loadCourse)
@@ -169,23 +102,15 @@ onMounted(loadCourse)
 .course-functions { display: flex; align-items: center; gap: 10px; padding-bottom: 2px; }
 .course-functions > span { color: #bae6fd; font-size: 12px; }
 .course-functions :deep(.el-button) { color: #dbeafe; }
-.qr-menu-button { width: 48px; height: 48px; display: grid; place-items: center; color: #083452; border: 1px solid rgba(255,255,255,.72); border-radius: 13px; background: #fff; box-shadow: 0 12px 30px rgba(0,0,0,.18); cursor: pointer; transition: transform .18s ease, box-shadow .18s ease; }
-.qr-menu-button:hover { transform: translateY(-2px); box-shadow: 0 16px 36px rgba(0,0,0,.24); }
-.qr-menu-button img { width: 38px; height: 42px; object-fit: cover; border-radius: 6px; }
+.course-add-button { width: 48px; height: 48px; display: grid; place-items: center; color: #083452; border: 1px solid rgba(255,255,255,.72); border-radius: 13px; background: #fff; box-shadow: 0 12px 30px rgba(0,0,0,.18); cursor: pointer; transition: transform .18s ease, box-shadow .18s ease; }
+.course-add-button:hover { transform: translateY(-2px); box-shadow: 0 16px 36px rgba(0,0,0,.24); }
+.course-add-button:focus-visible { outline: 3px solid #7dd3fc; outline-offset: 3px; }
+.course-add-button img { width: 34px; height: 34px; object-fit: contain; }
 .course-tabs { position: sticky; top: 0; z-index: 15; display: flex; gap: 8px; padding: 0 max(28px, calc((100vw - 1220px) / 2)); border-bottom: 1px solid var(--border); background: color-mix(in srgb, var(--surface-strong) 92%, transparent); backdrop-filter: blur(16px); }
 .course-tabs a { padding: 19px 26px 16px; color: var(--muted); border-bottom: 3px solid transparent; }
 .course-tabs a.active { color: var(--accent); border-bottom-color: var(--accent); font-weight: 800; }
 .course-view { min-height: calc(100vh - 265px); }
 .course-workspace :deep(.sub-hero) { display: none; }
 .course-workspace :deep(.sub-content) { padding-top: 24px; }
-.qr-dialog-content { display: grid; justify-items: center; text-align: center; }
-.qr-code-frame { display: grid; place-items: center; padding: 14px; border: 1px solid var(--border); border-radius: 18px; background: #fff; box-shadow: 0 16px 38px rgba(15, 50, 78, .12); }
-.qr-dialog-content h3 { margin: 20px 0 5px; }
-.qr-dialog-content p { margin: 0; color: var(--muted); }
-.invite-code { min-width: 250px; display: flex; align-items: center; justify-content: space-between; gap: 18px; margin: 18px 0 12px; padding: 13px 16px; border-radius: 10px; background: var(--app-bg); }
-.invite-code span, .qr-dialog-content small { color: var(--muted); }
-.invite-code strong { color: var(--accent); letter-spacing: .1em; }
-.qr-dialog-content small { line-height: 1.6; }
-.invite-dialog-content p { margin: 0 0 16px; color: var(--muted); line-height: 1.7; }
 @media (max-width: 680px) { .course-header-inner { padding: 15px 18px 28px; } .workspace-brand span { display: none; } .course-title-row { align-items: stretch; flex-direction: column; } .course-functions { justify-content: flex-end; } .course-tabs { padding: 0 7px; overflow-x: auto; } .course-tabs a { padding: 16px 20px 13px; white-space: nowrap; } }
 </style>

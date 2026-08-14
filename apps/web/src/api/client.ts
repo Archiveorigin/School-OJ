@@ -87,6 +87,8 @@ export interface TeamProblemSet {
   description?: string
   created_by: number
   problem_count?: number
+  can_edit?: boolean
+  can_delete?: boolean
   created_at?: string
   updated_at?: string
 }
@@ -100,9 +102,14 @@ export interface TeamContest {
   ends_at?: string
   duration_minutes: number
   scoring_rule?: ScoringRule
+  gold_award_percent?: number
+  silver_award_percent?: number
+  bronze_award_percent?: number
   state?: 'draft' | 'published' | 'running' | 'closed'
   created_by: number
   problem_count?: number
+  can_edit?: boolean
+  can_delete?: boolean
   status?: 'draft' | 'published' | 'running' | 'closed'
   created_at?: string
   updated_at?: string

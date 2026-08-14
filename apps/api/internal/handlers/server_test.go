@@ -3,6 +3,9 @@ package handlers
 import (
 	"archive/zip"
 	"bytes"
+	"encoding/json"
+	"errors"
+	"fmt"
 	"io"
 	"net/http"
 	"net/http/httptest"
@@ -15,6 +18,8 @@ import (
 
 	"github.com/gin-gonic/gin"
 	"gorm.io/datatypes"
+	"gorm.io/driver/postgres"
+	"gorm.io/gorm"
 )
 
 func TestRouterBuilds(t *testing.T) {
@@ -26,10 +31,10 @@ func TestSortExamRankingRowsByScore(t *testing.T) {
 	later := base.Add(time.Minute)
 	finished := base.Add(2 * time.Minute)
 	rows := []examRankingRow{
-		{Name: "Charlie", StudentNo: "S3", TotalScore: 80, Solved: 2, LastSubmission: &later},
-		{Name: "Alice", StudentNo: "S1", TotalScore: 100, Solved: 1, LastSubmission: &later},
-		{Name: "Bob", StudentNo: "S2", TotalScore: 100, Solved: 2, LastSubmission: &later, FinishedAt: &finished},
-		{Name: "Ada", StudentNo: "S0", TotalScore: 100, Solved: 2, LastSubmission: &base},
+		{Name: "Charlie", studentNo: "S3", TotalScore: 80, Solved: 2, LastSubmission: &later},
+		{Name: "Alice", studentNo: "S1", TotalScore: 100, Solved: 1, LastSubmission: &later},
+		{Name: "Bob", studentNo: "S2", TotalScore: 100, Solved: 2, LastSubmission: &later, FinishedAt: &finished},
+		{Name: "Ada", studentNo: "S0", TotalScore: 100, Solved: 2, LastSubmission: &base},
 	}
 
 	sortExamRankingRows(rows, "score")
@@ -474,7 +479,7 @@ func TestRenderExamMarkdownReportIncludesSubmissionCode(t *testing.T) {
 	}
 	students := []models.User{{ID: 2, Name: "张三", StudentNo: "20260001"}}
 	rows := []examRankingRow{
-		{Rank: 1, UserID: 2, Name: "张三", StudentNo: "20260001", TotalScore: 100, MaxScore: 100, Solved: 1, Attempted: 1, SubmissionCount: 1, ScoreReady: true, WorkStatus: "submitted", Problems: []examRankingCell{{ProblemID: 7, BestScore: 100, MaxScore: 100, Status: models.StatusAccepted, ScoreReady: true}}},
+		{Rank: 1, UserID: 2, Name: "张三", TotalScore: 100, MaxScore: 100, Solved: 1, Attempted: 1, SubmissionCount: 1, ScoreReady: true, WorkStatus: "submitted", Problems: []examRankingCell{{ProblemID: 7, BestScore: 100, MaxScore: 100, Status: models.StatusAccepted, ScoreReady: true}}, studentNo: "20260001"},
 	}
 	submissions := []models.Submission{
 		{ID: 5, UserID: 2, ProblemID: 7, Language: "cpp", SourceCode: "int main() { return 0; }\n", Status: models.StatusAccepted, Score: 100, CreatedAt: now},
@@ -484,6 +489,25 @@ func TestRenderExamMarkdownReportIncludesSubmissionCode(t *testing.T) {
 		if !strings.Contains(md, want) {
 			t.Fatalf("markdown missing %q:\n%s", want, md)
 		}
+	}
+}
+
+func TestExamRankingRowJSONKeepsNameAndHidesStudentNumber(t *testing.T) {
+	payload, err := json.Marshal(examRankingRow{
+		Rank:      1,
+		UserID:    2,
+		Name:      "张三",
+		studentNo: "20260001",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	serialized := string(payload)
+	if !strings.Contains(serialized, `"name":"张三"`) {
+		t.Fatalf("exam ranking JSON must retain the participant name: %s", serialized)
+	}
+	if strings.Contains(serialized, "student_no") || strings.Contains(serialized, "20260001") {
+		t.Fatalf("exam ranking JSON must not expose student numbers: %s", serialized)
 	}
 }
 
@@ -516,6 +540,136 @@ func TestTeamContestWindow(t *testing.T) {
 	}
 }
 
+func TestTeamContestPublishErrorResponseDistinguishesDeletedAndEmpty(t *testing.T) {
+	tests := []struct {
+		name        string
+		err         error
+		wantStatus  int
+		wantMessage string
+		wantHandled bool
+	}{
+		{name: "deleted", err: fmt.Errorf("wrapped: %w", errTeamContestDeleted), wantStatus: http.StatusConflict, wantMessage: "比赛已删除，请刷新后重试", wantHandled: true},
+		{name: "empty", err: errTeamContestNoProblem, wantStatus: http.StatusBadRequest, wantMessage: "发布前至少添加一道题目", wantHandled: true},
+		{name: "invalid start", err: gorm.ErrInvalidData, wantStatus: http.StatusBadRequest, wantMessage: "发布前必须设置晚于当前时间的开始时间", wantHandled: true},
+		{name: "unexpected", err: errors.New("database unavailable")},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			status, message, handled := teamContestPublishErrorResponse(test.err)
+			if status != test.wantStatus || message != test.wantMessage || handled != test.wantHandled {
+				t.Fatalf("teamContestPublishErrorResponse() = (%d, %q, %v), want (%d, %q, %v)", status, message, handled, test.wantStatus, test.wantMessage, test.wantHandled)
+			}
+		})
+	}
+}
+
+func TestActiveTeamProblemSetLockQueryRequiresActiveRowAndShareLock(t *testing.T) {
+	database, err := gorm.Open(postgres.New(postgres.Config{
+		DSN: "host=localhost user=test dbname=test sslmode=disable",
+	}), &gorm.Config{DryRun: true, DisableAutomaticPing: true})
+	if err != nil {
+		t.Fatal(err)
+	}
+	sql := database.ToSQL(func(tx *gorm.DB) *gorm.DB {
+		var set models.TeamProblemSet
+		return activeTeamProblemSetLockQuery(tx, 42).First(&set)
+	})
+	for _, required := range []string{"deleted_at IS NULL", "FOR SHARE"} {
+		if !strings.Contains(sql, required) {
+			t.Fatalf("active problem-set lock query missing %q: %s", required, sql)
+		}
+	}
+}
+
+func TestResolveTeamContestAwardPercentages(t *testing.T) {
+	zero := 0
+	twenty := 20
+	gold, silver, bronze, err := resolveTeamContestAwardPercentages(nil, nil, nil, 10, 10, 10)
+	if err != nil || gold != 10 || silver != 10 || bronze != 10 {
+		t.Fatalf("default award percentages = %d/%d/%d, err=%v", gold, silver, bronze, err)
+	}
+	gold, silver, bronze, err = resolveTeamContestAwardPercentages(&zero, &twenty, nil, 10, 10, 10)
+	if err != nil || gold != 0 || silver != 20 || bronze != 10 {
+		t.Fatalf("explicit/partial award percentages = %d/%d/%d, err=%v", gold, silver, bronze, err)
+	}
+
+	overflow := 81
+	if _, _, _, err := resolveTeamContestAwardPercentages(&overflow, &twenty, &zero, 10, 10, 10); err == nil {
+		t.Fatal("award percentages totaling over 100 must be rejected")
+	}
+	outOfRange := -1
+	if _, _, _, err := resolveTeamContestAwardPercentages(&outOfRange, nil, nil, 10, 10, 10); err == nil {
+		t.Fatal("negative award percentage must be rejected")
+	}
+}
+
+func TestTeamContestAwardPercentagesSerializeAsNumbers(t *testing.T) {
+	zero := 0
+	ten := 10
+	payload, err := json.Marshal(models.TeamContest{
+		GoldAwardPercent:   &zero,
+		SilverAwardPercent: &ten,
+		BronzeAwardPercent: &ten,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	serialized := string(payload)
+	for _, want := range []string{`"gold_award_percent":0`, `"silver_award_percent":10`, `"bronze_award_percent":10`} {
+		if !strings.Contains(serialized, want) {
+			t.Fatalf("serialized contest missing %s: %s", want, serialized)
+		}
+	}
+}
+
+func TestTeamManagementPermissionRejectsOrdinaryMembers(t *testing.T) {
+	tests := []struct {
+		name           string
+		userRole       models.Role
+		membershipRole models.TeamRole
+		joined         bool
+		want           bool
+	}{
+		{name: "system admin", userRole: models.RoleAdmin, want: true},
+		{name: "team owner", userRole: models.RoleStudent, membershipRole: models.TeamRoleOwner, joined: true, want: true},
+		{name: "team admin", userRole: models.RoleStudent, membershipRole: models.TeamRoleAdmin, joined: true, want: true},
+		{name: "ordinary member", userRole: models.RoleStudent, membershipRole: models.TeamRoleMember, joined: true, want: false},
+		{name: "not joined", userRole: models.RoleStudent, membershipRole: models.TeamRoleAdmin, joined: false, want: false},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			if got := hasTeamManagerPermission(test.userRole, test.membershipRole, test.joined); got != test.want {
+				t.Fatalf("hasTeamManagerPermission() = %v, want %v", got, test.want)
+			}
+		})
+	}
+}
+
+func TestTeamManagementRoutesAreRegistered(t *testing.T) {
+	routes := (Server{}).Router().Routes()
+	want := map[string]bool{
+		http.MethodPut + " /api/teams/:id/contests/:contest_id":    false,
+		http.MethodDelete + " /api/teams/:id/contests/:contest_id": false,
+		http.MethodPut + " /api/contests/:contest_id":              false,
+		http.MethodDelete + " /api/contests/:contest_id":           false,
+		http.MethodPut + " /api/teams/:id/problem-sets/:set_id":    false,
+		http.MethodDelete + " /api/teams/:id/problem-sets/:set_id": false,
+		http.MethodPut + " /api/problem-sets/:set_id":              false,
+		http.MethodDelete + " /api/problem-sets/:set_id":           false,
+	}
+	for _, route := range routes {
+		key := route.Method + " " + route.Path
+		if _, ok := want[key]; ok {
+			want[key] = true
+		}
+	}
+	for route, found := range want {
+		if !found {
+			t.Errorf("management route %s is not registered", route)
+		}
+	}
+}
+
 func TestBuildTeamContestRankingUsesAggregates(t *testing.T) {
 	start := time.Date(2026, 8, 6, 9, 0, 0, 0, time.UTC)
 	solvedAt := start.Add(35 * time.Minute)
@@ -532,14 +686,64 @@ func TestBuildTeamContestRankingUsesAggregates(t *testing.T) {
 	if rows[0].Solved != 1 || rows[0].PenaltyMinutes != 75 || rows[0].SubmissionCount != 4 {
 		t.Fatalf("aggregate totals = %#v", rows[0])
 	}
-	if rows[0].StudentNo != "S001" {
-		t.Fatalf("student_no = %q, want S001", rows[0].StudentNo)
+	payload, err := json.Marshal(rows[0])
+	if err != nil {
+		t.Fatal(err)
+	}
+	if strings.Contains(string(payload), "student_no") || strings.Contains(string(payload), "S001") {
+		t.Fatalf("team ranking must not expose student numbers: %s", payload)
 	}
 	if rows[0].MaxScore != 200 || rows[0].Problems[0].MaxScore != 100 {
 		t.Fatalf("score maxima = row %d, cell %d", rows[0].MaxScore, rows[0].Problems[0].MaxScore)
 	}
 	if !rows[0].Problems[0].Fastest || rows[1].Problems[0].Status != string(models.StatusWrongAnswer) {
 		t.Fatalf("problem cells = %#v / %#v", rows[0].Problems[0], rows[1].Problems[0])
+	}
+}
+
+func TestActiveTeamContestUsersExcludesDeletedAccounts(t *testing.T) {
+	users := []models.User{
+		{ID: 1, Name: "Active"},
+		{ID: 2, Name: "Deleted", AccountDeleted: true},
+	}
+	active := activeTeamContestUsers(users)
+	if len(active) != 1 || active[0].ID != 1 {
+		t.Fatalf("active team contest users = %#v, want only user 1", active)
+	}
+}
+
+func TestBuildTeamContestRankingIncludesEligibleUsersWithoutSubmissions(t *testing.T) {
+	start := time.Date(2026, 8, 14, 9, 0, 0, 0, time.UTC)
+	users := []models.User{
+		{ID: 1, Name: "Submitted"},
+		{ID: 2, Name: "Zero submissions"},
+	}
+	links := []models.TeamContestProblem{{ProblemID: 11}}
+	aggregates := []teamContestCellAggregate{{
+		UserID:         1,
+		ProblemID:      11,
+		Attempts:       1,
+		BestScore:      20,
+		LastSubmission: start.Add(time.Minute),
+		LatestStatus:   string(models.StatusWrongAnswer),
+	}}
+
+	rows := buildTeamContestRanking(users, links, aggregates, start, "penalty")
+	if len(rows) != len(users) {
+		t.Fatalf("ranking row count = %d, want all %d eligible users", len(rows), len(users))
+	}
+	var found bool
+	for _, row := range rows {
+		if row.UserID != 2 {
+			continue
+		}
+		found = true
+		if row.SubmissionCount != 0 || row.Solved != 0 || len(row.Problems) != 1 {
+			t.Fatalf("zero-submission participant row = %#v", row)
+		}
+	}
+	if !found {
+		t.Fatal("eligible user without submissions is missing from ranking")
 	}
 }
 
