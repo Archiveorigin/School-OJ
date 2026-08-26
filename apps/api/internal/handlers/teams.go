@@ -14,7 +14,6 @@ import (
 	"school-oj/apps/api/internal/middleware"
 	"school-oj/apps/api/internal/models"
 	"school-oj/apps/api/internal/services"
-	"school-oj/apps/api/internal/streams"
 
 	"github.com/gin-gonic/gin"
 	"gorm.io/datatypes"
@@ -1715,7 +1714,10 @@ func (s Server) createScopedTeamSubmission(c *gin.Context, user models.User, req
 			return err
 		}
 		submission.ProblemID = problem.ID
-		return tx.Create(&submission).Error
+		if err := tx.Create(&submission).Error; err != nil {
+			return err
+		}
+		return services.AddSubmissionOutbox(tx, submission.ID)
 	}); err != nil {
 		var mutationErr *teamContentMutationError
 		if errors.As(err, &mutationErr) {
@@ -1725,20 +1727,14 @@ func (s Server) createScopedTeamSubmission(c *gin.Context, user models.User, req
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 		return
 	}
-	streamID, err := streams.EnqueueSubmission(c.Request.Context(), s.Redis, submission.ID)
-	if err != nil {
-		s.DB.Model(&submission).Updates(map[string]any{"status": models.StatusSystemError, "message": err.Error()})
-		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
-		return
-	}
 	action := "team.problem_set.submission.create"
-	metadata := datatypes.JSONMap{"stream_id": streamID}
+	metadata := datatypes.JSONMap{"dispatch": "outbox"}
 	if problemSetID != nil {
 		metadata["problem_set_id"] = *problemSetID
 	}
 	if contestID != nil {
 		action = "team.contest.submission.create"
-		metadata = datatypes.JSONMap{"stream_id": streamID, "contest_id": *contestID}
+		metadata = datatypes.JSONMap{"dispatch": "outbox", "contest_id": *contestID}
 	}
 	services.Audit(c, s.DB, action, "submission", submission.ID, metadata)
 	c.JSON(http.StatusCreated, submission)

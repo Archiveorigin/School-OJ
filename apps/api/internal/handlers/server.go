@@ -26,7 +26,6 @@ import (
 	"school-oj/apps/api/internal/middleware"
 	"school-oj/apps/api/internal/models"
 	"school-oj/apps/api/internal/services"
-	"school-oj/apps/api/internal/streams"
 
 	"github.com/gin-gonic/gin"
 	"github.com/minio/minio-go/v7"
@@ -4179,17 +4178,16 @@ func (s Server) judgeManualExamSubmission(c *gin.Context) {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "submission is already judging"})
 		return
 	}
-	if err := s.DB.Model(&sub).Updates(map[string]any{"status": models.StatusQueued, "message": "queued for reference judging"}).Error; err != nil {
+	if err := s.DB.Transaction(func(tx *gorm.DB) error {
+		if err := tx.Model(&sub).Updates(map[string]any{"status": models.StatusQueued, "message": "queued for reference judging"}).Error; err != nil {
+			return err
+		}
+		return services.AddSubmissionOutbox(tx, sub.ID)
+	}); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 		return
 	}
-	streamID, err := streams.EnqueueSubmission(c.Request.Context(), s.Redis, sub.ID)
-	if err != nil {
-		s.DB.Model(&sub).Updates(map[string]any{"status": models.StatusSystemError, "message": err.Error()})
-		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
-		return
-	}
-	services.Audit(c, s.DB, "exam.manual_review.judge", "submission", sub.ID, datatypes.JSONMap{"exam_id": exam.ID, "stream_id": streamID})
+	services.Audit(c, s.DB, "exam.manual_review.judge", "submission", sub.ID, datatypes.JSONMap{"exam_id": exam.ID, "dispatch": "outbox"})
 	c.JSON(http.StatusOK, gin.H{"queued": true, "submission_id": sub.ID})
 }
 
@@ -4356,7 +4354,13 @@ func (s Server) createSubmission(c *gin.Context) {
 				return err
 			}
 		}
-		return tx.Create(&sub).Error
+		if err := tx.Create(&sub).Error; err != nil {
+			return err
+		}
+		if !manualReview {
+			return services.AddSubmissionOutbox(tx, sub.ID)
+		}
+		return nil
 	}); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 		return
@@ -4366,13 +4370,7 @@ func (s Server) createSubmission(c *gin.Context) {
 		c.JSON(http.StatusCreated, sub)
 		return
 	}
-	streamID, err := streams.EnqueueSubmission(c.Request.Context(), s.Redis, sub.ID)
-	if err != nil {
-		s.DB.Model(&sub).Updates(map[string]any{"status": models.StatusSystemError, "message": err.Error()})
-		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
-		return
-	}
-	services.Audit(c, s.DB, "submission.create", "submission", sub.ID, datatypes.JSONMap{"stream_id": streamID})
+	services.Audit(c, s.DB, "submission.create", "submission", sub.ID, datatypes.JSONMap{"dispatch": "outbox"})
 	c.JSON(http.StatusCreated, sub)
 }
 

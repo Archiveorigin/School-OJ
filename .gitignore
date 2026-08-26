@@ -18,3 +18,9 @@ uploads/
 reports/
 .idea/
 .vscode/
+
+# Local deployment and design-work artifacts
+/YOUR-NEW-REPOSITORY/
+/data_backup/
+/workspace/
+/package-lock.json

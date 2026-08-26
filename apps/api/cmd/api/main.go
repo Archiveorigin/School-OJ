@@ -46,6 +46,8 @@ func main() {
 			log.Fatalf("seed: %v", err)
 		}
 	}
+	outboxDispatcher := services.SubmissionOutboxDispatcher{DB: gdb, Redis: redisClient}
+	go outboxDispatcher.Run(ctx)
 	server := handlers.Server{DB: gdb, Redis: redisClient, MinIO: minioClient, Cfg: cfg}
 	if err := server.Router().Run(cfg.Addr); err != nil {
 		log.Fatalf("server: %v", err)
