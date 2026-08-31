@@ -97,7 +97,10 @@ const router = createRouter({
     { path: '/assignments', redirect: '/my/courses' },
     { path: '/assignments/:id', component: AssignmentDetail, meta: { title: '作业' } },
     { path: '/exams', redirect: '/my/courses' },
-    { path: '/exams/new', component: ExamCreate, meta: { roles: teacherRoles, title: '新建考试' } },
+    {
+      path: '/exams/new',
+      redirect: (to) => ({ path: '/admin/exams/new', query: to.query, hash: to.hash })
+    },
     {
       path: '/exams/:id',
       component: ExamDetail,
@@ -121,6 +124,8 @@ const router = createRouter({
         { path: 'courses', component: CourseList, meta: { title: '课程管理', adminMenu: '/admin/courses' } },
         { path: 'courses/:id/students', component: CourseStudents, meta: { title: '课程学生', adminMenu: '/admin/courses' } },
         { path: 'classes', component: ClassList, meta: { title: '班级管理', adminMenu: '/admin/classes' } },
+        { path: 'exams', component: Exams, meta: { title: '考试管理', adminMenu: '/admin/exams' } },
+        { path: 'exams/new', component: ExamCreate, meta: { title: '新建考试', adminMenu: '/admin/exams' } },
         { path: 'prepared-problems', component: PreparedProblems, meta: { title: '预备题库', adminMenu: '/admin/prepared-problems' } },
         { path: 'problem-authors', component: ProblemAuthorManagement, meta: { roles: ['admin'], title: '出题管理', adminMenu: '/admin/problem-authors' } },
         { path: 'plagiarism', component: Plagiarism, meta: { title: 'JPlag 查重', adminMenu: '/admin/plagiarism' } },

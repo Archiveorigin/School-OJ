@@ -1,0 +1,68 @@
+{
+  "viewport": {
+    "width": 1440,
+    "height": 1024,
+    "deviceScaleFactor": 1
+  },
+  "screenshots": {
+    "admin": "D:\\github-cache\\qdhh-oj\\docs\\qa\\admin-v3\\admin-home-1440x1024.png",
+    "examBasic": "D:\\github-cache\\qdhh-oj\\docs\\qa\\admin-v3\\exam-create-basic-1440x1024.png",
+    "examProblems": "D:\\github-cache\\qdhh-oj\\docs\\qa\\admin-v3\\exam-create-problems-1440x1024.png",
+    "examPublish": "D:\\github-cache\\qdhh-oj\\docs\\qa\\admin-v3\\exam-create-publish-1440x1024.png",
+    "mobileAdmin": "D:\\github-cache\\qdhh-oj\\docs\\qa\\admin-v3\\admin-home-mobile-390x844.png"
+  },
+  "interactions": [
+    "考试状态筛选：待开始",
+    "教学概览草稿入口 → 新建考试",
+    "保存草稿",
+    "基本信息 → 选择题目",
+    "选择题目 → 发布确认",
+    "发布确认 → 返回修改",
+    "旧入口 /exams/new 保留查询与锚点并跳转到管理端",
+    "移动端导航抽屉打开",
+    "移动端导航抽屉关闭"
+  ],
+  "metrics": {
+    "admin": {
+      "clientWidth": 1440,
+      "scrollWidth": 1440,
+      "clientHeight": 1024,
+      "scrollHeight": 1030
+    },
+    "examBasic": {
+      "clientWidth": 1440,
+      "scrollWidth": 1440,
+      "clientHeight": 1024,
+      "scrollHeight": 1090
+    },
+    "examProblems": {
+      "clientWidth": 1440,
+      "scrollWidth": 1440,
+      "clientHeight": 1024,
+      "scrollHeight": 1088
+    },
+    "examPublish": {
+      "clientWidth": 1440,
+      "scrollWidth": 1440,
+      "clientHeight": 1024,
+      "scrollHeight": 1130
+    },
+    "mobileAdmin": {
+      "clientWidth": 390,
+      "scrollWidth": 390,
+      "clientHeight": 844,
+      "scrollHeight": 2062
+    }
+  },
+  "accessibility": {
+    "mobileMenu": {
+      "width": 44,
+      "height": 44,
+      "focused": true,
+      "outlineStyle": "auto"
+    }
+  },
+  "consoleErrors": [],
+  "pageErrors": [],
+  "unknownRequests": []
+}

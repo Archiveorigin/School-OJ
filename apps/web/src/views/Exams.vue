@@ -170,7 +170,7 @@ import { useAuthStore } from '../stores/auth'
 const auth = useAuthStore()
 const router = useRouter()
 const route = useRoute()
-const courseID = computed(() => Number(route.params.courseId) || undefined)
+const courseID = computed(() => Number(route.params.courseId || route.query.course_id) || undefined)
 const canManage = computed(() => auth.role === 'admin' || auth.role === 'teacher')
 const items = ref<any[]>([])
 const page = ref(1)
@@ -203,7 +203,7 @@ async function load() {
 }
 
 function createExam() {
-  router.push({ path: '/exams/new', query: courseID.value ? { course_id: courseID.value } : {} })
+  router.push({ path: '/admin/exams/new', query: courseID.value ? { course_id: courseID.value } : {} })
 }
 
 function openDetail(row: any) {

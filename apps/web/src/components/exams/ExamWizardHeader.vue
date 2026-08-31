@@ -3,7 +3,7 @@
     <div class="wizard-context">
       <button type="button" class="back-button" @click="emit('back')">
         <el-icon><ArrowLeft /></el-icon>
-        <span>返回考试</span>
+        <span>返回考试管理</span>
       </button>
       <div class="wizard-title">
         <strong>新建考试</strong>
@@ -68,18 +68,18 @@ const steps = ["基本信息", "选择题目", "发布确认"];
 <style scoped>
 .wizard-header {
   position: sticky;
-  top: 0;
-  z-index: 3;
+  top: 64px;
+  z-index: 20;
   display: grid;
   grid-template-columns: minmax(210px, 0.8fr) minmax(420px, 1.5fr) minmax(
       220px,
       0.8fr
     );
   align-items: center;
-  min-height: 82px;
+  min-height: 76px;
   gap: 22px;
   padding: 12px 28px;
-  border-bottom: 1px solid #dce3ee;
+  border-bottom: 1px solid #dce4ef;
   background: rgba(255, 255, 255, 0.96);
 }
 

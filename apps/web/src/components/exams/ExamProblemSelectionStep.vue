@@ -500,7 +500,7 @@ function difficultyType(
   display: flex;
 }
 
-@media (max-width: 1250px) {
+@media (max-width: 1100px) {
   .problem-step {
     grid-template-columns: 330px minmax(560px, 1fr);
   }

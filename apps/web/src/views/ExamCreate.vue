@@ -1,6 +1,5 @@
 <template>
   <div class="exam-authoring">
-    <ExamAuthoringSidebar :step="step" />
     <div class="authoring-workspace">
       <ExamWizardHeader
         :step="step"
@@ -365,7 +364,6 @@ import {
   listProblems,
   parseProblemMarkdown,
 } from "../api/modules/problems";
-import ExamAuthoringSidebar from "../components/exams/ExamAuthoringSidebar.vue";
 import ExamBasicInfoStep from "../components/exams/ExamBasicInfoStep.vue";
 import ExamProblemSelectionStep from "../components/exams/ExamProblemSelectionStep.vue";
 import ExamPublishReviewStep from "../components/exams/ExamPublishReviewStep.vue";
@@ -377,6 +375,10 @@ import {
   nextProblemLabel,
   validateExamDraft,
 } from "../features/exams/builder";
+import {
+  examDraftStorageKey,
+  parseStoredExamDraft,
+} from "../features/exams/draft";
 import type {
   CourseSummary,
   ExamDraft,
@@ -423,7 +425,6 @@ const testPointErrors = ref<string[]>([]);
 const readingTestPoints = ref(false);
 const savedAt = ref("");
 const draftHydrated = ref(false);
-const draftStorageKey = "school-oj-exam-create-draft";
 
 const form = reactive<ExamDraft>({
   course_id: undefined,
@@ -676,7 +677,7 @@ async function submitCreate() {
         release_after_exam: Boolean(item.release_after_exam),
       })),
     });
-    localStorage.removeItem(draftStorageKey);
+    localStorage.removeItem(examDraftStorageKey);
     ElMessage.success("考试已创建");
     router.push(`/exams/${data.id}`);
   } catch (error: unknown) {
@@ -967,7 +968,7 @@ function saveDraft(notify = false) {
   if (!draftHydrated.value) return;
   const saved = new Date();
   localStorage.setItem(
-    draftStorageKey,
+    examDraftStorageKey,
     JSON.stringify({
       form,
       selectedProblems: selectedProblems.value,
@@ -983,11 +984,11 @@ function saveDraft(notify = false) {
 }
 
 function restoreDraft() {
-  const raw = localStorage.getItem(draftStorageKey);
+  const raw = localStorage.getItem(examDraftStorageKey);
   if (!raw) return false;
   try {
-    const saved = JSON.parse(raw);
-    if (!saved?.form || !Array.isArray(saved.selectedProblems)) return false;
+    const saved = parseStoredExamDraft(raw);
+    if (!saved) return false;
     Object.assign(form, saved.form, {
       starts_at: saved.form.starts_at ? new Date(saved.form.starts_at) : null,
       ends_at: saved.form.ends_at ? new Date(saved.form.ends_at) : null,
@@ -1002,7 +1003,7 @@ function restoreDraft() {
     }
     return true;
   } catch {
-    localStorage.removeItem(draftStorageKey);
+    localStorage.removeItem(examDraftStorageKey);
     return false;
   }
 }
@@ -1028,16 +1029,19 @@ watch([() => form, selectedProblems, step], () => saveDraft(false), {
 
 function returnToExams() {
   const courseID = form.course_id || requestedCourseID.value;
-  router.push(courseID ? `/my/courses/${courseID}/exams` : "/my/courses");
+  router.push({
+    path: "/admin/exams",
+    query: courseID ? { course_id: courseID } : {},
+  });
 }
 </script>
 
 <style scoped>
 .exam-authoring {
   display: flex;
-  min-height: 100vh;
+  min-height: calc(100vh - 64px);
   color: #172033;
-  background: #f6f8fb;
+  background: #f7f9fc;
 }
 
 .authoring-workspace {
