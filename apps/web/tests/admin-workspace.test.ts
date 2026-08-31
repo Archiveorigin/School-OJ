@@ -61,13 +61,13 @@ describe('admin workspace', () => {
     const adminView = shallowMount(AdminLayout, { global: globalOptions })
     expect(adminView.text()).toContain('用户与权限')
     expect(adminView.text()).toContain('审计日志')
-    expect(adminView.text()).toContain('出题管理')
+    expect(adminView.text()).toContain('工单管理')
 
     setUser('teacher')
     const teacherView = shallowMount(AdminLayout, { global: globalOptions })
     expect(teacherView.text()).not.toContain('用户与权限')
     expect(teacherView.text()).not.toContain('审计日志')
-    expect(teacherView.text()).not.toContain('出题管理')
+    expect(teacherView.text()).not.toContain('工单管理')
     expect(teacherView.text()).toContain('课程管理')
     expect(teacherView.text()).toContain('考试管理')
     expect(teacherView.text()).toContain('JPlag 查重')
@@ -103,7 +103,7 @@ describe('admin workspace', () => {
       if (url === '/courses') return { data: [{ id: 2, code: 'CS2026', name: '算法设计' }] } as any
       if (url === '/classes') return { data: [{ id: 4, class_id: 4, course_id: 2, class_name: '计算机 1 班' }] } as any
       if (url === '/author-applications') return { data: [{ id: 21, status: 'pending' }] } as any
-      if (url === '/problem-reviews') return { data: [{ id: 22, status: 'pending' }] } as any
+      if (url === '/problem-change-tickets') return { data: [{ id: 22, status: 'pending' }] } as any
       if (url === '/audit-logs') {
         return {
           data: [{ id: 31, actor_name: '王志华', action: 'exam.create', resource_label: '考试', created_at: '2026-08-30T01:10:00.000Z' }]
@@ -121,11 +121,11 @@ describe('admin workspace', () => {
     expect(wrapper.text()).toContain('2 道题')
     expect(wrapper.text()).toContain('100 分')
     expect(wrapper.text()).toContain('出题资格申请')
-    expect(wrapper.text()).toContain('题目发布审批')
+    expect(wrapper.text()).toContain('题目修改工单')
     expect(wrapper.text()).toContain('王志华')
     expect(wrapper.text()).toContain('创建了考试')
     expect(client.get).toHaveBeenCalledWith('/author-applications', { params: { status: 'pending' } })
-    expect(client.get).toHaveBeenCalledWith('/problem-reviews', { params: { status: 'pending' } })
+    expect(client.get).toHaveBeenCalledWith('/problem-change-tickets', { params: { status: 'pending' } })
 
     const primaryAction = wrapper.findAll('.plan-footer button').at(-1)
     expect(primaryAction?.text()).toContain('继续草稿')
@@ -146,6 +146,6 @@ describe('admin workspace', () => {
     expect(get).toHaveBeenCalledTimes(3)
     expect(get).not.toHaveBeenCalledWith('/audit-logs')
     expect(get).not.toHaveBeenCalledWith('/author-applications', expect.anything())
-    expect(get).not.toHaveBeenCalledWith('/problem-reviews', expect.anything())
+    expect(get).not.toHaveBeenCalledWith('/problem-change-tickets', expect.anything())
   })
 })

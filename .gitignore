@@ -2,6 +2,7 @@
 .env
 .env.local
 .codex-backups/
+.cache/
 *.bak.*
 dist/
 node_modules/

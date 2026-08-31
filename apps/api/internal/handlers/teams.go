@@ -82,14 +82,16 @@ type teamProblemSetView struct {
 }
 
 type teamContestInput struct {
-	Title              string     `json:"title" binding:"required"`
-	Description        string     `json:"description"`
-	StartsAt           *time.Time `json:"starts_at"`
-	DurationMinutes    int        `json:"duration_minutes"`
-	ScoringRule        string     `json:"scoring_rule"`
-	GoldAwardPercent   *int       `json:"gold_award_percent"`
-	SilverAwardPercent *int       `json:"silver_award_percent"`
-	BronzeAwardPercent *int       `json:"bronze_award_percent"`
+	Title                 string     `json:"title" binding:"required"`
+	Description           string     `json:"description"`
+	StartsAt              *time.Time `json:"starts_at"`
+	DurationMinutes       int        `json:"duration_minutes"`
+	ScoringRule           string     `json:"scoring_rule"`
+	FreezeEnabled         bool       `json:"freeze_enabled"`
+	FreezeDurationMinutes int        `json:"freeze_duration_minutes"`
+	GoldAwardPercent      *int       `json:"gold_award_percent"`
+	SilverAwardPercent    *int       `json:"silver_award_percent"`
+	BronzeAwardPercent    *int       `json:"bronze_award_percent"`
 }
 
 type teamContestProblemView struct {
@@ -144,8 +146,10 @@ type teamContestCellAggregate struct {
 	SubmissionCount int
 	WrongAttempts   int
 	BestScore       int
+	LatestScore     int
 	SolvedAt        *time.Time
 	LastSubmission  time.Time
+	EffectiveAt     time.Time
 	LatestStatus    string
 }
 
@@ -623,12 +627,20 @@ func (s Server) createTeamContest(c *gin.Context) {
 	if req.DurationMinutes <= 0 {
 		req.DurationMinutes = 120
 	}
-	req.ScoringRule = strings.ToLower(strings.TrimSpace(req.ScoringRule))
-	if req.ScoringRule == "" {
-		req.ScoringRule = "penalty"
+	var scoringValid bool
+	req.ScoringRule, scoringValid = parseScoringRule(req.ScoringRule)
+	if !scoringValid {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "评分规则必须为 OI、IOI 或 ACM"})
+		return
 	}
-	if req.ScoringRule != "score" && req.ScoringRule != "penalty" {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "评分规则必须为 score 或 penalty"})
+	if req.ScoringRule == "oi" {
+		req.FreezeEnabled = false
+	}
+	if req.FreezeDurationMinutes <= 0 {
+		req.FreezeDurationMinutes = 60
+	}
+	if req.FreezeEnabled && req.FreezeDurationMinutes >= req.DurationMinutes {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "封榜时长必须小于比赛总时长"})
 		return
 	}
 	goldPercent, silverPercent, bronzePercent, err := resolveTeamContestAwardPercentages(
@@ -644,17 +656,19 @@ func (s Server) createTeamContest(c *gin.Context) {
 		return
 	}
 	item := models.TeamContest{
-		TeamID:             team.ID,
-		Title:              req.Title,
-		Description:        strings.TrimSpace(req.Description),
-		StartsAt:           req.StartsAt,
-		DurationMinutes:    req.DurationMinutes,
-		ScoringRule:        req.ScoringRule,
-		GoldAwardPercent:   &goldPercent,
-		SilverAwardPercent: &silverPercent,
-		BronzeAwardPercent: &bronzePercent,
-		State:              models.TeamContestDraft,
-		CreatedBy:          user.ID,
+		TeamID:                team.ID,
+		Title:                 req.Title,
+		Description:           strings.TrimSpace(req.Description),
+		StartsAt:              req.StartsAt,
+		DurationMinutes:       req.DurationMinutes,
+		ScoringRule:           req.ScoringRule,
+		FreezeEnabled:         req.FreezeEnabled,
+		FreezeDurationMinutes: req.FreezeDurationMinutes,
+		GoldAwardPercent:      &goldPercent,
+		SilverAwardPercent:    &silverPercent,
+		BronzeAwardPercent:    &bronzePercent,
+		State:                 models.TeamContestDraft,
+		CreatedBy:             user.ID,
 	}
 	if err := s.DB.Create(&item).Error; err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
@@ -678,9 +692,20 @@ func (s Server) updateTeamContest(c *gin.Context) {
 		return
 	}
 	req.Title = strings.TrimSpace(req.Title)
-	req.ScoringRule = strings.ToLower(strings.TrimSpace(req.ScoringRule))
-	if req.Title == "" || req.DurationMinutes <= 0 || (req.ScoringRule != "score" && req.ScoringRule != "penalty") {
+	var scoringValid bool
+	req.ScoringRule, scoringValid = parseScoringRule(req.ScoringRule)
+	if req.Title == "" || req.DurationMinutes <= 0 || !scoringValid {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "比赛时长和评分规则无效"})
+		return
+	}
+	if req.ScoringRule == "oi" {
+		req.FreezeEnabled = false
+	}
+	if req.FreezeDurationMinutes <= 0 {
+		req.FreezeDurationMinutes = 60
+	}
+	if req.FreezeEnabled && req.FreezeDurationMinutes >= req.DurationMinutes {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "封榜时长必须小于比赛总时长"})
 		return
 	}
 	goldPercent, silverPercent, bronzePercent, err := resolveTeamContestAwardPercentages(
@@ -696,14 +721,16 @@ func (s Server) updateTeamContest(c *gin.Context) {
 		return
 	}
 	updates := map[string]any{
-		"title":                req.Title,
-		"description":          strings.TrimSpace(req.Description),
-		"starts_at":            req.StartsAt,
-		"duration_minutes":     req.DurationMinutes,
-		"scoring_rule":         req.ScoringRule,
-		"gold_award_percent":   goldPercent,
-		"silver_award_percent": silverPercent,
-		"bronze_award_percent": bronzePercent,
+		"title":                   req.Title,
+		"description":             strings.TrimSpace(req.Description),
+		"starts_at":               req.StartsAt,
+		"duration_minutes":        req.DurationMinutes,
+		"scoring_rule":            req.ScoringRule,
+		"freeze_enabled":          req.FreezeEnabled,
+		"freeze_duration_minutes": req.FreezeDurationMinutes,
+		"gold_award_percent":      goldPercent,
+		"silver_award_percent":    silverPercent,
+		"bronze_award_percent":    bronzePercent,
 	}
 	result := s.DB.Model(&models.TeamContest{}).Where("id = ? AND state = ? AND deleted_at IS NULL", contest.ID, models.TeamContestDraft).Updates(updates)
 	if result.Error != nil || result.RowsAffected != 1 {
@@ -813,7 +840,8 @@ func (s Server) getTeamContest(c *gin.Context) {
 		return
 	}
 	var links []models.TeamContestProblem
-	s.DB.Preload("Problem").Where("contest_id = ?", contest.ID).Order("sort_order, id").Find(&links)
+	s.DB.Preload("Problem").Preload("ProblemVersion").Where("contest_id = ?", contest.ID).Order("sort_order, id").Find(&links)
+	hydrateTeamContestProblemVersions(links)
 	links = filterActiveTeamContestProblemLinks(links)
 	normalizeTeamContestProblemLabels(links)
 	views := make([]teamContestProblemView, 0, len(links))
@@ -823,13 +851,18 @@ func (s Server) getTeamContest(c *gin.Context) {
 		var latest models.Submission
 		view := teamContestProblemView{TeamContestProblem: link}
 		if err := s.DB.Where("user_id = ? AND team_contest_id = ? AND problem_id = ?", user.ID, contest.ID, link.ProblemID).Order("created_at desc").First(&latest).Error; err == nil {
+			hidden := s.shouldRedactSubmission(user, latest, time.Now())
 			view.SubmissionStatus = string(latest.Status)
 			value := latest.CreatedAt
 			view.SubmittedAt = &value
-			var accepted int64
-			s.DB.Model(&models.Submission{}).Where("user_id = ? AND team_contest_id = ? AND problem_id = ? AND status = ?", user.ID, contest.ID, link.ProblemID, models.StatusAccepted).Count(&accepted)
-			if accepted > 0 {
-				view.SubmissionStatus = string(models.StatusAccepted)
+			if hidden {
+				view.SubmissionStatus = "recorded"
+			} else {
+				var accepted int64
+				s.DB.Model(&models.Submission{}).Where("user_id = ? AND team_contest_id = ? AND problem_id = ? AND status = ?", user.ID, contest.ID, link.ProblemID, models.StatusAccepted).Count(&accepted)
+				if accepted > 0 {
+					view.SubmissionStatus = string(models.StatusAccepted)
+				}
 			}
 		}
 		views = append(views, view)
@@ -875,7 +908,11 @@ func (s Server) addTeamContestProblem(c *gin.Context) {
 	if !found {
 		return
 	}
-	link := models.TeamContestProblem{ContestID: contest.ID, ProblemID: problem.ID, Label: strings.TrimSpace(req.Label)}
+	if problem.CurrentVersionID == nil {
+		c.JSON(http.StatusConflict, gin.H{"error": "题目尚无可用版本"})
+		return
+	}
+	link := models.TeamContestProblem{ContestID: contest.ID, ProblemID: problem.ID, ProblemVersionID: *problem.CurrentVersionID, Label: strings.TrimSpace(req.Label)}
 	if err := s.DB.Transaction(func(tx *gorm.DB) error {
 		var locked models.TeamContest
 		if err := tx.Clauses(clause.Locking{Strength: "UPDATE"}).Where("deleted_at IS NULL").First(&locked, contest.ID).Error; err != nil {
@@ -946,7 +983,7 @@ func (s Server) listTeamContestSubmissions(c *gin.Context) {
 	}
 	var items []models.Submission
 	s.DB.Where("user_id = ? AND team_contest_id = ?", user.ID, contest.ID).Order("id desc").Limit(200).Find(&items)
-	c.JSON(http.StatusOK, s.submissionListViews(items))
+	c.JSON(http.StatusOK, s.redactSubmissionViews(user, s.submissionListViews(items)))
 }
 
 func (s Server) createTeamContestSubmission(c *gin.Context) {
@@ -992,12 +1029,17 @@ func (s Server) teamContestRanking(c *gin.Context) {
 	_, contestStatus := teamContestWindow(contest, time.Now())
 	canOrganize := s.canTeamContentPermission(user, team)
 	canManage := s.canManageTeam(user, team)
+	if contest.ScoringRule == "oi" && !canOrganize && !canManage {
+		c.JSON(http.StatusForbidden, gin.H{"error": "OI 赛制不提供参赛者排行榜"})
+		return
+	}
 	if (contestStatus == models.TeamContestDraft || contestStatus == models.TeamContestPublished) && !canOrganize && !canManage {
 		c.JSON(http.StatusForbidden, gin.H{"error": "比赛尚未开始"})
 		return
 	}
 	var links []models.TeamContestProblem
-	s.DB.Preload("Problem").Where("contest_id = ?", contest.ID).Order("sort_order, id").Find(&links)
+	s.DB.Preload("Problem").Preload("ProblemVersion").Where("contest_id = ?", contest.ID).Order("sort_order, id").Find(&links)
+	hydrateTeamContestProblemVersions(links)
 	links = filterActiveTeamContestProblemLinks(links)
 	normalizeTeamContestProblemLabels(links)
 	var userIDs []uint
@@ -1011,7 +1053,17 @@ func (s Server) teamContestRanking(c *gin.Context) {
 		s.DB.Where("id IN ? AND account_deleted = false", userIDs).Order("lower(name), id").Find(&users)
 	}
 	users = activeTeamContestUsers(users)
-	aggregates, err := s.loadTeamContestCellAggregates(contest.ID)
+	endsAt, _ := teamContestWindow(contest, time.Now())
+	cutoff := time.Date(9999, 12, 31, 23, 59, 59, 0, time.UTC)
+	frozen := false
+	if !canOrganize && !canManage && contest.FreezeEnabled && endsAt != nil && contestStatus == models.TeamContestRunning {
+		freezeAt := endsAt.Add(-time.Duration(contest.FreezeDurationMinutes) * time.Minute)
+		if !time.Now().Before(freezeAt) {
+			cutoff = freezeAt
+			frozen = true
+		}
+	}
+	aggregates, err := s.loadTeamContestCellAggregates(contest.ID, cutoff)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 		return
@@ -1027,21 +1079,23 @@ func (s Server) teamContestRanking(c *gin.Context) {
 		problems = append(problems, gin.H{"problem_id": link.ProblemID, "label": link.Label, "title": link.Problem.Title, "score": 100})
 	}
 	c.JSON(http.StatusOK, gin.H{
-		"contest":           contest,
-		"scoring_rule":      contest.ScoringRule,
-		"participant_count": len(rows),
-		"problems":          problems,
-		"rows":              rows,
+		"contest":                 contest,
+		"scoring_rule":            contest.ScoringRule,
+		"participant_count":       len(rows),
+		"problems":                problems,
+		"rows":                    rows,
+		"frozen":                  frozen,
+		"freeze_duration_minutes": contest.FreezeDurationMinutes,
 	})
 }
 
-func (s Server) loadTeamContestCellAggregates(contestID uint) ([]teamContestCellAggregate, error) {
+func (s Server) loadTeamContestCellAggregates(contestID uint, cutoff time.Time) ([]teamContestCellAggregate, error) {
 	var rows []teamContestCellAggregate
 	err := s.DB.Raw(`
 WITH scoped AS (
   SELECT user_id, problem_id, status, score, created_at, id
   FROM submissions
-  WHERE team_contest_id = ?
+  WHERE team_contest_id = ? AND created_at < ?
 ), first_accept AS (
   SELECT DISTINCT ON (user_id, problem_id)
          user_id, problem_id, created_at AS solved_at, id AS solved_id
@@ -1069,14 +1123,17 @@ SELECT scoped.user_id,
            AND scoped.status NOT IN (?, ?, ?, ?, ?)
        )::integer AS wrong_attempts,
        COALESCE(MAX(scoped.score), 0)::integer AS best_score,
-       first_accept.solved_at,
-       MAX(scoped.created_at) AS last_submission,
-       CASE WHEN first_accept.solved_at IS NOT NULL THEN ? ELSE latest.status END AS latest_status
+	   COALESCE((ARRAY_AGG(scoped.score ORDER BY scoped.created_at DESC, scoped.id DESC))[1], 0)::integer AS latest_score,
+	   first_accept.solved_at,
+	   MAX(scoped.created_at) AS last_submission,
+	   (ARRAY_AGG(scoped.created_at ORDER BY scoped.score DESC, scoped.created_at ASC, scoped.id ASC))[1] AS effective_at,
+	   CASE WHEN first_accept.solved_at IS NOT NULL THEN ? ELSE latest.status END AS latest_status
 FROM scoped
 LEFT JOIN first_accept USING (user_id, problem_id)
 JOIN latest USING (user_id, problem_id)
 GROUP BY scoped.user_id, scoped.problem_id, first_accept.solved_at, first_accept.solved_id, latest.status`,
 		contestID,
+		cutoff,
 		models.StatusAccepted,
 		models.StatusSystemError,
 		models.StatusQueued,
@@ -1090,6 +1147,11 @@ GROUP BY scoped.user_id, scoped.problem_id, first_accept.solved_at, first_accept
 }
 
 func buildTeamContestRanking(users []models.User, links []models.TeamContestProblem, aggregates []teamContestCellAggregate, contestStart time.Time, scoringRule string) []teamContestRankingRow {
+	if normalized, valid := parseScoringRule(scoringRule); valid {
+		scoringRule = normalized
+	} else {
+		scoringRule = "acm"
+	}
 	byUserProblem := make(map[[2]uint]teamContestCellAggregate, len(aggregates))
 	for _, aggregate := range aggregates {
 		byUserProblem[[2]uint{aggregate.UserID, aggregate.ProblemID}] = aggregate
@@ -1104,10 +1166,16 @@ func buildTeamContestRanking(users []models.User, links []models.TeamContestProb
 				cell.Attempts = aggregate.Attempts
 				cell.WrongAttempts = aggregate.WrongAttempts
 				cell.BestScore = aggregate.BestScore
+				if scoringRule == "oi" {
+					cell.BestScore = aggregate.LatestScore
+				}
 				cell.SolvedAt = aggregate.SolvedAt
 				cell.ElapsedMinutes = elapsedContestMinutes(contestStart, aggregate.LastSubmission)
 				row.SubmissionCount += aggregate.SubmissionCount
 				last := aggregate.LastSubmission
+				if scoringRule == "ioi" && !aggregate.EffectiveAt.IsZero() {
+					last = aggregate.EffectiveAt
+				}
 				if row.LastSubmission == nil || last.After(*row.LastSubmission) {
 					row.LastSubmission = &last
 				}
@@ -1142,7 +1210,7 @@ func buildTeamContestRanking(users []models.User, links []models.TeamContestProb
 		}
 	}
 	sort.SliceStable(rows, func(i, j int) bool {
-		if scoringRule == "score" {
+		if scoringRule == "ioi" || scoringRule == "oi" {
 			if rows[i].TotalScore != rows[j].TotalScore {
 				return rows[i].TotalScore > rows[j].TotalScore
 			}
@@ -1155,6 +1223,11 @@ func buildTeamContestRanking(users []models.User, links []models.TeamContestProb
 			}
 			if rows[i].PenaltyMinutes != rows[j].PenaltyMinutes {
 				return rows[i].PenaltyMinutes < rows[j].PenaltyMinutes
+			}
+		}
+		if scoringRule == "ioi" {
+			if cmp := compareTimePtr(rows[i].LastSubmission, rows[j].LastSubmission); cmp != 0 {
+				return cmp < 0
 			}
 		}
 		return strings.ToLower(rows[i].Name) < strings.ToLower(rows[j].Name)
@@ -1350,7 +1423,7 @@ func (s Server) addTeamProblemSetProblem(c *gin.Context) {
 		return
 	}
 	var problem models.Problem
-	query := s.DB.Where("deleted_at IS NULL")
+	query := s.DB.Where("deleted_at IS NULL AND archived_at IS NULL")
 	if req.ProblemID > 0 {
 		query = query.Where("id = ?", req.ProblemID)
 	} else if code := strings.TrimSpace(req.ProblemCode); code != "" {
@@ -1605,7 +1678,7 @@ func (s Server) teamContestByParams(c *gin.Context) (models.TeamContest, models.
 
 func (s Server) teamScopedProblem(c *gin.Context, user models.User, team models.Team, problemID uint, problemCode string) (models.Problem, bool) {
 	var problem models.Problem
-	query := s.DB.Where("deleted_at IS NULL")
+	query := s.DB.Where("deleted_at IS NULL AND archived_at IS NULL")
 	if problemID > 0 {
 		query = query.Where("id = ?", problemID)
 	} else if code := strings.TrimSpace(problemCode); code != "" {
@@ -1676,15 +1749,13 @@ func (s Server) createScopedTeamSubmission(c *gin.Context, user models.User, req
 			if participantCount == 0 {
 				return &teamContentMutationError{status: http.StatusForbidden, message: "你不在比赛发布时冻结的参赛名单中"}
 			}
-			var linkCount int64
-			if err := tx.Model(&models.TeamContestProblem{}).
+			var link models.TeamContestProblem
+			if err := tx.Select("problem_version_id").
 				Where("contest_id = ? AND problem_id = ?", *contestID, req.ProblemID).
-				Count(&linkCount).Error; err != nil {
+				First(&link).Error; err != nil {
 				return err
 			}
-			if linkCount == 0 {
-				return &teamContentMutationError{status: http.StatusBadRequest, message: "题目不属于当前比赛"}
-			}
+			submission.ProblemVersionID = link.ProblemVersionID
 		}
 		if problemSetID != nil {
 			var set models.TeamProblemSet
@@ -1707,13 +1778,19 @@ func (s Server) createScopedTeamSubmission(c *gin.Context, user models.User, req
 			}
 		}
 		var problem models.Problem
-		if err := tx.Where("deleted_at IS NULL").First(&problem, req.ProblemID).Error; err != nil {
+		if err := tx.First(&problem, req.ProblemID).Error; err != nil {
 			if errors.Is(err, gorm.ErrRecordNotFound) {
 				return &teamContentMutationError{status: http.StatusNotFound, message: "problem not found"}
 			}
 			return err
 		}
 		submission.ProblemID = problem.ID
+		if submission.ProblemVersionID == 0 {
+			if problem.CurrentVersionID == nil {
+				return &teamContentMutationError{status: http.StatusConflict, message: "题目尚无可用版本"}
+			}
+			submission.ProblemVersionID = *problem.CurrentVersionID
+		}
 		if err := tx.Create(&submission).Error; err != nil {
 			return err
 		}
@@ -1737,7 +1814,11 @@ func (s Server) createScopedTeamSubmission(c *gin.Context, user models.User, req
 		metadata = datatypes.JSONMap{"dispatch": "outbox", "contest_id": *contestID}
 	}
 	services.Audit(c, s.DB, action, "submission", submission.ID, metadata)
-	c.JSON(http.StatusCreated, submission)
+	response := submission
+	if s.shouldRedactSubmission(user, response, time.Now()) {
+		redactSubmission(&response)
+	}
+	c.JSON(http.StatusCreated, response)
 }
 
 func (s Server) teamMembership(teamID, userID uint) (models.TeamMembership, bool) {
@@ -2054,7 +2135,7 @@ func (s Server) syncTeamContestState(contest *models.TeamContest, now time.Time)
 func filterActiveTeamProblemLinks(links []models.TeamProblemSetProblem) []models.TeamProblemSetProblem {
 	active := make([]models.TeamProblemSetProblem, 0, len(links))
 	for _, link := range links {
-		if link.Problem.ID != 0 && link.Problem.DeletedAt == nil {
+		if link.Problem.ID != 0 {
 			active = append(active, link)
 		}
 	}
@@ -2064,7 +2145,7 @@ func filterActiveTeamProblemLinks(links []models.TeamProblemSetProblem) []models
 func filterActiveTeamContestProblemLinks(links []models.TeamContestProblem) []models.TeamContestProblem {
 	active := make([]models.TeamContestProblem, 0, len(links))
 	for _, link := range links {
-		if link.Problem.ID != 0 && link.Problem.DeletedAt == nil {
+		if link.Problem.ID != 0 {
 			active = append(active, link)
 		}
 	}

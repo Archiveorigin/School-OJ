@@ -21,6 +21,8 @@ export type ExamDraft = {
   manual_review: boolean;
   ranking_visible: boolean;
   scoring_rule: ScoringRule;
+  freeze_enabled: boolean;
+  freeze_duration_minutes: number;
 };
 
 export type SelectedExamProblem = {
@@ -58,6 +60,8 @@ export type CreateExamInput = {
   manual_review: boolean;
   ranking_visible: boolean;
   scoring_rule: ScoringRule;
+  freeze_enabled: boolean;
+  freeze_duration_minutes: number;
   problems: Array<{
     problem_id: number;
     score: number;

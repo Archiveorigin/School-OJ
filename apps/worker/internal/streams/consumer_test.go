@@ -6,6 +6,7 @@ import (
 	"time"
 
 	"school-oj/apps/worker/internal/config"
+	"school-oj/apps/worker/internal/models"
 
 	"github.com/redis/go-redis/v9"
 )
@@ -64,5 +65,19 @@ func TestJudgeLeaseTTLExceedsPendingReclaimWindow(t *testing.T) {
 	consumer.Cfg.RetryIdleSeconds = 10
 	if got := consumer.judgeLeaseTTL(); got != 2*time.Minute {
 		t.Fatalf("short reclaim window must still use safe minimum lease, got %s", got)
+	}
+}
+
+func TestProblemSnapshotForSubmissionUsesPinnedVersion(t *testing.T) {
+	submission := models.Submission{
+		Problem:        models.Problem{Title: "current", PackageObject: "problems/current.zip", TimeLimitMS: 1000},
+		ProblemVersion: models.ProblemVersion{ID: 7, Title: "pinned", PackageObject: "problems/v1.zip", TimeLimitMS: 2500},
+	}
+	problem := problemSnapshotForSubmission(submission)
+	if problem.Title != "pinned" || problem.PackageObject != "problems/v1.zip" || problem.TimeLimitMS != 2500 {
+		t.Fatalf("judge problem = %#v; want pinned immutable version", problem)
+	}
+	if submission.Problem.Title != "current" {
+		t.Fatal("snapshot selection must not mutate the canonical problem")
 	}
 }

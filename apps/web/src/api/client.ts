@@ -57,7 +57,7 @@ export interface Problem {
 }
 
 export type TeamRole = 'owner' | 'admin' | 'member'
-export type ScoringRule = 'penalty' | 'score'
+export type ScoringRule = 'oi' | 'ioi' | 'acm'
 
 export interface Team {
   id: number
@@ -102,6 +102,8 @@ export interface TeamContest {
   ends_at?: string
   duration_minutes: number
   scoring_rule?: ScoringRule
+  freeze_enabled?: boolean
+  freeze_duration_minutes?: number
   gold_award_percent?: number
   silver_award_percent?: number
   bronze_award_percent?: number
@@ -113,6 +115,50 @@ export interface TeamContest {
   status?: 'draft' | 'published' | 'running' | 'closed'
   created_at?: string
   updated_at?: string
+}
+
+export type ProblemChangeAction = 'create' | 'replace' | 'archive'
+export type ProblemChangeStatus = 'pending' | 'processing' | 'completed' | 'rejected' | 'cancelled'
+
+export interface ProblemChangeTicket {
+  id: number
+  requester_id: number
+  requester?: User
+  problem_id?: number
+  problem?: Problem
+  action: ProblemChangeAction
+  status: ProblemChangeStatus
+  target_scope: 'public' | 'prepared' | 'team_problem_set'
+  team_problem_set_id?: number
+  description: string
+  attachment_name?: string
+  resolution_note?: string
+  applied_version_id?: number
+  processed_by?: number
+  processed_at?: string
+  created_at: string
+  updated_at: string
+  impact_summary?: {
+    future_exams: number
+    pinned_exams: number
+    future_contests: number
+    pinned_contests: number
+    historical_submissions: number
+  }
+}
+
+export interface ProblemCatalogItem extends Problem {
+  pass_rate: number
+  accepted_count: number
+  evaluated_count: number
+}
+
+export interface ProblemCatalogResponse {
+  items: ProblemCatalogItem[]
+  total: number
+  page: number
+  page_size: number
+  available_tags: string[]
 }
 
 export interface PreparedProblem {

@@ -63,8 +63,11 @@
           <div>
             <span>计分规则</span
             ><strong>{{
-              draft.scoring_rule === "score" ? "总分数" : "通过数 + 罚时"
+              draft.scoring_rule.toUpperCase()
             }}</strong>
+          </div>
+          <div>
+            <span>封榜</span><strong>{{ draft.freeze_enabled ? `结束前 ${draft.freeze_duration_minutes} 分钟` : "未启用" }}</strong>
           </div>
           <div>
             <span>结束方式</span

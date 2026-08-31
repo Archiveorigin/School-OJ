@@ -23,6 +23,23 @@ type Problem struct {
 	UpdatedAt       time.Time         `json:"updated_at"`
 }
 
+type ProblemVersion struct {
+	ID              uint              `json:"id" gorm:"primaryKey"`
+	ProblemID       uint              `json:"problem_id"`
+	Version         int               `json:"version"`
+	Title           string            `json:"title"`
+	Statement       string            `json:"statement"`
+	Tags            datatypes.JSONMap `json:"tags"`
+	Difficulty      string            `json:"difficulty"`
+	TimeLimitMS     int               `json:"time_limit_ms"`
+	MemoryLimitMB   int               `json:"memory_limit_mb"`
+	OutputLimitKB   int               `json:"output_limit_kb"`
+	PackageObject   string            `json:"package_object"`
+	PackageChecksum string            `json:"package_checksum"`
+	Manifest        datatypes.JSONMap `json:"manifest"`
+	CreatedAt       time.Time         `json:"created_at"`
+}
+
 type SubmissionStatus string
 
 const (
@@ -41,25 +58,27 @@ const (
 )
 
 type Submission struct {
-	ID           uint              `json:"id" gorm:"primaryKey"`
-	UserID       uint              `json:"user_id"`
-	ProblemID    uint              `json:"problem_id"`
-	Problem      Problem           `json:"problem" gorm:"foreignKey:ProblemID"`
-	AssignmentID *uint             `json:"assignment_id"`
-	ExamID       *uint             `json:"exam_id"`
-	Language     string            `json:"language"`
-	SourceCode   string            `json:"source_code"`
-	Status       SubmissionStatus  `json:"status"`
-	Score        int               `json:"score"`
-	ManualScore  *int              `json:"manual_score"`
-	ManualGradedBy *uint           `json:"manual_graded_by"`
-	ManualGradedAt *time.Time      `json:"manual_graded_at"`
-	TimeMS       int               `json:"time_ms"`
-	MemoryKB     int               `json:"memory_kb"`
-	Message      string            `json:"message"`
-	Trace        datatypes.JSONMap `json:"trace"`
-	CreatedAt    time.Time         `json:"created_at"`
-	UpdatedAt    time.Time         `json:"updated_at"`
+	ID               uint              `json:"id" gorm:"primaryKey"`
+	UserID           uint              `json:"user_id"`
+	ProblemID        uint              `json:"problem_id"`
+	Problem          Problem           `json:"problem" gorm:"foreignKey:ProblemID"`
+	ProblemVersionID uint              `json:"problem_version_id"`
+	ProblemVersion   ProblemVersion    `json:"problem_version" gorm:"foreignKey:ProblemVersionID"`
+	AssignmentID     *uint             `json:"assignment_id"`
+	ExamID           *uint             `json:"exam_id"`
+	Language         string            `json:"language"`
+	SourceCode       string            `json:"source_code"`
+	Status           SubmissionStatus  `json:"status"`
+	Score            int               `json:"score"`
+	ManualScore      *int              `json:"manual_score"`
+	ManualGradedBy   *uint             `json:"manual_graded_by"`
+	ManualGradedAt   *time.Time        `json:"manual_graded_at"`
+	TimeMS           int               `json:"time_ms"`
+	MemoryKB         int               `json:"memory_kb"`
+	Message          string            `json:"message"`
+	Trace            datatypes.JSONMap `json:"trace"`
+	CreatedAt        time.Time         `json:"created_at"`
+	UpdatedAt        time.Time         `json:"updated_at"`
 }
 
 type SubmissionResult struct {

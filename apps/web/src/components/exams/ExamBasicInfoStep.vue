@@ -83,9 +83,10 @@
               <div>
                 <strong>计分方式</strong><span>决定榜单排序与同分规则</span>
               </div>
-              <el-radio-group v-model="model.scoring_rule">
-                <el-radio-button value="penalty">通过数 + 罚时</el-radio-button>
-                <el-radio-button value="score">总分数</el-radio-button>
+              <el-radio-group v-model="model.scoring_rule" @change="normalizeScoring">
+                <el-radio-button value="oi">OI</el-radio-button>
+                <el-radio-button value="ioi">IOI</el-radio-button>
+                <el-radio-button value="acm">ACM</el-radio-button>
               </el-radio-group>
             </div>
             <div class="rule-row">
@@ -100,7 +101,17 @@
                 <strong>实时榜单</strong
                 ><span>允许考生在考试过程中查看排名</span>
               </div>
-              <el-switch v-model="model.ranking_visible" />
+              <el-switch v-model="model.ranking_visible" :disabled="model.scoring_rule === 'oi'" />
+            </div>
+            <div class="rule-row">
+              <div>
+                <strong>封榜</strong><span>结束前隐藏榜单变化与新提交结果</span>
+              </div>
+              <div class="freeze-controls">
+                <el-switch v-model="model.freeze_enabled" :disabled="model.scoring_rule === 'oi' || !model.ends_at" />
+                <el-input-number v-if="model.freeze_enabled" v-model="model.freeze_duration_minutes" :min="1" :max="freezeMaximum" />
+                <span v-if="model.freeze_enabled">分钟</span>
+              </div>
             </div>
           </div>
         </el-form>
@@ -133,7 +144,7 @@
         <div>
           <dt>计分方式</dt>
           <dd>
-            {{ model.scoring_rule === "score" ? "总分数" : "通过数 + 罚时" }}
+            {{ model.scoring_rule.toUpperCase() }}
           </dd>
         </div>
       </dl>
@@ -158,6 +169,19 @@ const props = defineProps<{
 }>();
 
 const emit = defineEmits<{ "class-change": []; "course-change": [] }>();
+
+const freezeMaximum = computed(() => {
+  if (!model.value.starts_at || !model.value.ends_at) return 1;
+  const duration = Math.floor((new Date(model.value.ends_at).getTime() - new Date(model.value.starts_at).getTime()) / 60000);
+  return Math.max(1, duration - 1);
+});
+
+function normalizeScoring() {
+  if (model.value.scoring_rule === "oi") {
+    model.value.ranking_visible = false;
+    model.value.freeze_enabled = false;
+  }
+}
 
 const timeSummary = computed(() => {
   if (!model.value.starts_at && !model.value.ends_at) return "创建后立即开始";

@@ -8,6 +8,7 @@
     "build": "vue-tsc --noEmit && vite build",
     "preview": "vite preview --host 0.0.0.0",
     "test": "vitest",
+    "qa:design": "node tests/e2e/plan-qa.mjs",
     "format": "prettier --write src"
   },
   "dependencies": {
@@ -28,6 +29,7 @@
     "@types/node": "^22.10.2",
     "@vue/test-utils": "^2.4.6",
     "jsdom": "^25.0.1",
+    "playwright": "^1.62.1",
     "prettier": "^3.4.2",
     "typescript": "^5.7.2",
     "vitest": "^4.1.10",

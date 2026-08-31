@@ -25,26 +25,11 @@
           <el-option label="中等" value="medium" />
           <el-option label="困难" value="hard" />
         </el-select>
-        <el-button
-          v-if="source === 'markdown'"
-          type="primary"
-          plain
-          @click="emit('create')"
-          >新建 Markdown 题目</el-button
-        >
-        <el-button v-if="source === 'markdown'" @click="emit('batch')"
-          >批量导入</el-button
-        >
       </div>
 
-      <div v-if="source === 'markdown'" class="authoring-callout">
-        <strong>创建考试专用题目</strong>
-        <p>
-          支持 Markdown、LaTeX、图片和隐藏测试点，考试结束后可同步到公共题库。
-        </p>
-      </div>
+      <el-alert class="authoring-callout" title="需要新题？" description="请先通过工单修改提交新增需求，管理员上传完整题包后即可在此选择。" type="info" :closable="false" />
 
-      <div v-else-if="pagedChoices.length" class="problem-list">
+      <div v-if="pagedChoices.length" class="problem-list">
         <article
           v-for="choice in pagedChoices"
           :key="choice.value"
@@ -88,7 +73,7 @@
       <el-empty v-else description="没有匹配的题目" :image-size="72" />
 
       <el-pagination
-        v-if="filteredChoices.length > pageSize && source !== 'markdown'"
+        v-if="filteredChoices.length > pageSize"
         v-model:current-page="page"
         small
         background
@@ -210,11 +195,9 @@ const props = defineProps<{
 
 const emit = defineEmits<{
   add: [source: "class" | "prepared", problemID: number];
-  create: [];
-  batch: [];
 }>();
 
-const source = ref<"class" | "prepared" | "markdown">("class");
+const source = ref<"class" | "prepared">("class");
 const query = ref("");
 const difficulty = ref("");
 const page = ref(1);
@@ -222,7 +205,6 @@ const pageSize = 10;
 const sourceOptions = [
   { label: "公共题库", value: "class" },
   { label: "预备题库", value: "prepared" },
-  { label: "新建题目", value: "markdown" },
 ];
 
 const activeChoices = computed(() =>

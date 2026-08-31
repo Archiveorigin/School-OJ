@@ -317,7 +317,7 @@ function resetSubmissionFilters() {
 }
 
 function createPrivateProblem() {
-  router.push({ path: '/problems/create', query: { teamId: teamID.value, problemSetId: problemSetID.value } })
+  router.push({ path: '/problem-changes/new', query: { action: 'create', target_scope: 'team_problem_set', team_problem_set_id: String(problemSetID.value) } })
 }
 
 function openEditSet() {

@@ -25,7 +25,9 @@ const draft = (): ExamDraft => ({
   ends_at: null,
   manual_review: false,
   ranking_visible: false,
-  scoring_rule: "penalty",
+  scoring_rule: "acm",
+  freeze_enabled: false,
+  freeze_duration_minutes: 60,
 });
 
 describe("exam builder", () => {
@@ -50,5 +52,14 @@ describe("exam builder", () => {
     expect(validateExamDraft({ ...draft(), ends_at: new Date() }, items)).toBe(
       "",
     );
+  });
+
+  it("validates OI visibility and freeze duration", () => {
+    const items = [problem("A", 100)];
+    expect(validateExamDraft({ ...draft(), scoring_rule: "oi", ranking_visible: true }, items)).toContain("OI");
+    expect(validateExamDraft({ ...draft(), freeze_enabled: true }, items)).toContain("开始和结束时间");
+    const startsAt = new Date("2026-08-31T08:00:00Z");
+    const endsAt = new Date("2026-08-31T10:00:00Z");
+    expect(validateExamDraft({ ...draft(), starts_at: startsAt, ends_at: endsAt, freeze_enabled: true, freeze_duration_minutes: 120 }, items)).toContain("小于考试时长");
   });
 });

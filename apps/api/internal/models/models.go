@@ -81,24 +81,47 @@ type ClassProblem struct {
 }
 
 type Problem struct {
+	ID               uint              `json:"id" gorm:"primaryKey"`
+	OwnerID          uint              `json:"owner_id" gorm:"index;not null"`
+	TeamID           *uint             `json:"team_id,omitempty" gorm:"index"`
+	DisplayCode      string            `json:"display_code" gorm:"uniqueIndex;size:16"`
+	Slug             string            `json:"-" gorm:"uniqueIndex:idx_problems_slug_active,where:deleted_at IS NULL;size:120;not null"`
+	Title            string            `json:"title" gorm:"size:200;not null"`
+	Statement        string            `json:"statement" gorm:"type:text"`
+	Tags             datatypes.JSONMap `json:"tags" gorm:"type:jsonb"`
+	Difficulty       string            `json:"difficulty" gorm:"size:32;index;not null;default:'入门'"`
+	TimeLimitMS      int               `json:"time_limit_ms" gorm:"not null;default:1000"`
+	MemoryLimitMB    int               `json:"memory_limit_mb" gorm:"not null;default:256"`
+	OutputLimitKB    int               `json:"output_limit_kb" gorm:"not null;default:1024"`
+	PackageObject    string            `json:"-" gorm:"size:512;not null"`
+	PackageChecksum  string            `json:"-" gorm:"size:128;not null"`
+	Manifest         datatypes.JSONMap `json:"-" gorm:"type:jsonb"`
+	CurrentVersionID *uint             `json:"current_version_id" gorm:"index"`
+	CurrentVersion   *ProblemVersion   `json:"current_version,omitempty" gorm:"foreignKey:CurrentVersionID"`
+	ArchivedAt       *time.Time        `json:"archived_at,omitempty" gorm:"index"`
+	CreatedAt        time.Time         `json:"created_at"`
+	UpdatedAt        time.Time         `json:"updated_at"`
+	DeletedAt        *time.Time        `json:"deleted_at,omitempty" gorm:"index"`
+}
+
+// ProblemVersion is an immutable snapshot of every artifact required to judge
+// and render a problem. Historical submissions and started events pin this row.
+type ProblemVersion struct {
 	ID              uint              `json:"id" gorm:"primaryKey"`
-	OwnerID         uint              `json:"owner_id" gorm:"index;not null"`
-	TeamID          *uint             `json:"team_id,omitempty" gorm:"index"`
-	DisplayCode     string            `json:"display_code" gorm:"uniqueIndex;size:16"`
-	Slug            string            `json:"-" gorm:"uniqueIndex:idx_problems_slug_active,where:deleted_at IS NULL;size:120;not null"`
+	ProblemID       uint              `json:"problem_id" gorm:"uniqueIndex:idx_problem_version;index;not null"`
+	Version         int               `json:"version" gorm:"uniqueIndex:idx_problem_version;not null"`
 	Title           string            `json:"title" gorm:"size:200;not null"`
 	Statement       string            `json:"statement" gorm:"type:text"`
 	Tags            datatypes.JSONMap `json:"tags" gorm:"type:jsonb"`
-	Difficulty      string            `json:"difficulty" gorm:"size:32;index;not null;default:'入门'"`
+	Difficulty      string            `json:"difficulty" gorm:"size:32;not null;default:'入门'"`
 	TimeLimitMS     int               `json:"time_limit_ms" gorm:"not null;default:1000"`
 	MemoryLimitMB   int               `json:"memory_limit_mb" gorm:"not null;default:256"`
 	OutputLimitKB   int               `json:"output_limit_kb" gorm:"not null;default:1024"`
 	PackageObject   string            `json:"-" gorm:"size:512;not null"`
 	PackageChecksum string            `json:"-" gorm:"size:128;not null"`
 	Manifest        datatypes.JSONMap `json:"-" gorm:"type:jsonb"`
+	CreatedBy       uint              `json:"created_by" gorm:"index;not null"`
 	CreatedAt       time.Time         `json:"created_at"`
-	UpdatedAt       time.Time         `json:"updated_at"`
-	DeletedAt       *time.Time        `json:"deleted_at,omitempty" gorm:"index"`
 }
 
 type PreparedProblem struct {
@@ -171,30 +194,34 @@ type AssignmentAttempt struct {
 }
 
 type Exam struct {
-	ID          uint              `json:"id" gorm:"primaryKey"`
-	CourseID    uint              `json:"course_id" gorm:"index;not null"`
-	ClassID     *uint             `json:"class_id" gorm:"index"`
-	Title       string            `json:"title" gorm:"size:200;not null"`
-	Description string            `json:"description"`
-	StartsAt    *time.Time        `json:"starts_at"`
-	EndsAt      *time.Time        `json:"ends_at"`
-	ScoringRule string            `json:"scoring_rule" gorm:"size:16;not null;default:'penalty'"`
-	Settings    datatypes.JSONMap `json:"settings" gorm:"type:jsonb"`
-	Problems    []ExamProblem     `json:"problems,omitempty"`
-	CreatedAt   time.Time         `json:"created_at"`
-	UpdatedAt   time.Time         `json:"updated_at"`
-	DeletedAt   *time.Time        `json:"deleted_at,omitempty" gorm:"index"`
+	ID                    uint              `json:"id" gorm:"primaryKey"`
+	CourseID              uint              `json:"course_id" gorm:"index;not null"`
+	ClassID               *uint             `json:"class_id" gorm:"index"`
+	Title                 string            `json:"title" gorm:"size:200;not null"`
+	Description           string            `json:"description"`
+	StartsAt              *time.Time        `json:"starts_at"`
+	EndsAt                *time.Time        `json:"ends_at"`
+	ScoringRule           string            `json:"scoring_rule" gorm:"size:16;not null;default:'acm'"`
+	FreezeEnabled         bool              `json:"freeze_enabled" gorm:"not null;default:false"`
+	FreezeDurationMinutes int               `json:"freeze_duration_minutes" gorm:"not null;default:60"`
+	Settings              datatypes.JSONMap `json:"settings" gorm:"type:jsonb"`
+	Problems              []ExamProblem     `json:"problems,omitempty"`
+	CreatedAt             time.Time         `json:"created_at"`
+	UpdatedAt             time.Time         `json:"updated_at"`
+	DeletedAt             *time.Time        `json:"deleted_at,omitempty" gorm:"index"`
 }
 
 type ExamProblem struct {
-	ID        uint      `json:"id" gorm:"primaryKey"`
-	ExamID    uint      `json:"exam_id" gorm:"index;not null"`
-	ProblemID uint      `json:"problem_id" gorm:"index;not null"`
-	Label     string    `json:"label" gorm:"size:32;index"`
-	Score     int       `json:"score" gorm:"not null;default:100"`
-	SortOrder int       `json:"sort_order" gorm:"not null;default:0"`
-	Problem   Problem   `json:"problem" gorm:"foreignKey:ProblemID"`
-	CreatedAt time.Time `json:"created_at"`
+	ID               uint           `json:"id" gorm:"primaryKey"`
+	ExamID           uint           `json:"exam_id" gorm:"index;not null"`
+	ProblemID        uint           `json:"problem_id" gorm:"index;not null"`
+	ProblemVersionID uint           `json:"problem_version_id" gorm:"index;not null"`
+	Label            string         `json:"label" gorm:"size:32;index"`
+	Score            int            `json:"score" gorm:"not null;default:100"`
+	SortOrder        int            `json:"sort_order" gorm:"not null;default:0"`
+	Problem          Problem        `json:"problem" gorm:"foreignKey:ProblemID"`
+	ProblemVersion   ProblemVersion `json:"problem_version,omitempty" gorm:"foreignKey:ProblemVersionID"`
+	CreatedAt        time.Time      `json:"created_at"`
 }
 
 func FormatProblemDisplayCode(index int) string {
@@ -255,27 +282,77 @@ const (
 )
 
 type Submission struct {
-	ID             uint              `json:"id" gorm:"primaryKey"`
-	UserID         uint              `json:"user_id" gorm:"index;not null"`
-	ProblemID      uint              `json:"problem_id" gorm:"index;not null"`
-	AssignmentID   *uint             `json:"assignment_id" gorm:"index"`
-	ExamID         *uint             `json:"exam_id" gorm:"index"`
-	TeamContestID  *uint             `json:"team_contest_id,omitempty" gorm:"index"`
-	ProblemSetID   *uint             `json:"team_problem_set_id,omitempty" gorm:"index"`
-	Language       string            `json:"language" gorm:"size:32;index;not null"`
-	SourceCode     string            `json:"source_code" gorm:"type:text;not null"`
-	IsPublic       bool              `json:"is_public" gorm:"not null;default:false;index"`
-	Status         SubmissionStatus  `json:"status" gorm:"type:varchar(32);index;not null"`
-	Score          int               `json:"score" gorm:"not null;default:0"`
-	ManualScore    *int              `json:"manual_score"`
-	ManualGradedBy *uint             `json:"manual_graded_by" gorm:"index"`
-	ManualGradedAt *time.Time        `json:"manual_graded_at"`
-	TimeMS         int               `json:"time_ms" gorm:"not null;default:0"`
-	MemoryKB       int               `json:"memory_kb" gorm:"not null;default:0"`
-	Message        string            `json:"message" gorm:"type:text"`
-	Trace          datatypes.JSONMap `json:"trace" gorm:"type:jsonb"`
-	CreatedAt      time.Time         `json:"created_at"`
-	UpdatedAt      time.Time         `json:"updated_at"`
+	ID               uint              `json:"id" gorm:"primaryKey"`
+	UserID           uint              `json:"user_id" gorm:"index;not null"`
+	ProblemID        uint              `json:"problem_id" gorm:"index;not null"`
+	ProblemVersionID uint              `json:"problem_version_id" gorm:"index;not null"`
+	ProblemVersion   *ProblemVersion   `json:"problem_version,omitempty" gorm:"foreignKey:ProblemVersionID"`
+	AssignmentID     *uint             `json:"assignment_id" gorm:"index"`
+	ExamID           *uint             `json:"exam_id" gorm:"index"`
+	TeamContestID    *uint             `json:"team_contest_id,omitempty" gorm:"index"`
+	ProblemSetID     *uint             `json:"team_problem_set_id,omitempty" gorm:"index"`
+	Language         string            `json:"language" gorm:"size:32;index;not null"`
+	SourceCode       string            `json:"source_code" gorm:"type:text;not null"`
+	IsPublic         bool              `json:"is_public" gorm:"not null;default:false;index"`
+	Status           SubmissionStatus  `json:"status" gorm:"type:varchar(32);index;not null"`
+	Score            int               `json:"score" gorm:"not null;default:0"`
+	ManualScore      *int              `json:"manual_score"`
+	ManualGradedBy   *uint             `json:"manual_graded_by" gorm:"index"`
+	ManualGradedAt   *time.Time        `json:"manual_graded_at"`
+	TimeMS           int               `json:"time_ms" gorm:"not null;default:0"`
+	MemoryKB         int               `json:"memory_kb" gorm:"not null;default:0"`
+	Message          string            `json:"message" gorm:"type:text"`
+	Trace            datatypes.JSONMap `json:"trace" gorm:"type:jsonb"`
+	CreatedAt        time.Time         `json:"created_at"`
+	UpdatedAt        time.Time         `json:"updated_at"`
+}
+
+type ProblemChangeAction string
+
+const (
+	ProblemChangeCreate  ProblemChangeAction = "create"
+	ProblemChangeReplace ProblemChangeAction = "replace"
+	ProblemChangeArchive ProblemChangeAction = "archive"
+)
+
+type ProblemChangeStatus string
+
+const (
+	ProblemChangePending    ProblemChangeStatus = "pending"
+	ProblemChangeProcessing ProblemChangeStatus = "processing"
+	ProblemChangeCompleted  ProblemChangeStatus = "completed"
+	ProblemChangeRejected   ProblemChangeStatus = "rejected"
+	ProblemChangeCancelled  ProblemChangeStatus = "cancelled"
+)
+
+type ProblemChangeTicket struct {
+	ID               uint                        `json:"id" gorm:"primaryKey"`
+	RequesterID      uint                        `json:"requester_id" gorm:"index;not null"`
+	Requester        User                        `json:"requester,omitempty" gorm:"foreignKey:RequesterID"`
+	ProblemID        *uint                       `json:"problem_id,omitempty" gorm:"index"`
+	Problem          *Problem                    `json:"problem,omitempty" gorm:"foreignKey:ProblemID"`
+	Action           ProblemChangeAction         `json:"action" gorm:"type:varchar(16);index;not null"`
+	Status           ProblemChangeStatus         `json:"status" gorm:"type:varchar(16);index;not null;default:'pending'"`
+	TargetScope      string                      `json:"target_scope" gorm:"size:24;not null;default:'public'"`
+	TeamProblemSetID *uint                       `json:"team_problem_set_id,omitempty" gorm:"index"`
+	Description      string                      `json:"description" gorm:"type:text;not null"`
+	AttachmentObject string                      `json:"-" gorm:"size:512"`
+	AttachmentName   string                      `json:"attachment_name,omitempty" gorm:"size:255"`
+	ResolutionNote   string                      `json:"resolution_note" gorm:"type:text"`
+	AppliedVersionID *uint                       `json:"applied_version_id,omitempty" gorm:"index"`
+	ProcessedBy      *uint                       `json:"processed_by,omitempty" gorm:"index"`
+	ProcessedAt      *time.Time                  `json:"processed_at,omitempty"`
+	CreatedAt        time.Time                   `json:"created_at"`
+	UpdatedAt        time.Time                   `json:"updated_at"`
+	ImpactSummary    *ProblemChangeImpactSummary `json:"impact_summary,omitempty" gorm:"-"`
+}
+
+type ProblemChangeImpactSummary struct {
+	FutureExams       int64 `json:"future_exams"`
+	PinnedExams       int64 `json:"pinned_exams"`
+	FutureContests    int64 `json:"future_contests"`
+	PinnedContests    int64 `json:"pinned_contests"`
+	HistoricalSubmits int64 `json:"historical_submissions"`
 }
 
 type AuthorApplicationStatus string
@@ -437,22 +514,24 @@ type TeamJoinApplication struct {
 }
 
 type TeamContest struct {
-	ID                 uint       `json:"id" gorm:"primaryKey"`
-	TeamID             uint       `json:"team_id" gorm:"index;not null"`
-	Title              string     `json:"title" gorm:"size:200;not null"`
-	Description        string     `json:"description" gorm:"type:text"`
-	StartsAt           *time.Time `json:"starts_at" gorm:"index"`
-	DurationMinutes    int        `json:"duration_minutes" gorm:"not null;default:120"`
-	ScoringRule        string     `json:"scoring_rule" gorm:"size:16;not null;default:'penalty'"`
-	GoldAwardPercent   *int       `json:"gold_award_percent" gorm:"not null;default:10"`
-	SilverAwardPercent *int       `json:"silver_award_percent" gorm:"not null;default:10"`
-	BronzeAwardPercent *int       `json:"bronze_award_percent" gorm:"not null;default:10"`
-	State              string     `json:"state" gorm:"size:16;index;not null;default:'draft'"`
-	PublishedAt        *time.Time `json:"published_at" gorm:"index"`
-	CreatedBy          uint       `json:"created_by" gorm:"index;not null"`
-	CreatedAt          time.Time  `json:"created_at"`
-	UpdatedAt          time.Time  `json:"updated_at"`
-	DeletedAt          *time.Time `json:"deleted_at,omitempty" gorm:"index"`
+	ID                    uint       `json:"id" gorm:"primaryKey"`
+	TeamID                uint       `json:"team_id" gorm:"index;not null"`
+	Title                 string     `json:"title" gorm:"size:200;not null"`
+	Description           string     `json:"description" gorm:"type:text"`
+	StartsAt              *time.Time `json:"starts_at" gorm:"index"`
+	DurationMinutes       int        `json:"duration_minutes" gorm:"not null;default:120"`
+	ScoringRule           string     `json:"scoring_rule" gorm:"size:16;not null;default:'acm'"`
+	FreezeEnabled         bool       `json:"freeze_enabled" gorm:"not null;default:false"`
+	FreezeDurationMinutes int        `json:"freeze_duration_minutes" gorm:"not null;default:60"`
+	GoldAwardPercent      *int       `json:"gold_award_percent" gorm:"not null;default:10"`
+	SilverAwardPercent    *int       `json:"silver_award_percent" gorm:"not null;default:10"`
+	BronzeAwardPercent    *int       `json:"bronze_award_percent" gorm:"not null;default:10"`
+	State                 string     `json:"state" gorm:"size:16;index;not null;default:'draft'"`
+	PublishedAt           *time.Time `json:"published_at" gorm:"index"`
+	CreatedBy             uint       `json:"created_by" gorm:"index;not null"`
+	CreatedAt             time.Time  `json:"created_at"`
+	UpdatedAt             time.Time  `json:"updated_at"`
+	DeletedAt             *time.Time `json:"deleted_at,omitempty" gorm:"index"`
 }
 
 const (
@@ -470,13 +549,15 @@ type TeamContestParticipant struct {
 }
 
 type TeamContestProblem struct {
-	ID        uint      `json:"id" gorm:"primaryKey"`
-	ContestID uint      `json:"contest_id" gorm:"uniqueIndex:idx_team_contest_problem;index;not null"`
-	ProblemID uint      `json:"problem_id" gorm:"uniqueIndex:idx_team_contest_problem;index;not null"`
-	Label     string    `json:"label" gorm:"size:16"`
-	SortOrder int       `json:"sort_order" gorm:"not null;default:0"`
-	Problem   Problem   `json:"problem,omitempty" gorm:"foreignKey:ProblemID"`
-	CreatedAt time.Time `json:"created_at"`
+	ID               uint           `json:"id" gorm:"primaryKey"`
+	ContestID        uint           `json:"contest_id" gorm:"uniqueIndex:idx_team_contest_problem;index;not null"`
+	ProblemID        uint           `json:"problem_id" gorm:"uniqueIndex:idx_team_contest_problem;index;not null"`
+	ProblemVersionID uint           `json:"problem_version_id" gorm:"index;not null"`
+	Label            string         `json:"label" gorm:"size:16"`
+	SortOrder        int            `json:"sort_order" gorm:"not null;default:0"`
+	Problem          Problem        `json:"problem,omitempty" gorm:"foreignKey:ProblemID"`
+	ProblemVersion   ProblemVersion `json:"problem_version,omitempty" gorm:"foreignKey:ProblemVersionID"`
+	CreatedAt        time.Time      `json:"created_at"`
 }
 
 type TeamProblemSet struct {
@@ -519,6 +600,7 @@ func AllModels() []any {
 		&ClassMembership{},
 		&ClassProblem{},
 		&Problem{},
+		&ProblemVersion{},
 		&PreparedProblem{},
 		&ProblemProgress{},
 		&Assignment{},
@@ -531,6 +613,7 @@ func AllModels() []any {
 		&SubmissionResult{},
 		&AuthorApplication{},
 		&ProblemReview{},
+		&ProblemChangeTicket{},
 		&PlagiarismJob{},
 		&AuditLog{},
 		&EmailVerification{},

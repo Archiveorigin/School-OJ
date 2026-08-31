@@ -244,7 +244,7 @@ func (c Consumer) handle(ctx context.Context, msg redis.XMessage) error {
 		return err
 	}
 	var sub models.Submission
-	if err := c.DB.Preload("Problem").First(&sub, subID).Error; err != nil {
+	if err := c.DB.Preload("Problem").Preload("ProblemVersion").First(&sub, subID).Error; err != nil {
 		return retryable(err)
 	}
 	if sub.Status != models.StatusQueued && sub.Status != models.StatusRunning {
@@ -271,7 +271,8 @@ func (c Consumer) handle(ctx context.Context, msg redis.XMessage) error {
 	}
 	c.publishSubmission(sub.ID)
 
-	obj, err := c.MinIO.GetObject(ctx, c.Cfg.MinIOBucket, sub.Problem.PackageObject, minio.GetObjectOptions{})
+	judgeProblem := problemSnapshotForSubmission(sub)
+	obj, err := c.MinIO.GetObject(ctx, c.Cfg.MinIOBucket, judgeProblem.PackageObject, minio.GetObjectOptions{})
 	if err != nil {
 		_ = c.DB.Model(&sub).Where("status = ?", models.StatusRunning).Updates(map[string]any{"status": models.StatusQueued, "message": "waiting for problem package"}).Error
 		c.publishSubmission(sub.ID)
@@ -303,7 +304,7 @@ func (c Consumer) handle(ctx context.Context, msg redis.XMessage) error {
 		SubmissionID: sub.ID,
 		Language:     sub.Language,
 		SourceCode:   sub.SourceCode,
-		Problem:      sub.Problem,
+		Problem:      judgeProblem,
 		Package:      pkg,
 	})
 	if lease.IsLost() {
@@ -322,6 +323,23 @@ func (c Consumer) handle(ctx context.Context, msg redis.XMessage) error {
 	}
 	c.publishSubmission(sub.ID)
 	return nil
+}
+
+func problemSnapshotForSubmission(sub models.Submission) models.Problem {
+	problem := sub.Problem
+	if sub.ProblemVersion.ID == 0 {
+		return problem
+	}
+	problem.Title = sub.ProblemVersion.Title
+	problem.Statement = sub.ProblemVersion.Statement
+	problem.Tags = sub.ProblemVersion.Tags
+	problem.TimeLimitMS = sub.ProblemVersion.TimeLimitMS
+	problem.MemoryLimitMB = sub.ProblemVersion.MemoryLimitMB
+	problem.OutputLimitKB = sub.ProblemVersion.OutputLimitKB
+	problem.PackageObject = sub.ProblemVersion.PackageObject
+	problem.PackageChecksum = sub.ProblemVersion.PackageChecksum
+	problem.Manifest = sub.ProblemVersion.Manifest
+	return problem
 }
 
 func (c Consumer) markSystemError(sub *models.Submission, err error) {

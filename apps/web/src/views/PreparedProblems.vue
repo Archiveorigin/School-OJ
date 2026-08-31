@@ -26,7 +26,7 @@
     <div class="sub-content">
       <div class="panel-header">
         <div class="toolbar">
-          <el-button type="primary" @click="openCreateDialog">上传预备题</el-button>
+          <el-button type="primary" @click="router.push({ path: '/problem-changes/new', query: { action: 'create', target_scope: 'prepared' } })">发起新增工单</el-button>
           <el-button @click="load">刷新</el-button>
         </div>
       </div>
@@ -78,13 +78,9 @@
             </el-table-column>
             <el-table-column label="操作" width="220" fixed="right">
               <template #default="{ row }">
-                <el-button size="small" :disabled="Boolean(row.published_at)" @click.stop="openPublishDialog(row)">
-                  {{ row.published_at ? '已发布' : '发布' }}
-                </el-button>
-                <el-button size="small" @click.stop="openEditDialog(row)">分类</el-button>
-                <el-button size="small" @click.stop="toggleArchive(row)">
-                  {{ row.archived ? '恢复' : '归档' }}
-                </el-button>
+                  <el-button size="small" :disabled="Boolean(row.published_at)" @click.stop="router.push({ path: '/problem-changes/new', query: { action: 'replace', problem_id: row.problem_id, target_scope: 'public' } })">{{ row.published_at ? '已发布' : '申请发布' }}</el-button>
+                  <el-button size="small" @click.stop="router.push({ path: '/problem-changes/new', query: { action: 'replace', problem_id: row.problem_id, target_scope: row.published_at ? 'public' : 'prepared' } })">申请修改</el-button>
+                <el-button size="small" type="danger" plain @click.stop="router.push({ path: '/problem-changes/new', query: { action: 'archive', problem_id: row.problem_id } })">申请归档</el-button>
               </template>
             </el-table-column>
           </el-table>
@@ -321,12 +317,15 @@
 <script setup lang="ts">
 import { ElMessage } from 'element-plus'
 import { computed, onMounted, reactive, ref, watch } from 'vue'
+import { useRouter } from 'vue-router'
 import { client, type PreparedProblem } from '../api/client'
 import ListPagination from '../components/ListPagination.vue'
 import MarkdownRenderer from '../components/MarkdownRenderer.vue'
 import ProblemTagSelector from '../components/ProblemTagSelector.vue'
 import ProblemTestDownloads from '../components/ProblemTestDownloads.vue'
 import { problemDifficultyOptions, problemDisplayCode, tagList } from '../features/problems/problemMeta'
+
+const router = useRouter()
 
 type ProblemAssetForm = { name: string; path: string; content_type: string; data: string; preview_url: string }
 type CaseFilePair = { name: string; inputName: string; outputName: string; inputSize: number; outputSize: number; weight: number }

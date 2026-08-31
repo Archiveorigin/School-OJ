@@ -49,6 +49,9 @@ func (s Server) submissionEvents(c *gin.Context) {
 			writeSSE(c, "error", gin.H{"error": "submission not found"})
 			return true
 		}
+		if s.shouldRedactSubmission(user, sub, time.Now()) {
+			redactSubmission(&sub)
+		}
 		payload := gin.H{
 			"id":               sub.ID,
 			"status":           sub.Status,

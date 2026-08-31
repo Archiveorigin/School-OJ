@@ -27,8 +27,8 @@
             </div>
             <div v-if="canManage" class="toolbar manage-actions">
               <ProblemTestDownloads :problem-id="problem.id" :problem-code="problem.display_code" />
-              <el-button type="primary" plain @click="editVisible = true">修改题目</el-button>
-              <el-button v-if="canDelete" type="danger" plain @click="removeProblem">删除题目</el-button>
+              <el-button type="primary" plain @click="openTicket('replace')">申请替换</el-button>
+              <el-button type="danger" plain @click="openTicket('archive')">申请删除</el-button>
             </div>
           </div>
         </header>
@@ -80,19 +80,17 @@
           </template>
         </el-dialog>
 
-        <ProblemEditDialog v-model="editVisible" :problem="problem" @saved="handleSaved" />
       </template>
     </div>
   </section>
 </template>
 
 <script setup lang="ts">
-import { ElMessage, ElMessageBox } from 'element-plus'
+import { ElMessage } from 'element-plus'
 import { computed, onBeforeUnmount, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { AuthenticatedEventSource, client, getLatestSubmissions, openEventStream, type Problem } from '../../api/client'
 import MarkdownRenderer from '../../components/MarkdownRenderer.vue'
-import ProblemEditDialog from '../../components/ProblemEditDialog.vue'
 import ProblemMetaCard from '../../components/ProblemMetaCard.vue'
 import ProblemTestDownloads from '../../components/ProblemTestDownloads.vue'
 import SubmissionComposer from '../../components/SubmissionComposer.vue'
@@ -106,7 +104,6 @@ const router = useRouter()
 const problem = ref<Problem | null>(null)
 const loading = ref(false)
 const loadError = ref('')
-const editVisible = ref(false)
 const submitVisible = ref(false)
 const language = ref('cpp')
 const isPublic = ref(false)
@@ -118,7 +115,6 @@ const composerRef = ref<{ clearDraft: () => void } | null>(null)
 let submissionEvents: AuthenticatedEventSource | null = null
 
 const canManage = computed(() => auth.role === 'admin' || (Boolean(auth.user?.can_author) && problem.value?.owner_id === auth.user?.id))
-const canDelete = computed(() => Boolean(problem.value && (auth.role === 'admin' || problem.value.owner_id === auth.user?.id)))
 const source = ref('')
 const draftContext = computed(() => ({ userId: auth.user?.id || 0, resourceType: 'problem' as const, resourceId: problem.value?.id || 0, problemId: problem.value?.id || 0 }))
 
@@ -231,22 +227,9 @@ async function loadCodeFile(event: Event) {
   input.value = ''
 }
 
-function handleSaved(value: Problem) {
-  problem.value = value
-}
-
-async function removeProblem() {
+function openTicket(action: 'replace' | 'archive') {
   if (!problem.value) return
-  try {
-    await ElMessageBox.confirm('删除后题目将从公共题库隐藏，历史提交与报表会保留。确认删除？', '删除题目', { type: 'warning' })
-    await client.delete(`/problems/${problem.value.id}`)
-    ElMessage.success('题目已下架')
-    await router.push('/problems')
-  } catch (err: any) {
-    if (err !== 'cancel' && err !== 'close') {
-      ElMessage.error(err.response?.data?.error || err.message)
-    }
-  }
+  void router.push({ path: '/problem-changes/new', query: { action, problem_id: String(problem.value.id) } })
 }
 
 watch(() => route.params.id, loadProblem, { immediate: true })

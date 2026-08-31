@@ -17,7 +17,7 @@
           <template #default="{ row }">{{ row.problem_count || 0 }} 题</template>
         </el-table-column>
         <el-table-column label="计分方式" width="170">
-          <template #default="{ row }">{{ row.scoring_rule === 'score' ? '总分数' : '通过数 + 罚时' }}</template>
+          <template #default="{ row }">{{ String(row.scoring_rule || 'acm').toUpperCase() }}</template>
         </el-table-column>
         <el-table-column label="状态" width="110">
           <template #default="{ row }"><el-tag :type="statusType(row.status)">{{ statusLabel(row.status) }}</el-tag></template>
@@ -51,10 +51,16 @@
         </el-form-item>
         <el-form-item label="计分方式">
           <el-radio-group v-model="form.scoring_rule">
-            <el-radio-button value="penalty">通过数 + 罚时</el-radio-button>
-            <el-radio-button value="score">总分数</el-radio-button>
+            <el-radio-button value="oi">OI</el-radio-button>
+            <el-radio-button value="ioi">IOI</el-radio-button>
+            <el-radio-button value="acm">ACM</el-radio-button>
           </el-radio-group>
-          <p class="rule-hint">罚时按首次通过分钟数并累计通过前的错误提交；总分数按各题最高得分合计排序。</p>
+          <p class="rule-hint">OI 取最后一次提交；IOI 取最高分；ACM 按通过题数与罚时排序。</p>
+        </el-form-item>
+        <el-form-item label="封榜">
+          <el-switch v-model="form.freeze_enabled" :disabled="form.scoring_rule === 'oi'" />
+          <el-input-number v-if="form.freeze_enabled" v-model="form.freeze_duration_minutes" :min="1" :max="Math.max(1, form.duration_minutes - 1)" />
+          <span v-if="form.freeze_enabled" class="unit">分钟前</span>
         </el-form-item>
         <el-form-item label="奖项比例">
           <TeamContestAwardFields
@@ -77,7 +83,7 @@
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { computed, onMounted, reactive, ref } from 'vue'
 import { useRouter } from 'vue-router'
-import { client, type Team, type TeamContest } from '../../api/client'
+import { client, type ScoringRule, type Team, type TeamContest } from '../../api/client'
 import TeamContestAwardFields from '../../components/TeamContestAwardFields.vue'
 import { contestAwardValidationError, defaultContestAwardPercents } from '../../features/teams/contestAwards'
 import { formatDateTime } from '../../features/time'
@@ -94,7 +100,9 @@ const form = reactive({
   description: '',
   starts_at: '',
   duration_minutes: 120,
-  scoring_rule: 'penalty',
+  scoring_rule: 'acm' as ScoringRule,
+  freeze_enabled: false,
+  freeze_duration_minutes: 60,
   ...defaultContestAwardPercents(),
 })
 const canOrganize = computed(() => {
@@ -132,11 +140,11 @@ async function createContest() {
   creating.value = true
   try {
     const { data } = await client.post<TeamContest>(`/teams/${props.team.id}/contests`, form)
-    Object.assign(form, { title: '', description: '', starts_at: '', duration_minutes: 120, scoring_rule: 'penalty', ...defaultContestAwardPercents() })
+    Object.assign(form, { title: '', description: '', starts_at: '', duration_minutes: 120, scoring_rule: 'acm', freeze_enabled: false, freeze_duration_minutes: 60, ...defaultContestAwardPercents() })
     createVisible.value = false
     ElMessage.success('团队比赛已创建')
     await load()
-    await router.push(`/contest/${data.id}#overview`)
+    await router.push(`/contest/${data.id}/description`)
   } catch (err: any) {
     ElMessage.error(err.response?.data?.error || err.message)
   } finally {
@@ -145,7 +153,7 @@ async function createContest() {
 }
 
 function editContest(row: TeamContest) {
-  router.push({ path: `/contest/${row.id}`, query: { manage: 'edit' }, hash: '#overview' })
+  router.push({ path: `/contest/${row.id}/description`, query: { manage: 'edit' } })
 }
 
 async function deleteContest(row: TeamContest) {
@@ -171,7 +179,7 @@ function openContest(row: TeamContest) {
     ElMessage.warning('比赛尚未开始')
     return
   }
-  router.push(`/contest/${row.id}#overview`)
+  router.push(`/contest/${row.id}/description`)
 }
 
 function statusLabel(status?: TeamContest['status']) {

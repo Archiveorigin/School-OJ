@@ -72,10 +72,13 @@ func TestExamScoringRuleDefaultsAndRejectsInvalidInput(t *testing.T) {
 		exam models.Exam
 		want string
 	}{
-		{name: "missing", exam: models.Exam{}, want: "penalty"},
-		{name: "score", exam: models.Exam{ScoringRule: "score"}, want: "score"},
-		{name: "penalty", exam: models.Exam{ScoringRule: "penalty"}, want: "penalty"},
-		{name: "invalid", exam: models.Exam{ScoringRule: "points"}, want: "penalty"},
+		{name: "missing", exam: models.Exam{}, want: "acm"},
+		{name: "legacy score", exam: models.Exam{ScoringRule: "score"}, want: "ioi"},
+		{name: "legacy penalty", exam: models.Exam{ScoringRule: "penalty"}, want: "acm"},
+		{name: "oi", exam: models.Exam{ScoringRule: "oi"}, want: "oi"},
+		{name: "ioi", exam: models.Exam{ScoringRule: "ioi"}, want: "ioi"},
+		{name: "acm", exam: models.Exam{ScoringRule: "acm"}, want: "acm"},
+		{name: "invalid", exam: models.Exam{ScoringRule: "points"}, want: "acm"},
 	} {
 		t.Run(test.name, func(t *testing.T) {
 			if got := examScoringRule(test.exam); got != test.want {
@@ -83,8 +86,8 @@ func TestExamScoringRuleDefaultsAndRejectsInvalidInput(t *testing.T) {
 			}
 		})
 	}
-	if got, valid := parseScoringRule(""); !valid || got != "penalty" {
-		t.Fatalf("empty scoring rule = %q, %v; want penalty, true", got, valid)
+	if got, valid := parseScoringRule(""); !valid || got != "acm" {
+		t.Fatalf("empty scoring rule = %q, %v; want acm, true", got, valid)
 	}
 	if got, valid := parseScoringRule("not-a-rule"); valid || got != "" {
 		t.Fatalf("invalid scoring rule = %q, %v; want empty, false", got, valid)
@@ -185,6 +188,45 @@ func TestExamRankingCellPendingDoesNotOverrideFullScore(t *testing.T) {
 	}
 	if !examRankingCellPending("penalty", true, 100, 100) {
 		t.Fatal("penalty pending state is resolved from first acceptance separately")
+	}
+}
+
+func TestOIProblemScoreUsesLastSubmission(t *testing.T) {
+	start := time.Date(2026, 8, 31, 9, 0, 0, 0, time.UTC)
+	older := models.Submission{ID: 1, Status: models.StatusAccepted, Score: 100, CreatedAt: start}
+	latest := models.Submission{ID: 2, Status: models.StatusWrongAnswer, Score: 20, CreatedAt: start.Add(time.Minute)}
+	view, submitted, pending := problemScoreFromSubmissionsForRule(models.Problem{ID: 7}, 100, false, []models.Submission{older, latest}, "oi")
+	if !submitted || pending || view.SubmissionID == nil || *view.SubmissionID != latest.ID || view.BestScore != 20 {
+		t.Fatalf("OI last-submission score = %#v, submitted=%v pending=%v", view, submitted, pending)
+	}
+}
+
+func TestSubmissionVisibilityForOIAndFreeze(t *testing.T) {
+	now := time.Date(2026, 8, 31, 10, 30, 0, 0, time.UTC)
+	start := now.Add(-90 * time.Minute)
+	end := now.Add(30 * time.Minute)
+	if !examSubmissionHidden(models.Exam{ScoringRule: "oi", EndsAt: &end}, now.Add(-time.Hour), now) {
+		t.Fatal("OI result must be hidden before the exam ends")
+	}
+	if examSubmissionHidden(models.Exam{ScoringRule: "oi", EndsAt: &end}, now, end) {
+		t.Fatal("OI result must be public after the exam ends")
+	}
+	contest := models.TeamContest{ScoringRule: "acm", StartsAt: &start, DurationMinutes: 120, State: models.TeamContestRunning, FreezeEnabled: true, FreezeDurationMinutes: 60}
+	freezeAt := end.Add(-time.Hour)
+	if teamContestSubmissionHidden(contest, freezeAt.Add(-time.Second), now) {
+		t.Fatal("pre-freeze result must remain visible in the frozen snapshot")
+	}
+	if !teamContestSubmissionHidden(contest, freezeAt, now) {
+		t.Fatal("submission at the freeze boundary must be hidden")
+	}
+}
+
+func TestApplyProblemVersionUsesImmutableSnapshot(t *testing.T) {
+	problem := models.Problem{Title: "current", PackageObject: "current.zip", TimeLimitMS: 1000}
+	version := models.ProblemVersion{ID: 4, Title: "event snapshot", PackageObject: "v1.zip", TimeLimitMS: 2500}
+	applyProblemVersion(&problem, version)
+	if problem.Title != "event snapshot" || problem.PackageObject != "v1.zip" || problem.TimeLimitMS != 2500 {
+		t.Fatalf("hydrated problem = %#v", problem)
 	}
 }
 
@@ -384,7 +426,7 @@ func TestCanCreateProblemsUsesIndependentAuthorFlag(t *testing.T) {
 
 func TestPublicProblemSQLRequiresApprovedReview(t *testing.T) {
 	sql := publicProblemSQL()
-	for _, want := range []string{"problems.team_id IS NULL", "problem_reviews", "status <> 'approved'", "status = 'approved'"} {
+	for _, want := range []string{"problems.archived_at IS NULL", "problems.team_id IS NULL", "problem_reviews", "status <> 'approved'", "status = 'approved'"} {
 		if !strings.Contains(sql, want) {
 			t.Fatalf("public problem SQL missing %q: %s", want, sql)
 		}
@@ -761,6 +803,32 @@ func TestBuildTeamContestRankingScoreUsesTotalBeforeSolved(t *testing.T) {
 	rows := buildTeamContestRanking(users, links, aggregates, start, "score")
 	if len(rows) != 2 || rows[0].UserID != 2 {
 		t.Fatalf("score ranking = %#v; total score must precede solved count", rows)
+	}
+}
+
+func TestBuildTeamContestRankingIOIUsesLastEffectiveScoreTime(t *testing.T) {
+	start := time.Date(2026, 8, 7, 9, 0, 0, 0, time.UTC)
+	users := []models.User{{ID: 1, Name: "Later effective"}, {ID: 2, Name: "Earlier effective"}}
+	links := []models.TeamContestProblem{{ProblemID: 11}}
+	aggregates := []teamContestCellAggregate{
+		{UserID: 1, ProblemID: 11, BestScore: 80, LastSubmission: start.Add(20 * time.Minute), EffectiveAt: start.Add(18 * time.Minute)},
+		{UserID: 2, ProblemID: 11, BestScore: 80, LastSubmission: start.Add(30 * time.Minute), EffectiveAt: start.Add(12 * time.Minute)},
+	}
+
+	rows := buildTeamContestRanking(users, links, aggregates, start, "ioi")
+	if len(rows) != 2 || rows[0].UserID != 2 {
+		t.Fatalf("IOI ranking = %#v; earlier effective scoring time must win the tie", rows)
+	}
+}
+
+func TestProblemScoreUsesEarliestSubmissionThatReachedBestScore(t *testing.T) {
+	start := time.Date(2026, 8, 7, 9, 0, 0, 0, time.UTC)
+	view, submitted, pending := problemScoreFromSubmissions(models.Problem{ID: 11}, 100, false, []models.Submission{
+		{ID: 2, Score: 80, Status: models.StatusWrongAnswer, CreatedAt: start.Add(20 * time.Minute)},
+		{ID: 1, Score: 80, Status: models.StatusWrongAnswer, CreatedAt: start.Add(10 * time.Minute)},
+	})
+	if !submitted || pending || view.SubmissionID == nil || *view.SubmissionID != 1 {
+		t.Fatalf("best score view = %#v, submitted=%v pending=%v", view, submitted, pending)
 	}
 }
 

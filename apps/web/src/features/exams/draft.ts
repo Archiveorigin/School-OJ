@@ -21,8 +21,17 @@ export function parseStoredExamDraft(
       !Array.isArray(value.selectedProblems)
     )
       return null;
+    const rawForm = value.form as ExamDraft & { scoring_rule?: string; freeze_enabled?: boolean; freeze_duration_minutes?: number };
+    const rawRule = String(rawForm.scoring_rule || "acm").toLowerCase();
+    const scoringRule = rawRule === "score" ? "ioi" : rawRule === "penalty" ? "acm" : rawRule === "oi" || rawRule === "ioi" || rawRule === "acm" ? rawRule : "acm";
     return {
-      form: value.form,
+      form: {
+        ...rawForm,
+        scoring_rule: scoringRule,
+        ranking_visible: scoringRule === "oi" ? false : Boolean(rawForm.ranking_visible),
+        freeze_enabled: scoringRule === "oi" ? false : Boolean(rawForm.freeze_enabled),
+        freeze_duration_minutes: Number(rawForm.freeze_duration_minutes) || 60,
+      },
       selectedProblems: value.selectedProblems,
       step: Math.min(2, Math.max(0, Number(value.step) || 0)),
       savedAt: typeof value.savedAt === "string" ? value.savedAt : undefined,

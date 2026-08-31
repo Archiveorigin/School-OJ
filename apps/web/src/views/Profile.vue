@@ -41,7 +41,7 @@
         />
       </div>
       <div v-if="canAuthor" class="author-actions">
-        <el-button type="primary" size="large" @click="router.push('/problems/create')">进入出题页面</el-button>
+        <el-button type="primary" size="large" @click="router.push('/problem-changes/new')">进入工单修改</el-button>
         <el-button size="large" @click="router.push('/problems')">查看题库</el-button>
       </div>
       <div v-else-if="authorApplication?.status === 'pending'" class="application-status">

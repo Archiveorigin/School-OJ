@@ -25,17 +25,18 @@ const Login = () => import('../views/Login.vue')
 const MyCourses = () => import('../views/courses/MyCourses.vue')
 const Plagiarism = () => import('../views/Plagiarism.vue')
 const ProblemDetail = () => import('../views/problems/ProblemDetail.vue')
-const ProblemCreate = () => import('../views/problems/ProblemCreate.vue')
+const ProblemCatalog = () => import('../views/problems/ProblemCatalog.vue')
+const ProblemChangeTickets = () => import('../views/problems/ProblemChangeTickets.vue')
 const ProblemAuthorManagement = () => import('../views/admin/ProblemAuthorManagement.vue')
+const ProblemTicketManagement = () => import('../views/admin/ProblemTicketManagement.vue')
 const ProblemSubmissions = () => import('../views/problems/ProblemSubmissions.vue')
-const Problems = () => import('../views/Problems.vue')
 const ProblemsLayout = () => import('../views/problems/ProblemsLayout.vue')
 const PreparedProblems = () => import('../views/PreparedProblems.vue')
 const Profile = () => import('../views/Profile.vue')
 const Register = () => import('../views/Register.vue')
 const Submissions = () => import('../views/Submissions.vue')
 const TeamContests = () => import('../views/teams/TeamContests.vue')
-const TeamContestDetail = () => import('../views/teams/TeamContestDetail.vue')
+const ContestWorkspace = () => import('../views/teams/ContestWorkspace.vue')
 const TeamList = () => import('../views/teams/TeamList.vue')
 const TeamMembers = () => import('../views/teams/TeamMembers.vue')
 const TeamProblemSetDetail = () => import('../views/teams/TeamProblemSetDetail.vue')
@@ -57,15 +58,30 @@ const router = createRouter({
       component: ProblemsLayout,
       meta: { public: true, title: '题库', activeMenu: '/problems' },
       children: [
-        { path: '', name: 'problem-list', component: Problems },
-        { path: 'create', name: 'problem-create', component: ProblemCreate, meta: { public: false, requiresAuthor: true, title: '创建题目', activeMenu: '/problems/create' } },
+        { path: '', name: 'problem-list', component: ProblemCatalog },
+        { path: 'create', redirect: '/problem-changes/new' },
         { path: ':id/submissions', name: 'problem-submissions', component: ProblemSubmissions, meta: { public: false, title: '题目提交记录' } },
         { path: ':id', name: 'problem-detail', component: ProblemDetail, meta: { title: '题目详情' } }
       ]
     },
+    { path: '/problem-changes', component: ProblemChangeTickets, meta: { requiresAuthor: true, title: '我的工单', activeMenu: '/problem-changes' } },
+    { path: '/problem-changes/new', component: ProblemChangeTickets, meta: { requiresAuthor: true, title: '发起工单', activeMenu: '/problem-changes' } },
     { path: '/profile', component: Profile, meta: { title: '个人中心' } },
     { path: '/teams', component: TeamList, meta: { title: '团队', activeMenu: '/teams' } },
-    { path: '/contest/:contestId', component: TeamContestDetail, meta: { title: '团队比赛', activeMenu: '/teams' } },
+    {
+      path: '/contest/:contestId',
+      redirect: (to) => {
+        const legacy = String(to.hash || '').replace('#', '')
+        if (legacy === 'ranking') return { path: `/contest/${to.params.contestId}/scoreboard` }
+        if (legacy === 'problems' || legacy === 'records') return { path: `/contest/${to.params.contestId}/problems`, query: to.query }
+        return { path: `/contest/${to.params.contestId}/description`, query: to.query }
+      },
+      meta: { title: '团队比赛', activeMenu: '/teams' }
+    },
+    { path: '/contest/:contestId/description', name: 'contest-description', component: ContestWorkspace, meta: { title: '比赛说明', activeMenu: '/teams' } },
+    { path: '/contest/:contestId/problems', name: 'contest-problems', component: ContestWorkspace, meta: { title: '题目列表', activeMenu: '/teams' } },
+    { path: '/contest/:contestId/problems/:label', name: 'contest-problem', component: ContestWorkspace, meta: { title: '比赛题目', activeMenu: '/teams' } },
+    { path: '/contest/:contestId/scoreboard', name: 'contest-scoreboard', component: ContestWorkspace, meta: { title: '排行榜', activeMenu: '/teams' } },
     { path: '/problem-set/:setId', component: TeamProblemSetDetail, meta: { title: '团队题单', activeMenu: '/teams' } },
     { path: '/teams/:teamId/problem-sets/:setId', redirect: (to) => ({ path: `/problem-set/${to.params.setId}`, query: to.query, hash: to.hash }) },
     {
@@ -127,7 +143,8 @@ const router = createRouter({
         { path: 'exams', component: Exams, meta: { title: '考试管理', adminMenu: '/admin/exams' } },
         { path: 'exams/new', component: ExamCreate, meta: { title: '新建考试', adminMenu: '/admin/exams' } },
         { path: 'prepared-problems', component: PreparedProblems, meta: { title: '预备题库', adminMenu: '/admin/prepared-problems' } },
-        { path: 'problem-authors', component: ProblemAuthorManagement, meta: { roles: ['admin'], title: '出题管理', adminMenu: '/admin/problem-authors' } },
+        { path: 'problem-authors', component: ProblemTicketManagement, meta: { roles: ['admin'], title: '工单管理', adminMenu: '/admin/problem-authors' } },
+        { path: 'author-permissions', component: ProblemAuthorManagement, meta: { roles: ['admin'], title: '出题资格管理', adminMenu: '/admin/problem-authors' } },
         { path: 'plagiarism', component: Plagiarism, meta: { title: 'JPlag 查重', adminMenu: '/admin/plagiarism' } },
         { path: 'audit-logs', component: AuditLogs, meta: { roles: ['admin'], title: '审计日志', adminMenu: '/admin/audit-logs' } },
         { path: 'users', component: Users, meta: { roles: ['admin'], title: '用户管理', adminMenu: '/admin/users' } }

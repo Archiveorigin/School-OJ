@@ -31,6 +31,9 @@ describe("exam draft storage", () => {
     );
 
     expect(draft?.form.title).toBe("算法设计期中考试");
+    expect(draft?.form.scoring_rule).toBe("ioi");
+    expect(draft?.form.freeze_enabled).toBe(false);
+    expect(draft?.form.freeze_duration_minutes).toBe(60);
     expect(draft?.selectedProblems).toHaveLength(1);
     expect(draft?.step).toBe(2);
   });

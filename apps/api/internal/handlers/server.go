@@ -1701,6 +1701,7 @@ func (s Server) listProblems(c *gin.Context) {
 	var problems []models.Problem
 	q := s.DB.Model(&models.Problem{}).
 		Where("problems.deleted_at IS NULL").
+		Where("problems.archived_at IS NULL").
 		Where(publicProblemSQL()).
 		Order("problems.id desc")
 	if err := q.Find(&problems).Error; err != nil {
@@ -2665,7 +2666,7 @@ func (s Server) deleteProblem(c *gin.Context) {
 func (s Server) listPreparedProblems(c *gin.Context) {
 	user, _ := middleware.CurrentUser(c)
 	items := []models.PreparedProblem{}
-	q := s.DB.Model(&models.PreparedProblem{}).Preload("Problem").Joins("join problems on problems.id = prepared_problems.problem_id").Where("problems.deleted_at IS NULL").Order("prepared_problems.updated_at desc, prepared_problems.id desc")
+	q := s.DB.Model(&models.PreparedProblem{}).Preload("Problem").Joins("join problems on problems.id = prepared_problems.problem_id").Where("problems.deleted_at IS NULL AND problems.archived_at IS NULL").Order("prepared_problems.updated_at desc, prepared_problems.id desc")
 	if user.Role != models.RoleAdmin {
 		q = q.Where("prepared_problems.owner_id = ?", user.ID)
 	}
@@ -3160,26 +3161,45 @@ func (s Server) listExams(c *gin.Context) {
 func (s Server) createExam(c *gin.Context) {
 	user, _ := middleware.CurrentUser(c)
 	var req struct {
-		CourseID       uint               `json:"course_id"`
-		ClassID        *uint              `json:"class_id"`
-		Title          string             `json:"title" binding:"required"`
-		Description    string             `json:"description"`
-		StartsAt       *time.Time         `json:"starts_at"`
-		EndsAt         *time.Time         `json:"ends_at"`
-		ProblemIDs     []uint             `json:"problem_ids"`
-		Problems       []workProblemInput `json:"problems"`
-		ManualReview   bool               `json:"manual_review"`
-		LockExit       bool               `json:"lock_exit"`
-		RankingVisible bool               `json:"ranking_visible"`
-		ScoringRule    string             `json:"scoring_rule"`
+		CourseID              uint               `json:"course_id"`
+		ClassID               *uint              `json:"class_id"`
+		Title                 string             `json:"title" binding:"required"`
+		Description           string             `json:"description"`
+		StartsAt              *time.Time         `json:"starts_at"`
+		EndsAt                *time.Time         `json:"ends_at"`
+		ProblemIDs            []uint             `json:"problem_ids"`
+		Problems              []workProblemInput `json:"problems"`
+		ManualReview          bool               `json:"manual_review"`
+		LockExit              bool               `json:"lock_exit"`
+		RankingVisible        bool               `json:"ranking_visible"`
+		ScoringRule           string             `json:"scoring_rule"`
+		FreezeEnabled         bool               `json:"freeze_enabled"`
+		FreezeDurationMinutes int                `json:"freeze_duration_minutes"`
 	}
 	if !bind(c, &req) {
 		return
 	}
 	scoringRule, validScoringRule := parseScoringRule(req.ScoringRule)
 	if !validScoringRule {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "scoring_rule must be score or penalty"})
+		c.JSON(http.StatusBadRequest, gin.H{"error": "scoring_rule must be oi, ioi or acm"})
 		return
+	}
+	if scoringRule == "oi" {
+		req.RankingVisible = false
+		req.FreezeEnabled = false
+	}
+	if req.FreezeDurationMinutes <= 0 {
+		req.FreezeDurationMinutes = 60
+	}
+	if req.FreezeEnabled {
+		if req.StartsAt == nil || req.EndsAt == nil {
+			c.JSON(http.StatusBadRequest, gin.H{"error": "启用封榜的考试必须设置开始和结束时间"})
+			return
+		}
+		if duration := int(req.EndsAt.Sub(*req.StartsAt) / time.Minute); duration <= req.FreezeDurationMinutes {
+			c.JSON(http.StatusBadRequest, gin.H{"error": "封榜时长必须小于考试总时长"})
+			return
+		}
 	}
 	problemItems := normalizeWorkProblemInputs(req.Problems, req.ProblemIDs)
 	problemIDs := workProblemIDs(problemItems)
@@ -3216,13 +3236,17 @@ func (s Server) createExam(c *gin.Context) {
 	if req.RankingVisible {
 		settings["ranking_visible"] = true
 	}
-	item := models.Exam{CourseID: req.CourseID, ClassID: req.ClassID, Title: req.Title, Description: req.Description, StartsAt: req.StartsAt, EndsAt: req.EndsAt, ScoringRule: scoringRule, Settings: settings}
+	item := models.Exam{CourseID: req.CourseID, ClassID: req.ClassID, Title: req.Title, Description: req.Description, StartsAt: req.StartsAt, EndsAt: req.EndsAt, ScoringRule: scoringRule, FreezeEnabled: req.FreezeEnabled, FreezeDurationMinutes: req.FreezeDurationMinutes, Settings: settings}
 	if err := s.DB.Transaction(func(tx *gorm.DB) error {
 		if err := tx.Create(&item).Error; err != nil {
 			return err
 		}
 		for i, problemItem := range problemItems {
-			if err := tx.Create(&models.ExamProblem{ExamID: item.ID, ProblemID: problemItem.ProblemID, Label: problemItem.Label, Score: problemItem.Score, SortOrder: i}).Error; err != nil {
+			var selected models.Problem
+			if err := tx.Select("id", "current_version_id").First(&selected, problemItem.ProblemID).Error; err != nil || selected.CurrentVersionID == nil {
+				return fmt.Errorf("problem %d has no current version", problemItem.ProblemID)
+			}
+			if err := tx.Create(&models.ExamProblem{ExamID: item.ID, ProblemID: problemItem.ProblemID, ProblemVersionID: *selected.CurrentVersionID, Label: problemItem.Label, Score: problemItem.Score, SortOrder: i}).Error; err != nil {
 				return err
 			}
 			if _, isPrepared := prepared[problemItem.ProblemID]; isPrepared && req.ClassID != nil {
@@ -3255,11 +3279,13 @@ func (s Server) getExam(c *gin.Context) {
 	if err := s.DB.
 		Preload("Problems", func(db *gorm.DB) *gorm.DB { return db.Order("exam_problems.sort_order asc") }).
 		Preload("Problems.Problem").
+		Preload("Problems.ProblemVersion").
 		Where("exams.deleted_at IS NULL").
 		First(&item, id).Error; err != nil {
 		c.JSON(http.StatusNotFound, gin.H{"error": "exam not found"})
 		return
 	}
+	hydrateExamProblemVersions(&item)
 	if !s.canAccessExam(user, item) {
 		c.JSON(http.StatusForbidden, gin.H{"error": "forbidden"})
 		return
@@ -3285,6 +3311,9 @@ func (s Server) getExam(c *gin.Context) {
 		}
 	}
 	summary := s.examSummary(item.ID, user.ID, true)
+	if s.examSummaryMustBeHidden(user, item, now) {
+		summary = redactWorkSummary(summary)
+	}
 	allSubmitted := user.Role == models.RoleStudent && s.examAllSubmitted(item.ID, user.ID)
 	c.JSON(http.StatusOK, gin.H{
 		"exam":            item,
@@ -3361,11 +3390,13 @@ func (s Server) examReport(c *gin.Context) {
 	var item models.Exam
 	if err := s.DB.Preload("Problems", func(db *gorm.DB) *gorm.DB { return db.Order("exam_problems.sort_order asc") }).
 		Preload("Problems.Problem").
+		Preload("Problems.ProblemVersion").
 		Where("exams.deleted_at IS NULL").
 		First(&item, id).Error; err != nil {
 		c.JSON(http.StatusNotFound, gin.H{"error": "exam not found"})
 		return
 	}
+	hydrateExamProblemVersions(&item)
 	if !s.canManageCourse(user, item.CourseID) {
 		c.JSON(http.StatusForbidden, gin.H{"error": "forbidden"})
 		return
@@ -3388,13 +3419,19 @@ func (s Server) examRanking(c *gin.Context) {
 	var item models.Exam
 	if err := s.DB.Preload("Problems", func(db *gorm.DB) *gorm.DB { return db.Order("exam_problems.sort_order asc") }).
 		Preload("Problems.Problem").
+		Preload("Problems.ProblemVersion").
 		Where("exams.deleted_at IS NULL").
 		First(&item, id).Error; err != nil {
 		c.JSON(http.StatusNotFound, gin.H{"error": "exam not found"})
 		return
 	}
+	hydrateExamProblemVersions(&item)
 	canManage := s.canManageCourse(user, item.CourseID)
 	now := time.Now()
+	if examScoringRule(item) == "oi" && !canManage {
+		c.JSON(http.StatusForbidden, gin.H{"error": "OI 赛制不提供参赛者排行榜"})
+		return
+	}
 	if reason := examRankingAccessReason(item, canManage, examRankingVisible(item), s.canAccessExam(user, item), now); reason != "" {
 		response := gin.H{"error": reason}
 		if reason == "exam has not started" {
@@ -3433,7 +3470,16 @@ func (s Server) examRanking(c *gin.Context) {
 		status = "已结束"
 	}
 	students := s.examStudents(item)
-	rows, pendingRows, finishedRows := s.examRankingRows(item, students, scoringRule)
+	var rankingCutoff *time.Time
+	frozen := false
+	if !canManage && item.FreezeEnabled && item.EndsAt != nil && now.Before(*item.EndsAt) {
+		freezeAt := item.EndsAt.Add(-time.Duration(item.FreezeDurationMinutes) * time.Minute)
+		if !now.Before(freezeAt) {
+			rankingCutoff = &freezeAt
+			frozen = true
+		}
+	}
+	rows, pendingRows, finishedRows := s.examRankingRows(item, students, scoringRule, rankingCutoff)
 	c.JSON(http.StatusOK, gin.H{
 		"exam": gin.H{
 			"id":           item.ID,
@@ -3459,7 +3505,9 @@ func (s Server) examRanking(c *gin.Context) {
 			"max_score":      maxScore,
 			"updated_at":     now,
 		},
-		"now": now,
+		"now":                     now,
+		"frozen":                  frozen,
+		"freeze_duration_minutes": item.FreezeDurationMinutes,
 	})
 }
 
@@ -3476,15 +3524,15 @@ func examRankingAccessReason(item models.Exam, canManage bool, rankingVisible bo
 	return ""
 }
 
-func (s Server) examRankingRows(item models.Exam, students []models.User, scoringRule string) ([]examRankingRow, int, int) {
+func (s Server) examRankingRows(item models.Exam, students []models.User, scoringRule string, cutoff *time.Time) ([]examRankingRow, int, int) {
 	if normalized, valid := parseScoringRule(scoringRule); valid {
 		scoringRule = normalized
 	} else {
-		scoringRule = "penalty"
+		scoringRule = "acm"
 	}
 	studentIDs := userIDs(students)
 	problemIDs := examProblemIDs(item)
-	submissions := s.examSubmissionsLookup(item.ID, studentIDs, problemIDs, false)
+	submissions := s.examSubmissionsLookup(item.ID, studentIDs, problemIDs, false, cutoff)
 	attempts := s.examAttemptStates(item.ID, studentIDs)
 	manualReview := examManualReview(item)
 	rankingStart := item.CreatedAt
@@ -3496,16 +3544,23 @@ func (s Server) examRankingRows(item models.Exam, students []models.User, scorin
 	finishedRows := 0
 	for _, student := range students {
 		attempt := attempts[student.ID]
-		summary := workSummaryForExamLinksFromSubmissions(item.Problems, submissions.ByUserProblem[student.ID], manualReview, attempt.Attempted, true)
+		summary := workSummaryForExamLinksFromSubmissions(item.Problems, submissions.ByUserProblem[student.ID], manualReview, attempt.Attempted, true, scoringRule)
 		row := examRankingRow{UserID: student.ID, Name: student.Name, TotalScore: summary.TotalScore, MaxScore: summary.MaxScore, SubmissionCount: submissions.CountByUser[student.ID], LastSubmission: submissions.LastByUser[student.ID], ScoreReady: summary.ScoreReady, WorkStatus: summary.WorkStatus, FinishedAt: attempt.FinishedAt, Problems: make([]examRankingCell, 0, len(summary.Problems)), studentNo: student.StudentNo}
+		if scoringRule == "ioi" {
+			row.LastSubmission = nil
+		}
 		if row.FinishedAt != nil {
 			finishedRows++
 		}
 		for _, problemScore := range summary.Problems {
+			if scoringRule == "ioi" && problemScore.SubmittedAt != nil && (row.LastSubmission == nil || problemScore.SubmittedAt.After(*row.LastSubmission)) {
+				effectiveAt := *problemScore.SubmittedAt
+				row.LastSubmission = &effectiveAt
+			}
 			if problemScore.SubmissionID != nil {
 				row.Attempted++
 			}
-			if scoringRule == "score" && isExamFullScore(problemScore.BestScore, problemScore.Score) {
+			if scoringRule == "ioi" && isExamFullScore(problemScore.BestScore, problemScore.Score) {
 				row.Solved++
 			}
 			pending := problemScore.PendingReview
@@ -3533,7 +3588,7 @@ func (s Server) examRankingRows(item models.Exam, students []models.User, scorin
 			cell.Pending = examRankingCellPending(scoringRule, cell.Pending, cell.BestScore, cell.MaxScore)
 			if penaltyStats.FirstAccepted != nil {
 				row.PenaltyMinutes += penaltyStats.ElapsedMinutes + penaltyStats.WrongAttempts*20
-				if scoringRule == "penalty" {
+				if scoringRule == "acm" {
 					row.Solved++
 					cell.Status = models.StatusAccepted
 					cell.ScoreReady = true
@@ -3561,7 +3616,10 @@ func (s Server) examRankingRows(item models.Exam, students []models.User, scorin
 }
 
 func examRankingCellPending(scoringRule string, pending bool, bestScore int, maxScore int) bool {
-	if scoringRule == "score" && isExamFullScore(bestScore, maxScore) {
+	if normalized, valid := parseScoringRule(scoringRule); valid {
+		scoringRule = normalized
+	}
+	if scoringRule == "ioi" && isExamFullScore(bestScore, maxScore) {
 		return false
 	}
 	return pending
@@ -3571,7 +3629,7 @@ func isExamFullScore(bestScore int, maxScore int) bool {
 	return maxScore > 0 && bestScore >= maxScore
 }
 
-func workSummaryForExamLinksFromSubmissions(examLinks []models.ExamProblem, userProblemSubmissions map[uint][]models.Submission, manualReview bool, attempted bool, includeProblems bool) workSummary {
+func workSummaryForExamLinksFromSubmissions(examLinks []models.ExamProblem, userProblemSubmissions map[uint][]models.Submission, manualReview bool, attempted bool, includeProblems bool, scoringRule string) workSummary {
 	summary := workSummary{WorkStatus: "unattempted", ScoreReady: false}
 	if attempted {
 		summary.WorkStatus = "unsubmitted"
@@ -3580,7 +3638,7 @@ func workSummaryForExamLinksFromSubmissions(examLinks []models.ExamProblem, user
 	hasPending := false
 	for _, link := range examLinks {
 		summary.MaxScore += link.Score
-		view, submitted, pending := problemScoreFromSubmissions(link.Problem, link.Score, manualReview, userProblemSubmissions[link.ProblemID])
+		view, submitted, pending := problemScoreFromSubmissionsForRule(link.Problem, link.Score, manualReview, userProblemSubmissions[link.ProblemID], scoringRule)
 		view.Label = link.Label
 		if submitted {
 			hasSubmission = true
@@ -3600,8 +3658,17 @@ func workSummaryForExamLinksFromSubmissions(examLinks []models.ExamProblem, user
 	return summary
 }
 
-func (s Server) examSubmissionsLookup(examID uint, studentIDs []uint, problemIDs []uint, includeSource bool) examSubmissionLookup {
+func (s Server) examSubmissionsLookup(examID uint, studentIDs []uint, problemIDs []uint, includeSource bool, cutoff *time.Time) examSubmissionLookup {
 	submissions, _ := s.examSubmissionsForUsers(examID, studentIDs, problemIDs, includeSource, "user_id asc, problem_id asc, id desc")
+	if cutoff != nil {
+		filtered := submissions[:0]
+		for _, submission := range submissions {
+			if submission.CreatedAt.Before(*cutoff) {
+				filtered = append(filtered, submission)
+			}
+		}
+		submissions = filtered
+	}
 	return newExamSubmissionLookup(submissions)
 }
 
@@ -3720,10 +3787,15 @@ func markExamFastestCells(rows []examRankingRow) {
 }
 
 func sortExamRankingRows(rows []examRankingRow, scoringRule string) {
+	if normalized, valid := parseScoringRule(scoringRule); valid {
+		scoringRule = normalized
+	} else {
+		scoringRule = "acm"
+	}
 	sort.SliceStable(rows, func(i, j int) bool {
 		left := rows[i]
 		right := rows[j]
-		if scoringRule == "score" {
+		if scoringRule == "ioi" || scoringRule == "oi" {
 			if left.TotalScore != right.TotalScore {
 				return left.TotalScore > right.TotalScore
 			}
@@ -3871,7 +3943,7 @@ func (s Server) exportExamReport(c *gin.Context) {
 		return
 	}
 	rows := [][]xlsxCell{{xlsxString("学生姓名"), xlsxString("学号"), xlsxString("通过题目数"), xlsxString("所得分数")}}
-	rankingRows, _, _ := s.examRankingRows(item, students, "score")
+	rankingRows, _, _ := s.examRankingRows(item, students, "ioi", nil)
 	for _, row := range rankingRows {
 		rows = append(rows, []xlsxCell{xlsxString(row.Name), xlsxString(row.studentNo), xlsxNumber(row.Solved), xlsxNumber(row.TotalScore)})
 	}
@@ -3885,7 +3957,7 @@ func (s Server) exportExamReport(c *gin.Context) {
 }
 
 func (s Server) buildExamMarkdownReport(item models.Exam, students []models.User) (string, error) {
-	rankingRows, _, _ := s.examRankingRows(item, students, "score")
+	rankingRows, _, _ := s.examRankingRows(item, students, "ioi", nil)
 	submissions, err := s.examSubmissionsForUsers(item.ID, userIDs(students), examProblemIDs(item), true, "user_id asc, problem_id asc, created_at asc, id asc")
 	if err != nil {
 		return "", err
@@ -4254,7 +4326,11 @@ func (s Server) createSubmission(c *gin.Context) {
 		return
 	}
 	var problem models.Problem
-	if err := s.DB.Where("deleted_at IS NULL").First(&problem, req.ProblemID).Error; err != nil {
+	problemQuery := s.DB
+	if req.AssignmentID == nil && req.ExamID == nil {
+		problemQuery = problemQuery.Where("deleted_at IS NULL")
+	}
+	if err := problemQuery.First(&problem, req.ProblemID).Error; err != nil {
 		c.JSON(http.StatusNotFound, gin.H{"error": "problem not found"})
 		return
 	}
@@ -4331,15 +4407,29 @@ func (s Server) createSubmission(c *gin.Context) {
 			status = models.StatusPendingReview
 		}
 	}
+	if problem.CurrentVersionID == nil {
+		c.JSON(http.StatusConflict, gin.H{"error": "problem has no current version"})
+		return
+	}
+	problemVersionID := *problem.CurrentVersionID
+	if req.ExamID != nil {
+		var link models.ExamProblem
+		if err := s.DB.Select("problem_version_id").Where("exam_id = ? AND problem_id = ?", *req.ExamID, problem.ID).First(&link).Error; err != nil {
+			c.JSON(http.StatusBadRequest, gin.H{"error": "problem is not part of this exam"})
+			return
+		}
+		problemVersionID = link.ProblemVersionID
+	}
 	sub := models.Submission{
-		UserID:       user.ID,
-		ProblemID:    problem.ID,
-		AssignmentID: req.AssignmentID,
-		ExamID:       req.ExamID,
-		Language:     req.Language,
-		SourceCode:   req.SourceCode,
-		IsPublic:     req.IsPublic && problem.TeamID == nil && req.AssignmentID == nil && req.ExamID == nil,
-		Status:       status,
+		UserID:           user.ID,
+		ProblemID:        problem.ID,
+		ProblemVersionID: problemVersionID,
+		AssignmentID:     req.AssignmentID,
+		ExamID:           req.ExamID,
+		Language:         req.Language,
+		SourceCode:       req.SourceCode,
+		IsPublic:         req.IsPublic && problem.TeamID == nil && req.AssignmentID == nil && req.ExamID == nil,
+		Status:           status,
 	}
 	if err := s.DB.Transaction(func(tx *gorm.DB) error {
 		if assignmentAttempt != nil {
@@ -4367,11 +4457,19 @@ func (s Server) createSubmission(c *gin.Context) {
 	}
 	if manualReview {
 		services.Audit(c, s.DB, "submission.create.manual_review", "submission", sub.ID, nil)
-		c.JSON(http.StatusCreated, sub)
+		response := sub
+		if s.shouldRedactSubmission(user, response, time.Now()) {
+			redactSubmission(&response)
+		}
+		c.JSON(http.StatusCreated, response)
 		return
 	}
 	services.Audit(c, s.DB, "submission.create", "submission", sub.ID, datatypes.JSONMap{"dispatch": "outbox"})
-	c.JSON(http.StatusCreated, sub)
+	response := sub
+	if s.shouldRedactSubmission(user, response, time.Now()) {
+		redactSubmission(&response)
+	}
+	c.JSON(http.StatusCreated, response)
 }
 
 func (s Server) listSubmissions(c *gin.Context) {
@@ -4449,7 +4547,7 @@ func (s Server) listSubmissions(c *gin.Context) {
 			}
 		}
 	}
-	c.JSON(http.StatusOK, views)
+	c.JSON(http.StatusOK, s.redactSubmissionViews(user, views))
 }
 
 func (s Server) latestSubmissions(c *gin.Context) {
@@ -4504,7 +4602,7 @@ func (s Server) latestSubmissions(c *gin.Context) {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 		return
 	}
-	c.JSON(http.StatusOK, s.submissionListViews(items))
+	c.JSON(http.StatusOK, s.redactSubmissionViews(user, s.submissionListViews(items)))
 }
 
 func (s Server) submissionListViews(items []models.Submission) []submissionListView {
@@ -4644,9 +4742,13 @@ func (s Server) getSubmission(c *gin.Context) {
 		c.JSON(http.StatusForbidden, gin.H{"error": "forbidden"})
 		return
 	}
+	hidden := s.shouldRedactSubmission(user, sub, time.Now())
 	var results []models.SubmissionResult
-	if s.canViewSubmissionResults(user, sub) {
+	if !hidden && s.canViewSubmissionResults(user, sub) {
 		s.DB.Where("submission_id = ?", sub.ID).Order("id asc").Find(&results)
+	}
+	if hidden {
+		redactSubmission(&sub)
 	}
 	submission := s.enrichSubmissionViews([]submissionListView{{Submission: sub}})
 	if sub.UserID != user.ID && isStandaloneProblemSubmission(sub) && s.isProblemPublic(sub.ProblemID) {
@@ -5075,7 +5177,7 @@ func (s Server) canReadProblemAsset(user models.User, problem models.Problem, as
 }
 
 func publicProblemSQL() string {
-	return `problems.team_id IS NULL AND NOT EXISTS (
+	return `problems.archived_at IS NULL AND problems.team_id IS NULL AND NOT EXISTS (
 		SELECT 1 FROM problem_reviews
 		WHERE problem_reviews.problem_id = problems.id
 		  AND problem_reviews.status <> 'approved'
@@ -5099,7 +5201,7 @@ func publicProblemSQL() string {
 func (s Server) isProblemPublic(problemID uint) bool {
 	var count int64
 	s.DB.Model(&models.Problem{}).
-		Where("problems.id = ? AND problems.deleted_at IS NULL", problemID).
+		Where("problems.id = ? AND problems.deleted_at IS NULL AND problems.archived_at IS NULL", problemID).
 		Where(publicProblemSQL()).
 		Count(&count)
 	return count > 0
@@ -5427,9 +5529,15 @@ func examRankingVisible(exam models.Exam) bool {
 func parseScoringRule(value string) (string, bool) {
 	value = strings.ToLower(strings.TrimSpace(value))
 	if value == "" {
-		return "penalty", true
+		return "acm", true
 	}
-	if value != "penalty" && value != "score" {
+	if value == "score" {
+		value = "ioi"
+	}
+	if value == "penalty" {
+		value = "acm"
+	}
+	if value != "oi" && value != "ioi" && value != "acm" {
 		return "", false
 	}
 	return value, true
@@ -5438,7 +5546,7 @@ func parseScoringRule(value string) (string, bool) {
 func examScoringRule(exam models.Exam) string {
 	value, valid := parseScoringRule(exam.ScoringRule)
 	if !valid {
-		return "penalty"
+		return "acm"
 	}
 	return value
 }
@@ -5542,6 +5650,13 @@ func (s Server) workSummaryForLinks(userID uint, assignmentLinks []models.Assign
 		Score     int
 	}
 	links := []linkInfo{}
+	scoringRule := "ioi"
+	if examID != nil {
+		var exam models.Exam
+		if err := s.DB.Select("scoring_rule").First(&exam, *examID).Error; err == nil {
+			scoringRule = examScoringRule(exam)
+		}
+	}
 	for _, link := range assignmentLinks {
 		links = append(links, linkInfo{Problem: link.Problem, ProblemID: link.ProblemID, Score: link.Score})
 	}
@@ -5552,7 +5667,7 @@ func (s Server) workSummaryForLinks(userID uint, assignmentLinks []models.Assign
 	hasPending := false
 	for _, link := range links {
 		summary.MaxScore += link.Score
-		view, submitted, pending := s.problemScore(userID, link.ProblemID, link.Problem, link.Score, assignmentID, examID, manualReview)
+		view, submitted, pending := s.problemScore(userID, link.ProblemID, link.Problem, link.Score, assignmentID, examID, manualReview, scoringRule)
 		view.Label = link.Label
 		if submitted {
 			hasSubmission = true
@@ -5572,7 +5687,7 @@ func (s Server) workSummaryForLinks(userID uint, assignmentLinks []models.Assign
 	return summary
 }
 
-func (s Server) problemScore(userID uint, problemID uint, problem models.Problem, maxScore int, assignmentID *uint, examID *uint, manualReview bool) (problemScoreView, bool, bool) {
+func (s Server) problemScore(userID uint, problemID uint, problem models.Problem, maxScore int, assignmentID *uint, examID *uint, manualReview bool, scoringRule string) (problemScoreView, bool, bool) {
 	q := s.DB.Where("user_id = ? AND problem_id = ?", userID, problemID).Order("id desc")
 	if assignmentID != nil {
 		q = q.Where("assignment_id = ?", *assignmentID)
@@ -5586,7 +5701,44 @@ func (s Server) problemScore(userID uint, problemID uint, problem models.Problem
 	}
 	var subs []models.Submission
 	q.Find(&subs)
-	return problemScoreFromSubmissions(problem, maxScore, manualReview, subs)
+	return problemScoreFromSubmissionsForRule(problem, maxScore, manualReview, subs, scoringRule)
+}
+
+func problemScoreFromSubmissionsForRule(problem models.Problem, maxScore int, manualReview bool, subs []models.Submission, scoringRule string) (problemScoreView, bool, bool) {
+	if scoringRule != "oi" {
+		return problemScoreFromSubmissions(problem, maxScore, manualReview, subs)
+	}
+	view := problemScoreView{Problem: problem, Score: maxScore}
+	if len(subs) == 0 {
+		return view, false, false
+	}
+	latest := subs[0]
+	for _, sub := range subs[1:] {
+		if sub.CreatedAt.After(latest.CreatedAt) || (sub.CreatedAt.Equal(latest.CreatedAt) && sub.ID > latest.ID) {
+			latest = sub
+		}
+	}
+	id := latest.ID
+	view.SubmissionID = &id
+	view.SubmissionStatus = latest.Status
+	created := latest.CreatedAt
+	view.SubmittedAt = &created
+	view.RawScore = latest.Score
+	if latest.Status == models.StatusQueued || latest.Status == models.StatusRunning || latest.Status == models.StatusPendingReview {
+		view.PendingReview = true
+		return view, true, true
+	}
+	if manualReview {
+		if latest.ManualScore == nil {
+			view.PendingReview = true
+			return view, true, true
+		}
+		view.BestScore = clamp(*latest.ManualScore, 0, maxScore)
+	} else {
+		view.BestScore = clamp((latest.Score*maxScore+50)/100, 0, maxScore)
+	}
+	view.ScoreReady = true
+	return view, true, false
 }
 
 func problemScoreFromSubmissions(problem models.Problem, maxScore int, manualReview bool, subs []models.Submission) (problemScoreView, bool, bool) {
@@ -5608,7 +5760,7 @@ func problemScoreFromSubmissions(problem models.Problem, maxScore int, manualRev
 				continue
 			}
 			score := clamp(*sub.ManualScore, 0, maxScore)
-			if score > best {
+			if score > best || (score == best && (view.SubmittedAt == nil || sub.CreatedAt.Before(*view.SubmittedAt))) {
 				best = score
 				id := sub.ID
 				view.SubmissionID = &id
@@ -5632,7 +5784,7 @@ func problemScoreFromSubmissions(problem models.Problem, maxScore int, manualRev
 			continue
 		}
 		score := clamp((sub.Score*maxScore+50)/100, 0, maxScore)
-		if score > best {
+		if score > best || (score == best && (view.SubmittedAt == nil || sub.CreatedAt.Before(*view.SubmittedAt))) {
 			best = score
 			id := sub.ID
 			view.SubmissionID = &id
@@ -5980,7 +6132,7 @@ func (s Server) validateProblemSelection(c *gin.Context, user models.User, probl
 		return nil, false
 	}
 	var problems []models.Problem
-	if err := s.DB.Where("id IN ? AND deleted_at IS NULL", ids).Find(&problems).Error; err != nil {
+	if err := s.DB.Where("id IN ? AND deleted_at IS NULL AND archived_at IS NULL", ids).Find(&problems).Error; err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 		return nil, false
 	}

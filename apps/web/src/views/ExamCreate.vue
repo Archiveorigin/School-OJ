@@ -34,8 +34,6 @@
         :total="selectedTotalScore"
         :scoring-rule="form.scoring_rule"
         @add="addSelectedProblem"
-        @create="openMarkdownDialog"
-        @batch="openBatchDialog"
       />
 
       <ExamPublishReviewStep
@@ -435,7 +433,9 @@ const form = reactive<ExamDraft>({
   ends_at: null,
   manual_review: false,
   ranking_visible: false,
-  scoring_rule: "penalty",
+  scoring_rule: "acm",
+  freeze_enabled: false,
+  freeze_duration_minutes: 60,
 });
 
 const problemForm = reactive({
@@ -670,6 +670,8 @@ async function submitCreate() {
       manual_review: form.manual_review,
       ranking_visible: form.ranking_visible,
       scoring_rule: form.scoring_rule,
+      freeze_enabled: form.freeze_enabled,
+      freeze_duration_minutes: form.freeze_duration_minutes,
       problems: selectedProblems.value.map((item) => ({
         problem_id: item.problem_id,
         score: item.score,
@@ -989,7 +991,11 @@ function restoreDraft() {
   try {
     const saved = parseStoredExamDraft(raw);
     if (!saved) return false;
+    const savedRule = String(saved.form.scoring_rule || "acm");
     Object.assign(form, saved.form, {
+      scoring_rule: savedRule === "score" ? "ioi" : savedRule === "penalty" ? "acm" : savedRule,
+      freeze_enabled: savedRule === "oi" ? false : Boolean(saved.form.freeze_enabled),
+      freeze_duration_minutes: Number(saved.form.freeze_duration_minutes) || 60,
       starts_at: saved.form.starts_at ? new Date(saved.form.starts_at) : null,
       ends_at: saved.form.ends_at ? new Date(saved.form.ends_at) : null,
     });

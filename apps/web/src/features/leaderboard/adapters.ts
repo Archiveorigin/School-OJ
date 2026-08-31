@@ -21,7 +21,7 @@ function safeNumber(value: unknown, fallback = 0) {
 }
 
 function scoringRule(value: unknown): LeaderboardScoringRule {
-  return value === 'score' ? 'score' : 'penalty'
+  return value === 'score' || value === 'ioi' || value === 'oi' ? 'score' : 'penalty'
 }
 
 function parseTime(value: unknown) {

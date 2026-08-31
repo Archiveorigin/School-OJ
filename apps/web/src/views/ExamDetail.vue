@@ -13,7 +13,7 @@
         <el-tag v-if="detail?.all_submitted" type="success">已提交全部题目</el-tag>
         <el-tag v-if="detail">{{ workStatusLabel(detail.work_status) }}</el-tag>
         <strong v-if="detail">{{ scoreSummary }}</strong>
-        <el-button v-if="canManage && activeProblem" type="primary" plain @click="openProblemEditor">修改题目</el-button>
+        <el-button v-if="canManage && activeProblem" type="primary" plain @click="openProblemTicket">工单修改</el-button>
         <ProblemTestDownloads v-if="canManage && activeProblem" :problem-id="activeProblem.id" :problem-code="activeProblem.display_code" />
         <el-button
           v-if="!canManage"
@@ -34,7 +34,7 @@
         <el-button :type="tabType('problems')" @click="goExamTab('problems')">查看题目</el-button>
         <el-button :type="tabType('submit')" @click="goExamTab('submit')">提交代码</el-button>
         <el-button :type="tabType('records')" @click="goExamTab('records')">提交记录</el-button>
-        <el-button v-if="canManage || detail.ranking_visible" :type="tabType('ranking')" @click="goExamTab('ranking')">实时榜单</el-button>
+        <el-button v-if="canManage || (detail.ranking_visible && detail.exam.scoring_rule !== 'oi')" :type="tabType('ranking')" @click="goExamTab('ranking')">实时榜单</el-button>
       </div>
 
       <router-view v-slot="{ Component }">
@@ -60,7 +60,6 @@
           @refresh-history="loadHistory"
         />
       </router-view>
-      <ProblemEditDialog v-model="problemEditorVisible" :problem="activeProblem" @saved="handleProblemSaved" />
     </div>
   </section>
 </template>
@@ -70,7 +69,6 @@ import { ElMessage, ElMessageBox } from 'element-plus'
 import { computed, onBeforeUnmount, onMounted, reactive, ref, watch } from 'vue'
 import { onBeforeRouteLeave, useRoute, useRouter } from 'vue-router'
 import { AuthenticatedEventSource, client, getLatestSubmissions, openEventStream, type Problem, type Submission } from '../api/client'
-import ProblemEditDialog from '../components/ProblemEditDialog.vue'
 import ProblemTestDownloads from '../components/ProblemTestDownloads.vue'
 import { formatDateTime, workStatusLabel } from '../features/assignments/assignmentMeta'
 import { clearSubmissionDraft, loadSubmissionDraft } from '../features/submissions/drafts'
@@ -103,7 +101,6 @@ const history = ref<Submission[]>([])
 const latestHistory = ref<Submission[]>([])
 const submitting = ref(false)
 const finishing = ref(false)
-const problemEditorVisible = ref(false)
 const editorStates = reactive<Record<number, EditorState>>({})
 let deadlineTimer: number | null = null
 let deadlinePoller: number | null = null
@@ -194,14 +191,9 @@ function goExamTab(tab: ExamTab) {
   router.push(`/exams/${examID.value}/${tab}`)
 }
 
-function openProblemEditor() {
+function openProblemTicket() {
   if (!activeProblem.value) return
-  problemEditorVisible.value = true
-}
-
-async function handleProblemSaved() {
-  await refreshDetail()
-  ElMessage.info('历史提交不会自动重判，需要时可在提交记录中手动重判')
+  router.push({ path: '/problem-changes/new', query: { action: 'replace', problem_id: activeProblem.value.id, target_scope: 'public' } })
 }
 
 function tabType(tab: ExamTab) {

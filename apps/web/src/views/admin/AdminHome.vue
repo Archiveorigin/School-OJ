@@ -185,7 +185,7 @@
         <header class="surface-header">
           <div>
             <span class="section-kicker">待处理事项</span>
-            <p>需要管理员决策的出题申请与题目审批</p>
+            <p>需要管理员决策的出题资格与题目修改工单</p>
           </div>
           <el-button
             v-if="auth.role === 'admin'"
@@ -333,7 +333,7 @@ const courses = ref<CourseItem[]>([]);
 const classes = ref<ClassItem[]>([]);
 const storedDraft = ref<StoredExamDraft | null>(null);
 const pendingApplications = ref<any[]>([]);
-const pendingProblemReviews = ref<any[]>([]);
+const pendingProblemTickets = ref<any[]>([]);
 const auditLogs = ref<AuditItem[]>([]);
 const selectedPlanKey = ref("");
 const planFilter = ref<"all" | "draft" | "running" | "upcoming" | "closed">(
@@ -508,7 +508,7 @@ const draftSettings = computed(() => {
     { label: "评测方式", value: form.manual_review ? "人工阅卷" : "即时评测" },
     {
       label: "计分规则",
-      value: form.scoring_rule === "penalty" ? "罚时排名" : "分数排名",
+      value: form.scoring_rule.toUpperCase(),
     },
     {
       label: "实时榜单",
@@ -528,9 +528,9 @@ const pendingItems = computed(() => {
     },
     {
       path: "/admin/problem-authors",
-      title: "题目发布审批",
-      description: "检查题面、测试点和公开范围",
-      count: pendingProblemReviews.value.length,
+      title: "题目修改工单",
+      description: "核对需求并上传完整最终题包",
+      count: pendingProblemTickets.value.length,
     },
   ].filter((item) => item.count > 0);
 });
@@ -647,7 +647,7 @@ async function load() {
       const [applicationResult, reviewResult, auditResult] =
         await Promise.allSettled([
           client.get("/author-applications", { params: { status: "pending" } }),
-          client.get("/problem-reviews", { params: { status: "pending" } }),
+          client.get("/problem-change-tickets", { params: { status: "pending" } }),
           client.get("/audit-logs"),
         ]);
       pendingApplications.value =
@@ -655,7 +655,7 @@ async function load() {
         Array.isArray(applicationResult.value.data)
           ? applicationResult.value.data
           : [];
-      pendingProblemReviews.value =
+      pendingProblemTickets.value =
         reviewResult.status === "fulfilled" &&
         Array.isArray(reviewResult.value.data)
           ? reviewResult.value.data

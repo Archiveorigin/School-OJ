@@ -28,7 +28,7 @@
       </div>
       <div>
         <dt>计分方式</dt>
-        <dd>{{ scoringRule === "score" ? "总分数" : "罚时制" }}</dd>
+        <dd>{{ scoringRule.toUpperCase() }}</dd>
       </div>
     </dl>
     <div class="score-validation" :class="{ valid: total === 100 }">

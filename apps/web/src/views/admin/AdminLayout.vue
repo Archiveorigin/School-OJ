@@ -170,7 +170,7 @@ const navigationGroups: Array<{ label: string; items: NavigationItem[] }> = [
       { path: "/admin/prepared-problems", label: "预备题库", icon: EditPen },
       {
         path: "/admin/problem-authors",
-        label: "出题管理",
+        label: "工单管理",
         icon: Document,
         roles: ["admin"],
       },

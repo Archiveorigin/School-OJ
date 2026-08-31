@@ -9,11 +9,11 @@ function visiblePaths(canAuthor: boolean) {
 
 describe('author navigation', () => {
   it('keeps authoring hidden for ordinary students', () => {
-    expect(visiblePaths(false)).not.toContain('/problems/create')
+    expect(visiblePaths(false)).not.toContain('/problem-changes')
   })
 
   it('shows authoring when the independent permission is granted', () => {
-    expect(visiblePaths(true)).toContain('/problems/create')
+    expect(visiblePaths(true)).toContain('/problem-changes')
   })
 
   it('shows teams to every authenticated role', () => {

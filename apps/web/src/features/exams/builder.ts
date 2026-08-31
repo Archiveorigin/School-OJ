@@ -54,5 +54,16 @@ export function validateExamDraft(
   if (items.some((item) => item.release_after_exam) && !draft.ends_at) {
     return "使用预备题或考试内新建题时必须填写结束时间";
   }
+  if (draft.scoring_rule === "oi" && (draft.ranking_visible || draft.freeze_enabled)) {
+    return "OI 赛制不能开启实时榜单或封榜";
+  }
+  if (draft.freeze_enabled) {
+    if (!draft.starts_at || !draft.ends_at) return "封榜考试必须设置开始和结束时间";
+    const duration = (new Date(draft.ends_at).getTime() - new Date(draft.starts_at).getTime()) / 60000;
+    if (duration <= 0) return "结束时间必须晚于开始时间";
+    if (draft.freeze_duration_minutes < 1 || draft.freeze_duration_minutes >= duration) {
+      return "封榜分钟数必须小于考试时长";
+    }
+  }
   return "";
 }

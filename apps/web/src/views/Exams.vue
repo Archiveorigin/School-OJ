@@ -65,7 +65,7 @@
               <el-button size="small" type="primary" :disabled="!canManage && examWindowStatus(row) !== 'running'" @click="openDetail(row)">
                 {{ !canManage && examWindowStatus(row) === 'not_started' ? '未开始' : !canManage && examWindowStatus(row) === 'closed' ? '已结束' : '进入' }}
               </el-button>
-              <el-button v-if="canManage || row.settings?.ranking_visible" size="small" @click="router.push(`/exams/${row.id}/ranking`)">榜单</el-button>
+              <el-button v-if="canManage || (row.settings?.ranking_visible && scoringRule(row) !== 'oi')" size="small" @click="router.push(`/exams/${row.id}/ranking`)">榜单</el-button>
               <el-button v-if="canManage" size="small" @click="openReport(row)">完成情况</el-button>
               <el-button v-if="canManage" size="small" type="danger" plain @click="removeExam(row)">删除</el-button>
             </template>
@@ -108,7 +108,7 @@
                 </el-table-column>
                 <el-table-column label="操作" width="240">
                   <template #default="{ row: item }">
-                    <el-button size="small" @click="openProblemEditor(item.problem)">修改题目</el-button>
+                    <el-button size="small" @click="openProblemTicket(item.problem)">工单修改</el-button>
                     <el-button v-if="report.manual_review && item.submission_id" size="small" @click="openGradeDialog(item)">阅卷</el-button>
                   </template>
                 </el-table-column>
@@ -152,7 +152,6 @@
         </div>
       </div>
     </el-dialog>
-    <ProblemEditDialog v-model="problemEditorVisible" :problem="editingProblem" @saved="handleProblemSaved" />
   </section>
 </template>
 
@@ -162,7 +161,6 @@ import { computed, onMounted, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { client, type Problem } from '../api/client'
 import ListPagination from '../components/ListPagination.vue'
-import ProblemEditDialog from '../components/ProblemEditDialog.vue'
 import StatusBadge from '../components/StatusBadge.vue'
 import { formatDateTime } from '../features/time'
 import { useAuthStore } from '../stores/auth'
@@ -181,8 +179,6 @@ const grading = ref(false)
 const report = ref<any>(null)
 const gradeSubmission = ref<any>(null)
 const gradeProblemScore = ref<any>(null)
-const problemEditorVisible = ref(false)
-const editingProblem = ref<Problem | null>(null)
 const manualScore = ref(0)
 const gradeMaxScore = computed(() => gradeProblemScore.value?.score || 100)
 const exporting = ref(false)
@@ -259,17 +255,8 @@ async function openGradeDialog(problemScore: any) {
   gradeVisible.value = true
 }
 
-function openProblemEditor(problem: Problem) {
-  editingProblem.value = problem
-  problemEditorVisible.value = true
-}
-
-async function handleProblemSaved(problem: Problem) {
-  editingProblem.value = problem
-  if (reportVisible.value && report.value?.exam) {
-    await openReport(report.value.exam)
-  }
-  ElMessage.info('历史提交不会自动重判，需要时可手动重判相关提交')
+function openProblemTicket(problem: Problem) {
+  router.push({ path: '/problem-changes/new', query: { action: 'replace', problem_id: problem.id, target_scope: 'public' } })
 }
 
 async function runReferenceJudge() {
@@ -304,6 +291,11 @@ function scoreText(row: any) {
   if (row.finished_at && row.work_status !== 'submitted') return `${row.total_score || 0} / ${row.max_score || 0}`
   if (row.work_status !== 'submitted') return '-'
   return row.score_ready ? `${row.total_score} / ${row.max_score}` : '待评分'
+}
+
+function scoringRule(row: any) {
+  const rule = String(row.scoring_rule || 'acm').toLowerCase()
+  return rule === 'score' ? 'ioi' : rule === 'penalty' ? 'acm' : rule
 }
 
 function courseText(row: any) {
