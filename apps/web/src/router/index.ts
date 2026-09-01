@@ -27,7 +27,7 @@ const Plagiarism = () => import('../views/Plagiarism.vue')
 const ProblemDetail = () => import('../views/problems/ProblemDetail.vue')
 const ProblemCatalog = () => import('../views/problems/ProblemCatalog.vue')
 const ProblemChangeTickets = () => import('../views/problems/ProblemChangeTickets.vue')
-const ProblemAuthorManagement = () => import('../views/admin/ProblemAuthorManagement.vue')
+const PermissionManagement = () => import('../views/admin/PermissionManagement.vue')
 const ProblemTicketManagement = () => import('../views/admin/ProblemTicketManagement.vue')
 const ProblemSubmissions = () => import('../views/problems/ProblemSubmissions.vue')
 const ProblemsLayout = () => import('../views/problems/ProblemsLayout.vue')
@@ -43,6 +43,7 @@ const TeamProblemSetDetail = () => import('../views/teams/TeamProblemSetDetail.v
 const TeamProblemSets = () => import('../views/teams/TeamProblemSets.vue')
 const TeamWorkspace = () => import('../views/teams/TeamWorkspace.vue')
 const Users = () => import('../views/Users.vue')
+const UserAccessLayout = () => import('../views/admin/UserAccessLayout.vue')
 
 const teacherRoles = ['admin', 'teacher']
 
@@ -144,10 +145,18 @@ const router = createRouter({
         { path: 'exams/new', component: ExamCreate, meta: { title: '新建考试', adminMenu: '/admin/exams' } },
         { path: 'prepared-problems', component: PreparedProblems, meta: { title: '预备题库', adminMenu: '/admin/prepared-problems' } },
         { path: 'problem-authors', component: ProblemTicketManagement, meta: { roles: ['admin'], title: '工单管理', adminMenu: '/admin/problem-authors' } },
-        { path: 'author-permissions', component: ProblemAuthorManagement, meta: { roles: ['admin'], title: '出题资格管理', adminMenu: '/admin/problem-authors' } },
+        { path: 'author-permissions', redirect: '/admin/users/permissions' },
         { path: 'plagiarism', component: Plagiarism, meta: { title: 'JPlag 查重', adminMenu: '/admin/plagiarism' } },
         { path: 'audit-logs', component: AuditLogs, meta: { roles: ['admin'], title: '审计日志', adminMenu: '/admin/audit-logs' } },
-        { path: 'users', component: Users, meta: { roles: ['admin'], title: '用户管理', adminMenu: '/admin/users' } }
+        {
+          path: 'users',
+          component: UserAccessLayout,
+          meta: { roles: ['admin'], title: '用户与权限', adminMenu: '/admin/users' },
+          children: [
+            { path: '', component: Users, meta: { title: '用户列表', adminMenu: '/admin/users' } },
+            { path: 'permissions', component: PermissionManagement, meta: { title: '权限管理', adminMenu: '/admin/users' } }
+          ]
+        }
       ]
     },
     { path: '/prepared-problems', redirect: '/admin/prepared-problems' },

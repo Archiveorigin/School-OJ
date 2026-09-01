@@ -424,6 +424,42 @@ func TestCanCreateProblemsUsesIndependentAuthorFlag(t *testing.T) {
 	}
 }
 
+func TestProblemChangeTicketAttachmentIsAlwaysRequired(t *testing.T) {
+	if err := validateProblemChangeTicketAttachment("", nil); err == nil {
+		t.Fatal("a ticket without an attachment must be rejected")
+	}
+	if err := validateProblemChangeTicketAttachment("corrected.zip", nil); err == nil {
+		t.Fatal("an empty attachment must be rejected")
+	}
+	if err := validateProblemChangeTicketAttachment("corrected.zip", []byte("content")); err != nil {
+		t.Fatalf("valid attachment rejected: %v", err)
+	}
+}
+
+func TestProblemChangeTicketReplaceAndArchiveRequireOverwrite(t *testing.T) {
+	for _, action := range []models.ProblemChangeAction{models.ProblemChangeReplace, models.ProblemChangeArchive} {
+		if err := validateProblemChangeTicketOperation(action, ""); err == nil {
+			t.Fatalf("%s ticket without overwrite mode must be rejected", action)
+		}
+		if err := validateProblemChangeTicketOperation(action, "overwrite"); err != nil {
+			t.Fatalf("%s overwrite mode rejected: %v", action, err)
+		}
+	}
+	if err := validateProblemChangeTicketOperation(models.ProblemChangeCreate, ""); err != nil {
+		t.Fatalf("create ticket must not require overwrite mode: %v", err)
+	}
+}
+
+func TestUserPermissionDefinitionSupportsExtensibleKeys(t *testing.T) {
+	definition, ok := findUserPermissionDefinition("problem-author")
+	if !ok || definition.Key != "problem_author" || definition.Scope != "global" {
+		t.Fatalf("problem author permission = %#v, %v", definition, ok)
+	}
+	if _, ok := findUserPermissionDefinition("unknown"); ok {
+		t.Fatal("unknown permission must not be accepted")
+	}
+}
+
 func TestPublicProblemSQLRequiresApprovedReview(t *testing.T) {
 	sql := publicProblemSQL()
 	for _, want := range []string{"problems.archived_at IS NULL", "problems.team_id IS NULL", "problem_reviews", "status <> 'approved'", "status = 'approved'"} {

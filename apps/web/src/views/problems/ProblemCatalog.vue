@@ -15,9 +15,7 @@
         <el-select v-model="filters.difficulty" clearable placeholder="全部难度">
           <el-option v-for="item in problemDifficultyOptions" :key="item" :label="item" :value="item" />
         </el-select>
-        <el-select v-model="filters.tags" multiple collapse-tags collapse-tags-tooltip clearable filterable placeholder="算法标签">
-          <el-option v-for="tag in availableTags" :key="tag" :label="tag" :value="tag" />
-        </el-select>
+        <ProblemTagSelector v-model="filters.tags" />
         <el-select v-if="auth.isAuthed" v-model="filters.status" placeholder="完成状态">
           <el-option label="全部状态" value="" />
           <el-option label="未尝试" value="unattempted" />
@@ -80,6 +78,7 @@ import { computed, onBeforeUnmount, onMounted, reactive, ref, watch } from 'vue'
 import { useRouter } from 'vue-router'
 import { client, type Problem, type ProblemCatalogItem, type ProblemCatalogResponse } from '../../api/client'
 import ListPagination from '../../components/ListPagination.vue'
+import ProblemTagSelector from '../../components/ProblemTagSelector.vue'
 import { difficultyClass, problemDifficulty, problemDifficultyOptions, problemDisplayCode, tagList } from '../../features/problems/problemMeta'
 import { useAuthStore } from '../../stores/auth'
 
@@ -87,7 +86,6 @@ const auth = useAuthStore()
 const router = useRouter()
 const canAuthor = computed(() => Boolean(auth.user?.can_author) || auth.role === 'admin')
 const items = ref<ProblemCatalogItem[]>([])
-const availableTags = ref<string[]>([])
 const loading = ref(false)
 const total = ref(0)
 const page = ref(1)
@@ -103,7 +101,6 @@ async function load() {
     })
     items.value = data.items || []
     total.value = data.total || 0
-    availableTags.value = data.available_tags || []
   } catch (error: any) {
     ElMessage.error(error.response?.data?.error || error.message)
   } finally {

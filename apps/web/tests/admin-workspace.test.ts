@@ -2,7 +2,6 @@ import { flushPromises, shallowMount } from '@vue/test-utils'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { createPinia, setActivePinia } from 'pinia'
 import { client } from '../src/api/client'
-import { examDraftStorageKey } from '../src/features/exams/draft'
 import { useAuthStore } from '../src/stores/auth'
 import AdminHome from '../src/views/admin/AdminHome.vue'
 import AdminLayout from '../src/views/admin/AdminLayout.vue'
@@ -73,62 +72,65 @@ describe('admin workspace', () => {
     expect(teacherView.text()).toContain('JPlag 查重')
   })
 
-  it('maps stored draft and real admin endpoints into the overview', async () => {
+  it('maps teaching metrics, upcoming exams and administrator queues into the overview', async () => {
     setUser('admin')
-    localStorage.setItem(
-      examDraftStorageKey,
-      JSON.stringify({
-        form: {
-          course_id: 2,
-          class_id: 4,
-          title: '算法设计期中考试',
-          description: '',
-          starts_at: '2026-09-05T01:00:00.000Z',
-          ends_at: '2026-09-05T05:00:00.000Z',
-          manual_review: false,
-          ranking_visible: true,
-          scoring_rule: 'score'
-        },
-        selectedProblems: [
-          { problem_id: 10, title: '区间动态规划', source: '题库', score: 60, label: 'A' },
-          { problem_id: 11, title: '最小生成树', source: '预备', score: 40, label: 'B', release_after_exam: true }
-        ],
-        step: 2,
-        savedAt: '2026-08-30T02:23:00.000Z'
-      })
-    )
-
     vi.spyOn(client, 'get').mockImplementation(async (url) => {
-      if (url === '/exams') return { data: [] } as any
+      if (url === '/exams')
+        return {
+          data: [
+            {
+              id: 8,
+              title: '算法设计期中考试',
+              course_code: 'CS2026',
+              course_name: '算法设计',
+              class_name: '计算机 1 班',
+              starts_at: '2099-09-05T01:00:00.000Z',
+              ends_at: '2099-09-05T05:00:00.000Z'
+            }
+          ]
+        } as any
       if (url === '/courses') return { data: [{ id: 2, code: 'CS2026', name: '算法设计' }] } as any
-      if (url === '/classes') return { data: [{ id: 4, class_id: 4, course_id: 2, class_name: '计算机 1 班' }] } as any
+      if (url === '/classes')
+        return {
+          data: [{ id: 4, class_id: 4, course_id: 2, class_name: '计算机 1 班' }]
+        } as any
       if (url === '/author-applications') return { data: [{ id: 21, status: 'pending' }] } as any
       if (url === '/problem-change-tickets') return { data: [{ id: 22, status: 'pending' }] } as any
-      if (url === '/audit-logs') {
+      if (url === '/audit-logs')
         return {
-          data: [{ id: 31, actor_name: '王志华', action: 'exam.create', resource_label: '考试', created_at: '2026-08-30T01:10:00.000Z' }]
+          data: [
+            {
+              id: 31,
+              actor_name: '王志华',
+              action: 'exam.create',
+              resource_label: '考试',
+              created_at: '2026-08-30T01:10:00.000Z'
+            }
+          ]
         } as any
-      }
       throw new Error(`unexpected endpoint: ${url}`)
     })
 
     const wrapper = shallowMount(AdminHome, { global: globalOptions })
     await flushPromises()
 
+    expect(wrapper.text()).toContain('教学概览')
     expect(wrapper.text()).toContain('算法设计期中考试')
-    expect(wrapper.text()).toContain('CS2026 算法设计')
+    expect(wrapper.text()).toContain('CS2026')
     expect(wrapper.text()).toContain('计算机 1 班')
-    expect(wrapper.text()).toContain('2 道题')
-    expect(wrapper.text()).toContain('100 分')
-    expect(wrapper.text()).toContain('出题资格申请')
+    expect(wrapper.text()).toContain('出题权限申请')
     expect(wrapper.text()).toContain('题目修改工单')
     expect(wrapper.text()).toContain('王志华')
     expect(wrapper.text()).toContain('创建了考试')
-    expect(client.get).toHaveBeenCalledWith('/author-applications', { params: { status: 'pending' } })
-    expect(client.get).toHaveBeenCalledWith('/problem-change-tickets', { params: { status: 'pending' } })
+    expect(client.get).toHaveBeenCalledWith('/author-applications', {
+      params: { status: 'pending' }
+    })
+    expect(client.get).toHaveBeenCalledWith('/problem-change-tickets', {
+      params: { status: 'pending' }
+    })
 
-    const primaryAction = wrapper.findAll('.plan-footer button').at(-1)
-    expect(primaryAction?.text()).toContain('继续草稿')
+    const primaryAction = wrapper.findAll('.heading-actions button').at(-1)
+    expect(primaryAction?.text()).toContain('新建考试')
     await primaryAction?.trigger('click')
     expect(routerMocks.push).toHaveBeenCalledWith('/admin/exams/new')
   })

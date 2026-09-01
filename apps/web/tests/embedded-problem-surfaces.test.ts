@@ -39,23 +39,30 @@ describe('embedded exam and contest problem surfaces', () => {
       global: { stubs: { MarkdownRenderer: true, ElTag: true } }
     })
 
-    expect(wrapper.get('.problem-view-grid').classes()).toEqual(expect.arrayContaining([
-      'problem-view-grid--embedded',
-      'problem-view-grid--single'
-    ]))
+    expect(wrapper.get('.problem-view-grid').classes()).toEqual(
+      expect.arrayContaining(['problem-view-grid--embedded', 'problem-view-grid--single'])
+    )
     expect(wrapper.get('.statement-box').exists()).toBe(true)
     expect(wrapper.find('aside').exists()).toBe(false)
     expect(wrapper.text()).toContain(problem.title)
   })
 
   it('enables the shared embedded mode at every exam and team contest entry', () => {
-    const examOverview = readFileSync(resolve(process.cwd(), 'src/views/exam/ExamOverview.vue'), 'utf8')
-    const examProblems = readFileSync(resolve(process.cwd(), 'src/views/exam/ExamProblems.vue'), 'utf8')
-    const teamContest = readFileSync(resolve(process.cwd(), 'src/views/teams/TeamContestDetail.vue'), 'utf8')
+    const examOverview = readFileSync(
+      resolve(process.cwd(), 'src/views/exam/ExamOverview.vue'),
+      'utf8'
+    )
+    const examProblems = readFileSync(
+      resolve(process.cwd(), 'src/views/exam/ExamProblems.vue'),
+      'utf8'
+    )
+    const teamContest = readFileSync(
+      resolve(process.cwd(), 'src/views/teams/ContestWorkspace.vue'),
+      'utf8'
+    )
 
     expect(examOverview).toMatch(/<ProblemOverview\s+embedded/)
     expect(examProblems).toMatch(/<ProblemStatementView\s+\n?\s*embedded/)
-    expect(teamContest).toMatch(/<ProblemOverview[^>]*\sembedded\s/)
-    expect(teamContest).toMatch(/<ProblemStatementView[\s\S]*?\n\s+embedded\n/)
+    expect(teamContest).toMatch(/<ProblemStatementView[^>]*\sembedded\s/)
   })
 })

@@ -1,83 +1,55 @@
-# 工单化题目管理与三赛制设计 QA
+# 本轮设计 QA：工单、统一排行榜与权限管理
 
-## 对比目标
+## 验收目标
 
-- 参考视觉真值：
-  - `luogu-problem-list.png`
-  - `luogu-contest-problems.png`
-  - `luogu-contest-problem.png`
-  - `luogu-ioi-scoreboard.png`
-  - `luogu-acm-scoreboard.png`
-- 参考截图目录：`C:\Users\intimifeng\.codex\visualizations\2026\08\30\01a052a2-1037-7573-843a-97b4b8809958`
-- 参考截图像素：以上五张均为 1440 × 1100。
-- 实现路径：`/problems`、`/problem-changes/new`、`/admin/problem-authors`、`/contest/:id/description`、`/contest/:id/problems`、`/contest/:id/problems/:label`、`/contest/:id/scoreboard`。
-- 桌面 CSS 视口：1440 × 1100，device scale factor 1。
-- 移动 CSS 视口：390 × 844，device scale factor 1；使用 full-page 截图验证全部内容，题库输出为 390 × 1853，排行榜输出为 390 × 1020。
-- 状态：固定的管理员身份与确定性 API 模拟数据，覆盖题库筛选、作者发单、管理员处理、比赛题目、OI、IOI、ACM 和封榜。
-- 密度归一化：参考图与桌面实现均以原生 1440 × 1100 渲染；对比图以等宽双栏并排输入进行目视检查。
+- 工单附件改为必填，并明确上传“修改后的正确内容”；替换、删除采用覆盖性执行。
+- 团队比赛不再维护独立排行榜视觉，OI/IOI/ACM 复用考试排行榜组件。
+- 题库算法标签恢复弹出式选择器。
+- 后台“教学概览”保持简洁；出题者作为独立附加权限，与学生、教师、管理员基础角色并行。
+- “用户与权限”增加独立权限管理子路由，工单管理只处理题目数据工单。
+- 桌面视口为 1440 × 1100；移动视口为 390 × 844，截图均使用 full-page。
 
-## 渲染证据
+## 自动化与渲染证据
 
-- 题库桌面：`qa-problem-catalog-desktop.png`
-- 题库移动：`qa-problem-catalog-mobile.png`
-- 作者发起工单：`qa-ticket-author-desktop.png`
-- 管理员工单抽屉：`qa-ticket-admin-desktop.png`
-- 比赛题目列表：`qa-contest-problems-desktop.png`
-- 比赛题目页：`qa-contest-problem-desktop.png`
-- IOI 排行榜：`qa-ioi-scoreboard-desktop.png`
-- ACM 排行榜：`qa-acm-scoreboard-desktop.png`
-- 移动排行榜：`qa-scoreboard-mobile.png`
-- OI 比赛说明：`qa-oi-description-desktop.png`
-- 旧地址兼容跳转：`qa-legacy-route-desktop.png`
+最终证据目录：
 
-## 同屏对比证据
+`C:\Users\intimifeng\.codex\visualizations\2026\08\30\01a052a2-1037-7573-843a-97b4b8809958\update-107c36f-final`
 
-- 题库：`qa-compare-problem-catalog.png`
-- 比赛题目列表：`qa-compare-contest-problems.png`
-- 比赛题目页：`qa-compare-contest-problem.png`
-- IOI 排行榜：`qa-compare-ioi-scoreboard.png`
-- ACM 排行榜：`qa-compare-acm-scoreboard.png`
+主要截图：
 
-以上证据均位于参考截图目录，已作为相同对比输入逐张检查。
+- 题库桌面与移动：`qa-problem-catalog-desktop.png`、`qa-problem-catalog-mobile.png`
+- 算法标签弹窗：`qa-problem-tag-popup-desktop.png`
+- 出题人工单与管理员处理：`qa-ticket-author-desktop.png`、`qa-ticket-admin-desktop.png`
+- 教学概览桌面与移动：`qa-admin-overview-desktop.png`、`qa-admin-overview-mobile.png`
+- 权限管理桌面与移动：`qa-permission-management-desktop.png`、`qa-permission-management-mobile.png`
+- IOI、ACM 与移动排行榜：`qa-ioi-scoreboard-desktop.png`、`qa-acm-scoreboard-desktop.png`、`qa-scoreboard-mobile.png`
+- OI 无排行榜与旧路由兼容：`qa-oi-description-desktop.png`、`qa-legacy-route-desktop.png`
 
-## 结论
+参考站点的同视口信息架构对比继续覆盖题库、比赛题目列表和比赛题目页：
 
-- 没有剩余可执行的 P0、P1 或 P2 视觉问题。
-- 实现沿用黄海在线测题平台的校徽、品牌蓝、第三版后台设计语言和 Element Plus 图标；仅借鉴参考站点的信息架构、列表密度、标签导航和矩阵榜单，不复制其素材或品牌。
-- 题库保持“筛选卡 + 密集表格”的桌面结构，移动端转为可读题目卡；个人状态、题号、标签、难度、通过率、分页和工单入口均可见。
-- 比赛保持“比赛说明 / 题目列表 / 排行榜”三段导航；OI 不渲染排行榜入口，IOI 与 ACM 使用对应矩阵单元格，封榜状态有明确提示。
-- 题目页保留 A/B/C/D 快速导航、题面、提交入口和本题记录，重复标题已移除。
-- 作者与管理员上传控件已本地化；管理员抽屉在动画完成后截图，影响场次、最终题包、驳回和执行操作均完整可见。
+- `qa-compare-problem-catalog.png`
+- `qa-compare-contest-problems.png`
+- `qa-compare-contest-problem.png`
 
-## 必需保真面
+排行榜本轮以现有考试排行榜为唯一视觉真值，因此不再与外部站点排行榜截图比较。
 
-- 字体与层级：标题使用现有品牌字重和蓝色英文 eyebrow，正文与表格使用系统中文字体；题库、比赛标题、榜单总分和状态的层级稳定。
-- 间距与布局：桌面内容宽度、筛选密度、题表行高和榜单矩阵接近参考节奏；移动端没有页面级横向溢出，榜单矩阵在独立容器内横向滚动并固定名次、参赛者和汇总列。
-- 色彩：延续深蓝、亮蓝、白色卡面和浅灰蓝背景；AC、尝试、封榜和危险操作分别使用一致的绿、橙、琥珀和红色语义。
-- 图片与图标：使用仓库内真实校徽及 Element Plus 图标；没有用 emoji、手绘 SVG、CSS 图形或占位图片伪造可见素材。
-- 文案：所有入口和说明均映射真实工单、题库、比赛和计分业务；上传按钮、封榜提示和赛制名称均为中文且无浏览器原生英文残留。
-- 响应式：390 px 下题库筛选纵向排列、题目卡完整显示；榜单通过横向滚动保留高密度信息，固定列在首屏可读。
+## 目视审计
 
-## Playwright 验证
+- 算法标签以居中弹窗展示，算法、时间、来源分栏明确；标签可搜索、可多选，没有回退为下拉列表。
+- 工单页把附件和覆盖方式放在主要表单流程中；管理员抽屉同时展示申请附件、影响场次、最终完整题包及覆盖执行按钮。
+- 教学概览在桌面使用四项核心指标、近期考试、待办、快捷入口和最近动态；移动端顺序降级完整，没有横向裁切。
+- 权限管理明确区分基础角色和“出题者”附加权限。首次移动审计发现桌面表格在窄屏截断操作列，已改为移动权限卡片并复测，授予、收回操作均可见。
+- 团队比赛 IOI/ACM 榜单复用考试排行榜的标题、工具栏、状态单元格和奖牌语义；移动端矩阵在独立容器内横向滚动。OI 不显示排行榜入口。
+- 未发现剩余 P0、P1 或 P2 视觉及核心交互问题。
 
-- 题库桌面筛选与移动卡片渲染。
-- 作者替换工单的预填目标和表单控件。
-- 管理员工单详情、影响范围与完整 ZIP 题包操作。
-- 比赛说明、题目列表、题目详情与提交入口。
-- OI 无排行榜入口。
-- IOI、ACM 矩阵榜单与封榜提示。
-- 390 px 榜单横向滚动能力。
-- 旧 `#problems` 地址兼容到真实子路由。
+## Playwright 结果
+
+- 题库筛选、移动卡片和算法标签弹窗：通过。
+- 工单必填附件、覆盖操作与管理员处理抽屉：通过。
+- 教学概览和权限管理桌面/移动：通过。
+- 比赛题目列表、题目详情、IOI/ACM 共用排行榜、封榜、OI 隐藏榜单：通过。
+- 390 px 排行榜横向滚动和权限操作可见性：通过。
+- 旧 `#problems` 路由兼容：通过。
 - 浏览器 console error：0；uncaught page error：0。
-
-## 对比迭代记录
-
-1. 第一轮：五组同屏对比确认整体信息架构和密度方向正确，发现三个 P2 问题——比赛题目页重复题名、工单上传显示英文原生控件、管理抽屉截图处于过渡动画中。
-2. 修正：题面组件关闭重复标题；作者和管理员上传统一为本地化 Element Plus 控件；截图前等待抽屉动画稳定。
-3. 第二轮：重新运行全部 11 个 Playwright 场景并生成五组同屏对比，逐张复核桌面和移动证据；前述问题均已消除，无新增 P0/P1/P2。
-
-## 开放问题
-
-- 本轮设计验收无开放问题。
 
 final result: passed

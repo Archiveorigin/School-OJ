@@ -1,7 +1,10 @@
 <template>
   <section class="page">
     <div class="page-header">
-      <h2>用户管理</h2>
+      <div>
+        <h2>用户列表</h2>
+        <p>基础角色负责教学身份，附加权限请在“权限管理”子页面维护。</p>
+      </div>
       <div class="toolbar">
         <el-button type="primary" @click="openCreate">新建用户</el-button>
         <el-button @click="load">刷新</el-button>
@@ -12,8 +15,8 @@
       <el-table :data="pagedUsers" v-loading="loading">
         <el-table-column prop="email" label="邮箱" min-width="220" />
         <el-table-column prop="name" label="姓名" min-width="140" />
-        <el-table-column label="角色" width="120">
-          <template #default="{ row }">{{ roleText(row.role) }}</template>
+        <el-table-column label="身份与权限" width="190">
+          <template #default="{ row }"><div class="identity-tags"><el-tag effect="plain">{{ roleText(row.role) }}</el-tag><el-tag v-if="row.role === 'admin' || row.can_author" type="success">出题者</el-tag></div></template>
         </el-table-column>
         <el-table-column prop="student_no" label="学号" width="150" />
         <el-table-column label="创建时间" min-width="170">
@@ -297,9 +300,15 @@ onMounted(load)
 </script>
 
 <style scoped>
-.row-actions {
+.page-header > div:first-child { display: grid; gap: 4px; }
+.page-header h2, .page-header p { margin: 0; }
+.identity-tags, .row-actions {
   display: flex;
   align-items: center;
+  gap: 6px;
+}
+.identity-tags { flex-wrap: wrap; }
+.row-actions {
   gap: 4px;
   white-space: nowrap;
 }

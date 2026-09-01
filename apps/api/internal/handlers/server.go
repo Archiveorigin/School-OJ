@@ -683,6 +683,86 @@ func (s Server) removeProblemAuthor(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{"removed": true, "user_id": user.ID})
 }
 
+type userPermissionDefinition struct {
+	Key         string `json:"key"`
+	Name        string `json:"name"`
+	Description string `json:"description"`
+	Scope       string `json:"scope"`
+}
+
+var userPermissionDefinitions = []userPermissionDefinition{
+	{
+		Key:         "problem_author",
+		Name:        "出题者",
+		Description: "可发起题目新增、覆盖修改与覆盖删除工单；该权限与学生、教师等基础角色并行。",
+		Scope:       "global",
+	},
+}
+
+func findUserPermissionDefinition(key string) (userPermissionDefinition, bool) {
+	normalized := strings.ReplaceAll(strings.ToLower(strings.TrimSpace(key)), "-", "_")
+	for _, definition := range userPermissionDefinitions {
+		if definition.Key == normalized {
+			return definition, true
+		}
+	}
+	return userPermissionDefinition{}, false
+}
+
+func (s Server) listUserPermissionDefinitions(c *gin.Context) {
+	c.JSON(http.StatusOK, userPermissionDefinitions)
+}
+
+func (s Server) updateUserPermission(c *gin.Context) {
+	admin, _ := middleware.CurrentUser(c)
+	userID, ok := idParam(c, "id")
+	if !ok {
+		return
+	}
+	definition, found := findUserPermissionDefinition(c.Param("permission"))
+	if !found {
+		c.JSON(http.StatusNotFound, gin.H{"error": "permission not found"})
+		return
+	}
+	var req struct {
+		Enabled *bool  `json:"enabled"`
+		Note    string `json:"note"`
+	}
+	if !bind(c, &req) {
+		return
+	}
+	if req.Enabled == nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "enabled is required"})
+		return
+	}
+	var user models.User
+	if err := s.DB.Where("id = ? AND account_deleted = false", userID).First(&user).Error; err != nil {
+		c.JSON(http.StatusNotFound, gin.H{"error": "user not found"})
+		return
+	}
+	if definition.Key == "problem_author" {
+		if user.Role == models.RoleAdmin && !*req.Enabled {
+			c.JSON(http.StatusBadRequest, gin.H{"error": "administrator author permission cannot be removed"})
+			return
+		}
+		if err := s.DB.Model(&user).Update("can_author", *req.Enabled).Error; err != nil {
+			c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+			return
+		}
+	}
+	services.Audit(c, s.DB, "permission.update", "user", user.ID, datatypes.JSONMap{
+		"permission": definition.Key,
+		"enabled":    *req.Enabled,
+		"note":       strings.TrimSpace(req.Note),
+		"updated_by": admin.ID,
+	})
+	if err := s.DB.Select(userPublicColumns()).First(&user, user.ID).Error; err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{"permission": definition, "enabled": *req.Enabled, "user": user})
+}
+
 func (s Server) reviewAuthorApplication(c *gin.Context) {
 	admin, _ := middleware.CurrentUser(c)
 	applicationID, ok := idParam(c, "id")

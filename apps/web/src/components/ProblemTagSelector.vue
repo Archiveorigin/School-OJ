@@ -1,6 +1,8 @@
 <template>
   <div class="tag-selector-field">
-    <el-button @click="open">选择算法标签</el-button>
+    <el-button :type="modelValue.length ? 'primary' : 'default'" :plain="Boolean(modelValue.length)" @click="open">
+      {{ modelValue.length ? `已选 ${modelValue.length} 个标签` : '选择算法标签' }}
+    </el-button>
   </div>
 
   <el-dialog
@@ -147,6 +149,7 @@ function confirm() {
 
 <style scoped>
 .tag-selector-field { width: 100%; display: flex; align-items: stretch; gap: 8px; }
+.tag-selector-field :deep(.el-button) { width: 100%; min-height: 32px; justify-content: flex-start; }
 .tag-dialog-toolbar { display: flex; align-items: center; justify-content: space-between; gap: 18px; border-bottom: 1px solid var(--border); }
 .tag-dialog-toolbar :deep(.el-tabs__header) { margin: 0; }
 .tag-search { width: min(340px, 46%); }

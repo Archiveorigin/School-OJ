@@ -6,7 +6,7 @@ import TeamContestAwardFields from '../src/components/TeamContestAwardFields.vue
 import {
   contestAwardTotal,
   contestAwardValidationError,
-  defaultContestAwardPercents,
+  defaultContestAwardPercents
 } from '../src/features/teams/contestAwards'
 
 const source = (path: string) => readFileSync(resolve(process.cwd(), path), 'utf8')
@@ -17,21 +17,32 @@ describe('team content management', () => {
     expect(contestAwardTotal(defaults)).toBe(30)
     expect(contestAwardValidationError(defaults)).toBe('')
     expect(contestAwardValidationError({ ...defaults, gold_award_percent: 10.5 })).toContain('整数')
-    expect(contestAwardValidationError({ gold_award_percent: 40, silver_award_percent: 40, bronze_award_percent: 30 })).toContain('不能超过 100%')
+    expect(
+      contestAwardValidationError({
+        gold_award_percent: 40,
+        silver_award_percent: 40,
+        bronze_award_percent: 30
+      })
+    ).toContain('不能超过 100%')
   })
 
   it('shows the live award total and emits individual percentage changes', async () => {
     const wrapper = mount(TeamContestAwardFields, {
-      props: { goldAwardPercent: 10, silverAwardPercent: 10, bronzeAwardPercent: 10 },
+      props: {
+        goldAwardPercent: 10,
+        silverAwardPercent: 10,
+        bronzeAwardPercent: 10
+      },
       global: {
         stubs: {
           ElInputNumber: {
             props: ['modelValue'],
             emits: ['update:modelValue'],
-            template: '<button class="number-input" @click="$emit(\'update:modelValue\', Number(modelValue) + 1)">{{ modelValue }}</button>',
-          },
-        },
-      },
+            template:
+              '<button class="number-input" @click="$emit(\'update:modelValue\', Number(modelValue) + 1)">{{ modelValue }}</button>'
+          }
+        }
+      }
     })
 
     expect(wrapper.text()).toContain('30%')
@@ -43,19 +54,18 @@ describe('team content management', () => {
     expect(wrapper.get('.award-error').text()).toContain('不能超过 100%')
   })
 
-  it('wires contest edit and confirmed deletion without leaking row clicks', () => {
+  it('wires contest list management and the active contest workspace', () => {
     const list = source('src/views/teams/TeamContests.vue')
-    const detail = source('src/views/teams/TeamContestDetail.vue')
+    const detail = source('src/views/teams/ContestWorkspace.vue')
     expect(list).toContain('@click.stop="editContest(row)"')
     expect(list).toContain('@click.stop="deleteContest(row)"')
     expect(list).toContain("query: { manage: 'edit' }")
     expect(list).toContain('await client.delete(`/contests/${row.id}`)')
     expect(detail).toContain('await client.put(`/contests/${contestID.value}`, editForm)')
-    expect(detail).toContain('await client.delete(`/contests/${contestID.value}`)')
-    expect(detail).toContain('v-model:gold-award-percent="editForm.gold_award_percent"')
-    expect(detail).toContain('v-if="detail.can_publish" @click="addVisible = true"')
-    expect(detail).toContain('v-if="detail.can_publish" type="danger" text @click="removeProblem"')
-    expect(detail).toContain('ElMessageBox.confirm')
+    expect(detail).toContain('v-if="detail.can_edit"')
+    expect(detail).toContain('@click="addVisible = true"')
+    expect(detail).toContain('<LeaderboardBoard')
+    expect(detail).not.toContain('ContestScoreCell')
   })
 
   it('keeps manager actions separate from organizer permission', () => {

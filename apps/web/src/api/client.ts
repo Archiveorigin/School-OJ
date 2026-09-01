@@ -37,6 +37,13 @@ export interface User {
   updated_at?: string
 }
 
+export interface UserPermissionDefinition {
+  key: string
+  name: string
+  description: string
+  scope: 'global' | string
+}
+
 export interface Problem {
   id: number
   owner_id?: number

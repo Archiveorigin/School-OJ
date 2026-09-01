@@ -97,6 +97,10 @@ func (s Server) createProblemChangeTicket(c *gin.Context) {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "请至少用 8 个字说明修改需求"})
 		return
 	}
+	if err := validateProblemChangeTicketAttachment(attachmentName, attachmentBody); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
 	if req.TargetScope == "" {
 		req.TargetScope = "public"
 	}
@@ -352,6 +356,14 @@ func (s Server) applyProblemChangeTicket(c *gin.Context) {
 		c.JSON(http.StatusConflict, gin.H{"error": "工单已处理或正在处理"})
 		return
 	}
+	if strings.TrimSpace(ticket.AttachmentObject) == "" {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "该工单缺少修改后的正确内容，不能执行；请驳回并要求申请人重新提交"})
+		return
+	}
+	if err := validateProblemChangeTicketOperation(ticket.Action, c.PostForm("operation_mode")); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
 	note := strings.TrimSpace(c.PostForm("resolution_note"))
 	if ticket.Action == models.ProblemChangeArchive {
 		if err := s.applyArchiveProblemTicket(ticket, admin, note); err != nil {
@@ -390,6 +402,23 @@ func (s Server) applyProblemChangeTicket(c *gin.Context) {
 	services.Audit(c, s.DB, "problem_change_ticket.apply", "problem_change_ticket", ticket.ID, datatypes.JSONMap{"action": ticket.Action})
 	applied, _ := s.problemChangeTicket(ticket.ID)
 	c.JSON(http.StatusOK, applied)
+}
+
+func validateProblemChangeTicketAttachment(name string, body []byte) error {
+	if strings.TrimSpace(name) == "" || len(body) == 0 {
+		return errors.New("参考附件为必填项，请上传修改后的正确内容供管理员审核")
+	}
+	return nil
+}
+
+func validateProblemChangeTicketOperation(action models.ProblemChangeAction, mode string) error {
+	if action != models.ProblemChangeReplace && action != models.ProblemChangeArchive {
+		return nil
+	}
+	if strings.TrimSpace(mode) != "overwrite" {
+		return errors.New("替换或删除工单必须选择覆盖性操作")
+	}
+	return nil
 }
 
 func (s Server) applyArchiveProblemTicket(ticket models.ProblemChangeTicket, admin models.User, note string) error {

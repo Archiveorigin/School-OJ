@@ -12,7 +12,7 @@
           <p>{{ profile?.user.email || auth.user?.email }}</p>
           <div class="profile-tags">
             <el-tag>{{ roleLabel }}</el-tag>
-            <el-tag v-if="canAuthor" type="warning">已获出题资格</el-tag>
+            <el-tag v-if="canAuthor" type="warning">出题者</el-tag>
             <el-tag v-if="profile?.user.email_verified" type="success">邮箱已验证</el-tag>
             <el-tag v-if="profile?.user.student_no" type="info">学号 {{ profile.user.student_no }}</el-tag>
           </div>
@@ -30,7 +30,7 @@
       <div class="author-copy">
         <span class="eyebrow">PROBLEM AUTHOR PROGRAM</span>
         <h2>{{ canAuthor ? '出题工作台已开放' : '申请成为出题者' }}</h2>
-        <p v-if="canAuthor">你可以创建题目、导入 Markdown 题面和测试点压缩包，并维护自己提供的题目。</p>
+        <p v-if="canAuthor">你可以发起题目新增、覆盖修改与覆盖删除工单；基础角色保持不变。</p>
         <p v-else-if="authorApplication?.status === 'pending'">申请已提交，管理员审核通过后会为当前账号开通独立出题权限，基础角色保持不变。</p>
         <p v-else>说明你的出题经验、擅长方向或计划提供的题目类型，管理员审核通过后即可开始出题。</p>
         <el-alert
