@@ -1,63 +1,99 @@
-# Architecture
+# 系统架构
 
-The system is a monorepo with three runtime applications.
+## 1. 总体结构
 
-- `apps/api`: Gin HTTP API, GORM models, PostgreSQL persistence, Redis Streams enqueueing, MinIO object storage, JWT RBAC, SSE, audit logs, and JPlag orchestration. Route registration lives in `internal/handlers/routes.go`; business handlers remain split by domain as they are refactored out of the legacy server file.
-- `apps/worker`: Redis Streams consumer group `judge-workers`; it reads submissions, downloads problem ZIP packages from MinIO, and executes Docker sandbox runs.
-- `apps/web`: Vue 3, Vite, TypeScript, Element Plus, and Monaco UI.
+项目采用单仓库组织，包含三个独立运行的应用和一组基础设施服务。
 
-Product domains:
+| 目录 | 技术栈 | 主要职责 |
+| --- | --- | --- |
+| `apps/api` | Go、Gin、GORM | HTTP API、鉴权、业务规则、数据持久化、对象存储、事件推送与审计 |
+| `apps/worker` | Go、Redis Streams、Docker | 消费判题任务、编译运行用户代码、写入测试点与最终结果 |
+| `apps/web` | Vue 3、TypeScript、Vite、Element Plus、Monaco | 公共题库、教学、考试、团队比赛、工单和管理后台 |
+| `apps/api/migrations` | PostgreSQL SQL | 按版本执行并校验数据库结构变更 |
+| `deploy` | Compose、Kubernetes | 容器化部署入口和参考清单 |
+| `scripts` | Shell | 冒烟测试、沙箱镜像、题包示例和 Docker 清理 |
 
-- The course domain owns classes, assignments, school exams, and their course-scoped ranking and submission views.
-- The team domain owns team membership, contests, contest problem links, problem sets, and team-scoped submissions. Team contests deliberately use `/teams/:slug/contests/:contestId`; school exams remain under `/exams/:examId`, so similarly shaped screens never share route identity or request state.
-- The public problem bank remains the canonical problem content store. Team contests and team problem sets reference those problems, but submission creation is performed through the owning team endpoint and carries `team_contest_id` or `problem_set_id`. This keeps records, status, and rankings inside the correct workspace instead of redirecting through the public problem page.
-- Team problem sets keep the linked problem ID only as the persistent identity. The web derives `A`, `B`, `C`, … from the link order for list rows, detail navigation, discussions, and submission filters, so public problem codes never leak into the team worksheet presentation.
+标准 Compose 部署还包含 PostgreSQL、Redis 和 MinIO：PostgreSQL 保存业务数据，Redis 承载判题队列、租约、通知和分布式限流，MinIO 保存题目包、题目资源和查重报告。
 
-Core flow:
+## 2. 业务边界
 
-1. Teacher uploads a ZIP package containing `problem.yaml` and test files.
-2. API validates the package, stores the ZIP in MinIO, and stores manifest metadata in PostgreSQL.
-3. Student creates a submission.
-4. API writes the submission row and enqueues `submission_id` to Redis Stream `oj.submissions`.
-5. Worker acquires a Redis lease, consumes the stream, compiles/runs code in Docker sandbox containers, and commits the verdict, case results, and problem progress in one database transaction.
-6. Worker publishes a lightweight Redis notification after status changes. The API fans it out over `/api/submissions/:id/events`; a 30-second reconciliation protects against ephemeral Pub/Sub loss without one-second database polling.
-7. Web receives SSE status events and updates live status.
+### 2.1 公共题目域
 
-Judge measurements follow contest-system semantics per test case. `time_ms` is the cgroup CPU usage of the whole sandbox process group, while a separate wall-clock deadline stops sleeping or blocked programs. `memory_kb` is the cgroup peak allocation, including language runtimes such as Python and the JVM. OOM events and Docker state, rather than error-message substrings, distinguish memory exhaustion from ordinary crashes; an observed time-limit event takes precedence over cleanup signals. The database problem limits displayed to contestants are authoritative, with package manifest limits retained only as a legacy fallback.
+公共题库是题目内容的唯一来源。题目正文、限制、标签、清单和题包按不可变版本保存；`problems.current_version_id` 指向当前公开版本。
 
-Team workspace flow:
+题目新增、替换、归档和测试点变更只能通过工单完成。出题人提交描述和必填参考附件，管理员审核后上传最终完整题包并执行覆盖操作。直接新增、编辑、删除题目及替换测试点的旧写接口保留兼容响应，但不会再直接修改数据。
 
-1. A team manager creates a contest with an explicit title, start time, and end time, then links problems through `team_contest_problems`.
-2. The contest detail endpoint returns the contest window, linked problems, scoped status, and permission flags. The web route renders problems, submission records, and a live ranking without entering the school-exam router.
-3. A team member opens a problem from the worksheet list, switches between lettered problems inside the detail component, and submits from the scoped code dialog. The API validates membership and the owning workspace before creating the submission and enqueueing the normal judge job.
-4. The worker uses the same sandbox pipeline for all submissions. The API and web use the context columns to expose the result only in the correct contest or problem set.
-5. Team members can inspect the worksheet submission stream using username text search plus problem, verdict, and language selectors. Source code is not returned by this list endpoint; only its computed length is exposed.
+考试题目、团队比赛题目和提交记录都保存明确的 `problem_version_id`。公共题目更新时，仅未开始的考试和比赛同步到新版本；已开始、已结束场次以及历史提交继续使用原版本。
 
-Shared web components:
+### 2.2 教学域
 
-- `ProblemSwitcher.vue` provides the compact lettered problem grid used by school exams, team contests, and team problem sets. It owns only selection presentation; each parent retains its own route, API calls, timing rules, and submission action. School exams mount the navigator in the problem metadata sidebar instead of a separate full-width toolbar.
-- `ProblemTagSelector.vue` is the single authoring control for problem creation, problem editing, prepared-problem editing, and exam-side Markdown problem creation. It presents algorithm, time, and source tags in a popup and stores the selected values in the existing problem tag payload.
-- Public and prepared problem lists reuse `ProblemTagSelector.vue` as a multi-select filter. A problem matches when any selected tag is present (OR semantics); an empty selection leaves the result set unrestricted.
-- `TeamList.vue` keeps the team entry page at navigation level: “我的团队”, “发现”, and the create action. Team summaries render as responsive two-column cards while the nested `TeamWorkspace` owns contest, problem-set, member, and settings navigation.
+教学域管理课程、班级、成员、作业和校内考试。学生可以加入多个班级，并在课程空间内查看作业、考试和进度；教师和管理员负责教学资源、成绩报表和人工阅卷。
 
-API compatibility:
+校内考试使用 `/exams/:id/*` 路由和考试专属接口。它与团队比赛共享排行榜展示组件和判题基础设施，但不共享页面状态、权限判断或提交上下文。
 
-- `/api/*` remains available to existing clients.
-- New integrations should use the versioned `/api/v1/*` path.
-- CORS origins and trusted reverse proxies are configured with `CORS_ALLOWED_ORIGINS` and `TRUSTED_PROXIES`.
+### 2.3 团队域
 
-Persistence ownership:
+团队域管理团队资料、申请、成员、比赛和题单。团队成员角色为 `owner`、`admin`、`member`，比赛内容权限还受团队的 `contest_permission` 配置约束。
 
-- API owns submission creation and enqueueing.
-- Worker owns transitions from `queued`/`running` to a judge verdict and writes `submission_results` and `problem_progresses`.
-- Worker verdict writes are transactional. A per-submission Redis lease prevents concurrent workers from accepting the same job, is renewed during long runs, and expires after a crash so pending messages can be reclaimed.
-- API owns team contest/problem-set link validation and submission context assignment. A contest moves through `draft → published → running → closed`; publishing freezes its problem links and scoring rule and snapshots eligible participants.
-- Submission editors read the caller's last code from `/submissions/latest`, backed by context-specific composite indexes. Full submission lists are presentation history only and are never used as the source of truth for editor recovery.
-- Contest ranking uses a PostgreSQL grouped query per participant/problem and performs only final row shaping in the API. It does not load every raw contest submission into application memory.
-- Startup migrations are ordered embedded SQL files recorded in `schema_migrations` with SHA-256 checksums. Existing AutoMigrate-era installations are baselined through migration 019, then upgraded by the same versioned runner.
+团队比赛使用 `/contest/:contestId/*` 独立路由。题单和比赛只保存公共题目的关联及版本，页面根据关联顺序生成 A、B、C 等场内题号，避免把公共题号当作场内标识。
 
-RBAC:
+### 2.4 提交与判题域
 
-- `student`: view course material, submit, view own submissions, leaderboard.
-- `teacher`: manage courses/classes, problems, assignments, exams, plagiarism jobs.
-- `admin`: all teacher privileges plus user management and audit logs.
+普通练习、作业、考试、团队比赛和团队题单都写入统一提交表，通过上下文字段区分归属。API 负责校验权限、时间窗、题目版本并创建任务；Worker 负责从排队状态推进到最终结果。
+
+## 3. 核心数据流
+
+### 3.1 工单与题目版本
+
+1. 具备出题权限的用户创建新增、替换或归档工单，并上传修改后正确内容作为参考附件。
+2. API 校验申请人、目标范围和同题未完成工单唯一性。
+3. 管理员查看影响场次，选择驳回或上传最终完整题包执行。
+4. 新增和替换会产生新的不可变 `problem_versions` 记录；归档只从后续选题入口隐藏题目。
+5. 未开始场次更新关联版本，运行中和已结束场次保持原快照。
+6. 全过程写入审计记录，历史提交始终可追溯。
+
+### 3.2 提交与判题
+
+1. 客户端提交代码，API 根据练习、作业、考试、比赛或题单上下文完成权限校验。
+2. API 在同一数据库事务中创建 `submissions` 和 `submission_outbox`，避免数据库成功但消息未发送。
+3. 后台投递器把 Outbox 任务写入 Redis Stream `oj.submissions`。
+4. Worker 消费任务并获取按提交编号划分的可续期 Redis 租约。
+5. Worker 从 MinIO 下载该提交绑定版本的题包，在 Docker 沙箱中编译并逐测试点运行。
+6. 最终状态、测试点结果和题目进度在一个 PostgreSQL 事务中写入。
+7. Worker 发布轻量 Redis 通知，API 通过 `/api/submissions/:id/events` 推送 SSE；30 秒低频对账用于弥补瞬时通知丢失。
+
+重判同样读取 `submission.problem_version_id`，不会因为公共题目后来更新而改变历史提交的输入数据。
+
+## 4. 一致性与状态机
+
+- 数据库迁移是嵌入 API 的有序 SQL 文件，执行记录保存在 `schema_migrations`，并使用 SHA-256 校验防止已执行迁移被改写。
+- API 拥有提交创建、上下文绑定和 Outbox 写入权；Worker 拥有判题状态推进和结果写入权。
+- Worker 的 Redis 租约防止重复消费并支持崩溃后回收；基础设施故障按配置进行有限重试。
+- 团队比赛状态为 `draft → published → running → closed`。发布后冻结题目关联与赛制，开始和结束状态按时间窗同步。
+- 题目归档是逻辑删除，不破坏作业、考试、比赛和历史提交引用。
+- 完整提交列表只用于展示；编辑器恢复通过 `/submissions/latest` 和上下文复合索引读取最近代码。
+
+## 5. 排行与结果可见性
+
+考试和团队比赛统一使用 OI、IOI、ACM 三种赛制，旧值 `score` 和 `penalty` 分别兼容为 IOI 和 ACM。
+
+- OI：每题按最后一次提交计分；场次结束前参与者只看到“已记录”，不公开状态、分数、测试点、资源消耗或排行榜。
+- IOI：每题取最高分；按总分、满分题数和最后有效得分时间形成稳定排序。
+- ACM：按通过题数降序、罚时升序；通过前的有效错误提交每次增加 20 分钟罚时。
+- IOI、ACM 可配置封榜。封榜期的榜单变化和提交结果仅管理员或组织者可实时查看，场次结束后自动公开。
+
+脱敏在 API 返回、提交详情、SSE 和排行榜数据层统一执行，前端隐藏不作为安全边界。
+
+## 6. API 与前端边界
+
+- `/api/*` 为现有客户端兼容入口。
+- `/api/v1/*` 与 `/api/*` 注册相同业务路由，新集成优先使用 `/api/v1`。
+- 跨域来源由 `CORS_ALLOWED_ORIGINS` 控制，可信反向代理由 `TRUSTED_PROXIES` 控制。
+- Bearer Token 只通过 `Authorization` 请求头传递；SSE 和私有文件下载使用带认证的 Fetch，不把 JWT 放入 URL。
+- 前端路由按公共题库、课程、考试、团队和后台管理分区，具体页面见 [功能说明](features.md)。
+
+## 7. 判题计量
+
+每个测试点的 `time_ms` 来自沙箱进程组的 cgroup CPU 使用量，另设墙钟超时终止休眠或阻塞程序；`memory_kb` 使用 cgroup 峰值。内存超限通过 OOM 计数和 Docker 状态识别，不根据错误文本猜测。若已经观察到时间超限事件，清理阶段的退出信号不会覆盖该判定。
+
+题目数据库中的时间、内存和输出限制为权威值；旧题包清单中的限制只作为兼容回退。

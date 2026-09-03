@@ -1,71 +1,63 @@
-# Judge Sandbox Security
+# 安全设计
 
-The worker invokes Docker with these controls for every compile and run:
+## 1. 判题沙箱
 
-- `--network none`
-- `--read-only`
-- `--tmpfs /tmp:rw,nosuid,nodev,noexec,size=64m`
-- `--user 65532:65532`
-- `--cap-drop ALL`
-- `--security-opt no-new-privileges`
-- `--security-opt seccomp=/etc/oj-seccomp.json`
-- `--pids-limit`
-- `--cpus`
-- `--memory` and `--memory-swap` set to the same value
-- Go context timeout for wall time
-- bounded stdout/stderr buffers for output limit
-- `--ipc none`, `--ulimit core=0`, and a small open-file limit
-- Docker logging disabled for short-lived sandboxes
-- read-only `/work` bind mount while user code runs (compile containers alone receive write access)
-- deterministic force-removal of a named sandbox after timeout or output-limit cancellation
+Worker 对每次编译和运行使用独立 Docker 容器，并启用以下限制：
 
-Compilation uses a separate sandbox limit of 30 seconds and at least 1024 MB memory, because compiler resource usage is not the same as the submitted program's runtime limit. Test execution still uses the problem's `time_limit_ms`, `memory_limit_mb`, and `output_limit_kb`.
+- 禁用网络：`--network none`
+- 只读根文件系统：`--read-only`
+- 使用带 `nosuid,nodev,noexec` 的受限 `/tmp` tmpfs
+- 以 UID/GID `65532` 非 root 用户运行
+- 删除全部 Linux capabilities：`--cap-drop ALL`
+- 启用 `no-new-privileges` 和仓库内 seccomp 规则
+- 限制进程数、CPU、内存、交换空间、打开文件数和 core dump
+- 禁用短生命周期沙箱的 Docker 日志
+- 运行阶段只读挂载 `/work`；只有编译阶段允许写入构建目录
+- 限制标准输出和错误输出，超限时立即取消并强制移除容器
+- 使用 Go 上下文设置墙钟超时，避免休眠或阻塞程序长期占用资源
 
-Runtime accounting reads cgroup CPU usage and peak memory for the complete sandbox process group. A separate wall-clock guard terminates blocked or sleeping submissions. Memory-limit classification uses cgroup OOM counters and Docker's OOM state; generic text such as `Killed` or `memory` is not sufficient to produce a memory-limit verdict.
+编译阶段独立使用 30 秒和至少 1024 MB 内存限制，因为编译器资源需求不等同于题目运行限制。测试点运行仍严格采用题目版本中的时间、内存和输出限制。
 
-The included seccomp profile blocks network socket calls, mount/module/keyring/BPF/perf operations, ptrace, reboot, swap, and namespace unshare calls.
+沙箱工作目录权限为 `0700`，源文件为 `0600`。Compose 将 `OJ_WORK_ROOT` 以同一绝对路径挂载到 Worker；该目录必须长期存在。Worker 启动和健康检查会验证工作目录、seccomp 文件及 Docker daemon 访问。
 
-Sandbox workspaces are owned by UID/GID `65532` with mode `0700`; source files
-use mode `0600`. They are not world-writable on the host. Output-limit overflow
-cancels the active Docker command immediately, and the worker force-removes the
-named container as a final cleanup step.
+## 2. 判题结果完整性
 
-Because the compose worker talks to the host Docker daemon through `/var/run/docker.sock`, sandbox workspaces are created under `SANDBOX_WORK_ROOT` and that absolute path is bind-mounted into the worker at the same absolute path. The default is `/var/lib/school-oj-worker`, which must remain present while the worker is running. Do not place it under host-managed temporary directories such as `/tmp`; their cleanup can invalidate the bind mount while leaving the worker container running. Override `OJ_WORK_ROOT` before `docker compose up` when a different persistent host path is required.
+- CPU 时间与峰值内存从完整沙箱进程组的 cgroup 数据读取。
+- OOM 计数和 Docker 状态用于判断内存超限，不根据 `Killed` 等普通文本推断。
+- 提交状态、测试点结果和题目进度在同一数据库事务中提交。
+- 每个活跃提交持有可续期 Redis 租约；重复消息不会并发执行同一提交。
+- Worker 崩溃后可回收空闲 pending 消息；仅基础设施错误进入有限重试。
+- 判题和重判始终读取提交绑定的不可变题目版本。
 
-The host Docker daemon must have the judge images available: `gcc:14-bookworm`, `python:3.12-slim`, and `eclipse-temurin:21-jdk`. Run `./scripts/pull_sandbox_images.sh` before the first submission, especially on networks where automatic pulls are slow or blocked.
+## 3. 题目包安全
 
-The worker validates its work root and seccomp profile at startup, while the
-Compose healthcheck also validates Docker daemon access. Missing Docker images,
-Docker daemon connectivity, sandbox path/mount failures, and image resolution
-failures are retryable infrastructure errors. The worker requeues the
-submission with a bounded retry count and also claims idle pending Redis Stream
-messages, so a worker crash or restart does not leave submissions permanently
-stuck in `queued` or `running`.
+API 与 Worker 都会校验 ZIP 题包。允许的条目仅包括：
 
-Each active judge holds a renewable Redis lease keyed by submission ID. A
-duplicate stream delivery remains pending while the lease is active. Verdict,
-case-result replacement, and progress updates commit in one PostgreSQL
-transaction, so a partial write cannot expose a final status with stale cases.
+- 根目录 `problem.yaml`
+- `tests/*.in`
+- `tests/*.out`
+- `assets/` 下受支持的题面图片
 
-Problem ZIP packages are validated by both API and worker. Accepted entries are
-limited to `problem.yaml`, `tests/*.in`, `tests/*.out`, and supported image
-assets under `assets/`; unsafe paths, unsupported files, empty test sets, and
-oversized archives are rejected before judging.
+路径穿越、绝对路径、符号链接式逃逸、未知文件、空测试集、缺失引用和超限压缩包都会在判题前被拒绝。系统只提供标准、令牌和浮点误差三类内置比较器，不执行题目提供的 checker 脚本，以免突破沙箱信任边界。
 
-Sensitive endpoints use Redis-backed token-bucket limits. Login, registration,
-verification-code, password-reset, problem upload, plagiarism, SSE connection,
-and submission creation limits work across multiple API instances. Redis
-failure fails these protected requests closed with HTTP 503 rather than silently
-removing abuse protection.
+## 4. 鉴权与权限
 
-The API and web entrypoint set anti-framing, MIME-sniffing, referrer, browser
-permission, and resource-policy headers. The web entrypoint also uses a
-Content-Security-Policy. CORS and trusted proxy ranges are environment-driven;
-only list proxies that are directly controlled by the deployment.
+- JWT 只接受 `Authorization: Bearer` 请求头，不通过 URL 查询参数传递。
+- 公共题面和目录使用可选鉴权；用户、提交、课程、团队和后台接口要求登录。
+- 学生、教师、管理员是基础角色；出题者是可附加权限，不替换基础角色。
+- 工单附件只允许申请人和管理员下载，工单执行只允许管理员操作。
+- 题目、考试、比赛和提交的权限在服务端校验，前端按钮隐藏不构成授权。
+- OI 与封榜结果在 API、详情、列表和 SSE 层统一脱敏。
+- 管理操作和关键资源变更写入审计日志。
 
-Bearer tokens are accepted only in the `Authorization` header. The web client
-uses authenticated `fetch` streaming for SSE and authenticated blob requests for
-private problem images, so long-lived JWTs are not copied into query strings or
-reverse-proxy access logs.
+## 5. 接口与浏览器安全
 
-For production, run workers on isolated nodes and treat Docker socket access as privileged infrastructure. The compose setup is deployable for a school lab or staging environment; a hardened production cluster should move sandbox execution to dedicated worker hosts.
+登录、注册、验证码、密码重置、题目工单上传、查重、SSE 和提交创建使用 Redis 令牌桶限流，可跨 API 实例共享。Redis 不可用时，敏感接口返回 503，不静默取消保护。
+
+API 和 Web 设置防框架嵌入、MIME 嗅探、Referrer、浏览器权限和资源策略响应头，Web 还设置 Content-Security-Policy。生产环境应启用 HTTPS；在普通 HTTP 来源上，浏览器可能忽略需要可信来源的 COOP 等响应头。
+
+## 6. 生产隔离建议
+
+Compose Worker 需要访问宿主机 `/var/run/docker.sock`，因此应把它视为特权基础设施。学校实验室或内部环境可使用标准 Compose；更严格的生产环境应将 Worker 放在隔离节点，连接专用 Docker daemon，并通过网络和主机权限限制其访问范围。
+
+数据库、Redis 和 MinIO 不应直接暴露到公网。需要外部访问时必须同时配置监听地址、防火墙、强凭据和传输加密。备份、密钥轮换和镜像漏洞扫描属于生产运维的持续职责。

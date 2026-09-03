@@ -20,8 +20,6 @@ reports/
 .idea/
 .vscode/
 
-# Local deployment and design-work artifacts
-/YOUR-NEW-REPOSITORY/
+# Local deployment artifacts
 /data_backup/
 /workspace/
-/package-lock.json
