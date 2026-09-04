@@ -6,6 +6,8 @@
 
 | 文档 | 内容 |
 | --- | --- |
+| [代码模块、接口与路由索引](code-map.md) | 各代码文件职责、后端接口、前端路由、数据模型、迁移、Worker 和部署脚本对应关系 |
+| [OpenAPI 契约与 TypeScript Client](api-contract.md) | API 单一事实源、生成客户端、路由一致性检查和接口变更流程 |
 | [功能说明](features.md) | 用户角色、题库、工单、判题、课程、考试、比赛、团队和后台功能 |
 | [系统架构](architecture.md) | 应用边界、数据流、一致性、题目版本、提交与排行榜架构 |
 | [题目包规范](problem-package.md) | ZIP 结构、清单字段、测试点、比较器和工单使用方式 |
@@ -15,6 +17,8 @@
 
 ## 按功能查阅
 
+- 需要从业务功能定位源码、接口或页面路由：先读 [代码模块、接口与路由索引](code-map.md)。
+- 新增或修改接口、重新生成前端 Client：读 [OpenAPI 契约与 TypeScript Client](api-contract.md)。
 - 题目、测试点或题包：先读 [功能说明·题库与工单](features.md#3-题库题目版本与工单)，再读 [题目包规范](problem-package.md)。
 - 判题、提交状态或重判：读 [系统架构·提交与判题](architecture.md#32-提交与判题) 和 [安全设计](security.md)。
 - 课程、班级、作业、考试：读 [功能说明·教学](features.md#5-课程班级与作业) 与 [功能说明·考试](features.md#6-校内考试)。

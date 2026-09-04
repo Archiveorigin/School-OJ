@@ -5,9 +5,11 @@
   "type": "module",
   "scripts": {
     "dev": "vite --host 0.0.0.0",
-    "build": "vue-tsc --noEmit && vite build",
+    "build": "npm run api:check && vue-tsc --noEmit && vite build",
     "preview": "vite preview --host 0.0.0.0",
     "test": "vitest",
+    "api:generate": "node scripts/generate-openapi-client.mjs",
+    "api:check": "node scripts/check-openapi-routes.mjs && node scripts/generate-openapi-client.mjs --check",
     "qa:design": "node tests/e2e/plan-qa.mjs",
     "format": "prettier --write src"
   },

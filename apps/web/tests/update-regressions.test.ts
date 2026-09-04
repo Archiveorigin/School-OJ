@@ -63,14 +63,18 @@ describe('second-round UI regressions', () => {
           'el-empty': true,
           'el-input': true,
           'el-select': { template: '<select><slot /></select>' },
-          'el-option': true
+          'el-option': true,
+          AdminPageHeader: {
+            props: ['title'],
+            template: '<header><h2>{{ title }}</h2><slot /></header>'
+          }
         }
       }
     })
     await flushPromises()
-    expect(wrapper.text()).toContain('附加权限不会覆盖')
+    expect(wrapper.text()).not.toContain('附加权限不会覆盖')
     expect(wrapper.text()).toContain('出题者')
-    expect(wrapper.text()).toContain('独立出题权限')
+    expect(wrapper.text()).not.toContain('独立出题权限')
   })
 
   it('registers permission management as a user-and-permissions child route', () => {

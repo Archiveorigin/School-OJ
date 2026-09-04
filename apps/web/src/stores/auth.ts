@@ -1,5 +1,5 @@
 import { defineStore } from 'pinia'
-import { client, setActiveToken, type User } from '../api/client'
+import { generatedApi, setActiveToken, type User } from '../api/client'
 
 export const useAuthStore = defineStore('auth', {
   state: () => ({
@@ -15,7 +15,7 @@ export const useAuthStore = defineStore('auth', {
   },
   actions: {
     async login(email: string, password: string) {
-      const { data } = await client.post('/auth/login', { email, password })
+      const { data } = await generatedApi.login({ body: { email, password } })
       this.token = data.token
       this.user = data.user
       this.hydrated = true
@@ -47,7 +47,7 @@ export const useAuthStore = defineStore('auth', {
       setActiveToken(this.token)
       this.hydratePromise = (async () => {
         try {
-          const { data } = await client.get('/me')
+          const { data } = await generatedApi.me()
           this.user = data
           setActiveToken(this.token)
           localStorage.setItem('school-oj-user', JSON.stringify(data))

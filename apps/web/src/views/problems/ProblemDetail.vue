@@ -58,7 +58,6 @@
             v-model:language="language"
             v-model:source="source"
             :status="live?.status"
-            :message="live?.message"
             :submitting="submitting"
             :draft-context="draftContext"
             @submit="submit"

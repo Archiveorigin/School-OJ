@@ -167,10 +167,8 @@
         v-model:language="language"
         v-model:source="source"
         :status="liveStatus?.status"
-        :message="liveStatus?.message"
         :submitting="submitting"
         :draft-context="draftContext"
-        scope-text="本次代码仅计入当前团队题单"
         @submit="submitSolution"
       />
       <template #footer>

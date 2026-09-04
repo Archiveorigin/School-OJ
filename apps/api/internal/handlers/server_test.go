@@ -26,6 +26,29 @@ func TestRouterBuilds(t *testing.T) {
 	_ = (Server{}).Router()
 }
 
+func TestOpenAPIDocumentIsServed(t *testing.T) {
+	router := (Server{}).Router()
+	request := httptest.NewRequest(http.MethodGet, "/openapi.json", nil)
+	response := httptest.NewRecorder()
+	router.ServeHTTP(response, request)
+	if response.Code != http.StatusOK {
+		t.Fatalf("GET /openapi.json status = %d, want %d", response.Code, http.StatusOK)
+	}
+	var document struct {
+		OpenAPI string                     `json:"openapi"`
+		Paths   map[string]json.RawMessage `json:"paths"`
+	}
+	if err := json.Unmarshal(response.Body.Bytes(), &document); err != nil {
+		t.Fatalf("decode OpenAPI document: %v", err)
+	}
+	if !strings.HasPrefix(document.OpenAPI, "3.") {
+		t.Fatalf("OpenAPI version = %q, want 3.x", document.OpenAPI)
+	}
+	if len(document.Paths) < 100 {
+		t.Fatalf("OpenAPI path count = %d, want at least 100", len(document.Paths))
+	}
+}
+
 func TestSortExamRankingRowsByScore(t *testing.T) {
 	base := time.Date(2026, 6, 7, 10, 0, 0, 0, time.UTC)
 	later := base.Add(time.Minute)

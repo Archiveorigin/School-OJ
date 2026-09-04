@@ -1,13 +1,8 @@
 <template>
   <section class="admin-ticket-page">
-    <div class="page-heading">
-      <div>
-        <span>PROBLEM OPERATIONS</span>
-        <h2>工单管理</h2>
-        <p>这里只处理前台题目数据工单；出题资格已移至“用户与权限”。</p>
-      </div>
+    <AdminPageHeader title="工单管理" eyebrow="PROBLEM OPERATIONS" heading-tag="h2">
       <el-button :loading="loading" @click="load">刷新</el-button>
-    </div>
+    </AdminPageHeader>
 
     <section class="summary-grid" aria-label="工单概况">
       <article>
@@ -192,6 +187,7 @@
 <script setup lang="ts">
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { computed, onMounted, reactive, ref } from 'vue'
+import AdminPageHeader from '../../components/admin/AdminPageHeader.vue'
 import {
   client,
   type ProblemChangeAction,
@@ -381,26 +377,6 @@ onMounted(load)
 .admin-ticket-page {
   padding: 28px;
 }
-.page-heading {
-  display: flex;
-  align-items: flex-end;
-  justify-content: space-between;
-  gap: 20px;
-  margin-bottom: 18px;
-}
-.page-heading span {
-  color: #135ecb;
-  font-size: 11px;
-  font-weight: 800;
-  letter-spacing: 0.14em;
-}
-.page-heading h2 {
-  margin: 5px 0;
-}
-.page-heading p {
-  margin: 0;
-  color: var(--muted);
-}
 .summary-grid {
   display: grid;
   grid-template-columns: repeat(3, 1fr);
@@ -474,10 +450,10 @@ onMounted(load)
   gap: 10px;
 }
 .attachment-ready {
-  color: #16803b;
+  color: var(--color-success);
 }
 .attachment-missing {
-  color: #be2929;
+  color: var(--color-danger);
 }
 .el-upload small {
   display: block;
@@ -490,10 +466,6 @@ onMounted(load)
 @media (max-width: 720px) {
   .admin-ticket-page {
     padding: 18px 12px;
-  }
-  .page-heading {
-    align-items: stretch;
-    flex-direction: column;
   }
   .summary-grid {
     grid-template-columns: 1fr;

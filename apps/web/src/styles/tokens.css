@@ -1,0 +1,101 @@
+:root {
+  --color-canvas: #f4f7fb;
+  --color-surface: rgba(255, 255, 255, 0.88);
+  --color-surface-solid: #ffffff;
+  --color-surface-subtle: #f6f9fd;
+  --color-glass: rgba(255, 255, 255, 0.74);
+  --color-border: #d9e2ef;
+  --color-border-soft: #e9edf3;
+  --color-text: #172033;
+  --color-text-strong: #173765;
+  --color-text-muted: #667085;
+  --color-primary: #0a5ea6;
+  --color-primary-strong: #084b86;
+  --color-primary-soft: #eaf2ff;
+  --color-info: #087d9b;
+  --color-info-soft: #e5f7fb;
+  --color-success: #08734c;
+  --color-success-soft: #e4f7ef;
+  --color-warning: #a85b00;
+  --color-warning-soft: #fff3dd;
+  --color-danger: #c92c2c;
+  --color-on-emphasis: #ffffff;
+  --color-scrim: rgba(8, 25, 50, 0.48);
+  --color-neutral-soft: #eef1f5;
+
+  --radius-sm: 5px;
+  --radius-md: 8px;
+  --radius-lg: 12px;
+  --shadow-panel: 0 14px 32px rgba(15, 23, 42, 0.06);
+  --shadow-panel-hover: 0 18px 40px rgba(15, 23, 42, 0.09);
+  --motion-fast: 0.18s ease;
+  --motion-page: 0.24s ease-out;
+
+  /* 兼容既有组件变量。新样式优先使用上方语义 Token。 */
+  --app-bg: var(--color-canvas);
+  --surface: var(--color-surface);
+  --surface-strong: var(--color-surface-solid);
+  --glass: var(--color-glass);
+  --border: var(--color-border);
+  --text: var(--color-text);
+  --muted: var(--color-text-muted);
+  --accent: var(--color-primary);
+  --accent-strong: var(--color-primary-strong);
+  --success: var(--color-success);
+  --warning: var(--color-warning);
+
+  /* 后台沿用同一语义体系，不在页面内重复声明颜色。 */
+  --admin-blue: #0a3d86;
+  --admin-blue-strong: #072f69;
+  --admin-accent: #135ecb;
+  --admin-red: var(--color-danger);
+  --admin-paper: var(--color-surface-solid);
+  --admin-canvas: #f7f9fc;
+  --admin-ink: var(--color-text-strong);
+  --admin-muted: #66748a;
+  --admin-line: #dce4ef;
+  --admin-line-soft: var(--color-border-soft);
+  --admin-hover: var(--color-surface-subtle);
+
+  color: var(--color-text);
+  background: var(--color-canvas);
+  font-family:
+    Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI",
+    sans-serif;
+}
+
+:root.dark {
+  --color-canvas: #101722;
+  --color-surface: rgba(23, 31, 44, 0.86);
+  --color-surface-solid: #161f2d;
+  --color-surface-subtle: #1c2737;
+  --color-glass: rgba(22, 31, 45, 0.72);
+  --color-border: #2c3a4d;
+  --color-border-soft: #273548;
+  --color-text: #e7edf6;
+  --color-text-strong: #edf3fb;
+  --color-text-muted: #9aa8ba;
+  --color-primary: #4aa3ff;
+  --color-primary-strong: #83c4ff;
+  --color-primary-soft: #18385d;
+  --color-info: #55c7df;
+  --color-info-soft: #153943;
+  --color-success: #35c978;
+  --color-success-soft: #153b29;
+  --color-warning: #f0a43a;
+  --color-warning-soft: #432f17;
+  --color-danger: #ff6b6b;
+  --color-on-emphasis: #ffffff;
+  --color-neutral-soft: #263346;
+  --admin-blue: #102f59;
+  --admin-blue-strong: #0d274a;
+  --admin-accent: var(--color-primary);
+  --admin-paper: var(--color-surface-solid);
+  --admin-canvas: var(--color-canvas);
+  --admin-ink: var(--color-text-strong);
+  --admin-muted: var(--color-text-muted);
+  --admin-line: var(--color-border);
+  --admin-line-soft: var(--color-border-soft);
+  --admin-hover: var(--color-surface-subtle);
+  color-scheme: dark;
+}

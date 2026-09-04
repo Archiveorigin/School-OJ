@@ -204,9 +204,7 @@
           v-model:source="source"
           :draft-context="draftContext"
           :status="liveStatus?.status"
-          :message="liveStatus?.message"
           :submitting="submitting"
-          scope-text="代码仅计入本场团队比赛"
           @submit="submitSolution"
         /><template #footer
           ><el-button @click="submitVisible = false">关闭</el-button></template

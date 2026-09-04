@@ -1,36 +1,25 @@
 <template>
   <section class="permission-page" v-loading="loading">
-    <div class="permission-heading">
-      <div>
-        <h2>权限管理</h2>
-        <p>附加权限不会覆盖学生、教师或管理员等基础角色。</p>
-      </div>
+    <AdminPageHeader title="权限管理" heading-tag="h2">
       <el-button :loading="loading" @click="load">刷新</el-button>
-    </div>
+    </AdminPageHeader>
 
     <section class="permission-summary" aria-label="权限概况">
       <article>
-        <span>权限类型</span><strong>{{ definitions.length }}</strong
-        ><small>预留统一扩展入口</small>
+        <span>权限类型</span><strong>{{ definitions.length }}</strong>
       </article>
       <article>
-        <span>出题者</span><strong>{{ authorCount }}</strong
-        ><small>含系统管理员</small>
+        <span>出题者</span><strong>{{ authorCount }}</strong>
       </article>
       <article>
-        <span>待审核申请</span><strong>{{ pendingApplications.length }}</strong
-        ><small>来自基础角色用户</small>
+        <span>待审核申请</span><strong>{{ pendingApplications.length }}</strong>
       </article>
     </section>
 
     <section class="panel permission-definition">
       <div class="definition-mark">A</div>
       <div>
-        <span>GLOBAL PERMISSION</span>
         <h3>{{ authorPermission?.name || '出题者' }}</h3>
-        <p>
-          {{ authorPermission?.description || '可发起题目数据工单，与基础角色并行。' }}
-        </p>
       </div>
       <div class="definition-flow"><span>基础角色</span><i>+</i><strong>出题者标识</strong></div>
     </section>
@@ -39,7 +28,6 @@
       <div class="section-heading">
         <div>
           <h3>待审核申请</h3>
-          <p>通过后只添加出题者标识，不改变申请人的基础角色。</p>
         </div>
         <el-tag type="warning">{{ pendingApplications.length }} 条</el-tag>
       </div>
@@ -69,7 +57,6 @@
       <div class="section-heading">
         <div>
           <h3>人员权限</h3>
-          <p>统一查看基础角色和附加权限，便于后续继续增加新的权限类型。</p>
         </div>
         <div class="filters">
           <el-input v-model="keyword" clearable placeholder="搜索姓名或邮箱" /><el-select
@@ -107,15 +94,6 @@
             </div></template
           ></el-table-column
         >
-        <el-table-column label="权限说明" min-width="250"
-          ><template #default="{ row }">{{
-            row.role === 'admin'
-              ? '管理员内置出题权限，不可收回'
-              : hasAuthorPermission(row)
-                ? '可发起题目新增、覆盖修改与覆盖删除工单'
-                : '保留当前基础角色，可申请或由管理员授予'
-          }}</template></el-table-column
-        >
         <el-table-column label="操作" width="150" align="right"
           ><template #default="{ row }"
             ><el-tag v-if="row.role === 'admin'" type="info" effect="plain">系统内置</el-tag
@@ -151,10 +129,6 @@
               <dt>附加权限</dt>
               <dd><el-tag v-if="hasAuthorPermission(row)" type="success">出题者</el-tag><span v-else>暂无附加权限</span></dd>
             </div>
-            <div>
-              <dt>权限说明</dt>
-              <dd>{{ row.role === 'admin' ? '管理员内置出题权限，不可收回' : hasAuthorPermission(row) ? '可发起题目新增、覆盖修改与覆盖删除工单' : '保留当前基础角色，可申请或由管理员授予' }}</dd>
-            </div>
           </dl>
           <el-tag v-if="row.role === 'admin'" type="info" effect="plain">系统内置</el-tag>
           <el-button v-else-if="hasAuthorPermission(row)" type="danger" plain :loading="updatingUserID === row.id" @click="updateAuthorPermission(row, false)">收回权限</el-button>
@@ -169,6 +143,7 @@
 <script setup lang="ts">
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { computed, onMounted, ref } from 'vue'
+import AdminPageHeader from '../../components/admin/AdminPageHeader.vue'
 import {
   client,
   type AuthorApplication,
@@ -297,24 +272,14 @@ onMounted(load)
 .permission-page {
   padding: 24px 28px 40px;
 }
-.permission-heading,
 .section-heading {
   display: flex;
   align-items: flex-end;
   justify-content: space-between;
   gap: 20px;
 }
-.permission-heading {
-  margin-bottom: 16px;
-}
-.permission-heading h2,
 .section-heading h3 {
   margin: 0 0 4px;
-}
-.permission-heading p,
-.section-heading p {
-  margin: 0;
-  color: var(--muted);
 }
 .permission-summary {
   display: grid;
@@ -329,12 +294,10 @@ onMounted(load)
   background: var(--surface-strong);
 }
 .permission-summary span,
-.permission-summary strong,
-.permission-summary small {
+.permission-summary strong {
   display: block;
 }
-.permission-summary span,
-.permission-summary small {
+.permission-summary span {
   color: var(--muted);
 }
 .permission-summary strong {
@@ -354,24 +317,14 @@ onMounted(load)
   height: 46px;
   display: grid;
   place-items: center;
-  color: #fff;
+  color: var(--color-on-emphasis);
   border-radius: 9px;
-  background: #135ecb;
+  background: var(--admin-accent);
   font-size: 21px;
   font-weight: 900;
 }
-.permission-definition span {
-  color: #135ecb;
-  font-size: 10px;
-  font-weight: 800;
-  letter-spacing: 0.12em;
-}
 .permission-definition h3 {
-  margin: 4px 0;
-}
-.permission-definition p {
   margin: 0;
-  color: var(--muted);
 }
 .definition-flow {
   display: flex;
@@ -380,14 +333,14 @@ onMounted(load)
   padding: 10px 14px;
   border: 1px solid var(--border);
   border-radius: 7px;
-  background: #f7f9fc;
+  background: var(--admin-canvas);
 }
 .definition-flow i {
-  color: #94a3b8;
+  color: var(--admin-muted);
   font-style: normal;
 }
 .definition-flow strong {
-  color: #16803b;
+  color: var(--color-success);
 }
 .application-panel,
 .people-panel {
@@ -433,9 +386,9 @@ onMounted(load)
   display: grid;
   place-items: center;
   flex: 0 0 auto;
-  color: #135ecb;
+  color: var(--admin-accent);
   border-radius: 50%;
-  background: #edf4ff;
+  background: var(--color-primary-soft);
   font-weight: 800;
 }
 .person div,
@@ -491,10 +444,6 @@ onMounted(load)
   .permission-page {
     padding: 18px 12px;
   }
-  .permission-heading {
-    align-items: stretch;
-    flex-direction: column;
-  }
   .filters {
     flex-direction: column;
   }
@@ -511,7 +460,7 @@ onMounted(load)
     padding: 15px;
     border: 1px solid var(--border);
     border-radius: 7px;
-    background: #fff;
+    background: var(--admin-paper);
   }
   .permission-mobile-list header {
     display: flex;

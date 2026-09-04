@@ -12,10 +12,8 @@
       </div>
       <div v-if="status" class="verdict-field" aria-live="polite">
         <span>判题结果</span>
-        <div><VerdictTag :status="status" /><small v-if="message">{{ message }}</small></div>
+        <div><VerdictTag :status="status" /></div>
       </div>
-      <span v-if="scopeText" class="scope-text">{{ scopeText }}</span>
-      <span v-if="draftContext" class="draft-state">草稿自动保存</span>
       <slot name="options" />
       <div class="composer-actions">
         <el-button @click="editorRef?.format()">自动格式化</el-button>
@@ -42,13 +40,11 @@ const props = withDefaults(defineProps<{
   language: string
   source: string
   status?: string
-  message?: string
-  scopeText?: string
   submitting?: boolean
   disabled?: boolean
   submitLabel?: string
   draftContext?: SubmissionDraftScope
-}>(), { status: '', message: '', scopeText: '', submitting: false, disabled: false, submitLabel: '提交评测' })
+}>(), { status: '', submitting: false, disabled: false, submitLabel: '提交评测' })
 
 const emit = defineEmits<{
   'update:language': [value: string]
@@ -84,8 +80,6 @@ defineExpose({ clearDraft })
 .language-field > span, .verdict-field > span { color: var(--muted); font-size: 12px; font-weight: 700; }
 .language-field :deep(.el-select) { width: 140px; }
 .verdict-field > div { display: flex; align-items: center; gap: 8px; min-height: 32px; }
-.verdict-field small, .scope-text, .draft-state { color: var(--muted); font-size: 12px; }
-.scope-text { align-self: center; }
 .composer-actions { display: flex; gap: 8px; margin-left: auto; }
 @media (max-width: 680px) {
   .composer-toolbar { align-items: stretch; flex-direction: column; }

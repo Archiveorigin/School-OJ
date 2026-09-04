@@ -8,6 +8,7 @@ import { client } from './api/client'
 import router from './router'
 import { useAuthStore } from './stores/auth'
 import { useExamLockStore } from './stores/examLock'
+import './styles/tokens.css'
 import './style.css'
 
 const pinia = createPinia()

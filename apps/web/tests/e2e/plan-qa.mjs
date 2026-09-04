@@ -588,6 +588,10 @@ try {
     check: async (page) => {
       if (!(await page.getByRole('button', { name: '提交代码' }).isVisible()))
         throw new Error('contest submit missing')
+      if (await page.getByText('草稿自动保存').count())
+        throw new Error('redundant draft autosave copy is still visible')
+      if (await page.getByText(/代码仅计入/).count())
+        throw new Error('redundant submission scope copy is still visible')
     }
   })
   await capture(browser, {
@@ -641,24 +645,26 @@ try {
         throw new Error(`legacy route resolved to ${page.url()}`)
     }
   })
-  await comparison(
-    browser,
-    'luogu-problem-list.png',
-    'qa-problem-catalog-desktop.png',
-    'qa-compare-problem-catalog.png'
-  )
-  await comparison(
-    browser,
-    'luogu-contest-problems.png',
-    'qa-contest-problems-desktop.png',
-    'qa-compare-contest-problems.png'
-  )
-  await comparison(
-    browser,
-    'luogu-contest-problem.png',
-    'qa-contest-problem-desktop.png',
-    'qa-compare-contest-problem.png'
-  )
+  if (process.env.QA_SKIP_REFERENCE !== '1') {
+    await comparison(
+      browser,
+      'luogu-problem-list.png',
+      'qa-problem-catalog-desktop.png',
+      'qa-compare-problem-catalog.png'
+    )
+    await comparison(
+      browser,
+      'luogu-contest-problems.png',
+      'qa-contest-problems-desktop.png',
+      'qa-compare-contest-problems.png'
+    )
+    await comparison(
+      browser,
+      'luogu-contest-problem.png',
+      'qa-contest-problem-desktop.png',
+      'qa-compare-contest-problem.png'
+    )
+  }
   console.log(JSON.stringify({ result: 'passed', outputDir }))
 } finally {
   await browser.close()

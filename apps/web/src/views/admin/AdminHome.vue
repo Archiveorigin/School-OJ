@@ -1,68 +1,20 @@
 <template>
   <section class="teaching-overview" v-loading="loading">
-    <header class="overview-heading">
-      <div>
-        <span>TEACHING OVERVIEW</span>
-        <h1>教学概览</h1>
-        <p>聚焦正在进行的教学任务、近期考试和需要处理的事项。</p>
-      </div>
+    <AdminPageHeader title="教学概览" eyebrow="TEACHING OVERVIEW">
       <div class="heading-actions">
         <time>{{ currentDate }}</time
         ><el-button @click="load">刷新</el-button
         ><el-button type="primary" @click="router.push('/admin/exams/new')">新建考试</el-button>
       </div>
-    </header>
-
-    <section class="metric-grid" aria-label="教学数据概览">
-      <article>
-        <span class="metric-mark blue"
-          ><el-icon><Reading /></el-icon
-        ></span>
-        <div>
-          <small>课程</small><strong>{{ courses.length }}</strong>
-          <p>当前教学课程</p>
-        </div>
-      </article>
-      <article>
-        <span class="metric-mark cyan"
-          ><el-icon><User /></el-icon
-        ></span>
-        <div>
-          <small>班级</small><strong>{{ classes.length }}</strong>
-          <p>纳入管理的班级</p>
-        </div>
-      </article>
-      <article>
-        <span class="metric-mark green"
-          ><el-icon><VideoPlay /></el-icon
-        ></span>
-        <div>
-          <small>进行中考试</small><strong>{{ runningExams.length }}</strong>
-          <p>需要持续关注</p>
-        </div>
-      </article>
-      <article>
-        <span class="metric-mark amber"
-          ><el-icon><Calendar /></el-icon
-        ></span>
-        <div>
-          <small>待开始考试</small><strong>{{ upcomingExams.length }}</strong>
-          <p>等待发布或开考</p>
-        </div>
-      </article>
-    </section>
+    </AdminPageHeader>
 
     <div class="overview-grid">
       <section class="overview-card schedule-card">
-        <header class="card-heading">
-          <div>
-            <h2>近期考试</h2>
-            <p>优先展示进行中和即将开始的考试。</p>
-          </div>
+        <AdminSectionHeader title="近期考试">
           <el-button text type="primary" @click="router.push('/admin/exams')"
             >考试管理 <el-icon><Right /></el-icon
           ></el-button>
-        </header>
+        </AdminSectionHeader>
         <div v-if="schedule.length" class="schedule-list">
           <button
             v-for="exam in schedule"
@@ -86,18 +38,7 @@
       </section>
 
       <section class="overview-card pending-card">
-        <header class="card-heading">
-          <div>
-            <h2>待处理</h2>
-            <p>
-              {{
-                auth.role === 'admin'
-                  ? '按职责拆分权限申请与题目工单。'
-                  : '当前账号可处理的教学事项。'
-              }}
-            </p>
-          </div>
-        </header>
+        <AdminSectionHeader title="待处理" />
         <template v-if="auth.role === 'admin'">
           <button
             class="pending-row"
@@ -106,14 +47,14 @@
           >
             <span class="pending-icon permission"
               ><el-icon><UserFilled /></el-icon></span
-            ><span><strong>出题权限申请</strong><small>在用户与权限中审核申请</small></span
+            ><span><strong>出题权限申请</strong></span
             ><em>{{ pendingApplications.length }}</em
             ><el-icon><Right /></el-icon>
           </button>
           <button class="pending-row" type="button" @click="router.push('/admin/problem-authors')">
             <span class="pending-icon ticket"
               ><el-icon><Document /></el-icon></span
-            ><span><strong>题目修改工单</strong><small>只处理题目数据覆盖操作</small></span
+            ><span><strong>题目修改工单</strong></span
             ><em>{{ pendingTickets.length }}</em
             ><el-icon><Right /></el-icon>
           </button>
@@ -125,7 +66,7 @@
           <button class="pending-row" type="button" @click="router.push('/admin/exams')">
             <span class="pending-icon permission"
               ><el-icon><Calendar /></el-icon></span
-            ><span><strong>考试安排</strong><small>查看和维护课程考试</small></span
+            ><span><strong>考试安排</strong></span
             ><em>{{ runningExams.length + upcomingExams.length }}</em
             ><el-icon><Right /></el-icon>
           </button>
@@ -136,7 +77,7 @@
           >
             <span class="pending-icon ticket"
               ><el-icon><EditPen /></el-icon></span
-            ><span><strong>预备题库</strong><small>整理后续教学题目</small></span
+            ><span><strong>预备题库</strong></span
             ><el-icon><Right /></el-icon>
           </button>
         </template>
@@ -145,12 +86,7 @@
 
     <div class="secondary-grid">
       <section class="overview-card quick-card">
-        <header class="card-heading">
-          <div>
-            <h2>快捷入口</h2>
-            <p>直接进入常用管理任务。</p>
-          </div>
-        </header>
+        <AdminSectionHeader title="快捷入口" />
         <div class="quick-links">
           <button
             v-for="item in quickLinks"
@@ -159,22 +95,14 @@
             @click="router.push(item.path)"
           >
             <el-icon><component :is="item.icon" /></el-icon
-            ><span
-              ><strong>{{ item.label }}</strong
-              ><small>{{ item.description }}</small></span
+            ><span><strong>{{ item.label }}</strong></span
             ><el-icon><Right /></el-icon>
           </button>
         </div>
       </section>
 
       <section class="overview-card activity-card">
-        <header class="card-heading">
-          <div>
-            <h2>{{ auth.role === 'admin' ? '最近动态' : '考试状态' }}</h2>
-            <p>
-              {{ auth.role === 'admin' ? '系统内最近的管理操作。' : '近期考试的简要状态。' }}
-            </p>
-          </div>
+        <AdminSectionHeader :title="auth.role === 'admin' ? '最近动态' : '考试状态'">
           <el-button
             v-if="auth.role === 'admin'"
             text
@@ -182,7 +110,7 @@
             @click="router.push('/admin/audit-logs')"
             >审计日志</el-button
           >
-        </header>
+        </AdminSectionHeader>
         <div v-if="activityItems.length" class="activity-list">
           <article v-for="item in activityItems" :key="item.key">
             <i></i
@@ -208,14 +136,15 @@ import {
   Reading,
   Right,
   User,
-  UserFilled,
-  VideoPlay
+  UserFilled
 } from '@element-plus/icons-vue'
 import { ElMessage } from 'element-plus'
 import { computed, onMounted, ref } from 'vue'
 import { useRouter } from 'vue-router'
 import { client } from '../../api/client'
 import { apiErrorMessage } from '../../api/errors'
+import AdminPageHeader from '../../components/admin/AdminPageHeader.vue'
+import AdminSectionHeader from '../../components/admin/AdminSectionHeader.vue'
 import { useAuthStore } from '../../stores/auth'
 
 type ExamItem = {
@@ -239,8 +168,6 @@ const router = useRouter()
 const auth = useAuthStore()
 const loading = ref(false)
 const exams = ref<ExamItem[]>([])
-const courses = ref<any[]>([])
-const classes = ref<any[]>([])
 const pendingApplications = ref<any[]>([])
 const pendingTickets = ref<any[]>([])
 const auditLogs = ref<AuditItem[]>([])
@@ -262,25 +189,21 @@ const quickLinks = computed(() => [
   {
     path: '/admin/courses',
     label: '课程管理',
-    description: '课程与教学范围',
     icon: Reading
   },
   {
     path: '/admin/classes',
     label: '班级管理',
-    description: '学生组织与班级',
     icon: User
   },
   {
     path: '/admin/exams',
     label: '考试管理',
-    description: '发布与查看考试',
     icon: Collection
   },
   {
     path: auth.role === 'admin' ? '/admin/problem-authors' : '/admin/prepared-problems',
     label: auth.role === 'admin' ? '工单管理' : '预备题库',
-    description: auth.role === 'admin' ? '审核题目数据修改' : '整理教学题目',
     icon: auth.role === 'admin' ? Document : EditPen
   }
 ])
@@ -370,14 +293,8 @@ function auditLabel(item: AuditItem) {
 async function load() {
   loading.value = true
   try {
-    const [examResponse, courseResponse, classResponse] = await Promise.all([
-      client.get('/exams'),
-      client.get('/courses'),
-      client.get('/classes')
-    ])
+    const examResponse = await client.get('/exams')
     exams.value = Array.isArray(examResponse.data) ? examResponse.data : []
-    courses.value = Array.isArray(courseResponse.data) ? courseResponse.data : []
-    classes.value = Array.isArray(classResponse.data) ? classResponse.data : []
     if (auth.role === 'admin') {
       const [applicationResult, ticketResult, auditResult] = await Promise.allSettled([
         client.get('/author-applications', { params: { status: 'pending' } }),
@@ -413,28 +330,7 @@ onMounted(load)
 .teaching-overview {
   min-height: calc(100vh - 64px);
   padding: 26px 28px 40px;
-  color: #173765;
-}
-.overview-heading {
-  display: flex;
-  align-items: flex-end;
-  justify-content: space-between;
-  gap: 24px;
-  margin-bottom: 18px;
-}
-.overview-heading > div:first-child > span {
-  color: #135ecb;
-  font-size: 10px;
-  font-weight: 800;
-  letter-spacing: 0.14em;
-}
-.overview-heading h1 {
-  margin: 6px 0 4px;
-  font-size: 30px;
-}
-.overview-heading p {
-  margin: 0;
-  color: #6f7f96;
+  color: var(--admin-ink);
 }
 .heading-actions {
   display: flex;
@@ -443,67 +339,8 @@ onMounted(load)
 }
 .heading-actions time {
   margin-right: 4px;
-  color: #7c899c;
+  color: var(--admin-muted);
   font-size: 12px;
-}
-.metric-grid {
-  display: grid;
-  grid-template-columns: repeat(4, 1fr);
-  gap: 12px;
-  margin-bottom: 14px;
-}
-.metric-grid article {
-  display: flex;
-  align-items: center;
-  gap: 14px;
-  min-width: 0;
-  padding: 17px;
-  border: 1px solid #dce4ef;
-  border-radius: 7px;
-  background: #fff;
-}
-.metric-mark {
-  width: 42px;
-  height: 42px;
-  display: grid;
-  place-items: center;
-  flex: 0 0 auto;
-  border-radius: 8px;
-  font-size: 20px;
-}
-.metric-mark.blue {
-  color: #135ecb;
-  background: #eaf2ff;
-}
-.metric-mark.cyan {
-  color: #087d9b;
-  background: #e5f7fb;
-}
-.metric-mark.green {
-  color: #08734c;
-  background: #e4f7ef;
-}
-.metric-mark.amber {
-  color: #a85b00;
-  background: #fff3dd;
-}
-.metric-grid small,
-.metric-grid strong,
-.metric-grid p {
-  display: block;
-}
-.metric-grid small {
-  color: #66748a;
-}
-.metric-grid strong {
-  margin: 2px 0;
-  color: #173765;
-  font-size: 26px;
-}
-.metric-grid p {
-  margin: 0;
-  color: #98a3b3;
-  font-size: 11px;
 }
 .overview-grid,
 .secondary-grid {
@@ -518,27 +355,9 @@ onMounted(load)
 .overview-card {
   min-width: 0;
   overflow: hidden;
-  border: 1px solid #dce4ef;
-  border-radius: 7px;
-  background: #fff;
-}
-.card-heading {
-  display: flex;
-  min-height: 70px;
-  align-items: center;
-  justify-content: space-between;
-  gap: 18px;
-  padding: 14px 18px;
-  border-bottom: 1px solid #e4eaf2;
-}
-.card-heading h2 {
-  margin: 0 0 4px;
-  font-size: 17px;
-}
-.card-heading p {
-  margin: 0;
-  color: #7d899a;
-  font-size: 12px;
+  border: 1px solid var(--admin-line);
+  border-radius: var(--radius-md);
+  background: var(--admin-paper);
 }
 .schedule-list button {
   width: 100%;
@@ -549,27 +368,27 @@ onMounted(load)
   min-height: 72px;
   padding: 10px 16px;
   border: 0;
-  border-bottom: 1px solid #e9edf3;
-  color: #173765;
+  border-bottom: 1px solid var(--admin-line-soft);
+  color: var(--admin-ink);
   text-align: left;
-  background: #fff;
+  background: var(--admin-paper);
   cursor: pointer;
 }
 .schedule-list button:hover {
-  background: #f6f9fd;
+  background: var(--admin-hover);
 }
 .exam-date {
   display: grid;
   place-items: center;
   align-self: stretch;
   align-content: center;
-  border-right: 1px solid #e2e8f0;
+  border-right: 1px solid var(--admin-line);
 }
 .exam-date strong {
   font-size: 20px;
 }
 .exam-date small {
-  color: #8794a7;
+  color: var(--admin-muted);
 }
 .exam-main {
   display: grid;
@@ -584,7 +403,7 @@ onMounted(load)
 }
 .exam-main small,
 .exam-time {
-  color: #6f7f96;
+  color: var(--admin-muted);
   font-size: 12px;
 }
 .schedule-list em {
@@ -596,16 +415,16 @@ onMounted(load)
   font-weight: 700;
 }
 .status-running {
-  color: #08734c;
-  background: #e4f7ef;
+  color: var(--color-success);
+  background: var(--color-success-soft);
 }
 .status-upcoming {
-  color: #a85b00;
-  background: #fff3dd;
+  color: var(--color-warning);
+  background: var(--color-warning-soft);
 }
 .status-closed {
-  color: #6c7685;
-  background: #eef1f5;
+  color: var(--admin-muted);
+  background: var(--color-neutral-soft);
 }
 .pending-card {
   align-self: start;
@@ -618,14 +437,14 @@ onMounted(load)
   gap: 11px;
   padding: 15px 18px;
   border: 0;
-  border-bottom: 1px solid #e9edf3;
-  color: #173765;
+  border-bottom: 1px solid var(--admin-line-soft);
+  color: var(--admin-ink);
   text-align: left;
-  background: #fff;
+  background: var(--admin-paper);
   cursor: pointer;
 }
 .pending-row:hover {
-  background: #f6f9fd;
+  background: var(--admin-hover);
 }
 .pending-icon {
   width: 38px;
@@ -636,26 +455,19 @@ onMounted(load)
   font-size: 18px;
 }
 .pending-icon.permission {
-  color: #135ecb;
-  background: #eaf2ff;
+  color: var(--admin-accent);
+  background: var(--color-primary-soft);
 }
 .pending-icon.ticket {
-  color: #a85b00;
-  background: #fff3dd;
-}
-.pending-row > span:nth-child(2) {
-  display: grid;
-  gap: 3px;
-}
-.pending-row small {
-  color: #7c899c;
+  color: var(--color-warning);
+  background: var(--color-warning-soft);
 }
 .pending-row em {
   min-width: 26px;
   padding: 4px 7px;
-  color: #fff;
+  color: var(--color-on-emphasis);
   border-radius: 999px;
-  background: #c92c2c;
+  background: var(--admin-red);
   text-align: center;
   font-style: normal;
   font-weight: 800;
@@ -666,7 +478,7 @@ onMounted(load)
   gap: 8px;
   margin: 0;
   padding: 16px 18px;
-  color: #08734c;
+  color: var(--color-success);
 }
 .quick-links {
   display: grid;
@@ -680,26 +492,19 @@ onMounted(load)
   min-height: 78px;
   padding: 13px 16px;
   border: 0;
-  border-right: 1px solid #e9edf3;
-  border-bottom: 1px solid #e9edf3;
-  color: #173765;
+  border-right: 1px solid var(--admin-line-soft);
+  border-bottom: 1px solid var(--admin-line-soft);
+  color: var(--admin-ink);
   text-align: left;
-  background: #fff;
+  background: var(--admin-paper);
   cursor: pointer;
 }
 .quick-links button:hover {
-  background: #f6f9fd;
+  background: var(--admin-hover);
 }
 .quick-links button > .el-icon:first-child {
-  color: #135ecb;
+  color: var(--admin-accent);
   font-size: 20px;
-}
-.quick-links span {
-  display: grid;
-  gap: 4px;
-}
-.quick-links small {
-  color: #7c899c;
 }
 .activity-list article {
   display: grid;
@@ -707,13 +512,13 @@ onMounted(load)
   align-items: center;
   gap: 11px;
   padding: 12px 18px;
-  border-bottom: 1px solid #e9edf3;
+  border-bottom: 1px solid var(--admin-line-soft);
 }
 .activity-list i {
   width: 8px;
   height: 8px;
   border-radius: 50%;
-  background: #135ecb;
+  background: var(--admin-accent);
 }
 .activity-list span {
   display: grid;
@@ -721,13 +526,10 @@ onMounted(load)
 }
 .activity-list small,
 .activity-list time {
-  color: #7c899c;
+  color: var(--admin-muted);
   font-size: 11px;
 }
 @media (max-width: 1080px) {
-  .metric-grid {
-    grid-template-columns: repeat(2, 1fr);
-  }
   .overview-grid,
   .secondary-grid {
     grid-template-columns: 1fr;
@@ -737,18 +539,11 @@ onMounted(load)
   .teaching-overview {
     padding: 18px 12px 32px;
   }
-  .overview-heading {
-    align-items: stretch;
-    flex-direction: column;
-  }
   .heading-actions {
     flex-wrap: wrap;
   }
   .heading-actions time {
     width: 100%;
-  }
-  .metric-grid {
-    grid-template-columns: 1fr;
   }
   .schedule-list button {
     grid-template-columns: 46px 1fr auto;

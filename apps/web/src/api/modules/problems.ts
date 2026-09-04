@@ -1,12 +1,12 @@
-import { client, type PreparedProblem, type Problem } from "../client";
+import { client, generatedApi, type PreparedProblem, type Problem } from "../client";
 
 export async function listProblems() {
-  const { data } = await client.get<Problem[]>("/problems");
+  const { data } = await generatedApi.listProblems();
   return Array.isArray(data) ? data : [];
 }
 
 export async function listPreparedProblems() {
-  const { data } = await client.get<PreparedProblem[]>("/prepared-problems");
+  const { data } = await generatedApi.listPreparedProblems();
   return Array.isArray(data) ? data : [];
 }
 

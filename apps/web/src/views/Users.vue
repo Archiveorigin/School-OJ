@@ -3,7 +3,6 @@
     <div class="page-header">
       <div>
         <h2>用户列表</h2>
-        <p>基础角色负责教学身份，附加权限请在“权限管理”子页面维护。</p>
       </div>
       <div class="toolbar">
         <el-button type="primary" @click="openCreate">新建用户</el-button>
@@ -301,7 +300,7 @@ onMounted(load)
 
 <style scoped>
 .page-header > div:first-child { display: grid; gap: 4px; }
-.page-header h2, .page-header p { margin: 0; }
+.page-header h2 { margin: 0; }
 .identity-tags, .row-actions {
   display: flex;
   align-items: center;

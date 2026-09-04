@@ -1,48 +1,14 @@
-import axios from 'axios'
+import { client, generatedApi } from './generated/client'
+import type { components as OpenApiComponents } from './generated/client'
+import { apiBase, getActiveToken } from './http'
 
-export const apiBase = import.meta.env.VITE_API_BASE || '/api'
+export { client, generatedApi, apiOperations, requestOperation } from './generated/client'
+export type { ApiOperationId, ApiRequestOptions, components } from './generated/client'
+export { apiBase, setActiveToken } from './http'
 
-export const client = axios.create({
-  baseURL: apiBase,
-  timeout: 30000,
-})
-
-let activeToken = localStorage.getItem('school-oj-token') || ''
-
-export function setActiveToken(token: string) {
-  activeToken = token
-}
-
-client.interceptors.request.use((config) => {
-  const token = activeToken || localStorage.getItem('school-oj-token')
-  if (token) {
-    config.headers.Authorization = `Bearer ${token}`
-  }
-  return config
-})
-
-export type Role = 'student' | 'teacher' | 'admin'
-
-export interface User {
-  id: number
-  email: string
-  name: string
-  role: Role
-  student_no?: string
-  avatar_url?: string
-  can_author?: boolean
-  email_verified?: boolean
-  account_deleted?: boolean
-  created_at?: string
-  updated_at?: string
-}
-
-export interface UserPermissionDefinition {
-  key: string
-  name: string
-  description: string
-  scope: 'global' | string
-}
+export type Role = OpenApiComponents['schemas']['User']['role']
+export type User = OpenApiComponents['schemas']['User']
+export type UserPermissionDefinition = OpenApiComponents['schemas']['PermissionDefinition']
 
 export interface Problem {
   id: number
@@ -235,7 +201,7 @@ export type LatestSubmissionContext =
 export async function getLatestSubmissions(context: LatestSubmissionContext, problemID?: number) {
   const params: Record<string, string | number | boolean> = { ...context }
   if (problemID) params.problem_id = problemID
-  const { data } = await client.get<Submission[]>('/submissions/latest', { params })
+  const { data } = await generatedApi.latestSubmissions({ query: params })
   return data || []
 }
 
@@ -295,7 +261,7 @@ export class AuthenticatedEventSource {
   }
 
   private async connect(path: string) {
-    const token = activeToken || localStorage.getItem('school-oj-token') || ''
+    const token = getActiveToken()
     try {
       const response = await fetch(`${apiBase}${path}`, {
         headers: token ? { Authorization: `Bearer ${token}` } : {},

@@ -7,6 +7,7 @@ import (
 
 	"school-oj/apps/api/internal/middleware"
 	"school-oj/apps/api/internal/models"
+	"school-oj/apps/api/openapi"
 
 	"github.com/gin-contrib/cors"
 	"github.com/gin-gonic/gin"
@@ -38,6 +39,9 @@ func (s Server) Router() *gin.Engine {
 	}))
 
 	router.GET("/healthz", s.health)
+	router.GET("/openapi.json", func(c *gin.Context) {
+		c.Data(200, "application/json; charset=utf-8", openapi.Document())
+	})
 	s.registerAPIRoutes(router.Group("/api"))
 	s.registerAPIRoutes(router.Group("/api/v1"))
 	return router

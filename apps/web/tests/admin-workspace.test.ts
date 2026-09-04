@@ -21,7 +21,15 @@ const globalOptions = {
     'el-button': { template: '<button><slot /></button>' },
     'el-dropdown': { template: '<div><slot /><slot name="dropdown" /></div>' },
     'el-dropdown-menu': { template: '<div><slot /></div>' },
-    'el-dropdown-item': { template: '<button><slot /></button>' }
+    'el-dropdown-item': { template: '<button><slot /></button>' },
+    AdminPageHeader: {
+      props: ['title'],
+      template: '<header><h1>{{ title }}</h1><slot /></header>'
+    },
+    AdminSectionHeader: {
+      props: ['title'],
+      template: '<header><h2>{{ title }}</h2><slot /></header>'
+    }
   },
   directives: {
     loading: {}
@@ -89,11 +97,6 @@ describe('admin workspace', () => {
             }
           ]
         } as any
-      if (url === '/courses') return { data: [{ id: 2, code: 'CS2026', name: '算法设计' }] } as any
-      if (url === '/classes')
-        return {
-          data: [{ id: 4, class_id: 4, course_id: 2, class_name: '计算机 1 班' }]
-        } as any
       if (url === '/author-applications') return { data: [{ id: 21, status: 'pending' }] } as any
       if (url === '/problem-change-tickets') return { data: [{ id: 22, status: 'pending' }] } as any
       if (url === '/audit-logs')
@@ -138,14 +141,14 @@ describe('admin workspace', () => {
   it('does not call administrator-only endpoints for teachers', async () => {
     setUser('teacher')
     const get = vi.spyOn(client, 'get').mockImplementation(async (url) => {
-      if (url === '/exams' || url === '/courses' || url === '/classes') return { data: [] } as any
+      if (url === '/exams') return { data: [] } as any
       throw new Error(`teacher requested forbidden endpoint: ${url}`)
     })
 
     shallowMount(AdminHome, { global: globalOptions })
     await flushPromises()
 
-    expect(get).toHaveBeenCalledTimes(3)
+    expect(get).toHaveBeenCalledTimes(1)
     expect(get).not.toHaveBeenCalledWith('/audit-logs')
     expect(get).not.toHaveBeenCalledWith('/author-applications', expect.anything())
     expect(get).not.toHaveBeenCalledWith('/problem-change-tickets', expect.anything())

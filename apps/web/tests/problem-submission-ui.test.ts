@@ -24,7 +24,18 @@ describe('problem submission UI regressions', () => {
     expect(problemDetailSource).not.toContain('class="panel submission-result"')
     expect(problemDetailSource).not.toMatch(/\.submission-result\s*\{/)
     expect(problemDetailSource).toContain(':status="live?.status"')
-    expect(problemDetailSource).toContain(':message="live?.message"')
+    expect(problemDetailSource).not.toContain(':message="live?.message"')
+  })
+
+  it('keeps draft persistence without rendering scope or autosave narration', () => {
+    const composerSource = readFileSync(
+      resolve(process.cwd(), 'src/components/SubmissionComposer.vue'),
+      'utf8',
+    )
+    expect(composerSource).toContain('saveSubmissionDraft')
+    expect(composerSource).not.toContain('草稿自动保存')
+    expect(composerSource).not.toContain('scopeText')
+    expect(composerSource).not.toContain('本次代码仅计入')
   })
 
   it('uses the shared detail dialog in both submission record pages', () => {

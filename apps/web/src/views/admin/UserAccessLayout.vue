@@ -4,7 +4,6 @@
       <div>
         <span>IDENTITY & ACCESS</span>
         <h1>用户与权限</h1>
-        <p>基础角色决定系统身份，附加权限在角色之上独立授予。</p>
       </div>
     </header>
     <nav class="access-tabs" aria-label="用户与权限子导航">
@@ -30,42 +29,37 @@ const route = useRoute()
 <style scoped>
 .access-heading {
   padding: 26px 28px 18px;
-  border-bottom: 1px solid #dce4ef;
-  background: #fff;
+  border-bottom: 1px solid var(--admin-line);
+  background: var(--admin-paper);
 }
 .access-heading span {
-  color: #135ecb;
+  color: var(--admin-accent);
   font-size: 10px;
   font-weight: 800;
   letter-spacing: 0.14em;
 }
 .access-heading h1 {
   margin: 6px 0 4px;
-  color: #173765;
+  color: var(--admin-ink);
   font-size: 26px;
-}
-.access-heading p {
-  margin: 0;
-  color: #6f7f96;
-  font-size: 13px;
 }
 .access-tabs {
   display: flex;
   gap: 4px;
   padding: 0 28px;
-  border-bottom: 1px solid #dce4ef;
-  background: #fff;
+  border-bottom: 1px solid var(--admin-line);
+  background: var(--admin-paper);
 }
 .access-tabs a {
   position: relative;
   min-width: 110px;
   padding: 14px 18px;
-  color: #64748b;
+  color: var(--admin-muted);
   text-align: center;
   font-weight: 700;
 }
 .access-tabs a.active {
-  color: #135ecb;
+  color: var(--admin-accent);
 }
 .access-tabs a.active::after {
   position: absolute;
@@ -74,7 +68,7 @@ const route = useRoute()
   left: 12px;
   height: 3px;
   border-radius: 3px 3px 0 0;
-  background: #135ecb;
+  background: var(--admin-accent);
   content: '';
 }
 @media (max-width: 640px) {

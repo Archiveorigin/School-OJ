@@ -56,6 +56,7 @@ make test
 ```bash
 cd apps/api && go test ./...
 cd apps/worker && go test ./...
+cd apps/web && npm run api:check
 cd apps/web && npm test -- --run
 cd apps/web && npm run build
 docker compose config --quiet

@@ -50,11 +50,9 @@
           v-model:language="language"
           v-model:source="source"
           :status="currentStatus"
-          :message="currentMessage"
           :submitting="submitting"
           :disabled="!detail.can_submit"
           :draft-context="draftContext"
-          scope-text="本次代码仅计入当前作业"
           @submit="submitSolution"
         />
       </section>
@@ -135,7 +133,6 @@ const source = computed({
 const live = computed(() => activeState.value?.live)
 const latestSubmission = computed(() => activeProblem.value ? preferredSubmission(activeProblem.value.id) : null)
 const currentStatus = computed(() => live.value?.status || latestSubmission.value?.status || '')
-const currentMessage = computed(() => live.value?.message || latestSubmission.value?.message || '')
 const draftContext = computed(() => ({ userId: auth.user?.id || 0, resourceType: 'assignment' as const, resourceId: Number(detail.value?.assignment?.id || route.params.id), problemId: activeProblem.value?.id || 0 }))
 const pagedHistory = computed(() => history.value.slice((historyPage.value - 1) * historyPageSize.value, historyPage.value * historyPageSize.value))
 

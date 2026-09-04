@@ -7,7 +7,6 @@
         </span>
         <span class="admin-brand-copy">
           <strong>黄海在线</strong>
-          <small>教学管理平台</small>
         </span>
       </RouterLink>
 
@@ -41,7 +40,6 @@
           <el-icon><Setting /></el-icon>
           <span>{{ auth.theme === "dark" ? "浅色模式" : "深色模式" }}</span>
         </button>
-        <small>青岛黄海学院 · School OJ</small>
       </div>
     </aside>
 
@@ -242,19 +240,11 @@ function handleUserCommand(command: string) {
 
 <style scoped>
 .admin-layout {
-  --admin-blue: #0a3d86;
-  --admin-blue-strong: #072f69;
-  --admin-accent: #135ecb;
-  --admin-red: #c92c2c;
-  --admin-paper: #ffffff;
-  --admin-ink: #132a4d;
-  --admin-muted: #66748a;
-  --admin-line: #dce4ef;
   min-height: 100vh;
   display: grid;
   grid-template-columns: 220px minmax(0, 1fr);
   color: var(--admin-ink);
-  background: #f7f9fc;
+  background: var(--admin-canvas);
 }
 
 .admin-sidebar {
@@ -277,13 +267,13 @@ function handleUserCommand(command: string) {
   flex-direction: column;
   gap: 12px;
   padding: 24px 18px;
-  color: #fff;
+  color: var(--color-on-emphasis);
   text-align: center;
   background: var(--admin-blue);
 }
 
 .admin-brand:hover {
-  color: #fff;
+  color: var(--color-on-emphasis);
 }
 
 .admin-brand-mark {
@@ -293,7 +283,7 @@ function handleUserCommand(command: string) {
   place-items: center;
   flex: 0 0 auto;
   border-radius: 50%;
-  background: #fff;
+  background: var(--color-on-emphasis);
 }
 
 .admin-brand-mark img {
@@ -303,20 +293,9 @@ function handleUserCommand(command: string) {
   border-radius: 50%;
 }
 
-.admin-brand-copy {
-  display: grid;
-  gap: 3px;
-}
-
 .admin-brand-copy strong {
   font-family: "STSong", "Songti SC", "Noto Serif SC", serif;
   font-size: 21px;
-  letter-spacing: 0.08em;
-}
-
-.admin-brand-copy small {
-  color: rgba(255, 255, 255, 0.78);
-  font-size: 10px;
   letter-spacing: 0.08em;
 }
 
@@ -332,7 +311,7 @@ function handleUserCommand(command: string) {
 
 .admin-nav-group p {
   margin: 0 12px 7px;
-  color: #98a4b5;
+  color: var(--admin-muted);
   font-size: 11px;
   font-weight: 700;
   letter-spacing: 0.12em;
@@ -346,7 +325,7 @@ function handleUserCommand(command: string) {
   gap: 12px;
   margin: 2px 0;
   padding: 0 13px;
-  color: #465a78;
+  color: var(--admin-muted);
   border-radius: 6px;
   font-size: 14px;
   font-weight: 600;
@@ -358,7 +337,7 @@ function handleUserCommand(command: string) {
 .admin-nav-group a:hover,
 .admin-nav-group a.active {
   color: var(--admin-accent);
-  background: #eef4fd;
+  background: var(--color-primary-soft);
 }
 
 .admin-nav-group a.active::before {
@@ -398,13 +377,6 @@ function handleUserCommand(command: string) {
   color: var(--admin-accent);
 }
 
-.admin-sidebar-footer small {
-  padding: 10px 12px 0;
-  color: #a0aaba;
-  font-size: 10px;
-  line-height: 1.5;
-}
-
 .admin-content {
   min-width: 0;
 }
@@ -420,7 +392,7 @@ function handleUserCommand(command: string) {
   gap: 24px;
   padding: 0 28px;
   border-bottom: 1px solid var(--admin-line);
-  background: rgba(255, 255, 255, 0.96);
+  background: color-mix(in srgb, var(--admin-paper) 96%, transparent);
   backdrop-filter: blur(16px);
 }
 
@@ -444,7 +416,7 @@ function handleUserCommand(command: string) {
 }
 
 .admin-breadcrumb i {
-  color: #c0c8d4;
+  color: var(--admin-line);
   font-style: normal;
 }
 
@@ -459,7 +431,7 @@ function handleUserCommand(command: string) {
 .admin-date {
   gap: 8px;
   padding-right: 16px;
-  color: #40536f;
+  color: var(--admin-muted);
   border-right: 1px solid var(--admin-line);
   font-size: 13px;
 }
@@ -470,7 +442,7 @@ function handleUserCommand(command: string) {
   display: grid;
   place-items: center;
   border: 0;
-  color: #40536f;
+  color: var(--admin-muted);
   background: transparent;
   cursor: pointer;
 }
@@ -490,7 +462,7 @@ function handleUserCommand(command: string) {
   display: grid;
   place-items: center;
   overflow: hidden;
-  color: #fff;
+  color: var(--color-on-emphasis);
   border-radius: 50%;
   background: var(--admin-blue);
   font-weight: 800;
@@ -538,7 +510,7 @@ function handleUserCommand(command: string) {
 
 .admin-content :deep(.sub-hero) {
   border-bottom: 1px solid var(--admin-line);
-  background: #fff;
+  background: var(--admin-paper);
 }
 
 .admin-content :deep(.sub-hero-inner) {
@@ -564,21 +536,21 @@ function handleUserCommand(command: string) {
 .admin-content :deep(.panel) {
   border-color: var(--admin-line);
   border-radius: 5px;
-  background: #fff;
+  background: var(--admin-paper);
   box-shadow: none;
   backdrop-filter: none;
 }
 
 .admin-content :deep(.panel:hover) {
-  border-color: #b9c8dd;
+  border-color: color-mix(in srgb, var(--admin-accent) 35%, var(--admin-line));
   box-shadow: none;
 }
 
 .admin-content :deep(.el-button--primary) {
   --el-button-bg-color: var(--admin-accent);
   --el-button-border-color: var(--admin-accent);
-  --el-button-hover-bg-color: #0f52b3;
-  --el-button-hover-border-color: #0f52b3;
+  --el-button-hover-bg-color: color-mix(in srgb, var(--admin-accent) 84%, #000);
+  --el-button-hover-border-color: color-mix(in srgb, var(--admin-accent) 84%, #000);
 }
 
 @media (max-width: 900px) {
@@ -603,7 +575,7 @@ function handleUserCommand(command: string) {
     z-index: 25;
     display: block;
     border: 0;
-    background: rgba(8, 25, 50, 0.48);
+    background: var(--color-scrim);
   }
 
   .mobile-menu {

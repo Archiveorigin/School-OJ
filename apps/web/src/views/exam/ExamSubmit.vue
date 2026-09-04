@@ -9,11 +9,9 @@
       :language="language"
       :source="source"
       :status="currentStatus"
-      :message="currentMessage"
       :submitting="submitting"
       :disabled="!detail.can_submit"
       :draft-context="draftContext"
-      scope-text="本次代码仅计入当前考试"
       @update:language="emit('update:language', $event)"
       @update:source="emit('update:source', $event)"
       @submit="emit('submit')"
@@ -52,7 +50,6 @@ const emit = defineEmits<{
 const latestSubmission = computed(() => props.latestHistory?.find((item) => item.problem_id === props.activeProblem?.id))
 const draftContext = computed(() => ({ userId: props.userId, resourceType: 'exam' as const, resourceId: Number(props.detail?.exam?.id), problemId: props.activeProblem?.id || 0 }))
 const currentStatus = computed(() => props.live?.status || latestSubmission.value?.status || '')
-const currentMessage = computed(() => props.live?.message || latestSubmission.value?.message || '')
 const displayNumber = computed(() => {
   if (props.activeEntry?.label?.trim()) return props.activeEntry.label.trim()
   const index = props.detail?.problems?.findIndex((entry: { problem: Problem }) => entry.problem.id === props.activeProblem?.id) ?? 0
