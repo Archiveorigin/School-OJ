@@ -111,7 +111,8 @@ services:
   web:
     restart: unless-stopped
     build:
-      context: ./apps/web
+      context: .
+      dockerfile: apps/web/Dockerfile
     depends_on:
       api:
         condition: service_healthy
