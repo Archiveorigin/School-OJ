@@ -17,6 +17,7 @@ function refName(ref) {
 }
 
 function schemaType(schema = {}) {
+  if (schema.nullable) return `(${schemaType({ ...schema, nullable: false })}) | null`
   if (schema.$ref) return `components['schemas'][${JSON.stringify(refName(schema.$ref))}]`
   if (schema.allOf) return schema.allOf.map(schemaType).join(' & ')
   if (schema.oneOf) return schema.oneOf.map(schemaType).join(' | ')

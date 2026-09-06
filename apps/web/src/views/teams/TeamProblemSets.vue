@@ -1,7 +1,7 @@
 <template>
   <section class="workspace-view">
     <div class="view-heading">
-      <div><h3>团队题单</h3><p>在团队内部组织训练题目，私有题目不会公开到公共题库。</p></div>
+      <div><h3>团队题单</h3><p>在团队内部组织训练题目</p></div>
       <el-button v-if="canOrganize" type="primary" @click="createVisible = true">创建题单</el-button>
     </div>
     <div v-loading="loading" class="problem-set-grid">

@@ -42,6 +42,8 @@ export interface Team {
   join_mode: 'invitation' | 'application' | 'open'
   contest_permission: 'all' | 'admin' | 'owner'
   join_code?: string
+  can_manage?: boolean
+  can_edit_permissions?: boolean
   description?: string
   announcement?: string
   icon_url?: string
@@ -174,9 +176,9 @@ export interface Submission {
   is_public?: boolean
   status: string
   score: number
-  manual_score?: number
+  manual_score?: number | null
   manual_graded_by?: number
-  manual_graded_at?: string
+  manual_graded_at?: string | null
   time_ms: number
   memory_kb: number
   message: string

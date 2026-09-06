@@ -14,11 +14,7 @@ const CourseStudents = () => import('../views/CourseStudents.vue')
 const Dashboard = () => import('../views/Dashboard.vue')
 const ExamCreate = () => import('../views/ExamCreate.vue')
 const ExamDetail = () => import('../views/ExamDetail.vue')
-const ExamProblems = () => import('../views/exam/ExamProblems.vue')
-const ExamOverview = () => import('../views/exam/ExamOverview.vue')
-const ExamRanking = () => import('../views/exam/ExamRanking.vue')
-const ExamRecords = () => import('../views/exam/ExamRecords.vue')
-const ExamSubmit = () => import('../views/exam/ExamSubmit.vue')
+const ExamActivity = () => import('../views/exam/ExamActivity.vue')
 const Exams = () => import('../views/Exams.vue')
 const ForgotPassword = () => import('../views/ForgotPassword.vue')
 const Login = () => import('../views/Login.vue')
@@ -38,6 +34,7 @@ const Submissions = () => import('../views/Submissions.vue')
 const TeamContests = () => import('../views/teams/TeamContests.vue')
 const ContestWorkspace = () => import('../views/teams/ContestWorkspace.vue')
 const TeamList = () => import('../views/teams/TeamList.vue')
+const TeamJoin = () => import('../views/teams/TeamJoin.vue')
 const TeamMembers = () => import('../views/teams/TeamMembers.vue')
 const TeamProblemSetDetail = () => import('../views/teams/TeamProblemSetDetail.vue')
 const TeamProblemSets = () => import('../views/teams/TeamProblemSets.vue')
@@ -46,6 +43,8 @@ const Users = () => import('../views/Users.vue')
 const UserAccessLayout = () => import('../views/admin/UserAccessLayout.vue')
 
 const teacherRoles = ['admin', 'teacher']
+import { useExamLockStore } from '../stores/examLock'
+import { legacyExamPath } from '../features/events/workspace'
 
 const router = createRouter({
   history: createWebHistory(),
@@ -69,6 +68,7 @@ const router = createRouter({
     { path: '/problem-changes/new', component: ProblemChangeTickets, meta: { requiresAuthor: true, title: '发起工单', activeMenu: '/problem-changes' } },
     { path: '/profile', component: Profile, meta: { title: '个人中心' } },
     { path: '/teams', component: TeamList, meta: { title: '团队', activeMenu: '/teams' } },
+    { path: '/teams/:teamSlug/join', component: TeamJoin, meta: { title: '加入团队', activeMenu: '/teams' } },
     {
       path: '/contest/:contestId',
       redirect: (to) => {
@@ -120,17 +120,11 @@ const router = createRouter({
     },
     {
       path: '/exams/:id',
-      component: ExamDetail,
-      redirect: (to) => `/exams/${to.params.id}/overview`,
+      redirect: (to) => `/exams/${to.params.id}/description`,
       meta: { title: '考试' },
-      children: [
-        { path: 'overview', component: ExamOverview, meta: { title: '题目概览' } },
-        { path: 'problems', component: ExamProblems, meta: { title: '考试题目' } },
-        { path: 'submit', component: ExamSubmit, meta: { title: '提交代码' } },
-        { path: 'records', component: ExamRecords, meta: { title: '提交记录' } },
-        { path: 'ranking', component: ExamRanking, meta: { title: '实时榜单' } }
-      ]
     },
+    ...['description', 'problems', 'problems/:label', 'scoreboard'].map(section => ({ path: `/exams/:id/${section}`, component: ExamDetail, meta: { title: '课程考试' } })),
+    ...['overview', 'submit', 'records', 'ranking'].map(section => ({ path: `/exams/:id/${section}`, redirect: (to: any) => ({ path: legacyExamPath(String(to.params.id), section, to.query), query: to.query }) })),
     { path: '/submissions', component: Submissions, meta: { title: '我的提交' } },
     {
       path: '/admin',
@@ -143,6 +137,7 @@ const router = createRouter({
         { path: 'classes', component: ClassList, meta: { title: '班级管理', adminMenu: '/admin/classes' } },
         { path: 'exams', component: Exams, meta: { title: '考试管理', adminMenu: '/admin/exams' } },
         { path: 'exams/new', component: ExamCreate, meta: { title: '新建考试', adminMenu: '/admin/exams' } },
+        { path: 'exams/:id/activity', component: ExamActivity, meta: { title: '考试行为日志', adminMenu: '/admin/exams' } },
         { path: 'prepared-problems', component: PreparedProblems, meta: { title: '预备题库', adminMenu: '/admin/prepared-problems' } },
         { path: 'problem-authors', component: ProblemTicketManagement, meta: { roles: ['admin'], title: '工单管理', adminMenu: '/admin/problem-authors' } },
         { path: 'author-permissions', redirect: '/admin/users/permissions' },
@@ -173,6 +168,12 @@ const authPaths = ['/login', '/register', '/forgot-password']
 router.beforeEach(async (to) => {
   const auth = useAuthStore()
   if (auth.isAuthed && !auth.hydrated) await auth.hydrate()
+  if (auth.isAuthed && auth.role === 'student') {
+    const lock = useExamLockStore()
+    try { await lock.syncActiveExam() }
+    catch { if (!lock.synced && !to.path.startsWith('/exams/')) return false }
+    if (lock.locked && lock.examId && !to.path.startsWith(`/exams/${lock.examId}/`)) return `/exams/${lock.examId}/description`
+  }
   if (!to.meta.public && !auth.isAuthed) {
     return { path: '/login', query: { redirect: to.fullPath } }
   }

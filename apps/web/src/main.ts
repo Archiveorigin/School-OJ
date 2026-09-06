@@ -18,15 +18,14 @@ client.interceptors.response.use(
   (response) => response,
   (error) => {
     const data = error.response?.data
-    if (error.response?.status === 423 && data?.exam_id) {
+    if (error.response?.status === 403 && data?.code === 'EXAM_SCOPE_REQUIRED' && data?.exam_id) {
       const examID = Number(data.exam_id)
-      const message = '当前有不可退出考试进行中，请先完成考试'
+      const message = '考试中仅可访问当前考试'
       useExamLockStore().lock(examID, message)
       if (
-        router.currentRoute.value.path !== '/exams' ||
-        router.currentRoute.value.query.locked_exam_id !== String(examID)
+        !router.currentRoute.value.path.startsWith(`/exams/${examID}/`)
       ) {
-        router.replace({ path: '/exams', query: { locked_exam_id: String(examID) } })
+        router.replace(`/exams/${examID}/description`)
       }
       ElMessage.warning(message)
     }

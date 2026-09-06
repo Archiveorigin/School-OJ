@@ -133,6 +133,7 @@ export function adaptTeamContestRanking(source: UnknownRecord | null | undefined
   return {
     scoringRule: rule,
     title: String(contest.title || fallback.title || '团队比赛实时榜单'),
+    frozen: Boolean(source?.frozen),
     subtitle: rule === 'score' ? '总分优先 · 满分题数次序' : '题数优先 · 罚时排名',
     durationSeconds,
     currentTimeSeconds: currentTimeFromRange(contest.starts_at, durationSeconds),
@@ -199,6 +200,7 @@ export function adaptExamRanking(source: UnknownRecord | null | undefined): Lead
     scoringRule: rule,
     title: String(exam.title || '考试实时榜单'),
     subtitle: [exam.course_name, exam.class_name].filter(Boolean).join(' · ') || '课程考试',
+    frozen: Boolean(source?.frozen),
     durationSeconds,
     currentTimeSeconds: currentTimeFromRange(exam.starts_at, durationSeconds, source?.now),
     solvedLabel: rule === 'score' ? '满分' : '题数',

@@ -264,6 +264,19 @@ type ExamAttempt struct {
 	UpdatedAt  time.Time  `json:"updated_at"`
 }
 
+// ExamActivity stores server-verified identity separately from client event time.
+type ExamActivity struct {
+	ID        uint              `json:"id" gorm:"primaryKey"`
+	ExamID    uint              `json:"exam_id" gorm:"uniqueIndex:idx_exam_activity_event;index;not null"`
+	UserID    uint              `json:"user_id" gorm:"uniqueIndex:idx_exam_activity_event;index;not null"`
+	EventID   string            `json:"event_id" gorm:"uniqueIndex:idx_exam_activity_event;size:100;not null"`
+	Event     string            `json:"event" gorm:"size:32;index;not null"`
+	ClientAt  *time.Time        `json:"client_at"`
+	IP        string            `json:"ip" gorm:"size:80"`
+	Meta      datatypes.JSONMap `json:"meta" gorm:"type:jsonb"`
+	CreatedAt time.Time         `json:"created_at" gorm:"index"`
+}
+
 type SubmissionStatus string
 
 const (
@@ -484,7 +497,7 @@ type Team struct {
 	Visibility        string    `json:"visibility" gorm:"size:16;index;not null;default:'private'"`
 	JoinMode          string    `json:"join_mode" gorm:"size:16;index;not null;default:'application'"`
 	ContestPermission string    `json:"contest_permission" gorm:"size:16;not null;default:'admin'"`
-	JoinCode          string    `json:"join_code,omitempty" gorm:"size:24;index"`
+	JoinCode          string    `json:"-" gorm:"size:24;index"`
 	Description       string    `json:"description" gorm:"size:140"`
 	Announcement      string    `json:"announcement" gorm:"type:text"`
 	IconURL           string    `json:"icon_url" gorm:"type:text"`
@@ -609,6 +622,7 @@ func AllModels() []any {
 		&Exam{},
 		&ExamProblem{},
 		&ExamAttempt{},
+		&ExamActivity{},
 		&Submission{},
 		&SubmissionResult{},
 		&AuthorApplication{},

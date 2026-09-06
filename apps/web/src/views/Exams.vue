@@ -67,6 +67,7 @@
               </el-button>
               <el-button v-if="canManage || (row.settings?.ranking_visible && scoringRule(row) !== 'oi')" size="small" @click="router.push(`/exams/${row.id}/ranking`)">榜单</el-button>
               <el-button v-if="canManage" size="small" @click="openReport(row)">完成情况</el-button>
+              <el-button v-if="canManage" size="small" @click="router.push(`/admin/exams/${row.id}/activity`)">行为日志</el-button>
               <el-button v-if="canManage" size="small" type="danger" plain @click="removeExam(row)">删除</el-button>
             </template>
           </el-table-column>

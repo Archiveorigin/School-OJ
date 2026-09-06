@@ -1,45 +1,29 @@
 <template>
-  <el-dialog v-model="visible" title="提交代码" width="min(1200px, calc(100vw - 28px))">
+  <el-dialog v-model="visible" title="提交详情" width="min(1200px, calc(100vw - 28px))">
     <div v-if="submission" class="submission-detail-body">
       <div class="submission-detail-summary">
-        <article>
-          <span>提交人</span>
-          <strong>{{ submitterText }}</strong>
-        </article>
-        <article>
-          <span>语言</span>
-          <strong>{{ languageLabel(submission.language) }}</strong>
-        </article>
-        <article>
-          <span>状态</span>
-          <SubmissionStatusMark :status="submission.status" class="submission-detail-status" />
-        </article>
-        <article>
-          <span>提交时间</span>
-          <strong>{{ formatDateTime(submission.created_at) }}</strong>
-        </article>
+        <span class="result">提交结果：<SubmissionStatusMark :status="submission.status" compact /></span>
+        <span>运行时间：{{ showMetrics ? `${submission.time_ms}ms` : '—' }}</span>
+        <span>占用内存：{{ showMetrics ? `${submission.memory_kb}KB` : '—' }}</span>
+        <span>使用语言：{{ languageLabel(submission.language) }}</span>
+        <span>用例通过情况：{{ caseSummary }}</span>
       </div>
 
-      <div class="submission-source-heading">
-        <strong>源代码</strong>
-        <el-button size="small" :disabled="!submission.source_code" @click="copySource">复制代码</el-button>
-      </div>
-      <pre class="submission-source-code">{{ submission.source_code || '' }}</pre>
+      <SourceCodeViewer :source="submission.source_code || ''" />
     </div>
   </el-dialog>
 </template>
 
 <script setup lang="ts">
-import { ElMessage } from 'element-plus'
 import { computed } from 'vue'
 import type { Submission } from '../api/client'
-import { copyTextToClipboard } from '../features/clipboard'
-import { formatDateTime } from '../features/time'
+import { hasEvaluatedResources, languageLabel } from '../features/submissions/presentation'
+import SourceCodeViewer from './SourceCodeViewer.vue'
 import SubmissionStatusMark from './SubmissionStatusMark.vue'
 
 const props = defineProps<{
   modelValue: boolean
-  detail: { submission: Submission } | null
+  detail: { submission: Submission; case_summary?: { passed: number; total: number } | null } | null
 }>()
 
 const emit = defineEmits<{ 'update:modelValue': [value: boolean] }>()
@@ -49,37 +33,16 @@ const visible = computed({
   set: (value) => emit('update:modelValue', value)
 })
 const submission = computed(() => props.detail?.submission || null)
-const submitterText = computed(() => {
-  const item = submission.value
-  if (!item?.user_name) return '-'
-  return item.user_name
+const showMetrics = computed(() => hasEvaluatedResources(submission.value?.status || ''))
+const caseSummary = computed(() => {
+  const summary = props.detail?.case_summary
+  return showMetrics.value && summary ? `${summary.passed}/${summary.total}` : '—'
 })
-
-function languageLabel(language: string) {
-  return ({ cpp: 'C++17', c: 'C', python: 'Python 3', java: 'Java 21' } as Record<string, string>)[language] || language
-}
-
-async function copySource() {
-  try {
-    await copyTextToClipboard(submission.value?.source_code || '')
-    ElMessage.success('代码已复制')
-  } catch {
-    ElMessage.error('复制失败')
-  }
-}
 </script>
 
 <style scoped>
-.submission-detail-body { display: grid; gap: 14px; }
-.submission-detail-summary { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 10px; }
-.submission-detail-summary article { display: grid; align-content: start; gap: 7px; min-width: 0; padding: 16px; border: 1px solid #d5deec; border-radius: 11px; }
-.submission-detail-summary span { color: var(--muted); font-size: 12px; }
-.submission-detail-summary strong { overflow-wrap: anywhere; }
-.submission-detail-status { width: min(156px, 100%); }
-.submission-source-heading { display: flex; align-items: center; justify-content: space-between; }
-.submission-source-code { width: 100%; max-width: 100%; max-height: 520px; min-height: 350px; margin: 0; padding: 16px; overflow: auto; color: #e2e8f0; border-radius: 12px; background: #0f172a; font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; white-space: pre; }
-@media (max-width: 760px) {
-  .submission-detail-summary { grid-template-columns: 1fr; }
-  .submission-source-code { min-height: 260px; }
-}
+.submission-detail-body { display: grid; gap: 20px; min-width: 0; }
+.submission-detail-summary { display: flex; flex-wrap: wrap; align-items: center; gap: 12px 24px; color: var(--text); line-height: 1.7; }
+.submission-detail-summary > span { white-space: nowrap; }
+.result { display: inline-flex; align-items: center; gap: 4px; }
 </style>

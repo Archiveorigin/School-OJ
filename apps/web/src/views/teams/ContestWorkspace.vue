@@ -1,33 +1,8 @@
 <template>
   <section class="contest-page">
     <div v-if="detail" class="contest-shell">
-      <header class="contest-header">
-        <button class="back-link" type="button" @click="goBack">返回团队比赛</button>
-        <div class="contest-title-row">
-          <div>
-            <span class="eyebrow">TEAM CONTEST</span>
-            <h1>{{ detail.contest.title }}</h1>
-            <p>{{ detail.team.name }}</p>
-          </div>
-          <div class="contest-stats">
-            <article>
-              <span>赛制</span><strong>{{ scoringLabel(detail.contest.scoring_rule) }}</strong>
-            </article>
-            <article>
-              <span>状态</span><strong>{{ statusLabel(detail.contest.status) }}</strong>
-            </article>
-          </div>
-        </div>
-        <nav class="contest-nav" aria-label="比赛导航">
-          <router-link :to="`/contest/${contestID}/description`">比赛说明</router-link>
-          <router-link :to="`/contest/${contestID}/problems`">题目列表</router-link>
-          <router-link
-            v-if="detail.contest.scoring_rule !== 'oi'"
-            :to="`/contest/${contestID}/scoreboard`"
-            >排行榜</router-link
-          >
-        </nav>
-      </header>
+      <EventWorkspaceHeader :title="detail.contest.title" :subtitle="detail.team.name" :rule="detail.contest.scoring_rule" :status="statusLabel(detail.contest.status)"
+        kind="比赛" :base="`/contest/${contestID}`" :show-ranking="true" back-label="返回团队比赛" @back="goBack" />
 
       <main class="contest-content">
         <template v-if="section === 'description'">
@@ -84,100 +59,15 @@
           </div>
         </template>
 
-        <template v-else-if="section === 'problems'">
-          <section class="panel problem-list-panel">
-            <div class="section-heading">
-              <div>
-                <h2>题目列表</h2>
-                <p>{{ detail.problems.length }} 道题 · 点击题目进入比赛模式题面</p>
-              </div>
-              <el-button v-if="detail.can_edit" type="primary" @click="addVisible = true"
-                >添加题目</el-button
-              >
-            </div>
-            <div class="problem-table-wrap">
-              <table class="problem-table">
-                <thead>
-                  <tr>
-                    <th>题号</th>
-                    <th>题目名称</th>
-                    <th>满分</th>
-                    <th>我的状态</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  <tr v-for="link in detail.problems" :key="link.problem_id">
-                    <td>
-                      <router-link :to="problemRoute(link)">{{ link.label }}</router-link>
-                    </td>
-                    <td>
-                      <router-link :to="problemRoute(link)">{{ link.problem.title }}</router-link>
-                    </td>
-                    <td>100</td>
-                    <td>
-                      <el-tag :type="problemStatusType(link.submission_status)" effect="plain">{{
-                        problemStatusLabel(link.submission_status)
-                      }}</el-tag>
-                    </td>
-                  </tr>
-                </tbody>
-              </table>
-            </div>
-            <el-empty v-if="!detail.problems.length" description="比赛暂未添加题目" />
-          </section>
-        </template>
+        <EventProblemList v-else-if="section === 'problems'" :items="problemItems" :base="`/contest/${contestID}`">
+          <template #actions><el-button v-if="detail.can_edit" type="primary" @click="addVisible = true">添加题目</el-button></template>
+        </EventProblemList>
+        <EventProblemPanel v-else-if="section === 'problem' && selectedLink" :selected="{ ...selectedLink, score: 100 }" :items="problemItems"
+          :records="problemRecords" :base="`/contest/${contestID}`" @refresh="loadRecords" @view-submission="viewSubmission">
+          <template #actions><el-button type="primary" :disabled="!detail.can_submit" @click="openSubmit">提交代码</el-button></template>
+        </EventProblemPanel>
 
-        <template v-else-if="section === 'problem'">
-          <div v-if="selectedLink" class="problem-layout">
-            <section class="panel statement-panel">
-              <div class="problem-toolbar">
-                <div>
-                  <span>{{ selectedLink.label }}</span
-                  ><strong>{{ selectedLink.problem.title }}</strong>
-                </div>
-                <el-button type="primary" :disabled="!detail.can_submit" @click="openSubmit"
-                  >提交代码</el-button
-                >
-              </div>
-              <ProblemStatementView
-                embedded
-                :problem="selectedLink.problem"
-                :problem-number="selectedLink.label"
-                :show-meta="false"
-                :show-title="false"
-              />
-            </section>
-            <aside class="problem-side">
-              <section class="panel navigator">
-                <h3>题目导航</h3>
-                <div>
-                  <router-link
-                    v-for="link in detail.problems"
-                    :key="link.problem_id"
-                    :class="{
-                      active: link.problem_id === selectedLink.problem_id
-                    }"
-                    :to="problemRoute(link)"
-                    >{{ link.label }}</router-link
-                  >
-                </div>
-              </section>
-              <section class="panel records">
-                <div class="section-heading">
-                  <h3>本题提交</h3>
-                  <el-button link @click="loadRecords">刷新</el-button>
-                </div>
-                <article v-for="row in problemRecords" :key="row.id">
-                  <StatusBadge :status="row.status" /><span>{{ row.language }}</span
-                  ><time>{{ shortTime(row.created_at) }}</time>
-                </article>
-                <el-empty v-if="!problemRecords.length" :image-size="54" description="暂无提交" />
-              </section>
-            </aside>
-          </div>
-        </template>
-
-        <template v-else>
+        <template v-else-if="section === 'scoreboard' && detail.contest.scoring_rule !== 'oi'">
           <section class="contest-scoreboard">
             <LeaderboardBoard
               :data="scoreboardData"
@@ -191,8 +81,10 @@
             />
           </section>
         </template>
+        <el-result v-else title="题目不存在或页面未开放"><template #extra><el-button @click="router.replace(`/contest/${contestID}/problems`)">题目列表</el-button></template></el-result>
       </main>
 
+      <SubmissionDetailDialog v-model="submissionVisible" :detail="submissionDetail" />
       <el-dialog
         v-model="submitVisible"
         :title="`提交 ${selectedLink?.label || ''} · ${selectedLink?.problem.title || ''}`"
@@ -275,8 +167,11 @@ import {
   type Submission
 } from '../../api/client'
 import LeaderboardBoard from '../../components/LeaderboardBoard.vue'
-import ProblemStatementView from '../../components/ProblemStatementView.vue'
-import StatusBadge from '../../components/StatusBadge.vue'
+import EventWorkspaceHeader from '../../components/EventWorkspaceHeader.vue'
+import EventProblemList from '../../components/EventProblemList.vue'
+import EventProblemPanel from '../../components/EventProblemPanel.vue'
+import SubmissionDetailDialog from '../../components/SubmissionDetailDialog.vue'
+import { scoringDescription } from '../../features/events/workspace'
 import SubmissionComposer from '../../components/SubmissionComposer.vue'
 import { adaptTeamContestRanking } from '../../features/leaderboard/adapters'
 import { loadSubmissionDraft } from '../../features/submissions/drafts'
@@ -339,6 +234,12 @@ const selectedLink = computed(
       (i: any) => String(i.label).toLowerCase() === String(route.params.label || '').toLowerCase()
     ) || null
 )
+const problemItems = computed(() => (detail.value?.problems || []).map((link: any) => ({ ...link, score: 100 })))
+const submissionVisible = ref(false), submissionDetail = ref<any>(null)
+async function viewSubmission(id: number) {
+  try { submissionDetail.value = (await client.get(`/submissions/${id}`)).data; submissionVisible.value = true }
+  catch (err: any) { ElMessage.error(err.response?.data?.error || '提交加载失败') }
+}
 const problemRecords = computed(() =>
   records.value.filter((i) => i.problem_id === selectedLink.value?.problem_id)
 )
@@ -352,8 +253,6 @@ const scoreboardData = computed(() => {
   const data = adaptTeamContestRanking(ranking.value, {
     contest: detail.value?.contest
   })
-  if (ranking.value?.frozen)
-    data.subtitle = `排行榜已封榜 · 展示结束前 ${ranking.value.freeze_duration_minutes || detail.value?.contest?.freeze_duration_minutes || 0} 分钟的快照`
   return data
 })
 const rankingUpdatedAt = computed(() =>
@@ -401,9 +300,6 @@ async function loadRanking() {
     scheduleRankingRefresh()
   }
 }
-function problemRoute(link: any) {
-  return `/contest/${contestID.value}/problems/${encodeURIComponent(link.label)}`
-}
 function goBack() {
   void router.push(
     detail.value?.team?.slug ? `/teams/${detail.value.team.slug}/contests` : '/teams'
@@ -411,22 +307,6 @@ function goBack() {
 }
 function dateText(v?: string) {
   return v ? formatDateTime(v) : '待定'
-}
-function shortTime(v: string) {
-  return new Date(v).toLocaleTimeString('zh-CN', {
-    hour: '2-digit',
-    minute: '2-digit'
-  })
-}
-function scoringLabel(v: ScoringRule) {
-  return v.toUpperCase()
-}
-function scoringDescription(v: ScoringRule) {
-  return v === 'oi'
-    ? '最后一次提交计分，结束前隐藏结果'
-    : v === 'ioi'
-      ? '每题最高得分，总分优先'
-      : '通过题数优先，错误提交计入罚时'
 }
 function statusLabel(v: string) {
   return v === 'draft'
@@ -436,20 +316,6 @@ function statusLabel(v: string) {
       : v === 'running'
         ? '进行中'
         : '已结束'
-}
-function problemStatusLabel(v?: string) {
-  return !v
-    ? '未提交'
-    : v === 'recorded'
-      ? '已记录'
-      : v === 'accepted'
-        ? '已通过'
-        : ['queued', 'running'].includes(v)
-          ? '评测中'
-          : '已提交'
-}
-function problemStatusType(v?: string): 'success' | 'warning' | 'info' {
-  return v === 'accepted' ? 'success' : v ? 'warning' : 'info'
 }
 function clearRankingTimer() {
   if (rankingTimer) window.clearTimeout(rankingTimer)
@@ -568,266 +434,20 @@ onBeforeUnmount(() => {
 </script>
 
 <style scoped>
-.contest-page {
-  min-height: 100%;
-  padding: 24px 20px 58px;
-  background: color-mix(in srgb, var(--surface) 74%, #edf2f7);
-}
-.contest-shell {
-  width: min(1320px, 100%);
-  margin: 0 auto;
-}
-.back-link {
-  padding: 0;
-  color: var(--muted);
-  border: 0;
-  background: transparent;
-  cursor: pointer;
-}
-.contest-title-row {
-  display: flex;
-  align-items: flex-end;
-  justify-content: space-between;
-  gap: 24px;
-  padding: 19px 0 22px;
-}
-.contest-title-row h1 {
-  margin: 6px 0 4px;
-  font-size: 30px;
-}
-.contest-title-row p {
-  margin: 0;
-  color: var(--muted);
-}
-.eyebrow {
-  color: var(--accent);
-  font-size: 11px;
-  font-weight: 800;
-  letter-spacing: 0.14em;
-}
-.contest-stats {
-  display: flex;
-  gap: 10px;
-}
-.contest-stats article {
-  min-width: 105px;
-  padding: 10px 16px;
-  text-align: center;
-  border: 1px solid var(--border);
-  border-radius: 8px;
-  background: var(--surface-strong);
-}
-.contest-stats span,
-.contest-stats strong {
-  display: block;
-}
-.contest-stats span {
-  color: var(--muted);
-  font-size: 12px;
-}
-.contest-stats strong {
-  margin-top: 3px;
-}
-.contest-nav {
-  display: flex;
-  gap: 2px;
-  border-bottom: 1px solid var(--border);
-}
-.contest-nav a {
-  padding: 13px 22px;
-  color: var(--muted);
-  border-bottom: 3px solid transparent;
-}
-.contest-nav a.router-link-active {
-  color: var(--accent);
-  border-bottom-color: var(--accent);
-  font-weight: 800;
-}
-.contest-content {
-  padding-top: 16px;
-}
-.contest-scoreboard {
-  min-width: 0;
-  overflow: hidden;
-}
-.two-column,
-.problem-layout {
-  display: grid;
-  grid-template-columns: minmax(0, 1fr) 320px;
-  gap: 16px;
-}
-.description-panel,
-.meta-panel,
-.problem-list-panel,
-.statement-panel,
-.navigator,
-.records {
-  padding: 20px;
-}
-.section-heading,
-.problem-toolbar {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 18px;
-}
-.section-heading h2,
-.section-heading h3 {
-  margin: 0;
-}
-.section-heading p {
-  margin: 5px 0 0;
-  color: var(--muted);
-}
-.description-copy {
-  min-height: 240px;
-  padding-top: 18px;
-  white-space: pre-wrap;
-  line-height: 1.8;
-  border-top: 1px solid var(--border);
-}
-.meta-panel h3 {
-  margin-top: 0;
-}
-.meta-panel dl {
-  display: grid;
-  gap: 0;
-}
-.meta-panel dl div {
-  display: grid;
-  grid-template-columns: 88px 1fr;
-  gap: 8px;
-  padding: 12px 0;
-  border-top: 1px solid var(--border);
-}
-.meta-panel dt {
-  color: var(--muted);
-}
-.meta-panel dd {
-  margin: 0;
-  text-align: right;
-}
-.problem-table-wrap {
-  overflow: auto;
-}
-.problem-table {
-  width: 100%;
-  border-collapse: collapse;
-  margin-top: 16px;
-}
-.problem-table th,
-.problem-table td {
-  padding: 14px 16px;
-  text-align: left;
-  border-bottom: 1px solid var(--border);
-}
-.problem-table th {
-  color: var(--muted);
-  font-size: 12px;
-  background: color-mix(in srgb, var(--surface) 88%, #e9eff5);
-}
-.problem-table a {
-  color: var(--text);
-  font-weight: 700;
-}
-.problem-table td:first-child a {
-  color: var(--accent);
-}
-.problem-toolbar {
-  padding-bottom: 14px;
-  border-bottom: 1px solid var(--border);
-}
-.problem-toolbar > div span,
-.problem-toolbar > div strong {
-  display: block;
-}
-.problem-toolbar > div span {
-  color: var(--accent);
-  font-weight: 800;
-}
-.problem-toolbar > div strong {
-  margin-top: 4px;
-  font-size: 19px;
-}
-.problem-side {
-  display: grid;
-  align-content: start;
-  gap: 12px;
-}
-.navigator h3,
-.records h3 {
-  margin: 0;
-}
-.navigator > div {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 7px;
-  margin-top: 14px;
-}
-.navigator a {
-  min-width: 38px;
-  padding: 8px;
-  text-align: center;
-  border: 1px solid var(--border);
-  border-radius: 6px;
-}
-.navigator a.active {
-  color: #fff;
-  border-color: var(--accent);
-  background: var(--accent);
-}
-.records article {
-  display: grid;
-  grid-template-columns: auto 1fr auto;
-  align-items: center;
-  gap: 8px;
-  padding: 10px 0;
-  border-bottom: 1px solid var(--border);
-}
-.records time {
-  color: var(--muted);
-  font-size: 12px;
-}
-.muted {
-  color: var(--muted);
-}
-.loading {
-  width: min(1180px, 100%);
-  margin: 20px auto;
-}
-@media (max-width: 800px) {
-  .contest-page {
-    padding: 16px 12px 42px;
-  }
-  .contest-title-row,
-  .section-heading,
-  .problem-toolbar {
-    align-items: stretch;
-    flex-direction: column;
-  }
-  .contest-stats {
-    width: 100%;
-  }
-  .contest-stats article {
-    flex: 1;
-  }
-  .two-column,
-  .problem-layout {
-    grid-template-columns: 1fr;
-  }
-  .problem-side {
-    order: -1;
-  }
-  .contest-nav a {
-    padding: 12px 14px;
-  }
-  .description-panel,
-  .meta-panel,
-  .problem-list-panel,
-  .statement-panel,
-  .navigator,
-  .records {
-    padding: 15px;
-  }
-}
+.contest-page { min-height: 100%; padding: 24px 20px 58px; background: color-mix(in srgb, var(--surface) 74%, #edf2f7); }
+.contest-shell { width: min(1320px, 100%); margin: 0 auto; }
+.contest-content { padding-top: 16px; }
+.contest-scoreboard { min-width: 0; overflow: hidden; }
+.two-column { display: grid; grid-template-columns: minmax(0, 1fr) 320px; gap: 16px; }
+.description-panel, .meta-panel { padding: 20px; }
+.section-heading { display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 18px; }
+.section-heading h2 { margin: 0; }
+.description-copy { min-height: 240px; margin-top: 18px; padding-top: 18px; white-space: pre-wrap; line-height: 1.8; border-top: 1px solid var(--border); }
+.meta-panel h3 { margin-top: 0; }
+.meta-panel dl div { display: grid; grid-template-columns: 88px 1fr; gap: 8px; padding: 12px 0; border-top: 1px solid var(--border); }
+.meta-panel dt { color: var(--muted); }
+.meta-panel dd { margin: 0; text-align: right; }
+.loading { max-width: 1320px; margin: 0 auto; }
+@media (max-width: 880px) { .two-column { grid-template-columns: minmax(0, 1fr); } }
+@media (max-width: 600px) { .contest-page { padding: 16px 10px 36px; } }
 </style>

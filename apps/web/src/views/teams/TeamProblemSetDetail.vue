@@ -14,7 +14,7 @@
         <div v-if="canOrganize || detail.can_edit || detail.can_delete" class="heading-actions">
           <el-button v-if="detail.can_edit" @click="openEditSet">编辑题单信息</el-button>
           <el-button v-if="canOrganize" @click="addVisible = true">添加已有题目</el-button>
-          <el-button v-if="canOrganize && canAuthor" type="primary" @click="createPrivateProblem">新建私有题目</el-button>
+          <!-- <el-button v-if="canOrganize && canAuthor" type="primary" @click="createPrivateProblem">新建私有题目</el-button> -->
           <el-button v-if="detail.can_delete" type="danger" plain :loading="deleting" @click="deleteSet">删除题单</el-button>
         </div>
       </header>

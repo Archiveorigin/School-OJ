@@ -16,6 +16,7 @@ const type = computed(() => {
 
 const label = computed(() => {
   const map: Record<string, string> = {
+    recorded: '已记录',
     queued: '排队中',
     running: '判题中',
     pending_review: '待评分',

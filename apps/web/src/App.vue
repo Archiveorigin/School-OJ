@@ -82,8 +82,8 @@
 </template>
 
 <script setup lang="ts">
-import { ElMessageBox } from "element-plus";
-import { computed, watch } from "vue";
+import { computed, watch, onMounted, onBeforeUnmount } from "vue";
+import { flushSavedExamActivity } from "./features/exams/activity";
 import { useRoute, useRouter } from "vue-router";
 import AppSidebar from "./components/AppSidebar.vue";
 import { useAuthStore } from "./stores/auth";
@@ -93,8 +93,8 @@ const auth = useAuthStore();
 const examLock = useExamLockStore();
 const router = useRouter();
 const route = useRoute();
-let activeExamPromptOpen = false;
-let lastPromptedExamId: number | undefined;
+let examSyncing = false;
+let examSyncTimer: number | undefined;
 
 const authPage = computed(() =>
   ["/login", "/register", "/forgot-password"].includes(route.path),
@@ -170,47 +170,35 @@ function handleCommand(command: string) {
   }
 }
 
-async function maybeShowActiveExamPrompt() {
-  if (!auth.isAuthed || auth.role !== "student" || authPage.value) return;
+async function syncExamEnvironment() {
+  if (examSyncing || !auth.isAuthed || auth.role !== "student") return;
+  examSyncing = true;
   try {
+    // Initial URL/legacy redirects must resolve before global lock recovery.
+    // Otherwise the startup '/' placeholder overwrites a valid exam deep link.
+    await router.isReady();
     await examLock.syncActiveExam();
-  } catch {
-    return;
-  }
-  if (!examLock.locked || !examLock.examId) {
-    lastPromptedExamId = undefined;
-    return;
-  }
-  if (inActiveExam.value) {
-    lastPromptedExamId = undefined;
-    return;
-  }
-  if (activeExamPromptOpen || lastPromptedExamId === examLock.examId) return;
-  const examId = examLock.examId;
-  activeExamPromptOpen = true;
-  lastPromptedExamId = examId;
-  try {
-    await ElMessageBox.confirm(examLock.message, "正在进行的考试", {
-      type: "warning",
-      confirmButtonText: "返回考试",
-      cancelButtonText: "继续浏览",
-      distinguishCancelAndClose: true,
-      customClass: "active-exam-dialog",
-    });
-    if (examLock.examId === examId) router.push(`/exams/${examId}/problems`);
-  } catch {
-    // The student may continue browsing; the reminder is intentionally not a lock.
-  } finally {
-    activeExamPromptOpen = false;
-  }
+    if (examLock.locked && examLock.examId && !inActiveExam.value) await router.replace(`/exams/${examLock.examId}/description`);
+    if (!examLock.locked && auth.user) await flushSavedExamActivity(auth.user.id);
+  } catch { /* Keep the last server-verified state on connection failure. */ }
+  finally { examSyncing = false; }
 }
+onMounted(() => {
+  window.addEventListener('focus', syncExamEnvironment);
+  window.addEventListener('storage', syncExamEnvironment);
+  examSyncTimer = window.setInterval(syncExamEnvironment, 15000);
+});
+onBeforeUnmount(() => {
+  window.removeEventListener('focus', syncExamEnvironment);
+  window.removeEventListener('storage', syncExamEnvironment);
+  if (examSyncTimer) window.clearInterval(examSyncTimer);
+});
 
 watch(
   () => auth.isAuthed,
   (authed) => {
     if (!authed) {
       examLock.unlock();
-      lastPromptedExamId = undefined;
     }
   },
 );
@@ -218,7 +206,7 @@ watch(
 watch(
   () => [auth.isAuthed, auth.role, route.fullPath],
   () => {
-    void maybeShowActiveExamPrompt();
+    void syncExamEnvironment();
   },
   { immediate: true },
 );
@@ -313,21 +301,8 @@ watch(
   min-height: 100vh;
 }
 
-:global(.active-exam-dialog) {
-  border: 2px solid #f59e0b;
-  box-shadow: 0 28px 80px rgba(146, 64, 14, 0.28);
-}
 
-:global(.active-exam-dialog .el-message-box__title) {
-  color: #92400e;
-  font-weight: 800;
-}
 
-:global(.active-exam-dialog .el-message-box__message) {
-  color: var(--text);
-  font-size: 16px;
-  line-height: 1.7;
-}
 
 @media (max-width: 760px) {
   .topbar {

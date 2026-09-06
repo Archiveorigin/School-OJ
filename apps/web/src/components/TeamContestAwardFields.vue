@@ -47,7 +47,7 @@
         <strong>{{ total }}%</strong>
       </div>
       <p v-if="validationError" class="award-error">{{ validationError }}</p>
-      <p v-else>排名按实际参赛人数计算，未覆盖的选手不显示奖牌。</p>
+      <p v-else>排名按实际参赛人数计算比例</p>
     </div>
   </div>
 </template>

@@ -77,6 +77,9 @@
 | [`handlers/problem_test_uploads.go`](../apps/api/internal/handlers/problem_test_uploads.go) | 测试点大文件分片的临时接收与合并辅助逻辑；当前公开写接口已由工单入口接管。 |
 | [`handlers/problem_versions.go`](../apps/api/internal/handlers/problem_versions.go) | 将不可变题目版本覆盖到运行时题目快照，并为考试/比赛题目关系补全绑定版本。 |
 | [`handlers/submission_events.go`](../apps/api/internal/handlers/submission_events.go) | 提交状态 SSE：先返回数据库快照，再订阅 Redis 通知直至终态。 |
+| [`handlers/exam_security.go`](../apps/api/internal/handlers/exam_security.go) | 考试统一白名单、显式事务入场、SSE 撤权、窗口行为日志及绑定版本的图片接口。 |
+| [`handlers/submission_case_summary.go`](../apps/api/internal/handlers/submission_case_summary.go) | 以提交版本的完整测试集计算通过/总数；未评测、人工与隐藏结果返回空统计。 |
+| [`handlers/team_join.go`](../apps/api/internal/handlers/team_join.go) | 安全加入预览、加入与审批状态机；成员退出/移除/角色变更共享团队行锁。 |
 | [`handlers/submission_visibility.go`](../apps/api/internal/handlers/submission_visibility.go) | OI 与封榜期的统一服务端脱敏，隐藏状态、分数、测试点、资源消耗等结果。 |
 | [`handlers/teams.go`](../apps/api/internal/handlers/teams.go) | 团队、成员申请、比赛、赛题、三赛制排行榜、团队题单、讨论与团队范围提交。 |
 
@@ -155,6 +158,9 @@
 | `GET /exams`、`GET /exams/:id` | `server.go` | 考试列表和详情；详情按用户身份返回可见题面、进度和结果。 |
 | `POST /exams` | `createExam` / `server.go` | 教师/管理员创建考试，绑定题目版本、OI/IOI/ACM 赛制与封榜参数。 |
 | `POST /exams/:id/finish` | `finishExam` / `server.go` | 学生主动交卷并记录结束时间。 |
+| `POST /exams/:id/enter` | `enterExam` / `exam_security.go` | 学生确认进入进行中的考试；锁定用户行，同账号最多一个活动考试。 |
+| `POST /exams/:id/activity`、`GET /exams/:id/activity` | `recordExamActivity`、`listExamActivity` / `exam_security.go` | 本人窗口事件批量去重上报；管理者按学生、事件和时间分页查询日志。 |
+| `GET /exams/:id/problems/:problem_id/assets/*asset_path` | `getExamProblemAsset` / `exam_security.go` | 按本场绑定版本加载题面图片，不开放题库或测试数据接口。 |
 | `GET /exams/:id/ranking` | `examRanking` / `server.go` | IOI/ACM 排行榜及封榜视图；OI 对参赛者不提供排行榜。 |
 | `GET /exams/:id/report`、`GET /exams/:id/report/export` | `server.go` | 教师成绩详情和 Markdown 报告下载。 |
 | `POST /exams/:id/submissions/:submission_id/judge` | `judgeManualExamSubmission` | 将主观/人工评阅提交转入阅卷流程。 |
@@ -170,13 +176,14 @@
 
 ### 4.7 团队、比赛与题单接口
 
-团队业务均由 [`handlers/teams.go`](../apps/api/internal/handlers/teams.go) 实现。`/teams/:id/contests/:contest_id/*` 与 `/contests/:contest_id/*` 是同一组 Handler 的两种路由入口；前者适合团队管理上下文，后者供独立比赛页面使用。
+团队主体业务位于 [`handlers/teams.go`](../apps/api/internal/handlers/teams.go)，准入及成员事务位于 [`handlers/team_join.go`](../apps/api/internal/handlers/team_join.go)。`/teams/:id/contests/:contest_id/*` 与 `/contests/:contest_id/*` 是同一组 Handler 的两种路由入口；前者适合团队管理上下文，后者供独立比赛页面使用。
 
 | 接口族 | 主要路由 | 作用 |
 | --- | --- | --- |
 | 团队 | `GET/POST /teams`、`GET/PUT /teams/:id`、`POST /teams/:id/join`、`POST /teams/:id/leave` | 查询、创建、设置、申请/邀请码加入和退出团队。 |
 | 成员 | `GET/PUT/DELETE /teams/:id/members/*` | 查看成员，调整 owner/admin/member 权限，移除成员。 |
 | 加入申请 | `GET /teams/:id/applications`、`PUT /teams/:id/applications/:application_id` | 团队管理员审核加入申请。 |
+| 加入预览 | `GET /teams/:id/join-preview` | 私有团队的最小安全 DTO，包含加入模式和本人申请状态，不包含邀请码或内部内容。 |
 | 比赛 | `GET/POST /teams/:id/contests`、`GET/PUT/DELETE /contests/:contest_id` | 创建和维护草稿、已发布、进行中、已结束比赛。 |
 | 发布与赛题 | `POST /contests/:contest_id/publish`、`POST/DELETE /contests/:contest_id/problems/*` | 发布比赛，按题目为最小单位绑定/移除赛题版本。 |
 | 比赛提交 | `GET/POST /contests/:contest_id/submissions` | 查询比赛提交或创建指定赛题提交。 |
@@ -220,6 +227,7 @@
 | 团队 | `Team`、`TeamMembership`、`TeamJoinApplication` | 团队设置、角色和加入申请。 |
 | 团队内容 | `TeamContest`、`TeamContestParticipant`、`TeamContestProblem`、`TeamProblemSet`、`TeamProblemSetProblem`、`TeamDiscussion` | 比赛生命周期、赛题版本、题单和讨论。 |
 | 管理追踪 | `PlagiarismJob`、`AuditLog` | 查重任务和关键操作审计。 |
+| 考试行为 | `ExamActivity` | 场次、考生、事件、客户端/服务端时间、可信 IP 与元数据；唯一标识保证重试幂等。 |
 
 ### 5.2 SQL 迁移对应功能
 
@@ -249,6 +257,7 @@
 | [`022_team_content_management_and_awards.sql`](../apps/api/migrations/022_team_content_management_and_awards.sql) | 比赛奖项比例、团队内容逻辑删除和管理约束。 |
 | [`023_submission_outbox.sql`](../apps/api/migrations/023_submission_outbox.sql) | 可靠提交入队的事务发件箱。 |
 | [`024_problem_change_tickets_and_scoring.sql`](../apps/api/migrations/024_problem_change_tickets_and_scoring.sql) | 不可变题目版本、工单、归档、考试/比赛/提交版本回填、OI/IOI/ACM 与封榜字段。 |
+| [`025_exam_activity.sql`](../apps/api/migrations/025_exam_activity.sql) | 考试行为日志及事件唯一索引，只新增结构、不清理历史数据。 |
 
 ## 6. Worker 判题服务
 
@@ -303,12 +312,13 @@
 | `/my/courses/:courseId/assignments` | [`Assignments.vue`](../apps/web/src/views/Assignments.vue) | 课程作业列表；教师可创建、查看报告和删除。 |
 | `/assignments/:id` | [`AssignmentDetail.vue`](../apps/web/src/views/AssignmentDetail.vue) | 作业题目、进度、代码提交及提交记录。 |
 | `/my/courses/:courseId/exams` | [`Exams.vue`](../apps/web/src/views/Exams.vue) | 课程考试列表；教师可查看/导出报告、人工评分和删除。 |
-| `/exams/:id/*` | [`ExamDetail.vue`](../apps/web/src/views/ExamDetail.vue) | 考试数据和提交状态的父容器，向下级页面提供上下文。 |
-| `/exams/:id/overview` | [`exam/ExamOverview.vue`](../apps/web/src/views/exam/ExamOverview.vue) | 考试说明、状态、时间和赛制。 |
-| `/exams/:id/problems` | [`exam/ExamProblems.vue`](../apps/web/src/views/exam/ExamProblems.vue) | 考试题目导航和状态。 |
-| `/exams/:id/submit` | [`exam/ExamSubmit.vue`](../apps/web/src/views/exam/ExamSubmit.vue) | 当前考试题目和提交入口。 |
-| `/exams/:id/records` | [`exam/ExamRecords.vue`](../apps/web/src/views/exam/ExamRecords.vue) | 当前用户考试提交记录。 |
-| `/exams/:id/ranking` | [`exam/ExamRanking.vue`](../apps/web/src/views/exam/ExamRanking.vue) | 调用考试排名接口并使用统一榜单组件。 |
+| `/exams/:id/description` | [`ExamDetail.vue`](../apps/web/src/views/ExamDetail.vue) | 显式入场、考试说明、状态恢复、窗口警告和交卷。 |
+| `/exams/:id/problems` | 同上 + `EventProblemList.vue` | 题目列表与个人状态；独立考试适配器保留分值和版本。 |
+| `/exams/:id/problems/:label` | 同上 + `EventProblemPanel.vue` | 题面、图片、提交弹窗和本人本题记录。 |
+| `/exams/:id/scoreboard` | [`exam/ExamRanking.vue`](../apps/web/src/views/exam/ExamRanking.vue) | IOI/ACM 榜单，复用排行榜组件；OI 不开放。 |
+| `/exams/:id/overview|submit|records|ranking` | `router/index.ts`、`features/events/workspace.ts` | 旧地址兼容重定向；四个被替换的专属内容组件已删除。 |
+| `/admin/exams/:id/activity` | [`exam/ExamActivity.vue`](../apps/web/src/views/exam/ExamActivity.vue) | 按学生、事件、时间分页查询行为日志，展开查看登录关联和拦截接口。 |
+| `/teams/:teamSlug/join` | [`teams/TeamJoin.vue`](../apps/web/src/views/teams/TeamJoin.vue) | 最小信息预览、邀请/申请/开放加入，独立于私有团队工作区。 |
 | `/teams` | [`TeamList.vue`](../apps/web/src/views/teams/TeamList.vue) | 我的/可发现团队、创建团队和加入申请。 |
 | `/teams/:teamSlug/*` | [`TeamWorkspace.vue`](../apps/web/src/views/teams/TeamWorkspace.vue) | 团队容器、设置、退出和子路由出口。 |
 | `/teams/:teamSlug/contests` | [`TeamContests.vue`](../apps/web/src/views/teams/TeamContests.vue) | 团队比赛列表、创建和删除。 |
@@ -341,7 +351,9 @@
 | --- | --- |
 | [`CodeEditor.vue`](../apps/web/src/components/CodeEditor.vue) | Monaco 代码编辑器和语言切换。 |
 | [`SubmissionComposer.vue`](../apps/web/src/components/SubmissionComposer.vue) | 统一代码提交表单，配合草稿保存。 |
-| [`SubmissionDetailDialog.vue`](../apps/web/src/components/SubmissionDetailDialog.vue) | 提交源码、状态、逐点结果和资源消耗详情。 |
+| [`SubmissionDetailDialog.vue`](../apps/web/src/components/SubmissionDetailDialog.vue) | 紧凑提交细则、版本测试点统计与源码；隐藏结果不显示资源和通过数。 |
+| [`SourceCodeViewer.vue`](../apps/web/src/components/SourceCodeViewer.vue) | 白底源码、左侧复制、逐行行号、绿色分隔线和长行滚动。 |
+| [`EventWorkspaceHeader.vue`](../apps/web/src/components/EventWorkspaceHeader.vue)、[`EventProblemList.vue`](../apps/web/src/components/EventProblemList.vue)、[`EventProblemPanel.vue`](../apps/web/src/components/EventProblemPanel.vue) | 考试/团队比赛公共展示层；不直接决定业务权限。 |
 | [`SubmissionStatusMark.vue`](../apps/web/src/components/SubmissionStatusMark.vue)、[`VerdictTag.vue`](../apps/web/src/components/VerdictTag.vue)、[`StatusBadge.vue`](../apps/web/src/components/StatusBadge.vue) | 提交状态和业务状态的统一视觉映射。 |
 | [`LeaderboardBoard.vue`](../apps/web/src/components/LeaderboardBoard.vue) | 考试与比赛共用排行榜外壳、说明、封榜提示和表格选择。 |
 | [`PenaltyLeaderboardTable.vue`](../apps/web/src/components/PenaltyLeaderboardTable.vue) | ACM 通过数/罚时榜单。 |
@@ -369,6 +381,10 @@
 | [`features/exams/types.ts`](../apps/web/src/features/exams/types.ts) | 考试创建草稿、选题和请求类型。 |
 | [`features/exams/builder.ts`](../apps/web/src/features/exams/builder.ts) | 自动题号、重复检查、总分、日期格式和创建草稿校验。 |
 | [`features/exams/draft.ts`](../apps/web/src/features/exams/draft.ts) | 考试创建草稿的本地存储恢复。 |
+| [`features/events/workspace.ts`](../apps/web/src/features/events/workspace.ts) | 公共场内题目模型、考试数据适配、字母题号和旧路由映射。 |
+| [`features/exams/activity.ts`](../apps/web/src/features/exams/activity.ts)、[`features/exams/useExamEnvironment.ts`](../apps/web/src/features/exams/useExamEnvironment.ts) | 窗口离开/返回去重、快捷键识别、有限离线队列、警告与监听生命周期。 |
+| [`features/submissions/presentation.ts`](../apps/web/src/features/submissions/presentation.ts) | 判题短标识、语言名、资源可见性及源码行号。 |
+| [`features/teams/join.ts`](../apps/web/src/features/teams/join.ts) | 安全解析团队 slug/加入链接，只生成本站路径。 |
 | [`features/leaderboard/adapters.ts`](../apps/web/src/features/leaderboard/adapters.ts) | 把考试/比赛接口数据转换为统一榜单模型，并兼容旧 `score/penalty` 命名。 |
 | [`features/leaderboard/sorting.ts`](../apps/web/src/features/leaderboard/sorting.ts) | 发布排名和表现排名排序。 |
 | [`features/leaderboard/awards.ts`](../apps/web/src/features/leaderboard/awards.ts) | 奖项比例规范化、名额截止位和奖牌等级。 |

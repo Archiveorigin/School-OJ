@@ -8,6 +8,7 @@ import { computed } from 'vue'
 const props = defineProps<{ status: string }>()
 
 const code = computed(() => ({
+  recorded: '已记录',
   accepted: 'AC',
   wrong_answer: 'WA',
   runtime_error: 'RE',
@@ -23,6 +24,7 @@ const code = computed(() => ({
 } as Record<string, string>)[props.status] || props.status.toUpperCase())
 
 const tagType = computed<'success' | 'warning' | 'danger' | 'info'>(() => {
+  if (props.status === 'recorded') return 'info'
   if (props.status === 'accepted' || props.status === 'manual_graded') return 'success'
   if (['queued', 'running', 'pending_review'].includes(props.status)) return 'warning'
   if (props.status) return 'danger'

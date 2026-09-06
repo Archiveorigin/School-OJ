@@ -1,533 +1,214 @@
 <template>
-  <section class="page">
-    <div class="page-header">
-      <div>
-        <h2>{{ detail?.exam?.title || '考试' }}</h2>
-        <p v-if="detail" class="muted">结束时间：{{ formatDateTime(detail.exam.ends_at) }}</p>
-      </div>
-      <div class="toolbar">
-        <el-tag v-if="detail?.closed" type="info">已结束</el-tag>
-        <el-tag v-else-if="detail?.not_started" type="warning">未开始</el-tag>
-        <el-tag v-else-if="detail" type="success">进行中</el-tag>
-        <el-tag v-if="detail?.manual_review" type="warning">人工阅卷</el-tag>
-        <el-tag v-if="detail?.all_submitted" type="success">已提交全部题目</el-tag>
-        <el-tag v-if="detail">{{ workStatusLabel(detail.work_status) }}</el-tag>
-        <strong v-if="detail">{{ scoreSummary }}</strong>
-        <el-button v-if="canManage && activeProblem" type="primary" plain @click="openProblemTicket">工单修改</el-button>
-        <ProblemTestDownloads v-if="canManage && activeProblem" :problem-id="activeProblem.id" :problem-code="activeProblem.display_code" />
-        <el-button
-          v-if="!canManage"
-          type="danger"
-          :loading="finishing"
-          :disabled="detail?.not_started || detail?.finished_at"
-          @click="finishExam"
-        >
-          结束考试
-        </el-button>
-        <el-button v-if="canManage" @click="leavePage">返回列表</el-button>
-      </div>
+  <section class="exam-page">
+    <div v-if="detail" class="exam-shell">
+      <EventWorkspaceHeader :title="detail.exam.title" :rule="detail.exam.scoring_rule" :status="detail.closed ? '已结束' : detail.not_started ? '未开始' : '进行中'"
+        kind="考试" :base="base" :show-ranking="showRanking" :back-label="canManage ? '返回考试管理' : ''" @back="leavePage">
+        <template #actions>
+          <el-button v-if="!canManage" type="danger" :loading="finishing" @click="finishExam">交卷</el-button>
+          <el-button v-else @click="router.push(`/admin/exams/${examID}/activity`)">行为日志</el-button>
+        </template>
+      </EventWorkspaceHeader>
+      <main class="exam-content">
+        <div v-if="section === 'description'" class="description-layout">
+          <section class="panel description-panel"><h2>考试说明</h2><MarkdownRenderer :source="detail.exam.description || '暂无说明'" /></section>
+          <aside class="panel exam-info"><h3>考试信息</h3><dl>
+            <div><dt>开始时间</dt><dd>{{ formatDateTime(detail.exam.starts_at) }}</dd></div>
+            <div><dt>结束时间</dt><dd>{{ formatDateTime(detail.exam.ends_at) }}</dd></div>
+            <div><dt>计分规则</dt><dd>{{ scoringDescription(detail.exam.scoring_rule) }}</dd></div>
+            <div><dt>评阅方式</dt><dd>{{ detail.manual_review ? '人工评阅' : '自动评测' }}</dd></div>
+            <div><dt>封榜</dt><dd>{{ detail.exam.freeze_enabled ? `结束前 ${detail.exam.freeze_duration_minutes} 分钟` : '未启用' }}</dd></div>
+          </dl></aside>
+        </div>
+        <EventProblemList v-else-if="section === 'problems'" :items="items" :base="base" />
+        <EventProblemPanel v-else-if="section === 'problem' && selected" :selected="selected" :items="items" :records="problemRecords" :base="base"
+          :asset-base="`/exams/${examID}/problems/${selected.problem_id}/assets`" @refresh="loadHistory" @view-submission="viewSubmission">
+          <template #actions>
+            <el-button v-if="canManage" @click="openProblemTicket">工单修改</el-button>
+            <el-button type="primary" :disabled="!detail.can_submit" @click="openSubmit">提交代码</el-button>
+          </template>
+        </EventProblemPanel>
+        <ExamRanking v-else-if="section === 'scoreboard' && showRanking" :detail="detail" />
+        <el-result v-else title="题目不存在或页面未开放"><template #extra><el-button @click="router.replace(`${base}/problems`)">题目列表</el-button></template></el-result>
+      </main>
+      <el-dialog v-model="submitVisible" :title="`提交 ${selected?.label || ''}.${selected?.problem.title || ''}`" width="min(940px, calc(100vw - 24px))" destroy-on-close>
+        <SubmissionComposer v-model:language="language" v-model:source="source" :draft-context="draftContext" :status="liveStatus" :submitting="submitting" :disabled="!detail.can_submit" @submit="submitSolution" />
+      </el-dialog>
+      <SubmissionDetailDialog v-model="submissionVisible" :detail="submissionDetail" />
     </div>
-
-    <div v-if="detail" class="exam-workbench">
-      <div class="exam-tabs">
-        <el-button :type="tabType('overview')" @click="goExamTab('overview')">题目概览</el-button>
-        <el-button :type="tabType('problems')" @click="goExamTab('problems')">查看题目</el-button>
-        <el-button :type="tabType('submit')" @click="goExamTab('submit')">提交代码</el-button>
-        <el-button :type="tabType('records')" @click="goExamTab('records')">提交记录</el-button>
-        <el-button v-if="canManage || (detail.ranking_visible && detail.exam.scoring_rule !== 'oi')" :type="tabType('ranking')" @click="goExamTab('ranking')">实时榜单</el-button>
-      </div>
-
-      <router-view v-slot="{ Component }">
-        <component
-          :is="Component"
-          :detail="detail"
-          :active-entry="activeEntry"
-          :active-problem="activeProblem"
-          :history="history"
-          :latest-history="latestHistory"
-          :user-id="auth.user?.id || 0"
-          :language="language"
-          :source="source"
-          :live="live"
-          :submitting="submitting"
-          :can-manage="canManage"
-          :switcher-entries="switcherEntries"
-          :active-problem-id="activeProblemID"
-          @update:language="language = $event"
-          @update:source="source = $event"
-          @update:active-problem-id="activeProblemID = $event"
-          @submit="submitSolution"
-          @refresh-history="loadHistory"
-        />
-      </router-view>
-    </div>
+    <el-result v-else-if="error" title="无法加载考试" :sub-title="error"><template #extra><el-button @click="initialize">重试</el-button><el-button v-if="!examLock.locked" @click="leavePage">返回课程</el-button></template></el-result>
+    <el-skeleton v-else :rows="12" animated />
+    <el-dialog v-model="warning" title="考试环境警告" width="min(440px, calc(100vw - 24px))" :close-on-click-modal="false" :close-on-press-escape="false" :show-close="false">
+      <p>检测到离开考试窗口或使用受限快捷键，操作已记录。请继续在本场考试内作答。</p>
+      <template #footer><el-button type="primary" @click="warning = false">返回作答</el-button></template>
+    </el-dialog>
   </section>
 </template>
 
 <script setup lang="ts">
 import { ElMessage, ElMessageBox } from 'element-plus'
-import { computed, onBeforeUnmount, onMounted, reactive, ref, watch } from 'vue'
-import { onBeforeRouteLeave, useRoute, useRouter } from 'vue-router'
-import { AuthenticatedEventSource, client, getLatestSubmissions, openEventStream, type Problem, type Submission } from '../api/client'
-import ProblemTestDownloads from '../components/ProblemTestDownloads.vue'
-import { formatDateTime, workStatusLabel } from '../features/assignments/assignmentMeta'
+import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
+import { useRoute, useRouter } from 'vue-router'
+import { client, generatedApi, getLatestSubmissions, openEventStream, type AuthenticatedEventSource, type Submission } from '../api/client'
+import EventWorkspaceHeader from '../components/EventWorkspaceHeader.vue'
+import EventProblemList from '../components/EventProblemList.vue'
+import EventProblemPanel from '../components/EventProblemPanel.vue'
+import MarkdownRenderer from '../components/MarkdownRenderer.vue'
+import SubmissionComposer from '../components/SubmissionComposer.vue'
+import SubmissionDetailDialog from '../components/SubmissionDetailDialog.vue'
+import ExamRanking from './exam/ExamRanking.vue'
+import { examProblemItems, problemPath } from '../features/events/workspace'
+import { scoringDescription } from '../features/events/workspace'
+import { formatDateTime } from '../features/time'
 import { clearSubmissionDraft, loadSubmissionDraft } from '../features/submissions/drafts'
+import { useExamEnvironment } from '../features/exams/useExamEnvironment'
 import { useAuthStore } from '../stores/auth'
 import { useExamLockStore } from '../stores/examLock'
 
-type DetailProblem = {
-  problem: Problem
-  score: number
-  label?: string
-  problem_id: number
-}
-type EditorState = {
-  language: string
-  source: string
-  live: any
-  dirty: boolean
-}
-type ExamTab = 'overview' | 'problems' | 'submit' | 'records' | 'ranking'
-
-const auth = useAuthStore()
-const examLock = useExamLockStore()
-const route = useRoute()
-const router = useRouter()
-const canManage = computed(() => auth.role === 'admin' || auth.role === 'teacher')
-const detail = ref<any>(null)
-const activeEntry = ref<DetailProblem | null>(null)
-const activeProblem = computed(() => activeEntry.value?.problem || null)
-const history = ref<Submission[]>([])
-const latestHistory = ref<Submission[]>([])
-const submitting = ref(false)
-const finishing = ref(false)
-const editorStates = reactive<Record<number, EditorState>>({})
-let deadlineTimer: number | null = null
-let deadlinePoller: number | null = null
-let forceLeavingExam = false
-const liveStreams = new Set<AuthenticatedEventSource>()
-
+const route = useRoute(), router = useRouter(), auth = useAuthStore(), examLock = useExamLockStore()
 const examID = computed(() => Number(route.params.id))
-const examLocked = computed(() => {
-  return !canManage.value && Boolean(detail.value) && !detail.value.closed && !detail.value.not_started && !detail.value.finished_at
-})
-const activeState = computed(() => {
-  if (!activeProblem.value) return null
-  return ensureEditorState(activeProblem.value.id)
-})
-const activeProblemID = computed({
-  get: () => activeProblem.value?.id,
-  set: (value: number | undefined) => {
-    const entry = detail.value?.problems?.find((item: DetailProblem) => item.problem.id === value)
-    if (entry) selectDetailProblem(entry)
-  }
-})
-const language = computed({
-  get: () => activeState.value?.language || 'cpp',
-  set: (value: string) => {
-    if (!activeProblem.value || !activeState.value) return
-    activeState.value.language = value
-  }
-})
-const source = computed({
-  get: () => activeState.value?.source || '',
-  set: (value: string) => {
-    if (!activeProblem.value || !activeState.value) return
-    activeState.value.source = value
-    activeState.value.dirty = true
-  }
-})
-const live = computed(() => activeState.value?.live)
-const activeTab = computed<ExamTab>(() => {
-  const value = route.path.split('/').pop()
-  if (value === 'problems' || value === 'submit' || value === 'records' || value === 'ranking') return value
-  return 'overview'
-})
-const scoreSummary = computed(() => {
-  if (!detail.value) return ''
-  if (detail.value.score_ready) return `${detail.value.total_score} / ${detail.value.max_score}`
-  return detail.value.work_status === 'submitted' ? '待评分' : '-'
-})
-const switcherEntries = computed(() => (detail.value?.problems || []).map((entry: DetailProblem) => {
-  const score = scoreForProblem(entry.problem.id)
-  let submissionStatus = ''
-  if (score?.submission_id) submissionStatus = score.score_ready && score.best_score >= score.score ? 'accepted' : 'attempted'
-  return { ...entry, submission_status: submissionStatus }
-}))
-
+const base = computed(() => `/exams/${examID.value}`)
+const detail = ref<any>(null), error = ref('')
+const canManage = computed(() => Boolean(detail.value?.can_manage))
+const showRanking = computed(() => detail.value?.exam.scoring_rule !== 'oi' && (canManage.value || detail.value?.ranking_visible))
+const active = computed(() => auth.role === 'student' && Boolean(detail.value) && !detail.value.closed && !detail.value.finished_at)
+const { warning, flush } = useExamEnvironment(active, computed(() => auth.user?.id || 0), examID)
+const history = ref<Submission[]>([]), latest = ref<Submission[]>([])
+const items = computed(() => examProblemItems(detail.value?.problems || [], latest.value))
+const section = computed(() => route.params.label ? 'problem' : route.path.split('/').pop())
+const selected = computed(() => items.value.find(item => item.label === route.params.label))
+const problemRecords = computed(() => history.value.filter(row => row.problem_id === selected.value?.problem_id && row.user_id === auth.user?.id))
+const submitVisible = ref(false), submissionVisible = ref(false), submissionDetail = ref<any>(null)
+const language = ref('cpp'), source = ref(''), liveStatus = ref(''), submitting = ref(false), finishing = ref(false)
+const draftContext = computed(() => ({ userId: auth.user?.id || 0, resourceType: 'exam' as const, resourceId: examID.value, problemId: selected.value?.problem_id || 0 }))
+let poller: number | undefined, deadline: number | undefined, stream: AuthenticatedEventSource | undefined
+let initializing = false
+function listPath() { return canManage.value ? '/admin/exams' : detail.value?.exam.course_id ? `/my/courses/${detail.value.exam.course_id}/exams` : '/my/courses' }
+function leavePage() { void router.push(listPath()) }
+async function exitExam(message: string) {
+  const path = listPath()
+  await flush()
+  if (detail.value) detail.value.closed = true
+  examLock.unlock()
+  stream?.close()
+  ElMessage.info(message)
+  await router.replace(path)
+}
+async function initialize() {
+  if (initializing) return
+  initializing = true; error.value = ''
+  try {
+    if (auth.role === 'student') {
+      const state = await examLock.syncActiveExam()
+      if (!state.active) {
+        try { await ElMessageBox.confirm('确认进入后，仅可访问本场考试。离开窗口会记录警告，交卷后不能再次进入。', '进入考试', { confirmButtonText: '确认进入', cancelButtonText: '取消', type: 'warning' }) }
+        catch { leavePage(); return }
+        await generatedApi.enterExam({ path: { id: examID.value } })
+        examLock.lock(examID.value)
+      }
+    }
+    await loadDetail()
+    await loadHistory()
+    if (route.query.problem_id && ['problems', 'submit', 'records'].includes(String(section.value))) {
+      const target = items.value.find(item => item.problem_id === Number(route.query.problem_id))
+      if (target) await router.replace(problemPath(base.value, target.label))
+    }
+    if (section.value === 'scoreboard' && !showRanking.value) await router.replace(`${base.value}/description`)
+  } catch (err: any) {
+    error.value = err.response?.data?.error || err.message
+    if (auth.role === 'student' && [403, 404].includes(err.response?.status) && err.response?.data?.code !== 'EXAM_SCOPE_REQUIRED') {
+      const state = await examLock.syncActiveExam().catch(() => null)
+      if (state && !state.active) { await exitExam(error.value); return }
+    }
+  } finally { initializing = false }
+}
 async function loadDetail() {
-  if (!examID.value) return
-  try {
-    detail.value = (await client.get(`/exams/${examID.value}`)).data
-    if (!canManage.value && detail.value.closed) {
-      exitClosedExam()
-      return
-    }
-    activeEntry.value =
-      detail.value.problems?.find((entry: DetailProblem) => entry.problem.id === activeProblem.value?.id) ||
-      detail.value.problems?.[0] ||
-      null
-    if (activeProblem.value) ensureEditorState(activeProblem.value.id)
-    await loadHistory()
-    scheduleDeadlineCheck()
-  } catch (err: any) {
-    if (handleInvalidExamError(err)) return
-    if (err.response?.data?.finished_at) {
-      examLock.unlock()
-      ElMessage.warning('考试已结束，不能再次进入')
-    } else {
-      ElMessage.error(err.response?.data?.error || err.message)
-    }
-    router.push(examListPath())
+  detail.value = (await generatedApi.getExam({ path: { id: examID.value } })).data
+  if (deadline) window.clearTimeout(deadline)
+  if (active.value && detail.value.exam.ends_at) {
+    const serverNow = new Date(detail.value.now).getTime()
+    const delay = new Date(detail.value.exam.ends_at).getTime() - serverNow
+    deadline = window.setTimeout(checkState, Math.min(Math.max(100, delay + 100), 2147483647))
   }
 }
-
-function selectDetailProblem(entry: DetailProblem) {
-  activeEntry.value = entry
-  ensureEditorState(entry.problem.id)
-}
-
-function goExamTab(tab: ExamTab) {
-  router.push(`/exams/${examID.value}/${tab}`)
-}
-
-function openProblemTicket() {
-  if (!activeProblem.value) return
-  router.push({ path: '/problem-changes/new', query: { action: 'replace', problem_id: activeProblem.value.id, target_scope: 'public' } })
-}
-
-function tabType(tab: ExamTab) {
-  return activeTab.value === tab ? 'primary' : ''
-}
-
-async function submitSolution() {
-  if (!activeProblem.value || !detail.value || !activeState.value) return
-  if (!activeState.value.source.trim()) {
-    ElMessage.warning('请输入代码')
-    return
-  }
-  const problemID = activeProblem.value.id
-  submitting.value = true
-  try {
-    const { data } = await client.post('/submissions', {
-      problem_id: problemID,
-      exam_id: detail.value.exam.id,
-      language: activeState.value.language,
-      source_code: activeState.value.source
-    })
-    clearSubmissionDraft({ userId: auth.user?.id || 0, resourceType: 'exam', resourceId: detail.value.exam.id, problemId: problemID }, activeState.value.language)
-    watchSubmission(data.id, problemID)
-    await loadHistory()
-  } catch (err: any) {
-    if (handleInvalidExamError(err)) return
-    ElMessage.error(err.response?.data?.error || err.message)
-  } finally {
-    submitting.value = false
-  }
-}
-
-function watchSubmission(id: number, problemID: number) {
-  const es = openEventStream(`/submissions/${id}/events`)
-  liveStreams.add(es)
-  es.addEventListener('status', async (event) => {
-    ensureEditorState(problemID).live = JSON.parse((event as MessageEvent).data)
-    if (!['queued', 'running'].includes(ensureEditorState(problemID).live.status)) {
-      closeLiveStream(es)
-      await refreshDetail()
-      await loadHistory()
-    }
-  })
-}
-
-async function refreshDetail() {
-  if (!detail.value) return
-  const activeID = activeProblem.value?.id
-  try {
-    detail.value = (await client.get(`/exams/${detail.value.exam.id}`)).data
-  } catch (err: any) {
-    if (handleInvalidExamError(err)) return
-    throw err
-  }
-  if (!canManage.value && detail.value.closed) {
-    exitClosedExam()
-    return
-  }
-  activeEntry.value =
-    detail.value.problems.find((entry: DetailProblem) => entry.problem.id === activeID) || detail.value.problems[0] || null
-  scheduleDeadlineCheck()
-}
-
 async function loadHistory() {
   if (!detail.value) return
-  const [historyResponse, latest] = await Promise.all([
-    client.get('/submissions', { params: { exam_id: detail.value.exam.id } }),
-    getLatestSubmissions({ exam_id: detail.value.exam.id })
-  ])
-  history.value = historyResponse.data
-  latestHistory.value = latest
-  hydrateEditorStatesFromHistory()
-}
-
-async function finishExam() {
-  if (!detail.value) return
   try {
-    await ElMessageBox.confirm('结束后不能再次进入本场考试，也不能继续提交。确认结束？', '结束考试', { type: 'warning' })
-  } catch {
-    return
-  }
+    const [rows, recent] = await Promise.all([client.get('/submissions', { params: { exam_id: examID.value } }), getLatestSubmissions({ exam_id: examID.value })])
+    history.value = rows.data; latest.value = recent as Submission[]
+  } catch (err: any) { ElMessage.error(err.response?.data?.error || '提交记录加载失败') }
+}
+async function checkState() {
+  if (!active.value) return
+  try {
+    const state = await examLock.syncActiveExam()
+    if (!state.active) { await exitExam('考试已交卷或截止'); return }
+    if (state.examId !== examID.value) { await router.replace(`/exams/${state.examId}/description`); return }
+    await loadHistory()
+  } catch { /* Server remains authoritative; a failed check must not unlock. */ }
+}
+function openSubmit() {
+  if (!selected.value) return
+  const recent = latest.value.find(row => row.problem_id === selected.value?.problem_id)
+  language.value = recent?.language || 'cpp'
+  source.value = loadSubmissionDraft(draftContext.value, language.value) ?? recent?.source_code ?? ''
+  liveStatus.value = recent?.status || ''
+  submitVisible.value = true
+}
+async function submitSolution() {
+  if (!selected.value || !source.value.trim()) { ElMessage.warning('请输入代码'); return }
+  submitting.value = true
+  try {
+    const { data } = await client.post('/submissions', { problem_id: selected.value.problem_id, exam_id: examID.value, language: language.value, source_code: source.value })
+    clearSubmissionDraft(draftContext.value, language.value)
+    liveStatus.value = data.status
+    stream?.close()
+    if (['queued', 'running'].includes(data.status)) {
+      stream = openEventStream(`/submissions/${data.id}/events`)
+      stream.addEventListener('status', event => {
+        const state = JSON.parse((event as MessageEvent).data)
+        liveStatus.value = state.status
+        if (!['queued', 'running'].includes(state.status)) { stream?.close(); void loadHistory() }
+      })
+    }
+    await loadHistory()
+  } catch (err: any) { ElMessage.error(err.response?.data?.error || '提交失败'); await checkState() }
+  finally { submitting.value = false }
+}
+async function viewSubmission(id: number) {
+  try { submissionDetail.value = (await generatedApi.getSubmission({ path: { id } })).data; submissionVisible.value = true }
+  catch (err: any) { ElMessage.error(err.response?.data?.error || '提交加载失败') }
+}
+function openProblemTicket() {
+  if (selected.value) void router.push({ path: '/problem-changes/new', query: { action: 'replace', problem_id: selected.value.problem_id, target_scope: 'public' } })
+}
+async function finishExam() {
+  try { await ElMessageBox.confirm('交卷后不能再次进入本场考试，也不能继续提交。确认交卷？', '交卷', { type: 'warning', confirmButtonText: '确认交卷', cancelButtonText: '取消' }) }
+  catch { return }
   finishing.value = true
   try {
-    const { data } = await client.post(`/exams/${detail.value.exam.id}/finish`)
-    detail.value.finished_at = data.finished_at
-    examLock.unlock()
-    ElMessage.success('考试已结束')
-    router.push(examListPath())
-  } catch (err: any) {
-    ElMessage.error(err.response?.data?.error || err.message)
-  } finally {
-    finishing.value = false
-  }
+    await flush()
+    await generatedApi.finishExam({ path: { id: examID.value } })
+    await exitExam('已交卷')
+  } catch (err: any) { ElMessage.error(err.response?.data?.error || '交卷失败') }
+  finally { finishing.value = false }
 }
-
-async function leavePage() {
-  if (deadlineReached()) {
-    await handleDeadlineReached()
-    return
-  }
-  router.push(examListPath())
-}
-
-function examListPath() {
-  const courseID = detail.value?.exam?.course_id
-  return courseID ? `/my/courses/${courseID}/exams` : '/my/courses'
-}
-
-function ensureEditorState(problemID: number) {
-  if (!editorStates[problemID]) {
-    const submission = preferredSubmission(problemID)
-    const language = submission?.language || 'cpp'
-    editorStates[problemID] = {
-      language,
-      source: loadSubmissionDraft({ userId: auth.user?.id || 0, resourceType: 'exam', resourceId: examID.value, problemId: problemID }, language) ?? submission?.source_code ?? '',
-      live: null,
-      dirty: false
-    }
-  }
-  return editorStates[problemID]
-}
-
-function hydrateEditorStatesFromHistory() {
-  for (const entry of detail.value?.problems || []) {
-    const state = editorStates[entry.problem.id]
-    if (!state || state.dirty) continue
-    const submission = preferredSubmission(entry.problem.id)
-    if (submission) {
-      state.language = submission.language
-      state.source = loadSubmissionDraft({ userId: auth.user?.id || 0, resourceType: 'exam', resourceId: examID.value, problemId: entry.problem.id }, state.language) ?? submission.source_code ?? ''
-      continue
-    }
-    state.source = loadSubmissionDraft({ userId: auth.user?.id || 0, resourceType: 'exam', resourceId: examID.value, problemId: entry.problem.id }, state.language) || ''
-  }
-}
-
-function preferredSubmission(problemID: number) {
-	return latestHistory.value.find((item) => item.problem_id === problemID) || null
-}
-
-function problemScoreText(problemID: number) {
-  const item = scoreForProblem(problemID)
-  if (!item?.submission_id) return '未提交'
-  if (detail.value?.manual_review && !item.score_ready) return '待评分'
-  if (!item.score_ready) return '计算中'
-  return `${item.best_score} / ${item.score}`
-}
-
-function scoreForProblem(problemID: number) {
-  return detail.value?.problem_scores?.find((item: any) => item.problem.id === problemID)
-}
-
-function problemLabel(entry: DetailProblem, index?: number) {
-  if (entry.label?.trim()) return entry.label.trim()
-  const position =
-    typeof index === 'number' ? index : detail.value?.problems?.findIndex((item: DetailProblem) => item.problem.id === entry.problem.id)
-  if (typeof position === 'number' && position >= 0) return defaultProblemLabel(position)
-  return defaultProblemLabel(0)
-}
-
-function defaultProblemLabel(index: number) {
-  index += 1
-  let label = ''
-  while (index > 0) {
-    index -= 1
-    label = String.fromCharCode(65 + (index % 26)) + label
-    index = Math.floor(index / 26)
-  }
-  return label
-}
-
-function scheduleDeadlineCheck() {
-  clearDeadlineTimers()
-  if (canManage.value || !detail.value?.exam?.ends_at || detail.value.closed || detail.value.finished_at) return
-  const deadline = new Date(detail.value.exam.ends_at).getTime()
-  const delay = deadline - Date.now()
-  if (delay <= 0) {
-    void handleDeadlineReached()
-    return
-  }
-  deadlineTimer = window.setTimeout(handleDeadlineReached, Math.min(delay + 1000, 2147483647))
-  deadlinePoller = window.setInterval(() => {
-    if (deadlineReached()) void handleDeadlineReached()
-  }, 30000)
-}
-
-function clearDeadlineTimers() {
-  if (deadlineTimer) {
-    window.clearTimeout(deadlineTimer)
-    deadlineTimer = null
-  }
-  if (deadlinePoller) {
-    window.clearInterval(deadlinePoller)
-    deadlinePoller = null
-  }
-}
-
-function deadlineReached() {
-  if (!detail.value?.exam?.ends_at) return false
-  return Date.now() >= new Date(detail.value.exam.ends_at).getTime()
-}
-
-async function handleDeadlineReached() {
-  if (canManage.value || !detail.value) return
-  clearDeadlineTimers()
-  try {
-    const { data } = await client.get(`/exams/${detail.value.exam.id}`)
-    detail.value = data
-  } catch (err: any) {
-    if (handleInvalidExamError(err)) return
-    // If refresh fails at the cutoff moment, unlock locally so the student can leave.
-  }
-  exitClosedExam()
-}
-
-function exitClosedExam() {
-  clearDeadlineTimers()
-  examLock.unlock()
-  if (detail.value) detail.value.closed = true
-  ElMessage.warning('考试已截止，已自动退出')
-  router.replace(examListPath())
-}
-
-function handleInvalidExamError(err: any) {
-  if (canManage.value || !isInvalidExamError(err)) return false
-  const message = String(err?.response?.data?.error || '').toLowerCase()
-  if (message.includes('has not started')) {
-    forceExitExam('考试未开始，不能进入')
-  } else {
-    forceExitExam('考试已删除或已失效，已自动退出')
-  }
-  return true
-}
-
-function isInvalidExamError(err: any) {
-  const status = err?.response?.status
-  if (status === 404) return true
-  if (status !== 403 || err?.response?.data?.finished_at) return false
-  const message = String(err?.response?.data?.error || '').toLowerCase()
-  return (
-    message.includes('forbidden') ||
-    message.includes('not available') ||
-    message.includes('not found') ||
-    message.includes('has not started')
-  )
-}
-
-function forceExitExam(message: string) {
-  forceLeavingExam = true
-  clearExamRuntimeState(currentExamID())
-  ElMessage.warning(message)
-  router.replace(examListPath())
-}
-
-function currentExamID() {
-  return detail.value?.exam?.id || examID.value || examLock.examId
-}
-
-function clearExamRuntimeState(id?: number) {
-  clearDeadlineTimers()
-  closeLiveStreams()
-  examLock.unlock()
-  detail.value = null
-  activeEntry.value = null
-  history.value = []
-  submitting.value = false
-  finishing.value = false
-  for (const key of Object.keys(editorStates)) delete editorStates[Number(key)]
-  clearExamDraftCache(id)
-}
-
-function closeLiveStream(stream: AuthenticatedEventSource) {
-  stream.close()
-  liveStreams.delete(stream)
-}
-
-function closeLiveStreams() {
-  for (const stream of liveStreams) stream.close()
-  liveStreams.clear()
-}
-
-function clearExamDraftCache(id?: number) {
-  if (!id) return
-  const prefix = `school-oj-draft:exam:${id}:`
-  for (let index = localStorage.length - 1; index >= 0; index -= 1) {
-    const key = localStorage.key(index)
-    if (key?.startsWith(prefix)) localStorage.removeItem(key)
-  }
-}
-
-watch(
-  examLocked,
-  (locked) => {
-    if (locked) {
-      examLock.lock(detail.value?.exam?.id, undefined, detail.value?.exam?.title)
-      return
-    }
-    if (detail.value?.exam?.id === examLock.examId) examLock.unlock()
-  },
-  { immediate: true }
-)
-watch(() => route.params.id, loadDetail)
-
-onBeforeRouteLeave(() => {
-  if (forceLeavingExam) return true
-  if (!examLocked.value && detail.value?.exam?.id === examLock.examId) examLock.unlock()
-  return true
-})
-
-onBeforeUnmount(() => {
-  clearDeadlineTimers()
-  closeLiveStreams()
-})
-
-onMounted(async () => {
-  examLock.hydrate()
-  await loadDetail()
-})
+watch(() => route.params.label, () => { submitVisible.value = false; submissionVisible.value = false; stream?.close() })
+watch(examID, () => { detail.value = null; history.value = []; latest.value = []; void initialize() })
+onMounted(() => { void initialize(); poller = window.setInterval(checkState, 15000) })
+onBeforeUnmount(() => { if (poller) window.clearInterval(poller); if (deadline) window.clearTimeout(deadline); stream?.close() })
 </script>
 
 <style scoped>
-.exam-workbench {
-  display: grid;
-  gap: 14px;
-}
-
-.exam-tabs {
-  display: flex;
-  align-items: stretch;
-  flex-wrap: wrap;
-  gap: 8px;
-}
-
-@media (max-width: 760px) {
-  .exam-tabs { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); }
-}
+.exam-page { min-height: 100%; padding: 24px 20px 58px; background: color-mix(in srgb, var(--surface) 74%, #edf2f7); }
+.exam-shell { width: min(1320px, 100%); margin: 0 auto; }
+.exam-content { padding-top: 16px; min-width: 0; }
+.description-layout { display: grid; grid-template-columns: minmax(0, 1fr) 320px; gap: 16px; }
+.description-panel, .exam-info { padding: 20px; min-width: 0; }
+.description-panel h2, .exam-info h3 { margin: 0 0 18px; }
+.description-panel { min-height: 300px; }
+.exam-info dl > div { display: grid; grid-template-columns: 80px 1fr; gap: 8px; padding: 12px 0; border-top: 1px solid var(--border); }
+.exam-info dt { color: var(--muted); }
+.exam-info dd { margin: 0; text-align: right; overflow-wrap: anywhere; }
+@media (max-width: 880px) { .description-layout { grid-template-columns: minmax(0, 1fr); } }
+@media (max-width: 600px) { .exam-page { padding: 16px 10px 36px; } }
 </style>

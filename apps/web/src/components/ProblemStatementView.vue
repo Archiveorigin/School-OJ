@@ -10,7 +10,7 @@
       <div v-if="showTitle" class="statement-head">
         <h1>{{ problem.title }}</h1>
       </div>
-      <MarkdownRenderer :source="problem.statement" :problem-id="problem.id" />
+      <MarkdownRenderer :source="problem.statement" :problem-id="problem.id" :asset-base="assetBase" />
     </section>
 
     <aside v-if="showMeta" class="panel meta-box">
@@ -67,6 +67,7 @@ const props = withDefaults(
     showTags?: boolean
     showMeta?: boolean
     embedded?: boolean
+    assetBase?: string
   }>(),
   {
     showDifficulty: true,

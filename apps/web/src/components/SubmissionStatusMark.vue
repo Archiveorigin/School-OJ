@@ -2,33 +2,34 @@
   <svg
     class="submission-status-mark"
     xmlns="http://www.w3.org/2000/svg"
-    viewBox="0 0 156 48"
-    width="156"
-    height="48"
+    :viewBox="compact ? '0 0 64 28' : '0 0 156 48'"
+    :width="compact ? 64 : 156"
+    :height="compact ? 28 : 48"
     fill="none"
     role="img"
     :aria-label="visual.ariaLabel"
   >
     <title>{{ visual.ariaLabel }}</title>
-    <rect width="156" height="48" rx="14" :fill="visual.fill" />
+    <rect :width="compact ? 64 : 156" :height="compact ? 28 : 48" :rx="compact ? 6 : 14" :fill="visual.fill" />
     <text
-      x="78"
-      y="30"
+      :x="compact ? 32 : 78"
+      :y="compact ? 19 : 30"
       fill="white"
       text-anchor="middle"
-      font-size="17"
+      :font-size="compact ? 13 : 17"
       font-weight="800"
       font-family="Inter, Microsoft YaHei, Arial, sans-serif"
     >
-      {{ visual.label }}
+      {{ compact ? shortVerdicts[status] || visual.label : visual.label }}
     </text>
   </svg>
 </template>
 
 <script setup lang="ts">
 import { computed } from 'vue'
+import { shortVerdicts } from '../features/submissions/presentation'
 
-const props = defineProps<{ status: string }>()
+const props = defineProps<{ status: string; compact?: boolean }>()
 
 const terminalFailures = new Set([
   'wrong_answer',
@@ -42,6 +43,8 @@ const terminalFailures = new Set([
 
 const visual = computed(() => {
   const status = props.status.trim().toLowerCase()
+
+  if (status === 'recorded') return { label: '已记录', ariaLabel: '已记录', fill: '#64748b' }
 
   if (status === 'accepted' || status === 'ac') {
     return { label: 'Accepted', ariaLabel: '通过', fill: '#22c55e' }

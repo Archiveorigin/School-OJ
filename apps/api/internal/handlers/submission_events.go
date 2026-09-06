@@ -49,6 +49,10 @@ func (s Server) submissionEvents(c *gin.Context) {
 			writeSSE(c, "error", gin.H{"error": "submission not found"})
 			return true
 		}
+		if !s.streamExamAllowed(&user, sub) {
+			writeSSE(c, "error", gin.H{"error": "考试权限已变更", "code": "EXAM_SCOPE_REQUIRED"})
+			return true
+		}
 		if s.shouldRedactSubmission(user, sub, time.Now()) {
 			redactSubmission(&sub)
 		}
@@ -97,6 +101,10 @@ func (s Server) submissionEvents(c *gin.Context) {
 				return
 			}
 		case now := <-heartbeat.C:
+			if !s.streamExamAllowed(&user, initial) {
+				writeSSE(c, "error", gin.H{"error": "考试权限已变更", "code": "EXAM_SCOPE_REQUIRED"})
+				return
+			}
 			writeSSE(c, "ping", gin.H{"time": now.UTC().Format(time.RFC3339)})
 		}
 	}

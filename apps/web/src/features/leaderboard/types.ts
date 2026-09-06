@@ -42,6 +42,7 @@ export interface LeaderboardData {
   scoringRule: LeaderboardScoringRule
   title: string
   subtitle?: string
+  frozen?: boolean
   durationSeconds: number
   currentTimeSeconds: number
   solvedLabel: string

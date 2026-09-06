@@ -14,7 +14,6 @@
       destroy-on-close
     >
       <div class="dialog-toolbar">
-        <p>仅管理人员可查看。每个测试点按名称对应输入和输出。</p>
         <el-button type="primary" :loading="downloadingAll" :disabled="!tests.length" @click="downloadAll">
           下载全部样例
         </el-button>

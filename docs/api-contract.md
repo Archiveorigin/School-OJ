@@ -81,3 +81,16 @@ npm run api:check
 | `x-roles` | 需要的基础角色列表。 |
 
 旧题目直接写接口仍保留在契约中，并标记 `deprecated: true`；它们只返回工单入口提示，不代表可以恢复直接修改题目。
+
+## 6. 考试工作区与团队准入契约
+
+当前包含 163 个 operationId。新增操作为 `enterExam`、`recordExamActivity`、`listExamActivity`、`getExamProblemAsset`、`previewTeamJoin`。详情见 [接口索引](code-map.md#46-考试与提交接口)。
+
+- `getExam` 返回 `{ exam, problems, can_manage, can_submit, ranking_visible, manual_review, now, ... }`，学生需先显式入场，GET 不再建立考试记录。
+- `getSubmission` 返回 `{ submission, results, case_summary }`，不是裸 Submission。`case_summary` 是 `{ passed, total } | null`；总数来自提交的 `problem_version_id`，隐藏结果时统计为空。
+- `Team` 通过 `can_manage`、`can_edit_permissions` 驱动管理操作；`join_code` 只对管理者存在，`TeamJoinPreview` 不提供内部团队资料。
+- `ExamActivityRequest` 每批 1–30 项，事件只允许 `window_leave`、`window_return`、`devtools_shortcut`；IP、用户及接收时间不由客户端指定。日志查询支持 `user_id/event/from/to/page/page_size`。
+- 全局考试拦截错误：HTTP 403，`code: EXAM_SCOPE_REQUIRED`，附带 `exam_id`；状态查询失败为 HTTP 503，`EXAM_STATE_UNAVAILABLE` 或 `AUTH_STATE_UNAVAILABLE`。前端不得据此退出登录或解除考试锁。
+- 同账号不同场次入场、已处理申请的相反审核结果冲突返回 409；重复入场和重复同向审核幂等，交卷后入场返回 403。
+
+生成器支持 OpenAPI 3.0 `nullable`，并自动产出 `| null`，不得在前端手动消除统计或人工评分的空值类型。

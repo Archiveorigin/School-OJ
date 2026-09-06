@@ -32,12 +32,26 @@ var (
 const defaultTeamContestAwardPercent = 10
 
 type teamView struct {
-	models.Team
-	OwnerName        string          `json:"owner_name"`
-	MemberCount      int64           `json:"member_count"`
-	MyRole           models.TeamRole `json:"my_role,omitempty"`
-	Joined           bool            `json:"joined"`
-	ApplicationState string          `json:"application_status,omitempty"`
+	ID                 uint            `json:"id"`
+	Name               string          `json:"name"`
+	Slug               string          `json:"slug"`
+	OwnerID            uint            `json:"owner_id"`
+	Visibility         string          `json:"visibility"`
+	JoinMode           string          `json:"join_mode"`
+	ContestPermission  string          `json:"contest_permission"`
+	Description        string          `json:"description"`
+	Announcement       string          `json:"announcement"`
+	IconURL            string          `json:"icon_url"`
+	CreatedAt          time.Time       `json:"created_at"`
+	UpdatedAt          time.Time       `json:"updated_at"`
+	JoinCode           string          `json:"join_code,omitempty"`
+	CanManage          bool            `json:"can_manage"`
+	CanEditPermissions bool            `json:"can_edit_permissions"`
+	OwnerName          string          `json:"owner_name"`
+	MemberCount        int64           `json:"member_count"`
+	MyRole             models.TeamRole `json:"my_role,omitempty"`
+	Joined             bool            `json:"joined"`
+	ApplicationState   string          `json:"application_status,omitempty"`
 }
 
 type teamMemberView struct {
@@ -183,6 +197,8 @@ func (s Server) listTeams(c *gin.Context) {
 
 func (s Server) teamViews(teams []models.Team, userID uint) []teamView {
 	views := make([]teamView, 0, len(teams))
+	var user models.User
+	_ = s.DB.Select("id", "role").First(&user, userID).Error
 	for _, team := range teams {
 		var owner models.User
 		_ = s.DB.Select("id", "name").First(&owner, team.OwnerID).Error
@@ -196,8 +212,21 @@ func (s Server) teamViews(teams []models.Team, userID uint) []teamView {
 				applicationState = application.Status
 			}
 		}
+		canManage := hasTeamManagerPermission(user.Role, membership.Role, joined)
+		code := ""
+		if canManage {
+			code = team.JoinCode
+		}
+		announcement := team.Announcement
+		if !joined && !canManage {
+			announcement = ""
+		}
 		views = append(views, teamView{
-			Team:             team,
+			ID: team.ID, Name: team.Name, Slug: team.Slug, OwnerID: team.OwnerID,
+			Visibility: team.Visibility, JoinMode: team.JoinMode, ContestPermission: team.ContestPermission,
+			Description: team.Description, Announcement: announcement, IconURL: team.IconURL,
+			CreatedAt: team.CreatedAt, UpdatedAt: team.UpdatedAt, JoinCode: code,
+			CanManage: canManage, CanEditPermissions: user.Role == models.RoleAdmin || membership.Role == models.TeamRoleOwner,
 			OwnerName:        owner.Name,
 			MemberCount:      memberCount,
 			MyRole:           membership.Role,
@@ -369,10 +398,6 @@ func (s Server) joinTeam(c *gin.Context) {
 	if !ok {
 		return
 	}
-	if _, joined := s.teamMembership(team.ID, user.ID); joined {
-		c.JSON(http.StatusOK, gin.H{"joined": true})
-		return
-	}
 	var req struct {
 		JoinCode string `json:"join_code"`
 		Message  string `json:"message"`
@@ -380,31 +405,19 @@ func (s Server) joinTeam(c *gin.Context) {
 	if !bind(c, &req) {
 		return
 	}
-	switch team.JoinMode {
-	case "open":
-		if err := s.DB.Create(&models.TeamMembership{TeamID: team.ID, UserID: user.ID, Role: models.TeamRoleMember}).Error; err != nil {
-			c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
-			return
-		}
+	if len([]rune(strings.TrimSpace(req.Message))) > 300 {
+		c.JSON(400, gin.H{"error": "申请说明不能超过 300 字"})
+		return
+	}
+	joined, err := s.joinTeamTransaction(team.ID, user.ID, req.JoinCode, req.Message)
+	if err != nil {
+		examMutationError(c, err)
+		return
+	}
+	if joined {
 		services.Audit(c, s.DB, "team.join", "team", team.ID, nil)
-		c.JSON(http.StatusCreated, gin.H{"joined": true})
-	case "invitation":
-		if team.JoinCode == "" || !strings.EqualFold(strings.TrimSpace(req.JoinCode), team.JoinCode) {
-			c.JSON(http.StatusForbidden, gin.H{"error": "团队邀请码无效"})
-			return
-		}
-		if err := s.DB.Create(&models.TeamMembership{TeamID: team.ID, UserID: user.ID, Role: models.TeamRoleMember}).Error; err != nil {
-			c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
-			return
-		}
-		services.Audit(c, s.DB, "team.join.invitation", "team", team.ID, nil)
-		c.JSON(http.StatusCreated, gin.H{"joined": true})
-	default:
-		application := models.TeamJoinApplication{TeamID: team.ID, UserID: user.ID, Message: strings.TrimSpace(req.Message), Status: "pending"}
-		if err := s.DB.Create(&application).Error; err != nil {
-			c.JSON(http.StatusConflict, gin.H{"error": "已有待处理的加入申请"})
-			return
-		}
+		c.JSON(http.StatusOK, gin.H{"joined": true})
+	} else {
 		c.JSON(http.StatusAccepted, gin.H{"joined": false, "application_status": "pending"})
 	}
 }
@@ -415,17 +428,8 @@ func (s Server) leaveTeam(c *gin.Context) {
 	if !ok {
 		return
 	}
-	membership, joined := s.teamMembership(team.ID, user.ID)
-	if !joined {
-		c.JSON(http.StatusNotFound, gin.H{"error": "team membership not found"})
-		return
-	}
-	if membership.Role == models.TeamRoleOwner {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "创建者不能退出团队，请先转让团队"})
-		return
-	}
-	if err := s.DB.Delete(&membership).Error; err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+	if err := s.changeTeamMembership(user, team.ID, user.ID, "leave", ""); err != nil {
+		examMutationError(c, err)
 		return
 	}
 	services.Audit(c, s.DB, "team.leave", "team", team.ID, nil)
@@ -480,18 +484,8 @@ func (s Server) updateTeamMember(c *gin.Context) {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "成员职级只能设为管理员或团员"})
 		return
 	}
-	actor, _ := s.teamMembership(team.ID, user.ID)
-	target, found := s.teamMembership(team.ID, targetID)
-	if !found {
-		c.JSON(http.StatusNotFound, gin.H{"error": "team member not found"})
-		return
-	}
-	if target.Role == models.TeamRoleOwner || (actor.Role != models.TeamRoleOwner && user.Role != models.RoleAdmin) {
-		c.JSON(http.StatusForbidden, gin.H{"error": "只有创建者可以调整成员职级"})
-		return
-	}
-	if err := s.DB.Model(&target).Update("role", req.Role).Error; err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+	if err := s.changeTeamMembership(user, team.ID, targetID, "role", req.Role); err != nil {
+		examMutationError(c, err)
 		return
 	}
 	services.Audit(c, s.DB, "team.member.role", "team", team.ID, datatypes.JSONMap{"user_id": targetID, "role": req.Role})
@@ -508,18 +502,8 @@ func (s Server) removeTeamMember(c *gin.Context) {
 	if !ok {
 		return
 	}
-	actor, _ := s.teamMembership(team.ID, user.ID)
-	target, found := s.teamMembership(team.ID, targetID)
-	if !found {
-		c.JSON(http.StatusNotFound, gin.H{"error": "team member not found"})
-		return
-	}
-	if target.Role == models.TeamRoleOwner || (target.Role == models.TeamRoleAdmin && actor.Role != models.TeamRoleOwner && user.Role != models.RoleAdmin) {
-		c.JSON(http.StatusForbidden, gin.H{"error": "没有权限移除该成员"})
-		return
-	}
-	if err := s.DB.Delete(&target).Error; err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+	if err := s.changeTeamMembership(user, team.ID, targetID, "remove", ""); err != nil {
+		examMutationError(c, err)
 		return
 	}
 	services.Audit(c, s.DB, "team.member.remove", "team", team.ID, datatypes.JSONMap{"user_id": targetID})
@@ -562,22 +546,8 @@ func (s Server) reviewTeamApplication(c *gin.Context) {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "action must be approve or reject"})
 		return
 	}
-	var application models.TeamJoinApplication
-	if err := s.DB.Where("id = ? AND team_id = ? AND status = 'pending'", applicationID, team.ID).First(&application).Error; err != nil {
-		c.JSON(http.StatusNotFound, gin.H{"error": "application not found"})
-		return
-	}
-	now := time.Now()
-	if err := s.DB.Transaction(func(tx *gorm.DB) error {
-		if req.Action == "approve" {
-			membership := models.TeamMembership{TeamID: team.ID, UserID: application.UserID, Role: models.TeamRoleMember}
-			if err := tx.Clauses(clause.OnConflict{DoNothing: true}).Create(&membership).Error; err != nil {
-				return err
-			}
-		}
-		return tx.Model(&application).Updates(map[string]any{"status": map[bool]string{true: "approved", false: "rejected"}[req.Action == "approve"], "reviewed_by": user.ID, "reviewed_at": now}).Error
-	}); err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+	if err := s.reviewTeamApplicationTransaction(user, team.ID, applicationID, req.Action); err != nil {
+		examMutationError(c, err)
 		return
 	}
 	c.JSON(http.StatusOK, gin.H{"reviewed": true})

@@ -59,19 +59,15 @@ describe('problem submission UI regressions', () => {
     expect(submissionsSource).not.toContain('detail.results')
   })
 
-  it('keeps the four-card desktop layout and one-column mobile layout', () => {
+  it('uses wrapping metadata and a shared numbered white code region', () => {
     expect(submissionDetailDialogSource).toContain(
       'width="min(1200px, calc(100vw - 28px))"',
     )
-    expect(submissionDetailDialogSource).toContain(
-      'grid-template-columns: repeat(4, minmax(0, 1fr))',
-    )
-    expect(submissionDetailDialogSource).toContain('min-height: 350px')
-    expect(submissionDetailDialogSource).toMatch(
-      /@media \(max-width: 760px\)[\s\S]*\.submission-detail-summary\s*\{\s*grid-template-columns:\s*1fr;/,
-    )
-    expect(submissionDetailDialogSource).toMatch(
-      /@media \(max-width: 760px\)[\s\S]*\.submission-source-code\s*\{\s*min-height:\s*260px;/,
-    )
+    expect(submissionDetailDialogSource).toContain('flex-wrap: wrap')
+    expect(submissionDetailDialogSource).toContain('<SourceCodeViewer')
+    const source = readFileSync(resolve(process.cwd(), 'src/components/SourceCodeViewer.vue'), 'utf8')
+    expect(source).toContain('source-lines')
+    expect(source).toContain('background: #fff')
+    expect(source).toContain('border-right: 1px solid #22a06b')
   })
 })

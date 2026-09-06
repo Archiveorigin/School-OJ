@@ -327,7 +327,13 @@ func (s Server) login(c *gin.Context) {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 		return
 	}
+	c.Set("user", user)
 	services.Audit(c, s.DB, "auth.login", "user", user.ID, nil)
+	if user.Role == models.RoleStudent {
+		if exam, err := activeExamInDB(s.DB, user.ID, time.Now()); err == nil {
+			_ = appendExamActivity(s.DB, exam.ID, user.ID, fmt.Sprintf("login:%d", time.Now().UnixNano()), "login", c.ClientIP(), nil, nil)
+		}
+	}
 	c.JSON(http.StatusOK, gin.H{"token": token, "user": user})
 }
 
@@ -361,9 +367,13 @@ func (s Server) activeExam(c *gin.Context) {
 		c.JSON(http.StatusOK, gin.H{"active": false})
 		return
 	}
-	exam, ok := s.activeStartedExamAttemptForStudent(user.ID)
-	if !ok {
+	exam, err := activeExamInDB(s.DB, user.ID, time.Now())
+	if errors.Is(err, gorm.ErrRecordNotFound) {
 		c.JSON(http.StatusOK, gin.H{"active": false})
+		return
+	}
+	if err != nil {
+		examMutationError(c, err)
 		return
 	}
 	c.JSON(http.StatusOK, gin.H{
@@ -3371,12 +3381,12 @@ func (s Server) getExam(c *gin.Context) {
 		return
 	}
 	now := time.Now()
-	closed := item.EndsAt != nil && now.After(*item.EndsAt)
+	closed := item.EndsAt != nil && !now.Before(*item.EndsAt)
 	notStarted := item.StartsAt != nil && now.Before(*item.StartsAt)
 	var finishedAt *time.Time
 	if user.Role == models.RoleStudent {
 		finishedAt = s.examFinishedAt(item.ID, user.ID)
-		if reason, recordAttempt := studentExamEntryDecision(item, now, finishedAt); reason != "" {
+		if reason, _ := studentExamEntryDecision(item, now, finishedAt); reason != "" {
 			resp := gin.H{"error": reason}
 			if finishedAt != nil {
 				resp["finished_at"] = finishedAt
@@ -3386,8 +3396,15 @@ func (s Server) getExam(c *gin.Context) {
 			}
 			c.JSON(http.StatusForbidden, resp)
 			return
-		} else if recordAttempt {
-			_ = s.recordExamAttempt(item.ID, user.ID)
+		}
+		active, err := activeExamInDB(s.DB, user.ID, now)
+		if err != nil && !errors.Is(err, gorm.ErrRecordNotFound) {
+			examMutationError(c, err)
+			return
+		}
+		if active.ID != item.ID {
+			c.JSON(http.StatusForbidden, gin.H{"error": "请先确认进入考试", "code": "EXAM_ENTER_REQUIRED", "exam_id": item.ID})
+			return
 		}
 	}
 	summary := s.examSummary(item.ID, user.ID, true)
@@ -3397,6 +3414,7 @@ func (s Server) getExam(c *gin.Context) {
 	allSubmitted := user.Role == models.RoleStudent && s.examAllSubmitted(item.ID, user.ID)
 	c.JSON(http.StatusOK, gin.H{
 		"exam":            item,
+		"can_manage":      s.canManageCourse(user, item.CourseID),
 		"problems":        examProblemViews(item),
 		"now":             now,
 		"closed":          closed,
@@ -3423,8 +3441,8 @@ func studentExamEntryDecision(exam models.Exam, now time.Time, finishedAt *time.
 	if exam.StartsAt != nil && now.Before(*exam.StartsAt) {
 		return "exam has not started", false
 	}
-	if exam.EndsAt != nil && now.After(*exam.EndsAt) {
-		return "", false
+	if exam.EndsAt != nil && !now.Before(*exam.EndsAt) {
+		return "exam is closed", false
 	}
 	return "", true
 }
@@ -3452,7 +3470,7 @@ func (s Server) finishExam(c *gin.Context) {
 		c.JSON(http.StatusForbidden, gin.H{"error": "exam has not started"})
 		return
 	}
-	attempt, err := s.finishExamAttempt(item.ID, user.ID)
+	attempt, err := s.finishExamAttempt(item.ID, user.ID, c.ClientIP())
 	if err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 		return
@@ -4512,6 +4530,19 @@ func (s Server) createSubmission(c *gin.Context) {
 		Status:           status,
 	}
 	if err := s.DB.Transaction(func(tx *gorm.DB) error {
+		if user.Role == models.RoleStudent {
+			var lockedUser models.User
+			if err := tx.Clauses(clause.Locking{Strength: "UPDATE"}).First(&lockedUser, user.ID).Error; err != nil {
+				return err
+			}
+			active, err := activeExamInDB(tx, user.ID, time.Now())
+			if err != nil && !errors.Is(err, gorm.ErrRecordNotFound) {
+				return err
+			}
+			if err == nil && (sub.ExamID == nil || *sub.ExamID != active.ID) {
+				return &teamContentMutationError{403, "考试中仅可提交当前考试"}
+			}
+		}
 		if assignmentAttempt != nil {
 			attempt := models.AssignmentAttempt{AssignmentID: *assignmentAttempt, UserID: user.ID}
 			if err := tx.Where("assignment_id = ? AND user_id = ?", *assignmentAttempt, user.ID).FirstOrCreate(&attempt).Error; err != nil {
@@ -4519,9 +4550,10 @@ func (s Server) createSubmission(c *gin.Context) {
 			}
 		}
 		if examAttempt != nil {
-			attempt := models.ExamAttempt{ExamID: *examAttempt, UserID: user.ID}
-			if err := tx.Where("exam_id = ? AND user_id = ?", *examAttempt, user.ID).FirstOrCreate(&attempt).Error; err != nil {
-				return err
+			scoped := s
+			scoped.DB = tx
+			if ok, reason := scoped.canStudentSubmitExam(user.ID, *examAttempt, problem.ID); !ok {
+				return &teamContentMutationError{403, reason}
 			}
 		}
 		if err := tx.Create(&sub).Error; err != nil {
@@ -4532,7 +4564,7 @@ func (s Server) createSubmission(c *gin.Context) {
 		}
 		return nil
 	}); err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		examMutationError(c, err)
 		return
 	}
 	if manualReview {
@@ -4827,6 +4859,13 @@ func (s Server) getSubmission(c *gin.Context) {
 	if !hidden && s.canViewSubmissionResults(user, sub) {
 		s.DB.Where("submission_id = ?", sub.ID).Order("id asc").Find(&results)
 	}
+	var caseSummary *submissionCaseSummary
+	if !hidden && s.canViewSubmissionResults(user, sub) {
+		var version models.ProblemVersion
+		if err := s.DB.First(&version, sub.ProblemVersionID).Error; err == nil {
+			caseSummary = summarizeSubmissionCases(sub.Status, version.Manifest, results)
+		}
+	}
 	if hidden {
 		redactSubmission(&sub)
 	}
@@ -4834,7 +4873,7 @@ func (s Server) getSubmission(c *gin.Context) {
 	if sub.UserID != user.ID && isStandaloneProblemSubmission(sub) && s.isProblemPublic(sub.ProblemID) {
 		submission[0].StudentNo = ""
 	}
-	c.JSON(http.StatusOK, gin.H{"submission": submission[0], "results": results})
+	c.JSON(http.StatusOK, gin.H{"submission": submission[0], "results": results, "case_summary": caseSummary})
 }
 
 func (s Server) leaderboard(c *gin.Context) {
@@ -5347,29 +5386,6 @@ func (s Server) examContainsProblem(examID uint, problemID uint) bool {
 	return count > 0
 }
 
-func (s Server) activeStartedExamAttemptForStudent(userID uint) (models.Exam, bool) {
-	var attempts []models.ExamAttempt
-	if err := s.DB.Where("user_id = ? AND finished_at IS NULL", userID).Order("updated_at desc, id desc").Limit(20).Find(&attempts).Error; err != nil {
-		return models.Exam{}, false
-	}
-	now := time.Now()
-	for _, attempt := range attempts {
-		var exam models.Exam
-		result := s.DB.Where("deleted_at IS NULL").Limit(1).Find(&exam, attempt.ExamID)
-		if result.Error != nil || result.RowsAffected == 0 {
-			continue
-		}
-		if exam.StartsAt != nil && now.Before(*exam.StartsAt) {
-			continue
-		}
-		if exam.EndsAt != nil && now.After(*exam.EndsAt) {
-			continue
-		}
-		return exam, true
-	}
-	return models.Exam{}, false
-}
-
 func (s Server) activeExamIDsForStudent(userID uint) []uint {
 	now := time.Now()
 	var ids []uint
@@ -5428,10 +5444,14 @@ func (s Server) canStudentSubmitExam(userID uint, examID uint, problemID uint) (
 	if exam.StartsAt != nil && now.Before(*exam.StartsAt) {
 		return false, "exam has not started"
 	}
-	if exam.EndsAt != nil && now.After(*exam.EndsAt) {
+	if exam.EndsAt != nil && !now.Before(*exam.EndsAt) {
 		return false, "exam is closed"
 	}
-	if s.examFinishedAt(examID, userID) != nil {
+	var attempt models.ExamAttempt
+	if err := s.DB.Where("exam_id = ? AND user_id = ?", examID, userID).First(&attempt).Error; err != nil {
+		return false, "exam has not been entered"
+	}
+	if attempt.FinishedAt != nil {
 		return false, "exam has been finished"
 	}
 	return true, ""
@@ -5636,25 +5656,26 @@ func (s Server) recordAssignmentAttempt(assignmentID uint, userID uint) error {
 	return s.DB.Where("assignment_id = ? AND user_id = ?", assignmentID, userID).FirstOrCreate(&attempt).Error
 }
 
-func (s Server) recordExamAttempt(examID uint, userID uint) error {
-	attempt := models.ExamAttempt{ExamID: examID, UserID: userID}
-	return s.DB.Where("exam_id = ? AND user_id = ?", examID, userID).FirstOrCreate(&attempt).Error
-}
-
-func (s Server) finishExamAttempt(examID uint, userID uint) (models.ExamAttempt, error) {
-	attempt := models.ExamAttempt{ExamID: examID, UserID: userID}
-	if err := s.DB.Where("exam_id = ? AND user_id = ?", examID, userID).FirstOrCreate(&attempt).Error; err != nil {
-		return models.ExamAttempt{}, err
-	}
-	if attempt.FinishedAt != nil {
-		return attempt, nil
-	}
-	now := time.Now()
-	if err := s.DB.Model(&attempt).Update("finished_at", now).Error; err != nil {
-		return models.ExamAttempt{}, err
-	}
-	attempt.FinishedAt = &now
-	return attempt, nil
+func (s Server) finishExamAttempt(examID uint, userID uint, ip string) (models.ExamAttempt, error) {
+	var attempt models.ExamAttempt
+	err := s.DB.Transaction(func(tx *gorm.DB) error {
+		var user models.User
+		if err := tx.Clauses(clause.Locking{Strength: "UPDATE"}).First(&user, userID).Error; err != nil {
+			return err
+		}
+		if err := tx.Where("exam_id = ? AND user_id = ?", examID, userID).First(&attempt).Error; err != nil {
+			return err
+		}
+		if attempt.FinishedAt != nil {
+			return nil
+		}
+		now := time.Now()
+		if err := tx.Model(&attempt).Update("finished_at", now).Error; err != nil {
+			return err
+		}
+		return appendExamActivity(tx, examID, userID, "finish", "finish", ip, nil, datatypes.JSONMap{"finished_at": now})
+	})
+	return attempt, err
 }
 
 func (s Server) examFinishedAt(examID uint, userID uint) *time.Time {

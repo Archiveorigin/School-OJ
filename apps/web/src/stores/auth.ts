@@ -51,8 +51,9 @@ export const useAuthStore = defineStore('auth', {
           this.user = data
           setActiveToken(this.token)
           localStorage.setItem('school-oj-user', JSON.stringify(data))
-        } catch {
-          this.logout()
+        } catch (error: any) {
+          if (error.response?.status === 401) this.logout()
+          else throw error
         } finally {
           this.hydrated = true
           this.hydratePromise = null

@@ -3,6 +3,7 @@
     <header class="team-tabs">
       <button type="button" :class="{ active: activeTab === 'mine' }" @click="activeTab = 'mine'">我的团队</button>
       <button type="button" :class="{ active: activeTab === 'discover' }" @click="activeTab = 'discover'">发现</button>
+      <el-button plain @click="openJoinLink">加入团队</el-button>
       <el-button type="primary" plain @click="openCreate">创建团队</el-button>
     </header>
 
@@ -86,25 +87,12 @@
       </template>
     </el-dialog>
 
-    <el-dialog v-model="joinVisible" :title="`加入 ${joiningTeam?.name || '团队'}`" width="460px">
-      <template v-if="joiningTeam?.join_mode === 'invitation'">
-        <p class="dialog-hint">该团队采用邀请制，请输入团队管理员提供的邀请码。</p>
-        <el-input v-model="joinForm.join_code" placeholder="团队邀请码" @keyup.enter="joinTeam" />
-      </template>
-      <template v-else>
-        <p class="dialog-hint">向团队管理员简单介绍一下自己，申请通过后即可进入。</p>
-        <el-input v-model="joinForm.message" type="textarea" :rows="4" maxlength="300" show-word-limit placeholder="申请说明（选填）" />
-      </template>
-      <template #footer>
-        <el-button @click="joinVisible = false">取消</el-button>
-        <el-button type="primary" :loading="joining" @click="joinTeam">{{ joiningTeam?.join_mode === 'application' ? '提交申请' : '加入团队' }}</el-button>
-      </template>
-    </el-dialog>
   </section>
 </template>
 
 <script setup lang="ts">
-import { ElMessage } from 'element-plus'
+import { parseTeamJoinSlug } from '../../features/teams/join'
+import { ElMessage, ElMessageBox } from 'element-plus'
 import { onMounted, reactive, ref, watch } from 'vue'
 import { useRouter } from 'vue-router'
 import { client, type Team, type TeamRole } from '../../api/client'
@@ -116,9 +104,6 @@ const teams = ref<Team[]>([])
 const loading = ref(false)
 const createVisible = ref(false)
 const creating = ref(false)
-const joinVisible = ref(false)
-const joining = ref(false)
-const joiningTeam = ref<Team | null>(null)
 const form = reactive({
   name: '',
   slug: '',
@@ -129,7 +114,6 @@ const form = reactive({
   announcement: '',
   icon_url: ''
 })
-const joinForm = reactive({ join_code: '', message: '' })
 
 async function load() {
   loading.value = true
@@ -166,38 +150,16 @@ async function createTeam() {
   }
 }
 
-function requestJoin(team: Team) {
-  joiningTeam.value = team
-  Object.assign(joinForm, { join_code: '', message: '' })
-  if (team.join_mode === 'open') {
-    void joinTeam()
-    return
-  }
-  joinVisible.value = true
-}
-
-async function joinTeam() {
-  if (!joiningTeam.value) return
-  joining.value = true
+function requestJoin(team: Team) { void router.push(`/teams/${team.slug}/join`) }
+async function openJoinLink() {
   try {
-    const { data } = await client.post(`/teams/${joiningTeam.value.id}/join`, joinForm)
-    joinVisible.value = false
-    if (data.joined) {
-      ElMessage.success('已加入团队')
-      await router.push(`/teams/${joiningTeam.value.slug}`)
-    } else {
-      ElMessage.success('加入申请已提交')
-      await load()
-    }
-  } catch (err: any) {
-    ElMessage.error(err.response?.data?.error || err.message)
-  } finally {
-    joining.value = false
-  }
+    const { value } = await ElMessageBox.prompt('输入团队链接名或加入链接', '加入团队', { confirmButtonText: '下一步', inputValidator: value => Boolean(parseTeamJoinSlug(value || '')) || '请输入有效的团队链接名或链接' })
+    await router.push(`/teams/${parseTeamJoinSlug(value)}/join`)
+  } catch { /* Cancel keeps the current list. */ }
 }
 
 function openTeam(team: Team) {
-  if (team.joined) router.push(`/teams/${team.slug}`)
+  router.push(team.joined || team.can_manage ? `/teams/${team.slug}` : `/teams/${team.slug}/join`)
 }
 
 function teamRoleLabel(role: TeamRole) {

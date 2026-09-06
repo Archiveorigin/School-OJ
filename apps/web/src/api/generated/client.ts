@@ -17,6 +17,7 @@ export interface components {
     "error": string
     "ticket_route"?: string
     "exam_id"?: number
+    "code"?: string
   }
     "User": {
     "id": number
@@ -129,6 +130,11 @@ export interface components {
     "message": string
     "created_at": string
     "updated_at": string
+    "user_name"?: string
+    "problem_code"?: string
+    "problem_title"?: string
+    "manual_score"?: (number) | null
+    "manual_graded_at"?: (string) | null
   }
     "SubmissionCreateRequest": {
     "problem_id": number
@@ -175,6 +181,12 @@ export interface components {
     "icon_url"?: string
     "member_count"?: number
     "my_role"?: "owner" | "admin" | "member"
+    "join_code"?: string
+    "can_manage"?: boolean
+    "can_edit_permissions"?: boolean
+    "joined"?: boolean
+    "application_status"?: string
+    "contest_permission"?: "all" | "admin" | "owner"
   }
     "TeamContest": {
     "id": number
@@ -218,6 +230,104 @@ export interface components {
     "name": string
     "description": string
     "scope": string
+  }
+    "CaseSummary": ({
+    "passed": number
+    "total": number
+  }) | null
+    "SubmissionResult": {
+    "case_name": string
+    "status": string
+    "time_ms": number
+    "memory_kb": number
+    "message": string
+  }
+    "SubmissionDetail": {
+    "submission": components['schemas']["Submission"]
+    "results": (Array<components['schemas']["SubmissionResult"]>) | null
+    "case_summary": components['schemas']["CaseSummary"]
+  }
+    "Exam": {
+    "id": number
+    "course_id": number
+    "title": string
+    "description": string
+    "starts_at": (string) | null
+    "ends_at": (string) | null
+    "scoring_rule": "oi" | "ioi" | "acm"
+    "freeze_enabled": boolean
+    "freeze_duration_minutes": number
+    "settings": components['schemas']["JsonObject"]
+  }
+    "ExamProblem": {
+    "problem_id": number
+    "problem": components['schemas']["Problem"]
+    "label": string
+    "score": number
+  }
+    "ExamDetail": {
+    "exam": components['schemas']["Exam"]
+    "problems": Array<components['schemas']["ExamProblem"]>
+    "now": string
+    "closed": boolean
+    "not_started": boolean
+    "can_submit": boolean
+    "can_manage": boolean
+    "manual_review": boolean
+    "ranking_visible": boolean
+    "finished_at": (string) | null
+  }
+    "ExamEnterResponse": {
+    "exam_id": number
+    "entered_at": string
+    "active": boolean
+  }
+    "ExamActivityEvent": {
+    "id": string
+    "event": "window_leave" | "window_return" | "devtools_shortcut"
+    "client_at": string
+  }
+    "ExamActivityRequest": {
+    "events": Array<components['schemas']["ExamActivityEvent"]>
+  }
+    "ExamActivity": {
+    "id": number
+    "exam_id": number
+    "user_id": number
+    "user_name": string
+    "event_id": string
+    "event": "enter" | "finish" | "login" | "window_leave" | "window_return" | "devtools_shortcut" | "access_blocked"
+    "client_at": (string) | null
+    "ip": string
+    "meta": ({
+    [key: string]: unknown
+  }) | null
+    "created_at": string
+  }
+    "ExamActivityPage": {
+    "items": Array<components['schemas']["ExamActivity"]>
+    "total": number
+    "page": number
+    "page_size": number
+    "exam_title": string
+  }
+    "TeamJoinPreview": {
+    "id": number
+    "name": string
+    "slug": string
+    "icon_url": string
+    "visibility": "private" | "public"
+    "join_mode": "invitation" | "application" | "open"
+    "joined": boolean
+    "application_status": string
+  }
+    "TeamJoinRequest": {
+    "join_code"?: string
+    "message"?: string
+  }
+    "TeamJoinResponse": {
+    "joined": boolean
+    "application_status"?: string
   }
   }
 }
@@ -381,6 +491,11 @@ export const apiOperations = {
   "listProblemReviews": { method: "GET", path: "/problem-reviews" },
   "problemChangeTicketOnlyViaProblemReviewsIdReview": { method: "PUT", path: "/problem-reviews/{id}/review" },
   "problemChangeTicketOnlyViaProblemReviewsIdWithdraw": { method: "PUT", path: "/problem-reviews/{id}/withdraw" },
+  "enterExam": { method: "POST", path: "/exams/{id}/enter" },
+  "listExamActivity": { method: "GET", path: "/exams/{id}/activity" },
+  "recordExamActivity": { method: "POST", path: "/exams/{id}/activity" },
+  "getExamProblemAsset": { method: "GET", path: "/exams/{id}/problems/{problem_id}/assets/{asset_path}" },
+  "previewTeamJoin": { method: "GET", path: "/teams/{id}/join-preview" },
 } as const
 
 export type ApiOperationId = keyof typeof apiOperations
@@ -474,8 +589,8 @@ export const generatedApi = {
     requestOperation<components['schemas']["Team"], never>("getTeam", options),
   "updateTeam": (options: ApiRequestOptions<components['schemas']["JsonObject"]> = {}) =>
     requestOperation<components['schemas']["Team"], components['schemas']["JsonObject"]>("updateTeam", options),
-  "joinTeam": (options: ApiRequestOptions<components['schemas']["JsonObject"]> = {}) =>
-    requestOperation<components['schemas']["JsonObject"], components['schemas']["JsonObject"]>("joinTeam", options),
+  "joinTeam": (options: ApiRequestOptions<components['schemas']["TeamJoinRequest"]> = {}) =>
+    requestOperation<components['schemas']["TeamJoinResponse"], components['schemas']["TeamJoinRequest"]>("joinTeam", options),
   "leaveTeam": (options: ApiRequestOptions<components['schemas']["JsonObject"]> = {}) =>
     requestOperation<components['schemas']["JsonObject"], components['schemas']["JsonObject"]>("leaveTeam", options),
   "listTeamMembers": (options: ApiRequestOptions<never> = {}) =>
@@ -675,7 +790,7 @@ export const generatedApi = {
   "createExam": (options: ApiRequestOptions<components['schemas']["JsonObject"]> = {}) =>
     requestOperation<components['schemas']["JsonObject"], components['schemas']["JsonObject"]>("createExam", options),
   "getExam": (options: ApiRequestOptions<never> = {}) =>
-    requestOperation<components['schemas']["JsonObject"], never>("getExam", options),
+    requestOperation<components['schemas']["ExamDetail"], never>("getExam", options),
   "deleteExam": (options: ApiRequestOptions<never> = {}) =>
     requestOperation<components['schemas']["JsonObject"], never>("deleteExam", options),
   "finishExam": (options: ApiRequestOptions<components['schemas']["JsonObject"]> = {}) =>
@@ -697,7 +812,7 @@ export const generatedApi = {
   "latestSubmissions": (options: ApiRequestOptions<never> = {}) =>
     requestOperation<Array<components['schemas']["Submission"]>, never>("latestSubmissions", options),
   "getSubmission": (options: ApiRequestOptions<never> = {}) =>
-    requestOperation<components['schemas']["Submission"], never>("getSubmission", options),
+    requestOperation<components['schemas']["SubmissionDetail"], never>("getSubmission", options),
   "submissionEvents": (options: ApiRequestOptions<never> = {}) =>
     requestOperation<components['schemas']["JsonObject"], never>("submissionEvents", options),
   "listPlagiarismJobs": (options: ApiRequestOptions<never> = {}) =>
@@ -736,6 +851,18 @@ export const generatedApi = {
     requestOperation<components['schemas']["JsonObject"], components['schemas']["JsonObject"]>("problemChangeTicketOnlyViaProblemReviewsIdReview", options),
   "problemChangeTicketOnlyViaProblemReviewsIdWithdraw": (options: ApiRequestOptions<components['schemas']["JsonObject"]> = {}) =>
     requestOperation<components['schemas']["JsonObject"], components['schemas']["JsonObject"]>("problemChangeTicketOnlyViaProblemReviewsIdWithdraw", options),
+  "enterExam": (options: ApiRequestOptions<never> = {}) =>
+    requestOperation<components['schemas']["ExamEnterResponse"], never>("enterExam", options),
+  "listExamActivity": (options: ApiRequestOptions<never> = {}) =>
+    requestOperation<components['schemas']["ExamActivityPage"], never>("listExamActivity", options),
+  "recordExamActivity": (options: ApiRequestOptions<components['schemas']["ExamActivityRequest"]> = {}) =>
+    requestOperation<{
+    "recorded": boolean
+  }, components['schemas']["ExamActivityRequest"]>("recordExamActivity", options),
+  "getExamProblemAsset": (options: ApiRequestOptions<never> = {}) =>
+    requestOperation<unknown, never>("getExamProblemAsset", options),
+  "previewTeamJoin": (options: ApiRequestOptions<never> = {}) =>
+    requestOperation<components['schemas']["TeamJoinPreview"], never>("previewTeamJoin", options),
 }
 
 // 兼容现有页面的 Axios 调用；新代码优先使用 generatedApi 的 operationId 方法。

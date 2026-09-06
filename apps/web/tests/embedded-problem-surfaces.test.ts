@@ -48,12 +48,12 @@ describe('embedded exam and contest problem surfaces', () => {
   })
 
   it('enables the shared embedded mode at every exam and team contest entry', () => {
-    const examOverview = readFileSync(
-      resolve(process.cwd(), 'src/views/exam/ExamOverview.vue'),
+    const examWorkspace = readFileSync(
+      resolve(process.cwd(), 'src/views/ExamDetail.vue'),
       'utf8'
     )
-    const examProblems = readFileSync(
-      resolve(process.cwd(), 'src/views/exam/ExamProblems.vue'),
+    const sharedPanel = readFileSync(
+      resolve(process.cwd(), 'src/components/EventProblemPanel.vue'),
       'utf8'
     )
     const teamContest = readFileSync(
@@ -61,8 +61,8 @@ describe('embedded exam and contest problem surfaces', () => {
       'utf8'
     )
 
-    expect(examOverview).toMatch(/<ProblemOverview\s+embedded/)
-    expect(examProblems).toMatch(/<ProblemStatementView\s+\n?\s*embedded/)
-    expect(teamContest).toMatch(/<ProblemStatementView[^>]*\sembedded\s/)
+    expect(examWorkspace).toContain('<EventProblemPanel')
+    expect(sharedPanel).toMatch(/<ProblemStatementView\s+embedded/)
+    expect(teamContest).toContain('<EventProblemPanel')
   })
 })

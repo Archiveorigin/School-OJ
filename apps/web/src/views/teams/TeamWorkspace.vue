@@ -24,6 +24,8 @@
       </section>
 
       <el-button v-if="canManage" plain @click="settingsVisible = true">团队设置</el-button>
+      <el-button v-if="canManage" plain @click="copyInvite">复制加入链接</el-button>
+      <el-button v-if="canManage && team.join_code && team.join_mode === 'invitation'" plain @click="copyInviteCode">复制邀请码</el-button>
       <el-button v-if="team.my_role && team.my_role !== 'owner'" type="danger" plain @click="leaveTeam">退出团队</el-button>
     </aside>
     <el-skeleton v-else :rows="10" animated class="team-sidebar" />
@@ -48,20 +50,20 @@
         <el-form-item label="团队名"><el-input v-model="settings.name" maxlength="120" /></el-form-item>
         <el-form-item label="团队图标"><TeamIconUpload v-model="settings.icon_url" show-help /></el-form-item>
         <el-form-item label="可见性">
-          <el-radio-group v-model="settings.visibility" :disabled="team.my_role !== 'owner'">
+          <el-radio-group v-model="settings.visibility" :disabled="!team.can_edit_permissions">
             <el-radio-button value="private">私有</el-radio-button>
             <el-radio-button value="public">公开</el-radio-button>
           </el-radio-group>
         </el-form-item>
         <el-form-item label="准入制">
-          <el-select v-model="settings.join_mode" :disabled="team.my_role !== 'owner'">
+          <el-select v-model="settings.join_mode" :disabled="!team.can_edit_permissions">
             <el-option label="邀请制" value="invitation" />
             <el-option label="申请制" value="application" />
             <el-option label="随便进" value="open" />
           </el-select>
         </el-form-item>
         <el-form-item label="组织权限">
-          <el-select v-model="settings.contest_permission" :disabled="team.my_role !== 'owner'">
+          <el-select v-model="settings.contest_permission" :disabled="!team.can_edit_permissions">
             <el-option label="所有成员" value="all" />
             <el-option label="创建者和管理员" value="admin" />
             <el-option label="仅创建者" value="owner" />
@@ -86,6 +88,7 @@ import { useRoute, useRouter } from 'vue-router'
 import { client, type Team, type TeamRole } from '../../api/client'
 import MarkdownRenderer from '../../components/MarkdownRenderer.vue'
 import TeamIconUpload from '../../components/TeamIconUpload.vue'
+import { copyTextToClipboard } from '../../features/clipboard'
 
 const route = useRoute()
 const router = useRouter()
@@ -93,7 +96,15 @@ const team = ref<Team | null>(null)
 const settingsVisible = ref(false)
 const saving = ref(false)
 const basePath = computed(() => `/teams/${route.params.teamSlug}`)
-const canManage = computed(() => team.value?.my_role === 'owner' || team.value?.my_role === 'admin')
+const canManage = computed(() => Boolean(team.value?.can_manage))
+async function copyInvite() {
+  try { await copyTextToClipboard(`${location.origin}/teams/${team.value?.slug}/join`); ElMessage.success('加入链接已复制') }
+  catch { ElMessage.error('复制失败') }
+}
+async function copyInviteCode() {
+  try { await copyTextToClipboard(team.value?.join_code || ''); ElMessage.success('邀请码已复制') }
+  catch { ElMessage.error('复制失败') }
+}
 const settings = reactive({
   name: '',
   visibility: 'private',
@@ -107,9 +118,8 @@ const settings = reactive({
 async function loadTeam() {
   try {
     const { data } = await client.get<Team>(`/teams/${encodeURIComponent(String(route.params.teamSlug))}`)
-    if (!data.joined) {
-      ElMessage.warning('加入团队后才能进入团队空间')
-      await router.replace('/teams')
+    if (!data.joined && !data.can_manage) {
+      await router.replace(`${basePath.value}/join`)
       return
     }
     team.value = data
@@ -123,6 +133,7 @@ async function loadTeam() {
       icon_url: data.icon_url || ''
     })
   } catch (err: any) {
+    if (err.response?.status === 404) { await router.replace(`${basePath.value}/join`); return }
     ElMessage.error(err.response?.status === 404 ? '团队不存在或无权访问' : err.response?.data?.error || err.message)
     await router.replace('/teams')
   }

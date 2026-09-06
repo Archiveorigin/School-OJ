@@ -1,6 +1,7 @@
 package middleware
 
 import (
+	"errors"
 	"net/http"
 	"strings"
 	"time"
@@ -72,7 +73,11 @@ func authenticate(db *gorm.DB, secret string, required bool) gin.HandlerFunc {
 		}
 		var user models.User
 		if err := db.Where("account_deleted = false").First(&user, claims.UserID).Error; err != nil {
-			c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{"error": "user not found"})
+			if errors.Is(err, gorm.ErrRecordNotFound) {
+				c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{"error": "user not found"})
+			} else {
+				c.AbortWithStatusJSON(http.StatusServiceUnavailable, gin.H{"error": "身份验证暂不可用", "code": "AUTH_STATE_UNAVAILABLE"})
+			}
 			return
 		}
 		c.Set("user", user)

@@ -17,7 +17,7 @@
       <template v-else-if="problem">
         <header class="problem-heading">
           <div class="heading-copy">
-            <div class="heading-code">{{ problemDisplayCode(problem) }}</div>
+            <!-- <div class="heading-code">{{ problemDisplayCode(problem) }}</div> -->
             <h1>{{ problem.title }}</h1>
           </div>
           <div class="heading-actions">
@@ -27,8 +27,8 @@
             </div>
             <div v-if="canManage" class="toolbar manage-actions">
               <ProblemTestDownloads :problem-id="problem.id" :problem-code="problem.display_code" />
-              <el-button type="primary" plain @click="openTicket('replace')">申请替换</el-button>
-              <el-button type="danger" plain @click="openTicket('archive')">申请删除</el-button>
+              <el-button type="primary" plain @click="openTicket('replace')">题目修改</el-button>
+              <!-- <el-button type="danger" plain @click="openTicket('archive')">申请删除</el-button> -->
             </div>
           </div>
         </header>

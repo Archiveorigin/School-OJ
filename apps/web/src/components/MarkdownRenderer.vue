@@ -11,7 +11,7 @@ import { client } from '../api/client'
 import { copyTextToClipboard } from '../features/clipboard'
 import 'katex/dist/katex.min.css'
 
-const props = defineProps<{ source?: string | null; problemId?: number; assetUrls?: Record<string, string> }>()
+const props = defineProps<{ source?: string | null; problemId?: number; assetUrls?: Record<string, string>; assetBase?: string }>()
 const fetchedAssetUrls = ref<Record<string, string>>({})
 let assetGeneration = 0
 
@@ -105,7 +105,7 @@ function renderMath(source: string, displayMode: boolean) {
 const rendered = computed(() => md.render(props.source || ''))
 
 watch(
-  () => [props.problemId, props.source],
+  () => [props.problemId, props.source, props.assetBase],
   () => {
     void loadProblemAssets()
   },
@@ -166,7 +166,7 @@ async function loadProblemAssets() {
         .map((part) => encodeURIComponent(part))
         .join('/')
       try {
-        const { data } = await client.get(`/problems/${props.problemId}/assets/${encoded}`, { responseType: 'blob' })
+        const { data } = await client.get(`${props.assetBase || `/problems/${props.problemId}/assets`}/${encoded}`, { responseType: 'blob' })
         const url = URL.createObjectURL(data)
         if (generation !== assetGeneration) {
           URL.revokeObjectURL(url)

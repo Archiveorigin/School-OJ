@@ -5,6 +5,7 @@
         <div class="scoreboard-title">
           <span class="scoreboard-title-icon" aria-hidden="true">☷</span>
           <span class="scoreboard-title-text">{{ data.title }}</span>
+          <span v-if="data.frozen" class="scoreboard-freeze" role="status">排行榜已封榜</span>
           <span v-if="data.subtitle" class="scoreboard-subtitle">{{ data.subtitle }}</span>
         </div>
 
@@ -259,6 +260,7 @@ async function toggleFullscreen() {
 .scoreboard-title-icon { flex: none; width: 48px; height: 48px; display: grid; place-items: center; border-radius: 0; color: #fff; background: #2563eb; font-size: 23px; font-weight: 900; }
 .scoreboard-title-text { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: clamp(17px, 2vw, 24px); font-weight: 800; }
 .scoreboard-subtitle { margin-left: auto; color: var(--score-muted); font-size: 13px; }
+.scoreboard-freeze { flex-shrink: 0; padding: 3px 7px; border: 1px solid currentColor; border-radius: 5px; color: var(--score-muted); font-size: 12px; }
 .controls-time-section { padding: 8px clamp(16px, 4vw, 40px); border-bottom: 1px solid var(--score-border); background: var(--score-surface); }
 .controls-time-container { min-height: 54px; display: flex; align-items: center; gap: 8px 16px; max-width: 1360px; margin: 0 auto; }
 .score-control-field { display: grid; gap: 3px; }

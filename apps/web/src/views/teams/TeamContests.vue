@@ -55,7 +55,6 @@
             <el-radio-button value="ioi">IOI</el-radio-button>
             <el-radio-button value="acm">ACM</el-radio-button>
           </el-radio-group>
-          <p class="rule-hint">OI 取最后一次提交；IOI 取最高分；ACM 按通过题数与罚时排序。</p>
         </el-form-item>
         <el-form-item label="封榜">
           <el-switch v-model="form.freeze_enabled" :disabled="form.scoring_rule === 'oi'" />

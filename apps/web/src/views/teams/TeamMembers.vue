@@ -70,7 +70,7 @@ const auth = useAuthStore()
 const members = ref<any[]>([])
 const applications = ref<any[]>([])
 const loading = ref(false)
-const canManage = computed(() => props.team.my_role === 'owner' || props.team.my_role === 'admin')
+const canManage = computed(() => Boolean(props.team.can_manage))
 
 async function load() {
   loading.value = true
@@ -95,12 +95,12 @@ async function review(item: any, action: 'approve' | 'reject') {
 }
 
 function canChangeRole(row: any) {
-  return props.team.my_role === 'owner' && row.team_role !== 'owner' && row.user_id !== auth.user?.id
+  return Boolean(props.team.can_edit_permissions) && row.team_role !== 'owner' && row.user_id !== auth.user?.id
 }
 
 function canRemove(row: any) {
   if (row.team_role === 'owner' || row.user_id === auth.user?.id) return false
-  if (props.team.my_role === 'owner') return true
+  if (props.team.can_edit_permissions) return true
   return props.team.my_role === 'admin' && row.team_role === 'member'
 }
 

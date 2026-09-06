@@ -61,9 +61,8 @@ export const useExamLockStore = defineStore('examLock', {
         } else {
           this.unlock()
         }
-      } finally {
-        this.synced = true
-      }
+      } catch (error) { throw error }
+      this.synced = true
       return { active: this.locked, examId: this.examId, title: this.title }
     }
   }
