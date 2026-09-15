@@ -14,26 +14,27 @@
     </section>
 
     <aside v-if="showMeta" class="panel meta-box">
+      <slot name="sidebar-header" />
       <div class="meta-title">
         <span class="eyebrow">题目编号</span>
         <strong>{{ displayNumber }}</strong>
       </div>
       <div class="meta-grid">
-        <span>提交状态</span>
+        <span>提交状态：</span>
         <div v-if="statusImage" class="status-image-wrap">
           <SubmissionStatusMark :status="statusImage" class="status-icon" />
         </div>
         <el-tag v-else :type="statusType || 'info'" effect="light">{{ statusText || '未提交' }}</el-tag>
-        <span>分值</span>
+        <span>分值：</span>
         <strong>{{ score ?? '-' }}</strong>
         <template v-if="showDifficulty">
-          <span>难度</span>
+          <span>难度：</span>
           <el-tag :type="difficultyTagType(difficulty)" effect="light">{{ difficulty || '未设置' }}</el-tag>
         </template>
-        <span>限制</span>
-        <strong class="limit-lines">
+        <span>限制：</span>
+        <div class="limit-lines">
           <span v-for="line in problemLimitLines(problem)" :key="line">{{ line }}</span>
-        </strong>
+        </div>
       </div>
       <div v-if="showTags" class="tag-section">
         <span class="muted">标签</span>
@@ -167,7 +168,7 @@ const statusImage = computed(() => props.statusImage || '')
 
 .meta-grid {
   display: grid;
-  grid-template-columns: 76px minmax(0, 1fr);
+  grid-template-columns: max-content minmax(0, 1fr);
   gap: 10px 12px;
   align-items: center;
 }

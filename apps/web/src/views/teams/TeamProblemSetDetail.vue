@@ -1,20 +1,11 @@
 <template>
   <section class="page problem-set-page">
     <div v-if="detail" class="problem-set-container">
-      <el-page-header title="返回团队" @back="router.push(`/teams/${detail.team.slug}/problem-sets`)">
-        <template #content><strong>{{ detail.problem_set.title }}</strong></template>
-      </el-page-header>
-
       <header class="set-heading">
-        <div>
-          <span>TEAM PROBLEM SET</span>
-          <h1>{{ detail.problem_set.title }}</h1>
-          <p>{{ detail.problem_set.description || '团队私有训练题单' }}</p>
-        </div>
+        <el-button text class="back-to-team" @click="router.push(`/teams/${detail.team.slug}/problem-sets`)">← 返回团队</el-button>
         <div v-if="canOrganize || detail.can_edit || detail.can_delete" class="heading-actions">
           <el-button v-if="detail.can_edit" @click="openEditSet">编辑题单信息</el-button>
-          <el-button v-if="canOrganize" @click="addVisible = true">添加已有题目</el-button>
-          <!-- <el-button v-if="canOrganize && canAuthor" type="primary" @click="createPrivateProblem">新建私有题目</el-button> -->
+          <el-button v-if="canOrganize" @click="addVisible = true">添加题目</el-button>
           <el-button v-if="detail.can_delete" type="danger" plain :loading="deleting" @click="deleteSet">删除题单</el-button>
         </div>
       </header>
@@ -53,21 +44,32 @@
         <template v-else-if="activeTab === 'problems' && selectedLink">
           <div class="problem-detail-toolbar">
             <el-button text @click="openProblemList">← 返回题目列表</el-button>
-            <strong>{{ problemSetLabel(selectedIndex) }} · {{ selectedLink.problem.title }}</strong>
           </div>
           <ProblemStatementView
+            class="set-problem-view"
             :problem="selectedLink.problem"
             :problem-number="problemSetLabel(selectedIndex)"
             :status-text="statusText(selectedLink.submission_status)"
             :status-type="statusType(selectedLink.submission_status)"
             :show-tags="false"
           >
+            <template #sidebar-header>
+              <nav class="problem-navigation" aria-label="题目导航">
+                <h3>题目导航</h3>
+                <div class="problem-navigation-links">
+                  <router-link
+                    v-for="(link, index) in links"
+                    :key="link.problem_id"
+                    :to="{ path: route.path, query: { problem: String(link.problem_id) }, hash: '#problems' }"
+                    :class="{ active: index === selectedIndex }"
+                    :aria-current="index === selectedIndex ? 'page' : undefined"
+                    :title="`${problemSetLabel(index)} · ${link.problem.title} · ${statusText(link.submission_status)}`"
+                  >{{ problemSetLabel(index) }}</router-link>
+                </div>
+              </nav>
+            </template>
             <template #sidebar-footer>
-              <div class="problem-number-selector">
-                <span class="muted">题目选择</span>
-                <ProblemSwitcher v-model="selectedProblemID" :items="switcherItems" />
-                <el-button type="primary" class="submit-current" @click="openSubmit(selectedLink)">提交代码</el-button>
-              </div>
+              <el-button type="primary" class="submit-current" @click="openSubmit(selectedLink)">提交代码</el-button>
             </template>
           </ProblemStatementView>
         </template>
@@ -141,7 +143,7 @@
     </div>
     <el-skeleton v-else :rows="10" animated class="problem-set-container" />
 
-    <el-dialog v-model="addVisible" title="添加已有题目" width="480px">
+    <el-dialog v-model="addVisible" title="添加已有题目" width="min(480px, calc(100vw - 24px))">
       <p class="dialog-hint">输入公共题目或本团队私有题目的题号，例如 T001。</p>
       <el-input v-model="problemCode" placeholder="题目编号" @keyup.enter="addProblem" />
       <template #footer>
@@ -186,7 +188,6 @@ import { client, getLatestSubmissions, openEventStream, type AuthenticatedEventS
 import ListPagination from '../../components/ListPagination.vue'
 import MarkdownRenderer from '../../components/MarkdownRenderer.vue'
 import ProblemStatementView from '../../components/ProblemStatementView.vue'
-import ProblemSwitcher from '../../components/ProblemSwitcher.vue'
 import StatusBadge from '../../components/StatusBadge.vue'
 import SubmissionComposer from '../../components/SubmissionComposer.vue'
 import { formatDateTime } from '../../features/time'
@@ -228,17 +229,6 @@ const teamID = computed(() => Number(detail.value?.team?.id))
 const problemSetID = computed(() => Number(route.params.setId))
 const selectedLink = computed(() => links.value[selectedIndex.value])
 const draftContext = computed(() => ({ userId: auth.user?.id || 0, resourceType: 'problem-set' as const, resourceId: problemSetID.value, problemId: selectedLink.value?.problem_id || 0 }))
-const selectedProblemID = computed({
-  get: () => selectedLink.value?.problem_id,
-  set: (value: number | undefined) => {
-    const index = links.value.findIndex((item) => item.problem_id === value)
-    if (index >= 0) {
-      selectedIndex.value = index
-      void router.replace({ path: route.path, query: { ...route.query, problem: String(value) }, hash: '#problems' })
-    }
-  }
-})
-const switcherItems = computed(() => links.value.map((link, index) => ({ ...link, label: problemSetLabel(index) })))
 const submissionStatusOptions = computed(() => [...new Set(submissions.value.map((item) => item.status).filter(Boolean))])
 const submissionLanguageOptions = computed(() => [...new Set(submissions.value.map((item) => item.language).filter(Boolean))])
 const filteredSubmissions = computed(() => submissions.value.filter((item) => {
@@ -535,25 +525,30 @@ onBeforeUnmount(() => { for (const stream of liveStreams) stream.close() })
 </script>
 
 <style scoped>
-.problem-set-page { padding: 24px 20px 58px; }
+.problem-set-page { padding: 12px 20px 40px; }
 .problem-set-container { width: min(1200px, 100%); margin: 0 auto; }
-.set-heading { display: flex; align-items: end; justify-content: space-between; gap: 22px; padding: 32px 0 24px; }
-.set-heading > div > span { color: var(--accent); font-size: 11px; font-weight: 800; letter-spacing: .15em; }
-.set-heading h1 { margin: 8px 0 5px; font-size: 31px; }
-.set-heading p { margin: 0; color: var(--muted); }
-.heading-actions { display: flex; justify-content: flex-end; flex-wrap: wrap; gap: 9px; }
-.set-tabs { display: flex; gap: 5px; margin-bottom: 16px; border-bottom: 1px solid var(--border); }
-.set-tabs button { padding: 14px 24px; color: var(--muted); border: 0; border-bottom: 3px solid transparent; background: transparent; cursor: pointer; }
+.set-heading { display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 8px 12px; padding: 0 0 6px; }
+.back-to-team { padding-inline: 0; }
+.heading-actions { display: flex; justify-content: flex-end; flex-wrap: wrap; gap: 8px; margin-left: auto; }
+.heading-actions :deep(.el-button) { margin: 0; }
+.set-tabs { display: flex; gap: 5px; margin-bottom: 10px; border-bottom: 1px solid var(--border); }
+.set-tabs button { padding: 10px 20px; color: var(--muted); border: 0; border-bottom: 3px solid transparent; background: transparent; cursor: pointer; }
 .set-tabs button.active { color: var(--accent); border-bottom-color: var(--accent); font-weight: 800; }
 .problem-list-panel { overflow: hidden; }
 :deep(.problem-row) { cursor: pointer; }
 :deep(.problem-row:hover > td.el-table__cell) { background: color-mix(in srgb, var(--accent) 7%, var(--surface-strong)); }
-.submission-stat, .problem-title-button, .problem-code-button, .user-name { color: #1f9fc2; }
+.submission-stat, .problem-title-button, .problem-code-button, .user-name { color: var(--color-info); }
 .problem-title-button, .problem-code-button { padding: 0; border: 0; background: transparent; font: inherit; cursor: pointer; }
 .problem-title-button { font-weight: 700; }
-.problem-detail-toolbar { display: flex; align-items: center; gap: 12px; margin-bottom: 12px; }
-.problem-number-selector { display: grid; gap: 14px; margin-top: 20px; padding-top: 18px; border-top: 1px solid var(--border); }
-.submit-current { width: 100%; }
+.problem-detail-toolbar { display: flex; align-items: center; margin-bottom: 8px; }
+.set-problem-view { grid-template-columns: minmax(0, 1fr) 300px; gap: 16px; }
+.problem-navigation { margin-bottom: 18px; padding-bottom: 18px; border-bottom: 1px solid var(--border); }
+.problem-navigation h3 { margin: 0; font-size: 16px; }
+.problem-navigation-links { display: flex; flex-wrap: wrap; gap: 7px; margin-top: 14px; }
+.problem-navigation-links a { min-width: 38px; padding: 8px; text-align: center; border: 1px solid var(--border); border-radius: 6px; }
+.problem-navigation-links a:hover, .problem-navigation-links a:focus-visible { border-color: var(--accent); }
+.problem-navigation-links a.active { color: var(--color-on-emphasis); border-color: var(--accent); background: var(--accent); }
+.submit-current { width: 100%; margin-top: 20px; }
 .status-panel { min-width: 0; padding: 16px; overflow: hidden; }
 .submission-toolbar { display: flex; align-items: center; gap: 10px; margin-bottom: 14px; }
 .submission-toolbar strong { margin-right: auto; }
@@ -568,5 +563,6 @@ onBeforeUnmount(() => { for (const stream of liveStreams) stream.close() })
 .discussion-author > div { display: grid; gap: 2px; margin-right: auto; }
 .discussion-author span { color: var(--muted); font-size: 12px; }
 .dialog-hint { color: var(--muted); }
-@media (max-width: 760px) { .problem-set-page { padding: 16px 13px 42px; } .set-heading { align-items: stretch; flex-direction: column; } .heading-actions { flex-direction: column; } .heading-actions :deep(.el-button) { width: 100%; margin: 0; } .discussion-layout { grid-template-columns: 1fr; } .submission-toolbar { align-items: stretch; flex-wrap: wrap; } }
+@media (max-width: 980px) { .set-problem-view { grid-template-columns: minmax(0, 1fr); } }
+@media (max-width: 760px) { .problem-set-page { padding: 10px 13px 32px; } .heading-actions { gap: 6px; } .heading-actions :deep(.el-button) { padding-inline: 10px; } .set-tabs button { padding: 10px 16px; } .discussion-layout { grid-template-columns: 1fr; } .submission-toolbar { align-items: stretch; flex-wrap: wrap; } }
 </style>
