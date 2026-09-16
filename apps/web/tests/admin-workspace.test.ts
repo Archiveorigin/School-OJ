@@ -1,7 +1,7 @@
 import { flushPromises, shallowMount } from '@vue/test-utils'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { createPinia, setActivePinia } from 'pinia'
-import { client } from '../src/api/client'
+import { http } from '../src/api/http'
 import { useAuthStore } from '../src/stores/auth'
 import AdminHome from '../src/views/admin/AdminHome.vue'
 import AdminLayout from '../src/views/admin/AdminLayout.vue'
@@ -82,7 +82,7 @@ describe('admin workspace', () => {
 
   it('maps teaching metrics, upcoming exams and administrator queues into the overview', async () => {
     setUser('admin')
-    vi.spyOn(client, 'get').mockImplementation(async (url) => {
+    vi.spyOn(http, 'request').mockImplementation(async ({ url }) => {
       if (url === '/exams')
         return {
           data: [
@@ -125,12 +125,8 @@ describe('admin workspace', () => {
     expect(wrapper.text()).toContain('题目修改工单')
     expect(wrapper.text()).toContain('王志华')
     expect(wrapper.text()).toContain('创建了考试')
-    expect(client.get).toHaveBeenCalledWith('/author-applications', {
-      params: { status: 'pending' }
-    })
-    expect(client.get).toHaveBeenCalledWith('/problem-change-tickets', {
-      params: { status: 'pending' }
-    })
+    expect(http.request).toHaveBeenCalledWith(expect.objectContaining({ url: '/author-applications', params: { status: 'pending' } }))
+    expect(http.request).toHaveBeenCalledWith(expect.objectContaining({ url: '/problem-change-tickets', params: { status: 'pending' } }))
 
     const primaryAction = wrapper.findAll('.heading-actions button').at(-1)
     expect(primaryAction?.text()).toContain('新建考试')
@@ -140,7 +136,7 @@ describe('admin workspace', () => {
 
   it('does not call administrator-only endpoints for teachers', async () => {
     setUser('teacher')
-    const get = vi.spyOn(client, 'get').mockImplementation(async (url) => {
+    const get = vi.spyOn(http, 'request').mockImplementation(async ({ url }) => {
       if (url === '/exams') return { data: [] } as any
       throw new Error(`teacher requested forbidden endpoint: ${url}`)
     })
@@ -149,8 +145,8 @@ describe('admin workspace', () => {
     await flushPromises()
 
     expect(get).toHaveBeenCalledTimes(1)
-    expect(get).not.toHaveBeenCalledWith('/audit-logs')
-    expect(get).not.toHaveBeenCalledWith('/author-applications', expect.anything())
-    expect(get).not.toHaveBeenCalledWith('/problem-change-tickets', expect.anything())
+    expect(get).not.toHaveBeenCalledWith(expect.objectContaining({ url: '/audit-logs' }))
+    expect(get).not.toHaveBeenCalledWith(expect.objectContaining({ url: '/author-applications' }))
+    expect(get).not.toHaveBeenCalledWith(expect.objectContaining({ url: '/problem-change-tickets' }))
   })
 })

@@ -7,9 +7,6 @@
     }"
   >
     <section class="panel statement-box">
-      <div v-if="showTitle" class="statement-head">
-        <h1>{{ problem.title }}</h1>
-      </div>
       <MarkdownRenderer :source="problem.statement" :problem-id="problem.id" :asset-base="assetBase" />
     </section>
 
@@ -64,7 +61,6 @@ const props = withDefaults(
     statusType?: 'success' | 'warning' | 'info' | 'danger'
     statusImage?: 'ac' | 'uac' | ''
     showDifficulty?: boolean
-    showTitle?: boolean
     showTags?: boolean
     showMeta?: boolean
     embedded?: boolean
@@ -72,7 +68,6 @@ const props = withDefaults(
   }>(),
   {
     showDifficulty: true,
-    showTitle: true,
     showTags: true,
     showMeta: true,
     embedded: false
@@ -125,27 +120,9 @@ const statusImage = computed(() => props.statusImage || '')
   box-shadow: none;
 }
 
-.problem-view-grid--embedded .statement-head {
-  margin-bottom: 22px;
-  padding: 4px 0 16px;
-}
-
 .statement-box,
 .meta-box {
   min-width: 0;
-}
-
-.statement-head {
-  margin-bottom: 18px;
-  padding-bottom: 16px;
-  border-bottom: 1px solid var(--border);
-}
-
-.statement-head h1 {
-  margin: 0;
-  color: var(--text);
-  font-size: 24px;
-  line-height: 1.3;
 }
 
 .eyebrow {

@@ -214,7 +214,7 @@
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { computed, onMounted, reactive, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
-import { client, type AuthorApplication, type User } from '../api/client'
+import { generatedApi, type AuthorApplication, type User } from '../api/client'
 import { useAuthStore } from '../stores/auth'
 
 interface ActivityProblem {
@@ -317,12 +317,12 @@ const longestStreak = computed(() => {
 
 async function load() {
   try {
-    const { data } = await client.get('/profile')
+    const { data } = await generatedApi.getProfile<any>()
     profile.value = data
     profileForm.name = data.user.name
     auth.updateUser(data.user)
     if (data.user.role !== 'admin' && !data.user.can_author) {
-      authorApplication.value = (await client.get('/author-applications/me')).data.application
+      authorApplication.value = (await generatedApi.getMyAuthorApplication<any>()).data.application
     } else {
       authorApplication.value = null
     }
@@ -339,7 +339,7 @@ async function applyAsAuthor() {
   }
   applying.value = true
   try {
-    authorApplication.value = (await client.post('/author-applications', { motivation })).data
+    authorApplication.value = (await generatedApi.createAuthorApplication<any>({ body: { motivation } })).data
     authorMotivation.value = ''
     ElMessage.success('申请已提交，请等待管理员审核')
   } catch (err: any) {
@@ -384,20 +384,20 @@ async function saveAll() {
   savingProfile.value = true
   try {
     if (name !== profile.value?.user.name) {
-      const { data } = await client.put('/profile', { name })
+      const { data } = await generatedApi.updateProfile<any>({ body: { name } })
       auth.updateUser(data)
     }
     if (changingPassword) {
-      await client.post('/profile/password', {
+      await generatedApi.updateProfilePassword<any>({ body: {
         current_password: passwordForm.current_password,
         new_password: passwordForm.new_password
-      })
+      } })
     }
     if (changingEmail) {
-      const { data } = await client.post('/profile/email', {
+      const { data } = await generatedApi.rebindEmail<any>({ body: {
         email: emailForm.email.trim(),
         code: emailForm.code.trim()
-      })
+      } })
       auth.updateUser(data)
     }
     await load()
@@ -422,7 +422,7 @@ async function uploadAvatar(event: Event) {
   }
   try {
     const avatar = await readFile(file)
-    const { data } = await client.put('/profile', { avatar_url: avatar })
+    const { data } = await generatedApi.updateProfile<any>({ body: { avatar_url: avatar } })
     auth.updateUser(data)
     await load()
     ElMessage.success('头像已更新')
@@ -440,7 +440,7 @@ async function sendEmailCode() {
   }
   sendingCode.value = true
   try {
-    await client.post('/profile/email-code', { email: emailForm.email.trim() })
+    await generatedApi.sendProfileEmailCode<any>({ body: { email: emailForm.email.trim() } })
     ElMessage.success('验证码已发送')
   } catch (err: any) {
     ElMessage.error(err.response?.data?.error || err.message)
@@ -457,7 +457,7 @@ async function deleteAccount() {
       cancelButtonText: '取消',
       confirmButtonClass: 'el-button--danger'
     })
-    await client.delete('/profile')
+    await generatedApi.deleteProfile<any>()
     auth.logout()
     router.push('/login')
   } catch (err: any) {

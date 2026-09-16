@@ -18,7 +18,7 @@ defineOptions({ inheritAttrs: false })
 
 import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { useRoute } from 'vue-router'
-import { client } from '../../api/client'
+import { generatedApi } from '../../api/client'
 import LeaderboardBoard from '../../components/LeaderboardBoard.vue'
 import { adaptExamRanking } from '../../features/leaderboard/adapters'
 import { formatDateTime } from '../../features/time'
@@ -32,7 +32,7 @@ const error = ref('')
 const lastLoadedAt = ref<Date | null>(null)
 let refreshTimer: number | undefined
 
-const scoreboardData = computed(() => adaptExamRanking(ranking.value))
+const scoreboardData = computed(() => adaptExamRanking(ranking.value || { exam: props.detail?.exam }))
 const emptyText = computed(() => ranking.value?.has_class === false
   ? '暂无课程学生的考试记录'
   : '暂无考试记录')
@@ -69,7 +69,7 @@ async function loadRanking() {
   loading.value = true
   error.value = ''
   try {
-    ranking.value = (await client.get(`/exams/${examID}/ranking`)).data
+    ranking.value = (await generatedApi.examRanking<any>({ path: { "id": examID } })).data
     lastLoadedAt.value = new Date()
   } catch (err: any) {
     ranking.value = null

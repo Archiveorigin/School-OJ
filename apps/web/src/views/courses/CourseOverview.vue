@@ -37,7 +37,7 @@
 import { ElMessage } from 'element-plus'
 import { computed, onMounted, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
-import { client } from '../../api/client'
+import { generatedApi } from '../../api/client'
 import ListPagination from '../../components/ListPagination.vue'
 
 const route = useRoute()
@@ -64,7 +64,7 @@ const pagedCourses = computed(() => {
 async function load() {
   loading.value = true
   try {
-    courses.value = (await client.get('/courses')).data || []
+    courses.value = (await generatedApi.listCourses<any>()).data || []
   } catch (err: any) {
     ElMessage.error(err.response?.data?.error || err.message)
   } finally {

@@ -12,6 +12,7 @@
   --color-primary: #0a5ea6;
   --color-primary-strong: #084b86;
   --color-primary-soft: #eaf2ff;
+  --color-secondary: #14b8a6;
   --color-info: #087d9b;
   --color-info-soft: #e5f7fb;
   --color-success: #08734c;
@@ -22,6 +23,12 @@
   --color-on-emphasis: #ffffff;
   --color-scrim: rgba(8, 25, 50, 0.48);
   --color-neutral-soft: #eef1f5;
+
+  /* 提交代码按产品要求保持白底，独立于全局深色主题。 */
+  --code-surface: #ffffff;
+  --code-text: #1f2937;
+  --code-line-number: #64748b;
+  --code-divider: #22a06b;
 
   --radius-sm: 5px;
   --radius-md: 8px;
@@ -78,6 +85,7 @@
   --color-primary: #4aa3ff;
   --color-primary-strong: #83c4ff;
   --color-primary-soft: #18385d;
+  --color-secondary: #30cabc;
   --color-info: #55c7df;
   --color-info-soft: #153943;
   --color-success: #35c978;

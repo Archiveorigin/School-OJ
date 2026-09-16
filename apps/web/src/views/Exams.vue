@@ -130,11 +130,10 @@
       </div>
     </el-drawer>
 
-    <el-dialog v-model="gradeVisible" title="人工阅卷" width="980px">
+    <el-dialog v-model="gradeVisible" title="人工阅卷" width="min(1200px, calc(100vw - 28px))" append-to-body>
       <div v-if="gradeSubmission" class="grade-grid">
         <div class="panel">
-          <div class="section-title"><h3>学生代码</h3></div>
-          <pre class="source-view">{{ gradeSubmission.submission.source_code }}</pre>
+          <SubmissionDetailContent :detail="gradeSubmission" />
         </div>
         <div class="panel">
           <div class="section-title"><h3>参考判题</h3></div>
@@ -160,9 +159,10 @@
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { computed, onMounted, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
-import { client, type Problem } from '../api/client'
+import { generatedApi, type Problem } from '../api/client'
 import ListPagination from '../components/ListPagination.vue'
 import StatusBadge from '../components/StatusBadge.vue'
+import SubmissionDetailContent from '../components/SubmissionDetailContent.vue'
 import { formatDateTime } from '../features/time'
 import { useAuthStore } from '../stores/auth'
 
@@ -194,7 +194,7 @@ const endedExams = computed(() => items.value.filter((item) => examWindowStatus(
 
 async function load() {
   const params = courseID.value ? { course_id: courseID.value } : {}
-  const examsRes = await client.get('/exams', { params })
+  const examsRes = await generatedApi.listExams<any>({ query: params })
   items.value = examsRes.data
   clampPage()
 }
@@ -216,7 +216,7 @@ function openDetail(row: any) {
 }
 
 async function openReport(row: any) {
-  report.value = (await client.get(`/exams/${row.id}/report`)).data
+  report.value = (await generatedApi.examReport<any>({ path: { "id": row.id } })).data
   reportVisible.value = true
 }
 
@@ -224,10 +224,7 @@ async function exportReport() {
   if (!report.value?.exam?.id) return
   exporting.value = true
   try {
-    const response = await client.get('/exams/' + report.value.exam.id + '/report/export', {
-      params: { format: exportFormat.value },
-      responseType: 'blob'
-    })
+    const response = await generatedApi.exportExamReport<any>({ query: { format: exportFormat.value }, responseType: 'blob', path: { "id": report.value.exam.id } })
     const ext = exportFormat.value === 'markdown' ? 'md' : 'xlsx'
     downloadBlob(response.data, 'exam-' + report.value.exam.id + '-report.' + ext)
   } catch (err: any) {
@@ -240,7 +237,7 @@ async function exportReport() {
 async function removeExam(row: any) {
   try {
     await ElMessageBox.confirm('删除后学生端将不再显示该考试，历史提交会保留。确认删除？', '删除考试', { type: 'warning' })
-    await client.delete(`/exams/${row.id}`)
+    await generatedApi.deleteExam<any>({ path: { "id": row.id } })
     ElMessage.success('考试已删除')
     await load()
   } catch (err: any) {
@@ -250,7 +247,7 @@ async function removeExam(row: any) {
 
 async function openGradeDialog(problemScore: any) {
   gradeProblemScore.value = problemScore
-  const { data } = await client.get(`/submissions/${problemScore.submission_id}`)
+  const { data } = await generatedApi.getSubmission<any>({ path: { "id": problemScore.submission_id } })
   gradeSubmission.value = data
   manualScore.value = data.submission.manual_score ?? problemScore.best_score ?? 0
   gradeVisible.value = true
@@ -264,7 +261,7 @@ async function runReferenceJudge() {
   if (!report.value || !gradeSubmission.value) return
   grading.value = true
   try {
-    await client.post(`/exams/${report.value.exam.id}/submissions/${gradeSubmission.value.submission.id}/judge`)
+    await generatedApi.judgeManualExamSubmission<any>({ path: { "id": report.value.exam.id, "submission_id": gradeSubmission.value.submission.id } })
     ElMessage.success('已加入参考判题队列')
   } catch (err: any) {
     ElMessage.error(err.response?.data?.error || err.message)
@@ -277,7 +274,7 @@ async function saveManualGrade() {
   if (!report.value || !gradeSubmission.value) return
   grading.value = true
   try {
-    await client.put(`/exams/${report.value.exam.id}/submissions/${gradeSubmission.value.submission.id}/grade`, { score: manualScore.value })
+    await generatedApi.gradeManualExamSubmission<any>({ path: { "id": report.value.exam.id, "submission_id": gradeSubmission.value.submission.id }, body: { score: manualScore.value } })
     ElMessage.success('分数已保存')
     gradeVisible.value = false
     await openReport(report.value.exam)
@@ -441,6 +438,7 @@ onMounted(load)
 .report-toolbar,
 .grade-actions {
   display: flex;
+  flex-wrap: wrap;
   align-items: center;
   justify-content: space-between;
   gap: 12px;
@@ -452,18 +450,11 @@ onMounted(load)
 
 .grade-grid {
   display: grid;
-  grid-template-columns: minmax(320px, 1fr) minmax(320px, 1fr);
+  grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: 14px;
 }
 
-.source-view {
-  max-height: 520px;
-  overflow: auto;
-  padding: 12px;
-  border-radius: 8px;
-  background: #0f172a;
-  color: #e2e8f0;
-}
+.grade-grid > .panel { min-width: 0; }
 
 @media (max-width: 900px) {
   .sub-hero-inner {
@@ -472,7 +463,7 @@ onMounted(load)
   }
 
   .grade-grid {
-    grid-template-columns: 1fr;
+    grid-template-columns: minmax(0, 1fr);
   }
 }
 </style>

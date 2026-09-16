@@ -45,10 +45,11 @@
 </template>
 
 <script setup lang="ts">
+import { submissionLanguage } from '../features/submissions/presentation'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
-import { client, generatedApi, getLatestSubmissions, openEventStream, type AuthenticatedEventSource, type Submission } from '../api/client'
+import { generatedApi, getLatestSubmissions, openEventStream, type AuthenticatedEventSource, type Submission } from '../api/client'
 import EventWorkspaceHeader from '../components/EventWorkspaceHeader.vue'
 import EventProblemList from '../components/EventProblemList.vue'
 import EventProblemPanel from '../components/EventProblemPanel.vue'
@@ -133,7 +134,7 @@ async function loadDetail() {
 async function loadHistory() {
   if (!detail.value) return
   try {
-    const [rows, recent] = await Promise.all([client.get('/submissions', { params: { exam_id: examID.value } }), getLatestSubmissions({ exam_id: examID.value })])
+    const [rows, recent] = await Promise.all([generatedApi.listSubmissions<any>({ query: { exam_id: examID.value } }), getLatestSubmissions({ exam_id: examID.value })])
     history.value = rows.data; latest.value = recent as Submission[]
   } catch (err: any) { ElMessage.error(err.response?.data?.error || '提交记录加载失败') }
 }
@@ -158,7 +159,7 @@ async function submitSolution() {
   if (!selected.value || !source.value.trim()) { ElMessage.warning('请输入代码'); return }
   submitting.value = true
   try {
-    const { data } = await client.post('/submissions', { problem_id: selected.value.problem_id, exam_id: examID.value, language: language.value, source_code: source.value })
+    const { data } = await generatedApi.createSubmission<any>({ body: { problem_id: selected.value.problem_id, exam_id: examID.value, language: submissionLanguage(language.value), source_code: source.value } })
     clearSubmissionDraft(draftContext.value, language.value)
     liveStatus.value = data.status
     stream?.close()

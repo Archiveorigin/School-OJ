@@ -1,3 +1,10 @@
+import type { components } from '../../api/client'
+
+export function submissionLanguage(value: string): components['schemas']['SubmissionCreateRequest']['language'] {
+  if (value === 'cpp' || value === 'c' || value === 'python' || value === 'java') return value
+  throw new Error('不支持的提交语言')
+}
+
 export function languageLabel(language: string) {
   return ({ cpp: 'C++17', c: 'C', python: 'Python 3', java: 'Java 21' } as Record<string, string>)[language] || language
 }

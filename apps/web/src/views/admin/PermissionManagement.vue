@@ -144,8 +144,7 @@
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { computed, onMounted, ref } from 'vue'
 import AdminPageHeader from '../../components/admin/AdminPageHeader.vue'
-import {
-  client,
+import { generatedApi,
   type AuthorApplication,
   type Role,
   type User,
@@ -185,9 +184,9 @@ async function load() {
   loading.value = true
   try {
     const [userResponse, applicationResponse, permissionResponse] = await Promise.all([
-      client.get<User[]>('/users'),
-      client.get<AuthorApplication[]>('/author-applications'),
-      client.get<UserPermissionDefinition[]>('/permissions')
+      generatedApi.listUsers<User[]>(),
+      generatedApi.listAuthorApplications<AuthorApplication[]>(),
+      generatedApi.listUserPermissionDefinitions<UserPermissionDefinition[]>()
     ])
     users.value = userResponse.data || []
     applications.value = applicationResponse.data || []
@@ -211,10 +210,10 @@ async function reviewApplication(application: AuthorApplication, status: 'approv
           status === 'approved' || Boolean(value.trim()) || '必须填写驳回原因'
       }
     )
-    await client.put(`/author-applications/${application.id}/review`, {
+    await generatedApi.reviewAuthorApplication<any>({ path: { "id": application.id }, body: {
       status,
       review_note: result.value.trim()
-    })
+    } })
     ElMessage.success(status === 'approved' ? '已添加出题者标识' : '申请已驳回')
     await load()
   } catch (error: any) {
@@ -238,10 +237,7 @@ async function updateAuthorPermission(user: User, enabled: boolean) {
       }
     )
     updatingUserID.value = user.id
-    await client.put(`/users/${user.id}/permissions/problem_author`, {
-      enabled,
-      note: result.value.trim()
-    })
+    await generatedApi.updateUserPermission({ path: { id: user.id, permission: 'problem_author' }, body: { enabled, note: result.value.trim() } })
     ElMessage.success(enabled ? '已添加出题者标识' : '已收回出题权限')
     await load()
   } catch (error: any) {

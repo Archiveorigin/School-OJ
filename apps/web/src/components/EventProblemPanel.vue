@@ -2,7 +2,7 @@
   <div class="event-problem-layout">
     <section class="panel statement-panel">
       <div class="problem-toolbar"><h1>{{ selected.label }}.{{ selected.problem.title }}</h1><slot name="actions" /></div>
-      <ProblemStatementView embedded :problem="selected.problem" :show-meta="false" :show-title="false" :asset-base="assetBase" />
+      <ProblemStatementView embedded :problem="selected.problem" :show-meta="false" :asset-base="assetBase" />
     </section>
     <aside class="problem-side">
       <section class="panel navigator"><h3>题目导航</h3><div>

@@ -154,7 +154,7 @@
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { computed, onMounted, reactive, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
-import { client, type ClassContext } from '../api/client'
+import { generatedApi, type ClassContext } from '../api/client'
 import { formatDateTime } from '../features/time'
 import ListPagination from '../components/ListPagination.vue'
 import { useAuthStore } from '../stores/auth'
@@ -270,8 +270,8 @@ async function load() {
   loading.value = true
   try {
     const params = { include_archived: showArchived.value || undefined, course_id: courseIDFilter.value || undefined }
-    const courseRequest = client.get('/courses', { params: { include_archived: showArchived.value || undefined } })
-    const classRequest = canManage.value ? client.get('/classes', { params }) : classroom.load({ force: true })
+    const courseRequest = generatedApi.listCourses<any>({ query: { include_archived: showArchived.value || undefined } })
+    const classRequest = canManage.value ? generatedApi.listClasses<any>({ query: params }) : classroom.load({ force: true })
     const [coursesRes, classesRes] = await Promise.all([courseRequest, classRequest])
     courses.value = list(coursesRes.data)
     if (canManage.value) {
@@ -311,10 +311,10 @@ async function submitClass() {
   savingClass.value = true
   try {
     if (editingClassId.value) {
-      await client.put(`/classes/${editingClassId.value}`, { name: classForm.name })
+      await generatedApi.updateClass<any>({ path: { "id": editingClassId.value }, body: { name: classForm.name } })
       ElMessage.success('班级已保存')
     } else {
-      await client.post(`/courses/${classForm.course_id}/classes`, { name: classForm.name })
+      await generatedApi.createClass<any>({ path: { "id": classForm.course_id }, body: { name: classForm.name } })
       ElMessage.success('班级已创建')
     }
     classDialogVisible.value = false
@@ -337,7 +337,7 @@ async function setClassArchived(row: ClassRow, archived: boolean) {
     return
   }
   try {
-    await client.post(`/classes/${row.class_id}/archive`, { archived })
+    await generatedApi.archiveClassViaClassesIdArchive<any>({ path: { "id": row.class_id }, body: { archived } })
     ElMessage.success(archived ? '班级已归档' : '班级已恢复')
     await load()
   } catch (err: any) {
@@ -352,7 +352,7 @@ async function previewClass() {
   }
   previewing.value = true
   try {
-    const { data } = await client.get('/classes/join-preview', { params: { join_code: joinClassCode.value.trim() } })
+    const { data } = await generatedApi.previewClassJoin<any>({ query: { join_code: joinClassCode.value.trim() } })
     joinPreview.value = data
   } catch (err: any) {
     joinPreview.value = undefined
@@ -369,7 +369,7 @@ async function joinClass() {
   }
   joining.value = true
   try {
-    const { data } = await client.post('/classes/join', { join_code: joinClassCode.value.trim() })
+    const { data } = await generatedApi.joinClassByCode<any>({ body: { join_code: joinClassCode.value.trim() } })
     ElMessage.success('已加入班级')
     classroom.setActive(data.class_id)
     joinClassCode.value = ''
@@ -394,7 +394,7 @@ async function leaveClass(row: ClassContext) {
   }
   leavingClassId.value = row.class_id
   try {
-    await client.post(`/classes/${row.class_id}/leave`)
+    await generatedApi.leaveClass<any>({ path: { "id": row.class_id } })
     ElMessage.success('已退出班级')
     await load()
   } catch (err: any) {
@@ -423,7 +423,7 @@ async function loadStudents() {
   if (!selectedClass.value) return
   loadingStudents.value = true
   try {
-    const { data } = await client.get(`/classes/${selectedClass.value.class_id}/students`)
+    const { data } = await generatedApi.listClassStudents<any>({ path: { "id": selectedClass.value.class_id } })
     students.value = list(data)
   } catch (err: any) {
     ElMessage.error(err.response?.data?.error || err.message)
@@ -444,7 +444,7 @@ async function removeStudent(row: StudentRow) {
     return
   }
   try {
-    await client.delete(`/classes/${selectedClass.value.class_id}/students/${row.user_id}`)
+    await generatedApi.removeClassStudent<any>({ path: { "id": selectedClass.value.class_id, "user_id": row.user_id } })
     ElMessage.success('学生已移除')
     await loadStudents()
     await load()
@@ -479,8 +479,8 @@ async function submitImport() {
   importing.value = true
   try {
     const password = defaultPassword.value.trim()
-    const url = `/classes/${selectedClass.value.class_id}/students/import`
-    const { data } = importFile.value ? await importByFile(url, password) : await client.post(url, { text: importText.value, default_password: password || undefined })
+    const classID = selectedClass.value.class_id
+    const { data } = importFile.value ? await importByFile(classID, password) : await generatedApi.importClassStudents<any>({ path: { id: classID }, body: { text: importText.value, default_password: password || undefined } })
     importResults.value = list(data.results)
     ElMessage.success(`导入完成：创建 ${data.created}，加入 ${data.joined}，失败 ${data.failed}`)
     await loadStudents()
@@ -492,11 +492,11 @@ async function submitImport() {
   }
 }
 
-function importByFile(url: string, password: string) {
+function importByFile(classID: number, password: string) {
   const form = new FormData()
   if (importFile.value) form.append('file', importFile.value)
   if (password) form.append('default_password', password)
-  return client.post(url, form)
+  return generatedApi.importClassStudents<any>({ path: { id: classID }, body: form })
 }
 
 function formatTime(value: string) {

@@ -162,7 +162,7 @@
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { computed, onMounted, reactive, ref, watch } from 'vue'
 import { useRouter } from 'vue-router'
-import { client } from '../api/client'
+import { generatedApi } from '../api/client'
 import ListPagination from '../components/ListPagination.vue'
 import { copyTextToClipboard } from '../features/clipboard'
 import { useAuthStore } from '../stores/auth'
@@ -239,7 +239,7 @@ async function load() {
   loading.value = true
   try {
     const [coursesRes] = await Promise.all([
-      client.get('/courses', { params: { include_archived: showArchived.value || undefined } }),
+      generatedApi.listCourses<any>({ query: { include_archived: showArchived.value || undefined } }),
       classroom.load({ force: true })
     ])
     courses.value = list(coursesRes.data)
@@ -298,10 +298,10 @@ async function submitCourse() {
   savingCourse.value = true
   try {
     if (editingCourseId.value) {
-      await client.put(`/courses/${editingCourseId.value}`, { ...courseForm })
+      await generatedApi.updateCourse<any>({ path: { "id": editingCourseId.value }, body: { ...courseForm } })
       ElMessage.success('课程已保存')
     } else {
-      await client.post('/courses', { ...courseForm })
+      await generatedApi.createCourse<any>({ body: { ...courseForm } })
       ElMessage.success('课程已创建')
     }
     courseDialogVisible.value = false
@@ -324,7 +324,7 @@ async function setCourseArchived(course: Course, archived: boolean) {
     return
   }
   try {
-    await client.post(`/courses/${course.id}/archive`, { archived })
+    await generatedApi.archiveCourseViaCoursesIdArchive<any>({ path: { "id": course.id }, body: { archived } })
     ElMessage.success(archived ? '课程已归档' : '课程已恢复')
     await load()
   } catch (err: any) {
@@ -339,7 +339,7 @@ async function submitClass() {
   }
   savingClass.value = true
   try {
-    await client.post(`/courses/${classForm.course_id}/classes`, { name: classForm.name })
+    await generatedApi.createClass<any>({ path: { "id": classForm.course_id }, body: { name: classForm.name } })
     ElMessage.success('班级已创建')
     classDialogVisible.value = false
     await load()
@@ -363,7 +363,7 @@ async function loadMembers() {
   if (!memberCourse.value) return
   loadingMembers.value = true
   try {
-    const { data } = await client.get(`/courses/${memberCourse.value.id}/members`)
+    const { data } = await generatedApi.listCourseMembers<any>({ path: { "id": memberCourse.value.id } })
     members.value = list(data)
   } catch (err: any) {
     ElMessage.error(err.response?.data?.error || err.message)
@@ -379,11 +379,11 @@ async function submitMember() {
   }
   savingMember.value = true
   try {
-    await client.post(`/courses/${memberCourse.value.id}/members`, {
+    await generatedApi.addCourseMember<any>({ path: { "id": memberCourse.value.id }, body: {
       email: memberForm.email.trim(),
       role: memberForm.role,
       class_id: memberForm.class_id || undefined
-    })
+    } })
     ElMessage.success('成员已添加')
     memberForm.email = ''
     await loadMembers()
@@ -407,7 +407,7 @@ async function removeMember(member: CourseMember) {
     return
   }
   try {
-    await client.delete(`/courses/${memberCourse.value.id}/members/${member.user_id}`)
+    await generatedApi.removeCourseMember<any>({ path: { "id": memberCourse.value.id, "user_id": member.user_id } })
     ElMessage.success('成员已移除')
     await loadMembers()
     await load()

@@ -42,9 +42,6 @@
         </section>
 
         <template v-else-if="activeTab === 'problems' && selectedLink">
-          <div class="problem-detail-toolbar">
-            <el-button text @click="openProblemList">← 返回题目列表</el-button>
-          </div>
           <ProblemStatementView
             class="set-problem-view"
             :problem="selectedLink.problem"
@@ -111,6 +108,7 @@
               <template #default="{ row }">{{ languageLabel(row.language) }}</template>
             </el-table-column>
             <el-table-column label="提交时间" min-width="176"><template #default="{ row }">{{ formatDateTime(row.created_at) }}</template></el-table-column>
+            <el-table-column label="操作" width="100"><template #default="{ row }"><el-button v-if="row.user_id === auth.user?.id || detail?.can_edit" text type="primary" @click="openSubmission(row)">查看详情</el-button></template></el-table-column>
           </el-table>
           <ListPagination v-model:page="submissionPage" v-model:page-size="submissionPageSize" :total="filteredSubmissions.length" />
         </section>
@@ -177,25 +175,30 @@
         <el-button @click="submitVisible = false">关闭</el-button>
       </template>
     </el-dialog>
+    <SubmissionDetailDialog v-model="submissionVisible" :detail="submissionDetail" />
   </section>
 </template>
 
 <script setup lang="ts">
+import { submissionLanguage } from '../../features/submissions/presentation'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { computed, onBeforeUnmount, reactive, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
-import { client, getLatestSubmissions, openEventStream, type AuthenticatedEventSource, type Submission } from '../../api/client'
+import { generatedApi, getLatestSubmissions, openEventStream, type AuthenticatedEventSource, type Submission } from '../../api/client'
 import ListPagination from '../../components/ListPagination.vue'
 import MarkdownRenderer from '../../components/MarkdownRenderer.vue'
 import ProblemStatementView from '../../components/ProblemStatementView.vue'
 import StatusBadge from '../../components/StatusBadge.vue'
 import SubmissionComposer from '../../components/SubmissionComposer.vue'
+import SubmissionDetailDialog from '../../components/SubmissionDetailDialog.vue'
+import { useSubmissionDetail } from '../../features/submissions/detail'
 import { formatDateTime } from '../../features/time'
 import { loadSubmissionDraft } from '../../features/submissions/drafts'
 import { useAuthStore } from '../../stores/auth'
 
 const route = useRoute()
 const router = useRouter()
+const { visible: submissionVisible, detail: submissionDetail, open: openSubmission } = useSubmissionDetail()
 const auth = useAuthStore()
 const detail = ref<any>(null)
 const links = ref<any[]>([])
@@ -243,7 +246,6 @@ const pagedSubmissions = computed(() => {
   const start = (submissionPage.value - 1) * submissionPageSize.value
   return filteredSubmissions.value.slice(start, start + submissionPageSize.value)
 })
-const canAuthor = computed(() => auth.role === 'admin' || Boolean(auth.user?.can_author))
 const canOrganize = computed(() => {
   const team = detail.value?.team
   if (!team) return false
@@ -254,7 +256,7 @@ const canOrganize = computed(() => {
 
 async function load() {
   try {
-    const { data } = await client.get(`/problem-sets/${problemSetID.value}`)
+    const { data } = await generatedApi.getTeamProblemSetViaProblemSetsSetId<any>({ path: { "set_id": problemSetID.value } })
     detail.value = data
     links.value = data.problems || []
     if (selectedIndex.value >= links.value.length) selectedIndex.value = 0
@@ -291,7 +293,7 @@ async function openSubmissions() {
 async function loadSubmissions() {
   loadingSubmissions.value = true
   try {
-    submissions.value = (await client.get(`/problem-sets/${problemSetID.value}/submissions`)).data || []
+    submissions.value = (await generatedApi.listTeamProblemSetSubmissionsViaProblemSetsSetIdSubmissions<any>({ path: { "set_id": problemSetID.value } })).data || []
   } catch (err: any) {
     ElMessage.error(err.response?.data?.error || err.message)
   } finally {
@@ -302,10 +304,6 @@ async function loadSubmissions() {
 function resetSubmissionFilters() {
   Object.assign(submissionFilters, { username: '', problemID: undefined, status: '', language: '' })
   submissionPage.value = 1
-}
-
-function createPrivateProblem() {
-  router.push({ path: '/problem-changes/new', query: { action: 'create', target_scope: 'team_problem_set', team_problem_set_id: String(problemSetID.value) } })
 }
 
 function openEditSet() {
@@ -322,7 +320,7 @@ async function saveSet() {
   }
   editing.value = true
   try {
-    await client.put(`/problem-sets/${problemSetID.value}`, editForm)
+    await generatedApi.updateTeamProblemSetViaProblemSetsSetId<any>({ path: { "set_id": problemSetID.value }, body: editForm })
     editVisible.value = false
     ElMessage.success('题单信息已更新')
     await load()
@@ -343,7 +341,7 @@ async function deleteSet() {
       { type: 'error', confirmButtonText: '确认删除', cancelButtonText: '取消', confirmButtonClass: 'el-button--danger' },
     )
     deleting.value = true
-    await client.delete(`/problem-sets/${problemSetID.value}`)
+    await generatedApi.deleteTeamProblemSetViaProblemSetsSetId<any>({ path: { "set_id": problemSetID.value } })
     ElMessage.success('团队题单已删除')
     await router.replace(detail.value?.team?.slug ? `/teams/${detail.value.team.slug}/problem-sets` : '/teams')
   } catch (err: any) {
@@ -360,7 +358,7 @@ async function addProblem() {
   }
   adding.value = true
   try {
-    await client.post(`/problem-sets/${problemSetID.value}/problems`, { problem_code: problemCode.value.trim() })
+    await generatedApi.addTeamProblemSetProblemViaProblemSetsSetIdProblems<any>({ path: { "set_id": problemSetID.value }, body: { problem_code: problemCode.value.trim() } })
     problemCode.value = ''
     addVisible.value = false
     ElMessage.success('题目已加入题单')
@@ -375,7 +373,7 @@ async function addProblem() {
 async function removeProblem(link: any) {
   try {
     await ElMessageBox.confirm(`确认将 ${link.problem.title} 移出当前题单？题目本身不会被删除。`, '移出题单', { type: 'warning' })
-    await client.delete(`/problem-sets/${problemSetID.value}/problems/${link.problem_id}`)
+    await generatedApi.removeTeamProblemSetProblemViaProblemSetsSetIdProblemsProblemId<any>({ path: { "set_id": problemSetID.value, "problem_id": link.problem_id } })
     ElMessage.success('题目已移出题单')
     await load()
   } catch (err: any) {
@@ -399,11 +397,11 @@ async function submitSolution() {
   }
   submitting.value = true
   try {
-    const { data } = await client.post(`/problem-sets/${problemSetID.value}/submissions`, {
+    const { data } = await generatedApi.createTeamProblemSetSubmissionViaProblemSetsSetIdSubmissions<any>({ path: { "set_id": problemSetID.value }, body: {
       problem_id: selectedLink.value.problem.id,
-      language: language.value,
+      language: submissionLanguage(language.value),
       source_code: source.value
-    })
+    } })
     composerRef.value?.clearDraft()
     liveStatus.value = data
     const stream = openEventStream(`/submissions/${data.id}/events`)
@@ -434,7 +432,7 @@ async function openDiscussions() {
   activeTab.value = 'discussions'
   await router.push({ path: route.path, hash: '#discussions' })
   try {
-    discussions.value = (await client.get(`/problem-sets/${problemSetID.value}/discussions`)).data || []
+    discussions.value = (await generatedApi.listTeamDiscussionsViaProblemSetsSetIdDiscussions<any>({ path: { "set_id": problemSetID.value } })).data || []
   } catch (err: any) {
     ElMessage.error(err.response?.data?.error || err.message)
   }
@@ -447,10 +445,10 @@ async function postDiscussion() {
   }
   posting.value = true
   try {
-    await client.post(`/problem-sets/${problemSetID.value}/discussions`, {
+    await generatedApi.createTeamDiscussionViaProblemSetsSetIdDiscussions<any>({ path: { "set_id": problemSetID.value }, body: {
       problem_id: discussionProblemID.value || null,
       content: discussionContent.value
-    })
+    } })
     discussionContent.value = ''
     ElMessage.success('讨论已发布')
     await openDiscussions()
@@ -540,7 +538,6 @@ onBeforeUnmount(() => { for (const stream of liveStreams) stream.close() })
 .submission-stat, .problem-title-button, .problem-code-button, .user-name { color: var(--color-info); }
 .problem-title-button, .problem-code-button { padding: 0; border: 0; background: transparent; font: inherit; cursor: pointer; }
 .problem-title-button { font-weight: 700; }
-.problem-detail-toolbar { display: flex; align-items: center; margin-bottom: 8px; }
 .set-problem-view { grid-template-columns: minmax(0, 1fr) 300px; gap: 16px; }
 .problem-navigation { margin-bottom: 18px; padding-bottom: 18px; border-bottom: 1px solid var(--border); }
 .problem-navigation h3 { margin: 0; font-size: 16px; }

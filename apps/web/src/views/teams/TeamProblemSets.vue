@@ -55,7 +55,7 @@
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { computed, onMounted, reactive, ref } from 'vue'
 import { useRouter } from 'vue-router'
-import { client, type Team, type TeamProblemSet } from '../../api/client'
+import { generatedApi, type Team, type TeamProblemSet } from '../../api/client'
 
 const props = defineProps<{ team: Team }>()
 const router = useRouter()
@@ -78,7 +78,7 @@ const canOrganize = computed(() => {
 async function load() {
   loading.value = true
   try {
-    items.value = (await client.get(`/teams/${props.team.id}/problem-sets`)).data || []
+    items.value = (await generatedApi.listTeamProblemSets<any>({ path: { "id": props.team.id } })).data || []
   } catch (err: any) {
     ElMessage.error(err.response?.data?.error || err.message)
   } finally {
@@ -99,7 +99,7 @@ async function saveSet() {
   }
   editing.value = true
   try {
-    await client.put(`/problem-sets/${editingItem.value.id}`, editForm)
+    await generatedApi.updateTeamProblemSetViaProblemSetsSetId<any>({ path: { "set_id": editingItem.value.id }, body: editForm })
     editVisible.value = false
     editingItem.value = null
     ElMessage.success('题单信息已更新')
@@ -119,7 +119,7 @@ async function deleteSet(item: TeamProblemSet) {
       { type: 'error', confirmButtonText: '确认删除', cancelButtonText: '取消', confirmButtonClass: 'el-button--danger' },
     )
     deletingID.value = item.id
-    await client.delete(`/problem-sets/${item.id}`)
+    await generatedApi.deleteTeamProblemSetViaProblemSetsSetId<any>({ path: { "set_id": item.id } })
     ElMessage.success('团队题单已删除')
     await load()
   } catch (err: any) {
@@ -136,7 +136,7 @@ async function createSet() {
   }
   creating.value = true
   try {
-    const { data } = await client.post<TeamProblemSet>(`/teams/${props.team.id}/problem-sets`, form)
+    const { data } = await generatedApi.createTeamProblemSet<TeamProblemSet>({ path: { "id": props.team.id }, body: form })
     Object.assign(form, { title: '', description: '' })
     createVisible.value = false
     ElMessage.success('团队题单已创建')
@@ -162,7 +162,7 @@ onMounted(load)
 .view-heading p { margin: 0; color: var(--muted); }
 .problem-set-grid { display: grid; gap: 12px; }
 .problem-set-card { display: grid; grid-template-columns: 48px minmax(0, 1fr) auto; align-items: center; gap: 15px; cursor: pointer; }
-.set-symbol { width: 48px; height: 48px; display: grid; place-items: center; color: #fff; border-radius: 13px; background: linear-gradient(135deg, #0a5ea6, #14b8a6); font-weight: 900; }
+.set-symbol { width: 48px; height: 48px; display: grid; place-items: center; color: var(--color-on-emphasis); border-radius: 13px; background: linear-gradient(135deg, var(--color-primary), var(--color-secondary)); font-weight: 900; }
 .problem-set-card h4 { margin: 0 0 6px; font-size: 17px; }
 .problem-set-card p { margin: 0 0 7px; color: var(--muted); }
 .problem-set-card span { color: var(--accent); font-size: 12px; }

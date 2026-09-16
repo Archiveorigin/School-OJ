@@ -1,8 +1,10 @@
 package db
 
 import (
+	"context"
 	"crypto/sha256"
 	"encoding/hex"
+	"errors"
 	"fmt"
 	"io/fs"
 	"sort"
@@ -29,15 +31,34 @@ type migrationFile struct {
 // the complete ordered SQL history. GORM remains a compatibility pass for old
 // installations whose historical schema was produced by AutoMigrate.
 func Migrate(gdb *gorm.DB) error {
+	return withMigrationLock(gdb, migrateLocked)
+}
+
+// PostgreSQL advisory locks belong to a connection, not a pool. Pin both the
+// migration and unlock to the same session, including initial ledger creation.
+func withMigrationLock(gdb *gorm.DB, run func(*gorm.DB) error) error {
+	return gdb.Connection(func(conn *gorm.DB) (runErr error) {
+		conn = conn.Session(&gorm.Session{NewDB: true})
+		if err := conn.Exec("SELECT pg_advisory_lock(?)", int64(734625109)).Error; err != nil {
+			return fmt.Errorf("lock migrations: %w", err)
+		}
+		defer func() {
+			// A cancelled migration must still release its session-level lock.
+			ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+			defer cancel()
+			if err := conn.WithContext(ctx).Exec("SELECT pg_advisory_unlock(?)", int64(734625109)).Error; err != nil {
+				runErr = errors.Join(runErr, fmt.Errorf("unlock migrations: %w", err))
+			}
+		}()
+		return run(conn)
+	})
+}
+
+func migrateLocked(gdb *gorm.DB) error {
 	hadSchema := gdb.Migrator().HasTable("users")
 	if err := ensureMigrationLedger(gdb); err != nil {
 		return err
 	}
-	if err := gdb.Exec("SELECT pg_advisory_lock(?)", int64(734625109)).Error; err != nil {
-		return fmt.Errorf("lock migrations: %w", err)
-	}
-	defer gdb.Exec("SELECT pg_advisory_unlock(?)", int64(734625109))
-
 	files, err := embeddedMigrationFiles()
 	if err != nil {
 		return err

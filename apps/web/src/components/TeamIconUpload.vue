@@ -18,7 +18,7 @@
 
 <script setup lang="ts">
 import { ElMessage } from 'element-plus'
-import { ref } from 'vue'
+import { onBeforeUnmount, ref } from 'vue'
 
 withDefaults(defineProps<{ modelValue?: string; editable?: boolean; showHelp?: boolean }>(), {
   modelValue: '',
@@ -31,11 +31,14 @@ const emit = defineEmits<{
 }>()
 const inputRef = ref<HTMLInputElement>()
 const loading = ref(false)
+let reader: FileReader | null = null
+let disposed = false
+onBeforeUnmount(() => { disposed = true; reader?.abort() })
 
 async function selectIcon(event: Event) {
   const input = event.target as HTMLInputElement
   const file = input.files?.[0]
-  if (!file) return
+  if (!file || loading.value) return
   if (!['image/png', 'image/jpeg', 'image/webp'].includes(file.type)) {
     ElMessage.error('请选择 PNG、JPG 或 WebP 图片')
     input.value = ''
@@ -49,9 +52,13 @@ async function selectIcon(event: Event) {
   loading.value = true
   try {
     const value = await readFile(file)
+    if (disposed) return
     emit('update:modelValue', value)
     emit('change', value)
+  } catch {
+    if (!disposed) ElMessage.error('图片读取失败，请重试')
   } finally {
+    reader = null
     loading.value = false
     input.value = ''
   }
@@ -59,9 +66,10 @@ async function selectIcon(event: Event) {
 
 function readFile(file: File) {
   return new Promise<string>((resolve, reject) => {
-    const reader = new FileReader()
-    reader.onload = () => resolve(String(reader.result || ''))
-    reader.onerror = () => reject(reader.error)
+    reader = new FileReader()
+    reader.onload = () => resolve(String(reader?.result || ''))
+    reader.onerror = () => reject(reader?.error)
+    reader.onabort = () => reject(new Error('aborted'))
     reader.readAsDataURL(file)
   })
 }

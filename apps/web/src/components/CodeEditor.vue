@@ -1,231 +1,128 @@
 <template>
-  <div ref="host" class="monaco-host" />
+  <div class="code-editor" :aria-busy="loading">
+    <div ref="host" class="monaco-host" />
+    <div v-if="loading" class="editor-placeholder" role="status">编辑器加载中…</div>
+    <textarea v-if="failed" class="editor-fallback" aria-label="代码编辑区" :value="modelValue" @input="emit('update:modelValue', ($event.target as HTMLTextAreaElement).value)" />
+  </div>
 </template>
 
 <script setup lang="ts">
 import type * as Monaco from 'monaco-editor'
+import { ElMessage } from 'element-plus'
 import { onBeforeUnmount, onMounted, ref, watch } from 'vue'
+import { editorLanguage, formatIndentation } from '../features/editor/format'
 
 const props = defineProps<{ modelValue: string; language: string }>()
 const emit = defineEmits<{ 'update:modelValue': [value: string] }>()
 const host = ref<HTMLElement | null>(null)
+const loading = ref(true)
+const failed = ref(false)
 let monaco: typeof Monaco | null = null
 let editor: Monaco.editor.IStandaloneCodeEditor | null = null
+let model: Monaco.editor.ITextModel | null = null
+let subscription: Monaco.IDisposable | null = null
+let themeObserver: MutationObserver | null = null
 let disposed = false
+let syncing = false
+let formatting = false
+let lastValue = props.modelValue
+
+function syncTheme() {
+  monaco?.editor.setTheme(document.documentElement.classList.contains('dark') ? 'vs-dark' : 'vs')
+}
 
 onMounted(async () => {
-  monaco = await import('monaco-editor')
-  if (disposed || !host.value) return
-  editor = monaco.editor.create(host.value, {
-    value: props.modelValue,
-    language: lang(props.language),
-    minimap: { enabled: false },
-    automaticLayout: true,
-    fontSize: 14,
-    tabSize: 2
-  })
-  editor.onDidChangeModelContent(() => emit('update:modelValue', editor?.getValue() || ''))
+  try {
+    const loaded = await import('../features/editor/monaco')
+    if (disposed || !host.value) return
+    monaco = loaded.monaco
+    lastValue = props.modelValue
+    model = monaco.editor.createModel(lastValue, editorLanguage(props.language))
+    editor = monaco.editor.create(host.value, {
+      model,
+      minimap: { enabled: false },
+      automaticLayout: true,
+      fontSize: 14,
+      // Judge languages have no semantic highlight provider. Avoid cross-model scans
+      // and Monaco 0.52's uncaught delayed highlight cancellation on rapid disposal.
+      occurrencesHighlight: 'off',
+    })
+    model.updateOptions({ tabSize: 2, insertSpaces: true })
+    subscription = model.onDidChangeContent(() => {
+      if (syncing || !model) return
+      lastValue = model.getValue()
+      emit('update:modelValue', lastValue)
+    })
+    syncTheme()
+    themeObserver = new MutationObserver(syncTheme)
+    themeObserver.observe(document.documentElement, { attributes: true, attributeFilter: ['class'] })
+  } catch {
+    releaseEditor()
+    if (!disposed) {
+      failed.value = true
+      ElMessage.warning('编辑器加载失败，已切换为文本编辑模式')
+    }
+  } finally {
+    if (!disposed) loading.value = false
+  }
 })
 
-watch(
-  () => props.language,
-  (value) => {
-    const model = editor?.getModel()
-    if (model && monaco) monaco.editor.setModelLanguage(model, lang(value))
-  }
-)
+watch(() => props.language, (value) => {
+  if (model && monaco) monaco.editor.setModelLanguage(model, editorLanguage(value))
+})
+watch(() => props.modelValue, (value) => {
+  if (!editor || lastValue === value) return
+  syncing = true
+  try { editor.setValue(value); lastValue = editor.getValue() }
+  finally { syncing = false }
+})
 
-watch(
-  () => props.modelValue,
-  (value) => {
-    if (!editor || editor.getValue() === value) return
-    editor.setValue(value)
-  }
-)
-
-onBeforeUnmount(() => {
-  disposed = true
+function releaseEditor() {
+  themeObserver?.disconnect()
+  subscription?.dispose()
   editor?.dispose()
+  model?.dispose()
   editor = null
-})
+  model = null
+}
+onBeforeUnmount(() => { disposed = true; releaseEditor() })
 
 async function format() {
-  if (!editor) return
-  const before = editor.getValue()
+  if (!editor || !model || formatting) return
+  formatting = true
+  const activeEditor = editor
+  const activeModel = model
+  const language = props.language
+  const version = activeModel.getVersionId()
+  const before = lastValue
   try {
-    await editor.getAction('editor.action.formatDocument')?.run()
+    const action = activeEditor.getAction('editor.action.formatDocument')
+    if (action?.isSupported()) {
+      await action.run()
+      return
+    }
+    const formatted = formatIndentation(before, language)
+    if (disposed || activeModel !== model || activeModel.getVersionId() !== version || props.language !== language) return
+    if (formatted === before) {
+      ElMessage.info(language === 'python' ? '当前未配置 Python 格式化器，已保留原有缩进' : '无需调整缩进；复杂语法保留原文')
+      return
+    }
+    const state = activeEditor.saveViewState()
+    activeEditor.pushUndoStop()
+    activeEditor.executeEdits('safe-indent', [{ range: activeModel.getFullModelRange(), text: formatted }])
+    activeEditor.pushUndoStop()
+    if (state) activeEditor.restoreViewState(state)
   } catch {
-    // Monaco does not ship formatters for every judge language.
-  }
-  if (editor.getValue() === before) {
-    editor.setValue(lightweightFormat(before, props.language))
-  }
-}
-
-function lang(value: string) {
-  if (value === 'cpp') return 'cpp'
-  if (value === 'c') return 'c'
-  if (value === 'java') return 'java'
-  return 'python'
-}
-
-function lightweightFormat(source: string, language: string) {
-  const lines = source.replace(/\r\n/g, '\n').replace(/\r/g, '\n').replace(/\t/g, '  ').split('\n')
-  const formatted = language === 'python' ? formatPython(lines) : formatBraceLanguage(expandBraceLanguageLines(lines))
-  return `${formatted.join('\n').replace(/\s+$/g, '')}\n`
-}
-
-function formatPython(lines: string[]) {
-  const out: string[] = []
-  let indent = 0
-  const dedent = /^(elif|else|except|finally)\b/
-  for (const line of lines) {
-    const trimmed = line.trim()
-    if (!trimmed) {
-      out.push('')
-      continue
-    }
-    if (dedent.test(trimmed)) indent = Math.max(0, indent - 1)
-    out.push(`${'  '.repeat(indent)}${trimmed}`)
-    if (trimmed.endsWith(':')) indent += 1
-  }
-  return out
-}
-
-function formatBraceLanguage(lines: string[]) {
-  const out: string[] = []
-  let indent = 0
-  for (const line of lines) {
-    const trimmed = line.trim()
-    if (!trimmed) {
-      out.push('')
-      continue
-    }
-    if (trimmed.startsWith('#')) {
-      out.push(trimmed)
-      continue
-    }
-    if (/^[}\])]/.test(trimmed)) indent = Math.max(0, indent - 1)
-    out.push(`${'  '.repeat(indent)}${spaceCommonTokens(trimmed)}`)
-    const opens = (trimmed.match(/[{\[]/g) || []).length
-    const closes = (trimmed.match(/[}\]]/g) || []).length
-    indent = Math.max(0, indent + opens - closes)
-  }
-  return out
-}
-
-function expandBraceLanguageLines(lines: string[]) {
-  const out: string[] = []
-  for (const line of lines) {
-    if (!line.trim()) {
-      out.push('')
-      continue
-    }
-    out.push(...splitBraceLanguageLine(line))
-  }
-  return out
-}
-
-function splitBraceLanguageLine(line: string) {
-  const out: string[] = []
-  let buffer = ''
-  let parenDepth = 0
-  let inString: '"' | "'" | null = null
-  let escaped = false
-
-  const flush = () => {
-    const value = buffer.trim()
-    if (value) out.push(value)
-    buffer = ''
-  }
-
-  for (const char of line) {
-    if (inString) {
-      buffer += char
-      if (escaped) {
-        escaped = false
-      } else if (char === '\\') {
-        escaped = true
-      } else if (char === inString) {
-        inString = null
-      }
-      continue
-    }
-    if (char === '"' || char === "'") {
-      inString = char
-      buffer += char
-      continue
-    }
-    if (char === '(') parenDepth += 1
-    if (char === ')') parenDepth = Math.max(0, parenDepth - 1)
-    if (char === '{' || char === '}') {
-      flush()
-      out.push(char)
-      continue
-    }
-    buffer += char
-    if (char === ';' && parenDepth === 0) flush()
-  }
-  flush()
-  return out
-}
-
-function spaceCommonTokens(line: string) {
-  return splitStringSegments(line)
-    .map((part) => (part.string ? part.value : formatCodeSegment(part.value)))
-    .join('')
-    .replace(/\s+$/g, '')
-}
-
-function formatCodeSegment(value: string) {
-  return value
-    .replace(/\s*,\s*/g, ', ')
-    .replace(/\b(if|for|while|switch|catch)\s*\(/g, '$1 (')
-    .replace(/\s*(<<|>>)\s*/g, ' $1 ')
-    .replace(/\s*(==|!=|<=|>=|&&|\|\|)\s*/g, ' $1 ')
-    .replace(/\s*([+\-*/%])\s*/g, ' $1 ')
-    .replace(/([^!<>=])\s*=\s*([^=])/g, '$1 = $2')
-    .replace(/\s+/g, ' ')
-    .replace(/\s+([;,)])/g, '$1')
-    .replace(/([({])\s+/g, '$1')
-}
-
-function splitStringSegments(line: string) {
-  const parts: Array<{ value: string; string: boolean }> = []
-  let buffer = ''
-  let inString: '"' | "'" | null = null
-  let escaped = false
-
-  const flush = (string: boolean) => {
-    if (!buffer) return
-    parts.push({ value: buffer, string })
-    buffer = ''
-  }
-
-  for (const char of line) {
-    if (inString) {
-      buffer += char
-      if (escaped) {
-        escaped = false
-      } else if (char === '\\') {
-        escaped = true
-      } else if (char === inString) {
-        flush(true)
-        inString = null
-      }
-      continue
-    }
-    if (char === '"' || char === "'") {
-      flush(false)
-      inString = char
-      buffer += char
-      continue
-    }
-    buffer += char
-  }
-  flush(Boolean(inString))
-  return parts
+    if (!disposed) ElMessage.warning('格式化未完成，请保留并检查原代码')
+  } finally { formatting = false }
 }
 
 defineExpose({ format })
 </script>
+
+<style scoped>
+.code-editor { position: relative; min-width: 0; }
+.monaco-host { width: 100%; height: 420px; min-height: 240px; border: 1px solid var(--border); border-radius: 8px; overflow: hidden; }
+.editor-placeholder { position: absolute; inset: 0; display: grid; place-items: center; background: var(--surface); color: var(--muted); border-radius: 8px; }
+.editor-fallback { position: absolute; inset: 0; width: 100%; height: 100%; padding: 12px; resize: none; font: 14px/1.6 monospace; background: var(--surface); color: var(--text); border: 1px solid var(--border); border-radius: 8px; }
+</style>

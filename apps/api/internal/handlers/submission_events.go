@@ -53,6 +53,10 @@ func (s Server) submissionEvents(c *gin.Context) {
 			writeSSE(c, "error", gin.H{"error": "考试权限已变更", "code": "EXAM_SCOPE_REQUIRED"})
 			return true
 		}
+		if !s.canAccessSubmission(user, sub) {
+			writeSSE(c, "error", gin.H{"error": "提交访问权限已变更", "code": "SUBMISSION_ACCESS_REVOKED"})
+			return true
+		}
 		if s.shouldRedactSubmission(user, sub, time.Now()) {
 			redactSubmission(&sub)
 		}

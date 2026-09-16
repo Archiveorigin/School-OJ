@@ -2,7 +2,7 @@ import { readFileSync } from 'node:fs'
 import { resolve } from 'node:path'
 import { flushPromises, shallowMount } from '@vue/test-utils'
 import { afterEach, describe, expect, it, vi } from 'vitest'
-import { client } from '../src/api/client'
+import { http } from '../src/api/http'
 import PermissionManagement from '../src/views/admin/PermissionManagement.vue'
 
 const source = (file: string) => readFileSync(resolve(process.cwd(), file), 'utf8')
@@ -25,7 +25,7 @@ describe('second-round UI regressions', () => {
   })
 
   it('keeps base roles visible while displaying the independent author permission', async () => {
-    vi.spyOn(client, 'get').mockImplementation(async (url) => {
+    vi.spyOn(http, 'request').mockImplementation(async ({ url }) => {
       if (url === '/users')
         return {
           data: [

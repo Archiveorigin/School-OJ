@@ -15,7 +15,7 @@ import (
 
 func (s Server) Router() *gin.Engine {
 	router := gin.New()
-	router.Use(gin.Logger(), gin.Recovery(), middleware.SecurityHeaders())
+	router.Use(gin.Logger(), gin.Recovery(), middleware.SecurityHeaders(), middleware.ObserveAPIVersion())
 	if err := router.SetTrustedProxies(s.Cfg.TrustedProxies); err != nil {
 		panic(fmt.Errorf("configure trusted proxies: %w", err))
 	}
@@ -33,7 +33,7 @@ func (s Server) Router() *gin.Engine {
 		AllowOrigins:     allowedOrigins,
 		AllowMethods:     []string{"GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"},
 		AllowHeaders:     []string{"Authorization", "Content-Type"},
-		ExposeHeaders:    []string{"Content-Length", "X-RateLimit-Limit", "X-RateLimit-Remaining", "Retry-After"},
+		ExposeHeaders:    []string{"Content-Length", "X-RateLimit-Limit", "X-RateLimit-Remaining", "Retry-After", "X-API-Version"},
 		AllowCredentials: !allowAllOrigins,
 		MaxAge:           12 * time.Hour,
 	}))
@@ -72,6 +72,7 @@ func (s Server) registerAPIRoutes(api *gin.RouterGroup) {
 	auth.POST("/author-applications", s.createAuthorApplication)
 	auth.POST("/feedback", s.createFeedback)
 	auth.GET("/teams", s.listTeams)
+	auth.POST("/team-invitations/preview", middleware.RateLimitUser(s.Redis, "team-invitation", 20, time.Minute), s.previewTeamInvitation)
 	auth.POST("/teams", s.createTeam)
 	auth.GET("/teams/:id", s.getTeam)
 	auth.GET("/teams/:id/join-preview", s.previewTeamJoin)

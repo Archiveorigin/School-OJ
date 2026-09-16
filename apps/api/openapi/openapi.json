@@ -425,6 +425,7 @@
           },
           {
             "name": "asset_path",
+            "x-path-segments": true,
             "in": "path",
             "required": true,
             "schema": {
@@ -5878,6 +5879,7 @@
           },
           {
             "name": "file_path",
+            "x-path-segments": true,
             "in": "path",
             "required": true,
             "schema": {
@@ -8968,6 +8970,7 @@
           },
           {
             "name": "asset_path",
+            "x-path-segments": true,
             "in": "path",
             "required": true,
             "schema": {
@@ -9009,6 +9012,25 @@
           "503": {
             "$ref": "#/components/responses/ServiceUnavailable"
           }
+        }
+      }
+    },
+    "/team-invitations/preview": {
+      "post": {
+        "operationId": "previewTeamInvitation", "tags": ["团队"],
+        "summary": "凭邀请码查找邀请制团队，无需先提供团队链接",
+        "description": "仅返回最小预览，不自动加入。邀请码仅放在请求体。每账号每分钟20次；加入仍重新校验当前准入方式和邀请码。",
+        "x-handler": "previewTeamInvitation", "x-auth": "bearer",
+        "requestBody": { "required": true, "content": { "application/json": { "schema": {
+          "type": "object", "required": ["join_code"], "properties": { "join_code": { "type": "string", "minLength": 6, "maxLength": 24 } }
+        } } } },
+        "responses": {
+          "200": { "description": "最小预览，响应不可缓存", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/TeamJoinPreview" } } } },
+          "400": { "$ref": "#/components/responses/BadRequest" },
+          "401": { "$ref": "#/components/responses/Unauthorized" },
+          "403": { "description": "邀请码无效、重复、失效或考试访问受限；无效码统一返回 team_invitation_invalid", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ErrorResponse" } } } },
+          "429": { "description": "查询过于频繁", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ErrorResponse" } } } },
+          "503": { "$ref": "#/components/responses/ServiceUnavailable" }
         }
       }
     },
@@ -9521,12 +9543,12 @@
           "exam_id": {
             "type": "integer"
           },
-          "team_contest_id": {
-            "type": "integer"
+          "is_public": {
+            "type": "boolean",
+            "description": "仅独立练习使用；考试、作业和团队提交不因此公开源代码"
           },
-          "team_problem_set_id": {
-            "type": "integer"
-          },
+          "team_contest_id": { "type": "integer", "nullable": true },
+          "problem_set_id": { "type": "integer", "nullable": true },
           "language": {
             "type": "string",
             "enum": [
@@ -9611,11 +9633,9 @@
           "exam_id": {
             "type": "integer"
           },
-          "team_contest_id": {
-            "type": "integer"
-          },
-          "team_problem_set_id": {
-            "type": "integer"
+          "is_public": {
+            "type": "boolean",
+            "description": "独立练习的代码可见性；考试与作业提交始终受场次权限约束"
           }
         }
       },

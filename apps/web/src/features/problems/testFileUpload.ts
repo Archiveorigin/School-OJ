@@ -1,4 +1,4 @@
-import { client } from '../../api/client'
+import { generatedApi } from '../../api/client'
 
 export const TEST_UPLOAD_CHUNK_SIZE = 4 * 1024 * 1024
 export const TEST_UPLOAD_CHUNK_THRESHOLD = 16 * 1024 * 1024
@@ -71,14 +71,10 @@ export async function uploadTestFilesInChunks(files: File[], onProgress: (percen
       const task = tasks[cursor]
       cursor += 1
       const size = task.end - task.start
-      await client.put(`/problem-test-uploads/${task.uploadID}/${task.chunkIndex}`, task.file.slice(task.start, task.end), {
-        headers: { 'Content-Type': 'application/octet-stream' },
-        timeout: 120_000,
-        onUploadProgress(event) {
+      await generatedApi.problemChangeTicketOnlyViaProblemTestUploadsUploadIdChunkIndex<any>({ headers: { 'Content-Type': 'application/octet-stream' }, timeout: 120_000, onUploadProgress(event) {
           loadedByTask.set(task.key, Math.min(size, event.loaded))
           report()
-        }
-      })
+        }, path: { "upload_id": task.uploadID, "chunk_index": task.chunkIndex }, body: task.file.slice(task.start, task.end) })
       loadedByTask.set(task.key, size)
       report()
     }

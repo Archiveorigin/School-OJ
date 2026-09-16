@@ -18,6 +18,7 @@ const submissionDetailDialogSource = readFileSync(
   resolve(process.cwd(), 'src/components/SubmissionDetailDialog.vue'),
   'utf8',
 )
+const submissionDetailContentSource = readFileSync(resolve(process.cwd(), 'src/components/SubmissionDetailContent.vue'), 'utf8')
 
 describe('problem submission UI regressions', () => {
   it('does not render the standalone result panel below a problem', () => {
@@ -46,8 +47,8 @@ describe('problem submission UI regressions', () => {
   })
 
   it('uses the shared svg mark and never renders message or result details', () => {
-    expect(submissionDetailDialogSource).toContain('<SubmissionStatusMark')
-    expect(submissionDetailDialogSource).toContain(
+    expect(submissionDetailContentSource).toContain('<SubmissionStatusMark')
+    expect(submissionDetailContentSource).toContain(
       ':status="submission.status"',
     )
     expect(submissionDetailDialogSource).not.toContain('student_no')
@@ -63,11 +64,13 @@ describe('problem submission UI regressions', () => {
     expect(submissionDetailDialogSource).toContain(
       'width="min(1200px, calc(100vw - 28px))"',
     )
-    expect(submissionDetailDialogSource).toContain('flex-wrap: wrap')
-    expect(submissionDetailDialogSource).toContain('<SourceCodeViewer')
+    expect(submissionDetailContentSource).toContain('flex-wrap: wrap')
+    expect(submissionDetailDialogSource).toContain('<SubmissionDetailContent')
+    expect(submissionDetailContentSource).toContain('<SourceCodeViewer')
     const source = readFileSync(resolve(process.cwd(), 'src/components/SourceCodeViewer.vue'), 'utf8')
     expect(source).toContain('source-lines')
-    expect(source).toContain('background: #fff')
-    expect(source).toContain('border-right: 1px solid #22a06b')
+    expect(source).toContain('background: var(--code-surface)')
+    expect(source).toContain('border-right: 1px solid var(--code-divider)')
+    expect(source).toContain('justify-content: flex-end')
   })
 })

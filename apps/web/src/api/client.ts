@@ -1,10 +1,10 @@
-import { client, generatedApi } from './generated/client'
+import { generatedApi } from './generated/client'
 import type { components as OpenApiComponents } from './generated/client'
 import { apiBase, getActiveToken } from './http'
 
 export { client, generatedApi, apiOperations, requestOperation } from './generated/client'
 export type { ApiOperationId, ApiRequestOptions, components } from './generated/client'
-export { apiBase, setActiveToken } from './http'
+export { apiBase, setActiveToken, getActiveToken } from './http'
 
 export type Role = OpenApiComponents['schemas']['User']['role']
 export type User = OpenApiComponents['schemas']['User']
@@ -169,7 +169,8 @@ export interface Submission {
   problem_id: number
   assignment_id?: number
   exam_id?: number
-  team_contest_id?: number
+  team_contest_id?: number | null
+  problem_set_id?: number | null
   team_problem_set_id?: number
   language: string
   source_code?: string

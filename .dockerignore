@@ -1,8 +1,11 @@
 .git
 .cache
+.codex-backups
 tmp
 MEMORY.md
 **/node_modules
 **/dist
 **/.vite
 **/npm-debug.log*
+**/*.log
+**/coverage

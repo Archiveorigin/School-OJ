@@ -10,9 +10,11 @@
 | [OpenAPI 契约与 TypeScript Client](api-contract.md) | API 单一事实源、生成客户端、路由一致性检查和接口变更流程 |
 | [功能说明](features.md) | 用户角色、题库、工单、判题、课程、考试、比赛、团队和后台功能 |
 | [系统架构](architecture.md) | 应用边界、数据流、一致性、题目版本、提交与排行榜架构 |
+| [复用组件性能与生命周期](component-performance.md) | 全部 33 个组件审查、资源释放、请求与渲染优化、代码格式化边界与验证 |
 | [题目包规范](problem-package.md) | ZIP 结构、清单字段、测试点、比较器和工单使用方式 |
 | [安全设计](security.md) | 判题沙箱、鉴权、限流、题包和生产隔离 |
 | [开发、测试与部署](deployment.md) | 本地启动、环境变量、测试、生产更新、回滚和清理 |
+| [阿里云存储迁移与空间治理](aliyun-storage-migration.md) | 容量核查、OSS/RDS 选型与费用、代码适配、备份、迁移和回滚 |
 | [开发沿革](development-history.md) | 历史阶段、关键决策、已替换方案和后续治理方向 |
 
 ## 按功能查阅

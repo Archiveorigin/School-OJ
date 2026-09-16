@@ -2,6 +2,7 @@ package handlers
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
 	"fmt"
 	"net/http"
@@ -313,7 +314,7 @@ func TestTeamJoinConcurrencyPostgres(t *testing.T) {
 		wg.Add(1)
 		go func(action string) {
 			defer wg.Done()
-			_ = f.s.reviewTeamApplicationTransaction(f.teacher, team.ID, application.ID, action)
+			_ = f.s.teamAccess().Review(context.Background(), f.teacher.ID, team.ID, application.ID, action)
 		}(action)
 	}
 	wg.Wait()
@@ -324,7 +325,7 @@ func TestTeamJoinConcurrencyPostgres(t *testing.T) {
 	}
 	if application.Status == "approved" {
 		f.s.DB.Where("team_id = ? AND user_id = ?", team.ID, f.peer.ID).Delete(&models.TeamMembership{})
-		if err := f.s.reviewTeamApplicationTransaction(f.teacher, team.ID, application.ID, "approve"); err != nil {
+		if err := f.s.teamAccess().Review(context.Background(), f.teacher.ID, team.ID, application.ID, "approve"); err != nil {
 			t.Fatal(err)
 		}
 		f.s.DB.Model(&models.TeamMembership{}).Where("team_id = ? AND user_id = ?", team.ID, f.peer.ID).Count(&count)
@@ -393,6 +394,44 @@ func TestExamBrowserFixture(t *testing.T) {
 				t.Fatal(err)
 			}
 			f.s.DB.Create(&models.TeamContestProblem{ContestID: contest.ID, ProblemID: f.problem.ID, ProblemVersionID: f.version.ID, Label: "B"})
+		}
+	}
+	assignment := models.Assignment{CourseID: f.exam.CourseID, Title: "共享提交详情作业"}
+	if err := f.s.DB.Create(&assignment).Error; err != nil {
+		t.Fatal(err)
+	}
+	f.s.DB.Create(&models.AssignmentProblem{AssignmentID: assignment.ID, ProblemID: f.problem.ID})
+	set := models.TeamProblemSet{TeamID: 3, CreatedBy: f.teacher.ID, Title: "共享提交详情题单"}
+	if err := f.s.DB.Create(&set).Error; err != nil {
+		t.Fatal(err)
+	}
+	f.s.DB.Create(&models.TeamProblemSetProblem{ProblemSetID: set.ID, ProblemID: f.problem.ID, Label: "B"})
+	manual := models.Exam{CourseID: f.exam.CourseID, Title: "共享人工阅卷", StartsAt: f.exam.StartsAt, EndsAt: f.exam.EndsAt, ScoringRule: "ioi", Settings: datatypes.JSONMap{"manual_review": true}}
+	if err := f.s.DB.Create(&manual).Error; err != nil {
+		t.Fatal(err)
+	}
+	f.s.DB.Create(&models.ExamProblem{ExamID: manual.ID, ProblemID: f.problem.ID, ProblemVersionID: f.version.ID, Label: "B", Score: 100})
+	contestID := uint(1)
+	for _, user := range []models.User{f.student, f.peer} {
+		for _, scope := range []string{"practice", "assignment", "contest", "set", "manual"} {
+			sub := models.Submission{UserID: user.ID, ProblemID: f.problem.ID, ProblemVersionID: f.version.ID, Language: "python", SourceCode: "# 共享提交详情\nprint(3)\n", Status: models.StatusAccepted, Score: 100, TimeMS: 302, MemoryKB: 14656, IsPublic: true}
+			switch scope {
+			case "assignment":
+				sub.AssignmentID = &assignment.ID
+			case "contest":
+				sub.TeamContestID = &contestID
+			case "set":
+				sub.ProblemSetID = &set.ID
+			case "manual":
+				sub.ExamID = &manual.ID
+				sub.Status = models.StatusPendingReview
+			}
+			if err := f.s.DB.Create(&sub).Error; err != nil {
+				t.Fatal(err)
+			}
+			for _, name := range []string{"one", "two"} {
+				f.s.DB.Create(&models.SubmissionResult{SubmissionID: sub.ID, CaseName: name, Status: models.StatusAccepted})
+			}
 		}
 	}
 	t.Logf("FIXTURE_READY exam=%d other=%d problem=%d student=%s teacher=%s admin=%s", f.exam.ID, f.other.ID, f.problem.ID, f.student.Email, f.teacher.Email, f.admin.Email)

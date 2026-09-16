@@ -107,7 +107,7 @@
 <script setup lang="ts">
 import { computed, onMounted, ref } from 'vue'
 import { useRouter } from 'vue-router'
-import { client, type Problem } from '../api/client'
+import { generatedApi, type Problem } from '../api/client'
 import { useAuthStore } from '../stores/auth'
 
 const auth = useAuthStore()
@@ -123,8 +123,8 @@ const latestProblems = computed(() => problems.value.slice(0, 8))
 async function load() {
   loadError.value = ''
   try {
-    problems.value = (await client.get('/problems')).data || []
-    if (auth.isAuthed) courses.value = (await client.get('/courses')).data || []
+    problems.value = (await generatedApi.listProblems<any>()).data || []
+    if (auth.isAuthed) courses.value = (await generatedApi.listCourses<any>()).data || []
   } catch (err: any) {
     loadError.value = err.response?.data?.error || err.message || '概览加载失败'
   }

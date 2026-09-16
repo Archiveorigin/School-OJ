@@ -68,6 +68,7 @@ const router = createRouter({
     { path: '/problem-changes/new', component: ProblemChangeTickets, meta: { requiresAuthor: true, title: '发起工单', activeMenu: '/problem-changes' } },
     { path: '/profile', component: Profile, meta: { title: '个人中心' } },
     { path: '/teams', component: TeamList, meta: { title: '团队', activeMenu: '/teams' } },
+    { path: '/teams/join', component: TeamJoin, meta: { title: '加入团队', activeMenu: '/teams' } },
     { path: '/teams/:teamSlug/join', component: TeamJoin, meta: { title: '加入团队', activeMenu: '/teams' } },
     {
       path: '/contest/:contestId',

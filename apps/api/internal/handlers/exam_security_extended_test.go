@@ -217,7 +217,7 @@ func TestTeamRejoinLifecyclePostgres(t *testing.T) {
 	f.s.DB.Create(&models.TeamMembership{TeamID: team.ID, UserID: f.teacher.ID, Role: models.TeamRoleOwner})
 	join := func() {
 		t.Helper()
-		if _, err := f.s.joinTeamTransaction(team.ID, f.student.ID, "", ""); err != nil {
+		if _, err := f.s.teamAccess().Join(context.Background(), team.ID, f.student.ID, "", ""); err != nil {
 			t.Fatal(err)
 		}
 	}
@@ -228,7 +228,7 @@ func TestTeamRejoinLifecyclePostgres(t *testing.T) {
 	}
 	join()
 	first := application()
-	if err := f.s.reviewTeamApplicationTransaction(f.teacher, team.ID, first.ID, "reject"); err != nil {
+	if err := f.s.teamAccess().Review(context.Background(), f.teacher.ID, team.ID, first.ID, "reject"); err != nil {
 		t.Fatal(err)
 	}
 	join()
@@ -236,13 +236,13 @@ func TestTeamRejoinLifecyclePostgres(t *testing.T) {
 	if second.ID == first.ID {
 		t.Fatal("reapplication reused rejected request")
 	}
-	if err := f.s.reviewTeamApplicationTransaction(f.teacher, team.ID, second.ID, "approve"); err != nil {
+	if err := f.s.teamAccess().Review(context.Background(), f.teacher.ID, team.ID, second.ID, "approve"); err != nil {
 		t.Fatal(err)
 	}
-	if err := f.s.changeTeamMembership(f.teacher, team.ID, f.student.ID, "remove", ""); err != nil {
+	if err := f.s.teamAccess().ChangeMembership(context.Background(), f.teacher.ID, team.ID, f.student.ID, "remove", ""); err != nil {
 		t.Fatal(err)
 	}
-	if err := f.s.reviewTeamApplicationTransaction(f.teacher, team.ID, second.ID, "approve"); err != nil {
+	if err := f.s.teamAccess().Review(context.Background(), f.teacher.ID, team.ID, second.ID, "approve"); err != nil {
 		t.Fatal(err)
 	}
 	if _, joined := f.s.teamMembership(team.ID, f.student.ID); joined {
@@ -256,11 +256,11 @@ func TestTeamRejoinLifecyclePostgres(t *testing.T) {
 	if third.Status != "approved" {
 		t.Fatal("direct join leaves stale application")
 	}
-	if err := f.s.changeTeamMembership(f.student, team.ID, f.student.ID, "leave", ""); err != nil {
+	if err := f.s.teamAccess().ChangeMembership(context.Background(), f.student.ID, team.ID, f.student.ID, "leave", ""); err != nil {
 		t.Fatal(err)
 	}
 	join()
-	if err := f.s.changeTeamMembership(f.teacher, team.ID, f.student.ID, "role", models.TeamRoleAdmin); err != nil {
+	if err := f.s.teamAccess().ChangeMembership(context.Background(), f.teacher.ID, team.ID, f.student.ID, "role", models.TeamRoleAdmin); err != nil {
 		t.Fatal(err)
 	}
 	join()
@@ -269,13 +269,13 @@ func TestTeamRejoinLifecyclePostgres(t *testing.T) {
 		t.Fatal("duplicate join overwrites role")
 	}
 	f.s.DB.Model(&team).Update("join_mode", "application")
-	if _, err := f.s.joinTeamTransaction(team.ID, f.peer.ID, "", ""); err != nil {
+	if _, err := f.s.teamAccess().Join(context.Background(), team.ID, f.peer.ID, "", ""); err != nil {
 		t.Fatal(err)
 	}
 	var removed models.TeamJoinApplication
 	f.s.DB.Where("team_id = ? AND user_id = ?", team.ID, f.peer.ID).First(&removed)
 	f.s.DB.Model(&f.peer).Update("account_deleted", true)
-	if err := f.s.reviewTeamApplicationTransaction(f.teacher, team.ID, removed.ID, "approve"); err == nil {
+	if err := f.s.teamAccess().Review(context.Background(), f.teacher.ID, team.ID, removed.ID, "approve"); err == nil {
 		t.Fatal("deleted user approved")
 	}
 }

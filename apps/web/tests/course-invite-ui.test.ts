@@ -20,7 +20,8 @@ describe('course invitation UI', () => {
   it('offers one invite-code-only course join flow', () => {
     expect(joinDialogSource.match(/<el-dialog\b/g)).toHaveLength(1)
     expect(joinDialogSource).toContain('placeholder="请输入课程邀请码"')
-    expect(joinDialogSource).toContain("client.post('/courses/join', { join_code: code })")
+    expect(joinDialogSource).toContain('generatedApi.joinCourseByCode')
+    expect(joinDialogSource).toContain('body: { join_code: code }')
     expect(joinDialogSource).toContain('response.data?.course_id')
     expect(joinDialogSource).toContain('defineExpose({ openInvite })')
     expect(joinDialogSource).not.toContain('/classes/join')

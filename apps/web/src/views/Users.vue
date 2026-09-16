@@ -108,7 +108,7 @@
 <script setup lang="ts">
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { computed, onMounted, reactive, ref, watch } from 'vue'
-import { client, type Role, type User } from '../api/client'
+import { generatedApi, type Role, type User } from '../api/client'
 import ListPagination from '../components/ListPagination.vue'
 import { formatDateTime } from '../features/time'
 import { useAuthStore } from '../stores/auth'
@@ -150,7 +150,7 @@ const resetPasswordForm = reactive({
 async function load() {
   loading.value = true
   try {
-    users.value = (await client.get('/users')).data
+    users.value = (await generatedApi.listUsers<any>()).data
   } catch (err: any) {
     ElMessage.error(errorText(err))
   } finally {
@@ -165,7 +165,7 @@ function openCreate() {
 
 async function openEdit(row: User) {
   try {
-    const { data } = await client.get(`/users/${row.id}`)
+    const { data } = await generatedApi.getUser<any>({ path: { "id": row.id } })
     editForm.id = data.id
     editForm.email = data.email || ''
     editForm.name = data.name || ''
@@ -188,7 +188,7 @@ async function submitCreate() {
   if (!validateUserForm(createForm.email, createForm.name, createForm.password)) return
   savingCreate.value = true
   try {
-    await client.post('/users', { ...createForm })
+    await generatedApi.createUser<any>({ body: { ...createForm } })
     ElMessage.success('用户已创建')
     createVisible.value = false
     await load()
@@ -203,12 +203,12 @@ async function submitEdit() {
   if (!validateUserForm(editForm.email, editForm.name)) return
   savingEdit.value = true
   try {
-    await client.put(`/users/${editForm.id}`, {
+    await generatedApi.updateUser<any>({ path: { "id": editForm.id }, body: {
       email: editForm.email,
       name: editForm.name,
       role: editForm.role,
       student_no: editForm.student_no
-    })
+    } })
     ElMessage.success('用户已更新')
     editVisible.value = false
     await load()
@@ -226,7 +226,7 @@ async function submitResetPassword() {
   }
   savingReset.value = true
   try {
-    await client.post(`/users/${resetPasswordForm.id}/reset-password`, { password: resetPasswordForm.password })
+    await generatedApi.resetUserPassword<any>({ path: { "id": resetPasswordForm.id }, body: { password: resetPasswordForm.password } })
     ElMessage.success('密码已重置')
     resetVisible.value = false
   } catch (err: any) {
@@ -248,7 +248,7 @@ async function confirmDelete(row: User) {
       type: 'warning',
       confirmButtonClass: 'el-button--danger'
     })
-    await client.delete(`/users/${row.id}`)
+    await generatedApi.deleteUser<any>({ path: { "id": row.id } })
     ElMessage.success('用户已删除')
     await load()
   } catch (err: any) {

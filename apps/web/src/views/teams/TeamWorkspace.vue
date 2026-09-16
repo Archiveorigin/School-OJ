@@ -8,8 +8,8 @@
       <p class="description">{{ team.description || '这个团队还没有填写简介。' }}</p>
 
       <section class="side-info">
-        <span>我的身份</span>
-        <strong>{{ teamRoleLabel(team.my_role) }}</strong>
+        <span>团队职级</span>
+        <strong>{{ team.my_role ? teamRoleLabel(team.my_role) : '未加入' }}</strong>
         <span>创建者</span>
         <strong>{{ team.owner_name || '未知' }}</strong>
         <span>成员</span>
@@ -24,7 +24,7 @@
       </section>
 
       <el-button v-if="canManage" plain @click="settingsVisible = true">团队设置</el-button>
-      <el-button v-if="canManage" plain @click="copyInvite">复制加入链接</el-button>
+      <el-button v-if="canManage && team.join_mode !== 'invitation'" plain @click="copyInvite">{{ team.join_mode === 'application' ? '复制申请链接' : '复制加入链接' }}</el-button>
       <el-button v-if="canManage && team.join_code && team.join_mode === 'invitation'" plain @click="copyInviteCode">复制邀请码</el-button>
       <el-button v-if="team.my_role && team.my_role !== 'owner'" type="danger" plain @click="leaveTeam">退出团队</el-button>
     </aside>
@@ -59,7 +59,7 @@
           <el-select v-model="settings.join_mode" :disabled="!team.can_edit_permissions">
             <el-option label="邀请制" value="invitation" />
             <el-option label="申请制" value="application" />
-            <el-option label="随便进" value="open" />
+            <el-option label="自由加入" value="open" />
           </el-select>
         </el-form-item>
         <el-form-item label="组织权限">
@@ -85,7 +85,7 @@
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { computed, reactive, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
-import { client, type Team, type TeamRole } from '../../api/client'
+import { generatedApi, type Team, type TeamRole } from '../../api/client'
 import MarkdownRenderer from '../../components/MarkdownRenderer.vue'
 import TeamIconUpload from '../../components/TeamIconUpload.vue'
 import { copyTextToClipboard } from '../../features/clipboard'
@@ -117,7 +117,7 @@ const settings = reactive({
 
 async function loadTeam() {
   try {
-    const { data } = await client.get<Team>(`/teams/${encodeURIComponent(String(route.params.teamSlug))}`)
+    const { data } = await generatedApi.getTeam<Team>({ path: { "id": String(route.params.teamSlug) } })
     if (!data.joined && !data.can_manage) {
       await router.replace(`${basePath.value}/join`)
       return
@@ -143,7 +143,7 @@ async function saveSettings() {
   if (!team.value) return
   saving.value = true
   try {
-    await client.put(`/teams/${team.value.id}`, settings)
+    await generatedApi.updateTeam<any>({ path: { "id": team.value.id }, body: settings })
     settingsVisible.value = false
     ElMessage.success('团队设置已更新')
     await loadTeam()
@@ -158,7 +158,7 @@ async function saveTeamIcon(iconURL: string) {
   if (!team.value || !canManage.value) return
   settings.icon_url = iconURL
   try {
-    await client.put(`/teams/${team.value.id}`, settings)
+    await generatedApi.updateTeam<any>({ path: { "id": team.value.id }, body: settings })
     ElMessage.success('团队图标已更新')
     await loadTeam()
   } catch (err: any) {
@@ -171,7 +171,7 @@ async function leaveTeam() {
   if (!team.value) return
   try {
     await ElMessageBox.confirm('退出后将无法访问团队比赛、私有题单与讨论，确认退出？', '退出团队', { type: 'warning' })
-    await client.post(`/teams/${team.value.id}/leave`)
+    await generatedApi.leaveTeam<any>({ path: { "id": team.value.id } })
     ElMessage.success('已退出团队')
     await router.push('/teams')
   } catch (err: any) {

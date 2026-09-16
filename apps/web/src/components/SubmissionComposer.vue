@@ -17,7 +17,7 @@
       <slot name="options" />
       <div class="composer-actions">
         <el-button @click="editorRef?.format()">自动格式化</el-button>
-        <el-button type="primary" :loading="submitting" :disabled="disabled" @click="emit('submit')">{{ submitLabel }}</el-button>
+        <el-button type="primary" :loading="submitting" :disabled="disabled" @click="submit">{{ submitLabel }}</el-button>
       </div>
     </div>
     <CodeEditor
@@ -31,10 +31,10 @@
 </template>
 
 <script setup lang="ts">
-import { ref } from 'vue'
+import { onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import CodeEditor from './CodeEditor.vue'
 import VerdictTag from './VerdictTag.vue'
-import { clearSubmissionDraft, loadSubmissionDraft, saveSubmissionDraft, type SubmissionDraftScope } from '../features/submissions/drafts'
+import { clearSubmissionDraft, loadSubmissionDraft, saveSubmissionDraft, submissionDraftKey, type SubmissionDraftScope } from '../features/submissions/drafts'
 
 const props = withDefaults(defineProps<{
   language: string
@@ -52,13 +52,43 @@ const emit = defineEmits<{
   submit: []
 }>()
 const editorRef = ref<InstanceType<typeof CodeEditor> | null>(null)
+let pendingDraft: { scope: SubmissionDraftScope; language: string; source: string } | null = null
+let draftTimer: ReturnType<typeof setTimeout> | undefined
+
+function flushDraft() {
+  clearTimeout(draftTimer)
+  draftTimer = undefined
+  const draft = pendingDraft
+  pendingDraft = null
+  if (draft) saveSubmissionDraft(draft.scope, draft.language, draft.source)
+}
+
+function onVisibilityChange() {
+  if (document.visibilityState === 'hidden') flushDraft()
+}
+
+watch(() => props.draftContext ? submissionDraftKey(props.draftContext, props.language) : '', flushDraft, { flush: 'sync' })
+onMounted(() => {
+  window.addEventListener('pagehide', flushDraft)
+  document.addEventListener('visibilitychange', onVisibilityChange)
+})
+onBeforeUnmount(() => {
+  flushDraft()
+  window.removeEventListener('pagehide', flushDraft)
+  document.removeEventListener('visibilitychange', onVisibilityChange)
+})
 
 function updateSource(value: string) {
-  if (props.draftContext) saveSubmissionDraft(props.draftContext, props.language, value)
   emit('update:source', value)
+  if (props.draftContext) {
+    pendingDraft = { scope: { ...props.draftContext }, language: props.language, source: value }
+    // At most one synchronous storage write per 300 ms, even while typing continuously.
+    if (draftTimer === undefined) draftTimer = setTimeout(flushDraft, 300)
+  }
 }
 
 function changeLanguage(value: string) {
+  flushDraft()
   if (props.draftContext) {
     saveSubmissionDraft(props.draftContext, props.language, props.source)
     emit('update:source', loadSubmissionDraft(props.draftContext, value) || '')
@@ -67,7 +97,15 @@ function changeLanguage(value: string) {
 }
 
 function clearDraft() {
+  clearTimeout(draftTimer)
+  draftTimer = undefined
+  pendingDraft = null
   if (props.draftContext) clearSubmissionDraft(props.draftContext, props.language)
+}
+
+function submit() {
+  flushDraft()
+  emit('submit')
 }
 
 defineExpose({ clearDraft })

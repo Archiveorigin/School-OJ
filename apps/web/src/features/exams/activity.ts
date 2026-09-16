@@ -1,5 +1,4 @@
-import { apiBase, generatedApi, apiOperations, type components } from '../../api/client'
-import { getActiveToken } from '../../api/http'
+import { apiBase, generatedApi, apiOperations, getActiveToken, type components } from '../../api/client'
 
 export type ExamClientEvent = 'window_leave' | 'window_return' | 'devtools_shortcut'
 export type ExamActivityEvent = components['schemas']['ExamActivityEvent']

@@ -115,7 +115,7 @@
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { computed, onMounted, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
-import { client } from '../api/client'
+import { generatedApi } from '../api/client'
 import ListPagination from '../components/ListPagination.vue'
 
 interface CourseStudent {
@@ -185,8 +185,8 @@ async function load() {
   loading.value = true
   try {
     const [courseRes, studentsRes] = await Promise.all([
-      client.get('/courses'),
-      client.get(`/courses/${courseId.value}/students`)
+      generatedApi.listCourses<any>(),
+      generatedApi.listCourseStudents<any>({ path: { "id": courseId.value } })
     ])
     course.value = (courseRes.data as any[]).find((c: any) => c.id === courseId.value) || null
     students.value = Array.isArray(studentsRes.data) ? studentsRes.data : []
@@ -209,7 +209,7 @@ async function removeStudent(row: CourseStudent) {
   }
   removingId.value = row.user_id
   try {
-    await client.delete(`/courses/${courseId.value}/members/${row.user_id}`)
+    await generatedApi.removeCourseMember<any>({ path: { "id": courseId.value, "user_id": row.user_id } })
     ElMessage.success('学生已移除')
     students.value = students.value.filter((s) => s.user_id !== row.user_id)
   } catch (err: any) {

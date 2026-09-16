@@ -81,13 +81,6 @@ a:hover {
   color: var(--muted);
 }
 
-.monaco-host {
-  height: 420px;
-  border: 1px solid var(--border);
-  border-radius: 8px;
-  overflow: hidden;
-}
-
 .auth-page {
   min-height: 100vh;
   display: grid;

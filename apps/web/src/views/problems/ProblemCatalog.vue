@@ -76,7 +76,7 @@ import { ElMessage } from 'element-plus'
 import { CircleCheckFilled, Clock, Minus } from '@element-plus/icons-vue'
 import { computed, onBeforeUnmount, onMounted, reactive, ref, watch } from 'vue'
 import { useRouter } from 'vue-router'
-import { client, type Problem, type ProblemCatalogItem, type ProblemCatalogResponse } from '../../api/client'
+import { generatedApi, type Problem, type ProblemCatalogItem, type ProblemCatalogResponse } from '../../api/client'
 import ListPagination from '../../components/ListPagination.vue'
 import ProblemTagSelector from '../../components/ProblemTagSelector.vue'
 import { difficultyClass, problemDifficulty, problemDifficultyOptions, problemDisplayCode, tagList } from '../../features/problems/problemMeta'
@@ -96,9 +96,7 @@ let loadTimer: number | undefined
 async function load() {
   loading.value = true
   try {
-    const { data } = await client.get<ProblemCatalogResponse>('/problems/catalog', {
-      params: { page: page.value, page_size: pageSize.value, q: filters.q.trim() || undefined, difficulty: filters.difficulty || undefined, tags: filters.tags.join(',') || undefined, status: filters.status || undefined }
-    })
+    const { data } = await generatedApi.listProblemCatalog<ProblemCatalogResponse>({ query: { page: page.value, page_size: pageSize.value, q: filters.q.trim() || undefined, difficulty: filters.difficulty || undefined, tags: filters.tags.join(',') || undefined, status: filters.status || undefined } })
     items.value = data.items || []
     total.value = data.total || 0
   } catch (error: any) {

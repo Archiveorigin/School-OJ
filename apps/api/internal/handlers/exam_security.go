@@ -9,6 +9,7 @@ import (
 	"io"
 	"net/http"
 	"net/url"
+	teamdomain "school-oj/apps/api/internal/domain/team"
 	"strconv"
 	"strings"
 	"time"
@@ -226,6 +227,20 @@ func (s Server) enterExam(c *gin.Context) {
 }
 
 func examMutationError(c *gin.Context, err error) {
+	var access *teamdomain.Error
+	if errors.As(err, &access) {
+		status := http.StatusBadRequest
+		switch access.Code {
+		case teamdomain.Forbidden, teamdomain.InvalidInvitation:
+			status = http.StatusForbidden
+		case teamdomain.Conflict:
+			status = http.StatusConflict
+		case teamdomain.NotFound:
+			status = http.StatusNotFound
+		}
+		c.JSON(status, gin.H{"error": access.Message, "code": access.Code})
+		return
+	}
 	var mutation *teamContentMutationError
 	if errors.As(err, &mutation) {
 		c.JSON(mutation.status, gin.H{"error": mutation.message})

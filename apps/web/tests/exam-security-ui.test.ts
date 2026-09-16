@@ -5,14 +5,13 @@ import { sourceLineNumbers, hasEvaluatedResources } from '../src/features/submis
 import { legacyExamPath, examProblemItems, problemLabel } from '../src/features/events/workspace'
 import { parseTeamJoinSlug } from '../src/features/teams/join'
 import EventWorkspaceHeader from '../src/components/EventWorkspaceHeader.vue'
-import { client, generatedApi } from '../src/api/client'
+import { generatedApi } from '../src/api/client'
 import { createPinia, setActivePinia } from 'pinia'
 import { useExamLockStore } from '../src/stores/examLock'
 import { adaptExamRanking, adaptTeamContestRanking } from '../src/features/leaderboard/adapters'
-vi.mock('../src/api/client', () => ({ client: { get: vi.fn() }, generatedApi: { recordExamActivity: vi.fn() }, apiOperations: { recordExamActivity: { path: '/exams/{id}/activity' } }, apiBase: '/api' }))
-vi.mock('../src/api/http', () => ({ getActiveToken: () => 'test-session' }))
+vi.mock('../src/api/client', () => ({ generatedApi: { activeExam: vi.fn(), recordExamActivity: vi.fn() }, apiOperations: { recordExamActivity: { path: '/exams/{id}/activity' } }, apiBase: '/api/v1', getActiveToken: () => 'test-session' }))
 
-beforeEach(() => { localStorage.clear(); vi.mocked(generatedApi.recordExamActivity).mockReset(); vi.mocked(client.get).mockReset(); setActivePinia(createPinia()) })
+beforeEach(() => { localStorage.clear(); vi.mocked(generatedApi.recordExamActivity).mockReset(); vi.mocked(generatedApi.activeExam).mockReset(); setActivePinia(createPinia()) })
 describe('exam environment', () => {
   it('deduplicates blur/visibility and records a single matching return', () => {
     const events: string[] = [], state = new ExamFocusState(event => events.push(event))
@@ -81,19 +80,19 @@ describe('shared event and submission presentation', () => {
 describe('server-authoritative exam state', () => {
   it('restores a lock from the server without relying on local storage', async () => {
     const store = useExamLockStore()
-    vi.mocked(client.get).mockResolvedValueOnce({ data: { active: true, exam: { id: 4, title: '考试' } } })
+    vi.mocked(generatedApi.activeExam).mockResolvedValueOnce({ data: { active: true, exam: { id: 4, title: '考试' } } } as any)
     await store.syncActiveExam()
     expect(store.locked).toBe(true); expect(store.examId).toBe(4); expect(store.synced).toBe(true)
   })
   it('retains the last lock on failed status checks', async () => {
     const store = useExamLockStore(); store.lock(4)
-    vi.mocked(client.get).mockRejectedValueOnce(new Error('service unavailable'))
+    vi.mocked(generatedApi.activeExam).mockRejectedValueOnce(new Error('service unavailable'))
     await expect(store.syncActiveExam()).rejects.toThrow()
     expect(store.locked).toBe(true); expect(store.synced).toBe(false)
   })
   it('removes stale client locks only when the server confirms completion', async () => {
     const store = useExamLockStore(); store.lock(4)
-    vi.mocked(client.get).mockResolvedValueOnce({ data: { active: false } })
+    vi.mocked(generatedApi.activeExam).mockResolvedValueOnce({ data: { active: false } } as any)
     await store.syncActiveExam()
     expect(store.locked).toBe(false); expect(localStorage.getItem('school-oj-active-exam')).toBeNull()
   })

@@ -1,7 +1,7 @@
-import { client } from "../client";
+import { generatedApi } from "../client";
 import type { CourseSummary } from "../../features/exams/types";
 
 export async function listCourses() {
-  const { data } = await client.get<CourseSummary[]>("/courses");
+  const { data } = await generatedApi.listCourses<CourseSummary[]>();
   return Array.isArray(data) ? data : [];
 }

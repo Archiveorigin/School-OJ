@@ -155,12 +155,11 @@
 </template>
 
 <script setup lang="ts">
+import { submissionLanguage } from '../../features/submissions/presentation'
 import { ElMessage } from 'element-plus'
 import { computed, onBeforeUnmount, onMounted, reactive, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
-import {
-  client,
-  getLatestSubmissions,
+import { generatedApi, getLatestSubmissions,
   openEventStream,
   type AuthenticatedEventSource,
   type ScoringRule,
@@ -237,7 +236,7 @@ const selectedLink = computed(
 const problemItems = computed(() => (detail.value?.problems || []).map((link: any) => ({ ...link, score: 100 })))
 const submissionVisible = ref(false), submissionDetail = ref<any>(null)
 async function viewSubmission(id: number) {
-  try { submissionDetail.value = (await client.get(`/submissions/${id}`)).data; submissionVisible.value = true }
+  try { submissionDetail.value = (await generatedApi.getSubmission<any>({ path: { "id": id } })).data; submissionVisible.value = true }
   catch (err: any) { ElMessage.error(err.response?.data?.error || '提交加载失败') }
 }
 const problemRecords = computed(() =>
@@ -260,7 +259,7 @@ const rankingUpdatedAt = computed(() =>
 )
 async function loadDetail() {
   try {
-    detail.value = (await client.get(`/contests/${contestID.value}`)).data
+    detail.value = (await generatedApi.getTeamContestViaContestsContestId<any>({ path: { "contest_id": contestID.value } })).data
     if (detail.value.contest.scoring_rule === 'oi' && section.value === 'scoreboard')
       await router.replace(`/contest/${contestID.value}/problems`)
     Object.assign(editForm, { ...detail.value.contest })
@@ -277,7 +276,7 @@ async function loadDetail() {
 async function loadRecords() {
   if (!contestID.value) return
   try {
-    records.value = (await client.get(`/contests/${contestID.value}/submissions`)).data || []
+    records.value = (await generatedApi.listTeamContestSubmissionsViaContestsContestIdSubmissions<any>({ path: { "contest_id": contestID.value } })).data || []
   } catch {
     records.value = []
   }
@@ -287,7 +286,7 @@ async function loadRanking() {
   rankingLoading.value = true
   rankingError.value = ''
   try {
-    ranking.value = (await client.get(`/contests/${contestID.value}/ranking`)).data || {
+    ranking.value = (await generatedApi.teamContestRankingViaContestsContestIdRanking<any>({ path: { "contest_id": contestID.value } })).data || {
       rows: [],
       problems: []
     }
@@ -346,11 +345,11 @@ async function submitSolution() {
   if (!source.value.trim()) return ElMessage.warning('请输入代码')
   submitting.value = true
   try {
-    const { data } = await client.post(`/contests/${contestID.value}/submissions`, {
+    const { data } = await generatedApi.createTeamContestSubmissionViaContestsContestIdSubmissions<any>({ path: { "contest_id": contestID.value }, body: {
       problem_id: selectedLink.value.problem_id,
-      language: language.value,
+      language: submissionLanguage(language.value),
       source_code: source.value
-    })
+    } })
     composer.value?.clearDraft()
     liveStatus.value = data
     stream?.close()
@@ -374,9 +373,9 @@ async function addProblem() {
   if (!problemCode.value.trim()) return
   adding.value = true
   try {
-    await client.post(`/contests/${contestID.value}/problems`, {
+    await generatedApi.addTeamContestProblemViaContestsContestIdProblems<any>({ path: { "contest_id": contestID.value }, body: {
       problem_code: problemCode.value.trim()
-    })
+    } })
     problemCode.value = ''
     addVisible.value = false
     await loadDetail()
@@ -391,7 +390,7 @@ async function saveContest() {
   if (editForm.scoring_rule === 'oi') editForm.freeze_enabled = false
   editing.value = true
   try {
-    await client.put(`/contests/${contestID.value}`, editForm)
+    await generatedApi.updateTeamContestViaContestsContestId<any>({ path: { "contest_id": contestID.value }, body: editForm })
     editVisible.value = false
     await loadDetail()
     ElMessage.success('设置已保存')
@@ -404,7 +403,7 @@ async function saveContest() {
 async function publishContest() {
   publishing.value = true
   try {
-    await client.post(`/contests/${contestID.value}/publish`)
+    await generatedApi.publishTeamContestViaContestsContestIdPublish<any>({ path: { "contest_id": contestID.value } })
     await loadDetail()
     ElMessage.success('比赛已发布')
   } catch (e: any) {
@@ -434,7 +433,7 @@ onBeforeUnmount(() => {
 </script>
 
 <style scoped>
-.contest-page { min-height: 100%; padding: 24px 20px 58px; background: color-mix(in srgb, var(--surface) 74%, #edf2f7); }
+.contest-page { min-height: 100%; padding: 24px 20px 58px; background: color-mix(in srgb, var(--surface) 74%, var(--color-canvas)); }
 .contest-shell { width: min(1320px, 100%); margin: 0 auto; }
 .contest-content { padding-top: 16px; }
 .contest-scoreboard { min-width: 0; overflow: hidden; }

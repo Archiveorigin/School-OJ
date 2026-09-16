@@ -39,7 +39,7 @@
 <script setup lang="ts">
 import { ElMessage } from 'element-plus'
 import { ref } from 'vue'
-import { client } from '../api/client'
+import { generatedApi } from '../api/client'
 import courseAddIcon from '../assets/course-add.svg'
 
 const emit = defineEmits<{
@@ -64,7 +64,7 @@ async function joinInvitedCourse() {
 
   joining.value = true
   try {
-    const response = await client.post('/courses/join', { join_code: code })
+    const response = await generatedApi.joinCourseByCode<any>({ body: { join_code: code } })
     const courseID = Number(response.data?.course_id)
     inviteVisible.value = false
     inviteCode.value = ''

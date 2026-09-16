@@ -47,7 +47,7 @@
 import { ElMessage } from 'element-plus'
 import { computed, onMounted, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
-import { client } from '../../api/client'
+import { generatedApi } from '../../api/client'
 import courseAddIcon from '../../assets/course-add.svg'
 import CourseJoinDialogs from '../../components/CourseJoinDialogs.vue'
 import { useAuthStore } from '../../stores/auth'
@@ -63,7 +63,7 @@ const canManage = computed(() => auth.role === 'teacher' || auth.role === 'admin
 
 async function loadCourse() {
   try {
-    const items = (await client.get('/courses')).data || []
+    const items = (await generatedApi.listCourses<any>()).data || []
     course.value = items.find((item: any) => item.id === courseID.value) || null
     if (!course.value) {
       ElMessage.warning('课程不存在或当前账号无权访问')

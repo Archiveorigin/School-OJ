@@ -54,8 +54,9 @@
 
 <script setup lang="ts">
 import { ElMessage } from 'element-plus'
-import { ref, watch } from 'vue'
-import { client } from '../api/client'
+import { onBeforeUnmount, ref, shallowRef, watch } from 'vue'
+import { mapConcurrent } from '../features/async'
+import { generatedApi } from '../api/client'
 import { copyTextToClipboard } from '../features/clipboard'
 
 interface ProblemTestMeta {
@@ -82,71 +83,68 @@ const props = defineProps<{
 }>()
 
 const visible = ref(false)
-const tests = ref<ProblemTest[]>([])
+const tests = shallowRef<ProblemTest[]>([])
 const loading = ref(false)
 const downloadingAll = ref(false)
 
+let controller: AbortController | null = null
+let downloadController: AbortController | null = null
+
 function openDialog() {
   visible.value = true
-  void loadTests(true)
 }
 
-async function loadTests(includeContents = visible.value) {
-  if (!props.problemId) return
+async function loadTests() {
+  controller?.abort()
+  const request = new AbortController()
+  controller = request
+  const problemId = props.problemId
+  tests.value = []
+  if (!problemId) return
   loading.value = true
   try {
-    const { data } = await client.get(`/problems/${props.problemId}/tests`)
+    const { data } = await generatedApi.listProblemTests<any>({ path: { id: problemId }, signal: request.signal })
+    if (request.signal.aborted) return
     const metadata: ProblemTestMeta[] = data.tests || []
-    tests.value = await Promise.all(metadata.map(async (test) => {
-      if (!includeContents) {
-        return {
-          name: test.name,
-          inputPath: test.input,
-          outputPath: test.output,
-          input: '',
-          output: '',
-          weight: test.weight
-        }
-      }
+    const loaded = await mapConcurrent(metadata, 3, async (test) => {
+      if (request.signal.aborted) return null
       const [input, output] = await Promise.all([
-        readTestFile(test.input),
-        readTestFile(test.output)
+        readTestFile(problemId, test.input, request.signal),
+        readTestFile(problemId, test.output, request.signal)
       ])
-      return {
-        name: test.name,
-        inputPath: test.input,
-        outputPath: test.output,
-        input,
-        output,
-        weight: test.weight
-      }
-    }))
+      return { name: test.name, inputPath: test.input, outputPath: test.output, input, output, weight: test.weight }
+    })
+    if (!request.signal.aborted) tests.value = loaded.filter((test): test is ProblemTest => test !== null)
   } catch (err: any) {
-    tests.value = []
-    ElMessage.error(err.response?.data?.error || err.message || '测试数据加载失败')
+    if (!request.signal.aborted) {
+      request.abort()
+      tests.value = []
+      ElMessage.error(err.response?.data?.error || err.message || '测试数据加载失败')
+    }
   } finally {
-    loading.value = false
+    if (controller === request) loading.value = false
   }
 }
 
-async function readTestFile(path: string) {
-  const encoded = path
-    .split('/')
-    .map((part) => encodeURIComponent(part))
-    .join('/')
-  const { data } = await client.get(`/problems/${props.problemId}/tests/file/${encoded}`, { responseType: 'text' })
+async function readTestFile(problemId: number, path: string, signal: AbortSignal) {
+  const { data } = await generatedApi.downloadProblemTestFile<string>({ path: { id: problemId, file_path: path }, responseType: 'text', signal })
   return typeof data === 'string' ? data : String(data ?? '')
 }
 
 async function downloadAll() {
+  if (downloadingAll.value) return
+  const request = new AbortController()
+  downloadController = request
+  const problemId = props.problemId
+  const filename = `${props.problemCode || `problem-${problemId}`}-tests.zip`
   downloadingAll.value = true
   try {
-    const { data } = await client.get(`/problems/${props.problemId}/tests/download`, { responseType: 'blob' })
-    downloadBlob(data, `${props.problemCode || `problem-${props.problemId}`}-tests.zip`)
+    const { data } = await generatedApi.downloadProblemTests<Blob>({ responseType: 'blob', path: { id: problemId }, signal: request.signal })
+    if (!request.signal.aborted) downloadBlob(data, filename)
   } catch (err: any) {
-    ElMessage.error(err.response?.data?.error || err.message)
+    if (!request.signal.aborted) ElMessage.error(err.response?.data?.error || err.message)
   } finally {
-    downloadingAll.value = false
+    if (downloadController === request) downloadingAll.value = false
   }
 }
 
@@ -168,10 +166,14 @@ function downloadBlob(blob: Blob, filename: string) {
   URL.revokeObjectURL(url)
 }
 
-watch(() => props.problemId, () => {
+watch([visible, () => props.problemId], ([isOpen]) => {
+  controller?.abort()
+  downloadController?.abort()
+  downloadingAll.value = false
   tests.value = []
-  void loadTests(visible.value)
-}, { immediate: true })
+  if (isOpen) void loadTests()
+})
+onBeforeUnmount(() => { controller?.abort(); downloadController?.abort() })
 </script>
 
 <style scoped>

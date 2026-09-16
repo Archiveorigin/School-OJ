@@ -1,5 +1,5 @@
 import { defineStore } from 'pinia'
-import { client, type ClassContext } from '../api/client'
+import { generatedApi, type ClassContext } from '../api/client'
 
 export const useClassroomStore = defineStore('classroom', {
   state: () => ({
@@ -18,7 +18,7 @@ export const useClassroomStore = defineStore('classroom', {
       this.loading = true
       this.loadPromise = (async () => {
         try {
-          const { data } = await client.get('/me/classes')
+          const { data } = await generatedApi.myClasses<any>()
           this.classes = Array.isArray(data) ? data : []
           if (!this.classes.some((item) => item.class_id === this.activeClassId)) {
             this.activeClassId = this.classes[0]?.class_id || 0

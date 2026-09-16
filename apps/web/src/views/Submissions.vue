@@ -59,7 +59,7 @@
 
 <script setup lang="ts">
 import { computed, onMounted, ref, watch } from 'vue'
-import { client, type Submission } from '../api/client'
+import { generatedApi, type Submission } from '../api/client'
 import ListPagination from '../components/ListPagination.vue'
 import SubmissionDetailDialog from '../components/SubmissionDetailDialog.vue'
 import StatusBadge from '../components/StatusBadge.vue'
@@ -78,12 +78,12 @@ const acceptRate = computed(() => {
 })
 
 async function load() {
-  items.value = (await client.get('/submissions')).data
+  items.value = (await generatedApi.listSubmissions<any>()).data
   clampPage()
 }
 
 async function open(row: Submission) {
-  detail.value = (await client.get(`/submissions/${row.id}`)).data
+  detail.value = (await generatedApi.getSubmission<any>({ path: { "id": row.id } })).data
   visible.value = true
 }
 

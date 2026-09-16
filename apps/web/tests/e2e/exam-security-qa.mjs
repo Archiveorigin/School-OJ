@@ -66,6 +66,11 @@ try {
       assert(summary.includes(hidden ? '用例通过情况：—' : '用例通过情况：2/2'), summary)
       assert.equal(await dialog.locator('.source-viewer').evaluate(el => getComputedStyle(el).backgroundColor), 'rgb(255, 255, 255)')
       assert.equal(await dialog.locator('.source-lines').textContent(), '1\n2\n3\n4\n5')
+      const codeBounds = await dialog.locator('.source-viewer').boundingBox()
+      const copyBounds = await dialog.getByRole('button', { name: '复制代码', exact: true }).boundingBox()
+      assert(copyBounds.x > codeBounds.x + codeBounds.width / 2 && codeBounds.x + codeBounds.width - copyBounds.x - copyBounds.width < 20, 'copy button must be at top right')
+      assert(copyBounds.y - codeBounds.y < 20, 'copy button must be at the top of the code area')
+      await dialog.locator('.source-viewer').hover()
       await dialog.getByRole('button', { name: '复制代码', exact: true }).click()
       assert.equal((await page.evaluate(() => navigator.clipboard.readText())).replace(/\r\n/g, '\n'), await dialog.locator('.source-code').innerText())
       await shot(page, `${size}-exam-${id}-submission`)
@@ -86,7 +91,7 @@ try {
         await page.getByRole('button', { name: '提交代码', exact: true }).click()
         const composer = page.getByRole('dialog', { name: /^提交 B\./ })
         await composer.locator('.monaco-editor').waitFor()
-        const submitted = page.waitForResponse(response => response.url().endsWith('/api/submissions') && response.request().method() === 'POST')
+        const submitted = page.waitForResponse(response => /\/api(?:\/v1)?\/submissions$/.test(response.url()) && response.request().method() === 'POST')
         await composer.getByRole('button', { name: '提交评测', exact: true }).click()
         const recorded = await submitted
         assert.equal(recorded.status(), 201)
@@ -126,14 +131,19 @@ try {
       assert.equal((await api(page, `/exams/${id}/enter`, 'POST')).status, 403)
     }
     for (const mode of ['invitation', 'application', 'open']) {
-      await page.goto(`${base}/teams/qa-${mode}/join`)
+      if (mode === 'invitation') {
+        await page.goto(`${base}/teams/join`)
+        await page.getByPlaceholder('输入管理员提供的邀请码').fill('invalid2026')
+        await page.getByRole('button', { name: '查找团队', exact: true }).click()
+        await page.getByText('邀请码无效或已失效，请向团队管理员确认', { exact: true }).waitFor()
+        await shot(page, `${size}-team-invalid-invitation`)
+        await page.getByPlaceholder('输入管理员提供的邀请码').fill(' examjoin2026 ')
+        await page.getByRole('button', { name: '查找团队', exact: true }).click()
+      } else await page.goto(`${base}/teams/qa-${mode}/join`)
       await page.getByRole('heading', { name: `加入 验收团队 ${mode}` }).waitFor()
       await shot(page, `${size}-team-${mode}-join`)
       if (mode === 'invitation') {
-        await page.locator('.join-panel input').fill('wrong')
-        await page.getByRole('button', { name: '确认加入', exact: true }).click()
-        await page.getByText('团队邀请码无效', { exact: true }).waitFor()
-        await page.locator('.join-panel input').fill(' examjoin2026 ')
+        assert.equal(await page.locator('.join-panel input').count(), 0, 'invitation must not require a link or a second code entry')
       }
       await page.getByRole('button', { name: mode === 'application' ? '提交申请' : '确认加入', exact: true }).click()
       if (mode === 'application') {

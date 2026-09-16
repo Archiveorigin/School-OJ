@@ -171,9 +171,7 @@
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { computed, onMounted, reactive, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
-import {
-  client,
-  type Problem,
+import { generatedApi, type Problem,
   type ProblemChangeAction,
   type ProblemChangeStatus,
   type ProblemChangeTicket
@@ -215,7 +213,7 @@ async function loadTickets() {
   loading.value = true
   try {
     tickets.value =
-      (await client.get<ProblemChangeTicket[]>('/problem-change-tickets/mine')).data || []
+      (await generatedApi.listMyProblemChangeTickets<ProblemChangeTicket[]>()).data || []
   } catch (e: any) {
     ElMessage.error(e.response?.data?.error || e.message)
   } finally {
@@ -225,7 +223,7 @@ async function loadTickets() {
 async function loadProblems() {
   try {
     problems.value =
-      (await client.get<Problem[]>('/problem-change-tickets/eligible-problems')).data || []
+      (await generatedApi.listProblemChangeTicketEligibleProblems<Problem[]>()).data || []
   } catch {
     problems.value = []
   }
@@ -259,7 +257,7 @@ async function submit() {
   if (attachment.value) data.append('attachment', attachment.value)
   submitting.value = true
   try {
-    await client.post('/problem-change-tickets', data)
+    await generatedApi.createProblemChangeTicket<any>({ body: data })
     ElMessage.success('工单已提交')
     form.description = ''
     attachment.value = null
@@ -276,7 +274,7 @@ async function submit() {
 async function cancel(ticket: ProblemChangeTicket) {
   try {
     await ElMessageBox.confirm(`确认取消工单 #${ticket.id}？`, '取消工单')
-    await client.post(`/problem-change-tickets/${ticket.id}/cancel`)
+    await generatedApi.cancelProblemChangeTicket<any>({ path: { "id": ticket.id } })
     await loadTickets()
   } catch (e: any) {
     if (e !== 'cancel' && e !== 'close') ElMessage.error(e.response?.data?.error || e.message)

@@ -37,7 +37,7 @@
 import { ElMessage } from 'element-plus'
 import { computed, onBeforeUnmount, reactive, ref } from 'vue'
 import { useRouter } from 'vue-router'
-import { client } from '../api/client'
+import { generatedApi } from '../api/client'
 
 const router = useRouter()
 const sending = ref(false)
@@ -57,7 +57,7 @@ async function sendCode() {
   if (!form.email || seconds.value > 0) return
   sending.value = true
   try {
-    await client.post('/auth/send-code', { email: form.email, purpose: 'password_reset' })
+    await generatedApi.sendEmailCode<any>({ body: { email: form.email, purpose: 'password_reset' } })
     ElMessage.success('验证码已发送；本地 Docker 环境请打开 http://localhost:8025 查看邮件')
     startCountdown()
   } catch (err: any) {
@@ -74,7 +74,7 @@ async function submit() {
   }
   submitting.value = true
   try {
-    await client.post('/auth/password-reset', { ...form })
+    await generatedApi.resetPassword<any>({ body: { ...form } })
     ElMessage.success('密码已重置，请重新登录')
     router.push('/login')
   } catch (err: any) {

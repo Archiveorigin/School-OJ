@@ -82,7 +82,7 @@
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { computed, onMounted, reactive, ref } from 'vue'
 import { useRouter } from 'vue-router'
-import { client, type ScoringRule, type Team, type TeamContest } from '../../api/client'
+import { generatedApi, type ScoringRule, type Team, type TeamContest } from '../../api/client'
 import TeamContestAwardFields from '../../components/TeamContestAwardFields.vue'
 import { contestAwardValidationError, defaultContestAwardPercents } from '../../features/teams/contestAwards'
 import { formatDateTime } from '../../features/time'
@@ -114,7 +114,7 @@ const hasManagementActions = computed(() => contests.value.some((row) => Boolean
 async function load() {
   loading.value = true
   try {
-    contests.value = (await client.get(`/teams/${props.team.id}/contests`)).data || []
+    contests.value = (await generatedApi.listTeamContests<any>({ path: { "id": props.team.id } })).data || []
   } catch (err: any) {
     ElMessage.error(err.response?.data?.error || err.message)
   } finally {
@@ -138,7 +138,7 @@ async function createContest() {
   }
   creating.value = true
   try {
-    const { data } = await client.post<TeamContest>(`/teams/${props.team.id}/contests`, form)
+    const { data } = await generatedApi.createTeamContest<TeamContest>({ path: { "id": props.team.id }, body: form })
     Object.assign(form, { title: '', description: '', starts_at: '', duration_minutes: 120, scoring_rule: 'acm', freeze_enabled: false, freeze_duration_minutes: 60, ...defaultContestAwardPercents() })
     createVisible.value = false
     ElMessage.success('团队比赛已创建')
@@ -163,7 +163,7 @@ async function deleteContest(row: TeamContest) {
       { type: 'error', confirmButtonText: '确认删除', cancelButtonText: '取消', confirmButtonClass: 'el-button--danger' },
     )
     deletingID.value = row.id
-    await client.delete(`/contests/${row.id}`)
+    await generatedApi.deleteTeamContestViaContestsContestId<any>({ path: { "contest_id": row.id } })
     ElMessage.success('团队比赛已删除')
     await load()
   } catch (err: any) {

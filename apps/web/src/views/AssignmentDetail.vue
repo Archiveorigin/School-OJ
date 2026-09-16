@@ -67,23 +67,28 @@
           <el-table-column label="状态" width="130"><template #default="{ row }"><StatusBadge :status="row.status" /></template></el-table-column>
           <el-table-column prop="score" label="原始分" width="90" />
           <el-table-column label="时间" min-width="170"><template #default="{ row }">{{ formatDateTime(row.created_at) }}</template></el-table-column>
+          <el-table-column label="操作" width="100"><template #default="{ row }"><el-button text type="primary" @click="openSubmission(row)">查看详情</el-button></template></el-table-column>
         </el-table>
         <ListPagination v-model:page="historyPage" v-model:page-size="historyPageSize" :total="history.length" />
       </div>
     </div>
+    <SubmissionDetailDialog v-model="submissionVisible" :detail="submissionDetail" />
   </section>
 </template>
 
 <script setup lang="ts">
+import { submissionLanguage } from '../features/submissions/presentation'
 import { ElMessage } from 'element-plus'
 import { computed, onMounted, reactive, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
-import { client, getLatestSubmissions, openEventStream, type Problem, type Submission } from '../api/client'
+import { generatedApi, getLatestSubmissions, openEventStream, type Problem, type Submission } from '../api/client'
 import ListPagination from '../components/ListPagination.vue'
 import ProblemStatementView from '../components/ProblemStatementView.vue'
 import ProblemTestDownloads from '../components/ProblemTestDownloads.vue'
 import StatusBadge from '../components/StatusBadge.vue'
 import SubmissionComposer from '../components/SubmissionComposer.vue'
+import SubmissionDetailDialog from '../components/SubmissionDetailDialog.vue'
+import { useSubmissionDetail } from '../features/submissions/detail'
 import { formatDateTime, workStatusLabel } from '../features/assignments/assignmentMeta'
 import { problemDisplayCode } from '../features/problems/problemMeta'
 import { loadSubmissionDraft } from '../features/submissions/drafts'
@@ -94,6 +99,7 @@ type EditorState = { language: string; source: string; live: any; dirty: boolean
 
 const route = useRoute()
 const router = useRouter()
+const { visible: submissionVisible, detail: submissionDetail, open: openSubmission } = useSubmissionDetail()
 const auth = useAuthStore()
 const canManage = computed(() => auth.role === 'admin' || auth.role === 'teacher')
 const detail = ref<any>(null)
@@ -140,7 +146,7 @@ async function loadDetail() {
   const id = Number(route.params.id)
   if (!id) return
   try {
-    detail.value = (await client.get(`/assignments/${id}`)).data
+    detail.value = (await generatedApi.getAssignment<any>({ path: { "id": id } })).data
     activeEntry.value = detail.value.problems?.[0] || null
     if (activeProblem.value) ensureEditorState(activeProblem.value.id)
     await loadHistory()
@@ -164,12 +170,12 @@ async function submitSolution() {
   const problemID = activeProblem.value.id
   submitting.value = true
   try {
-    const { data } = await client.post('/submissions', {
+    const { data } = await generatedApi.createSubmission<any>({ body: {
       problem_id: problemID,
       assignment_id: detail.value.assignment.id,
-      language: activeState.value.language,
+      language: submissionLanguage(activeState.value.language),
       source_code: activeState.value.source
-    })
+    } })
     composerRef.value?.clearDraft()
     watchSubmission(data.id, problemID)
     await loadHistory()
@@ -195,14 +201,14 @@ function watchSubmission(id: number, problemID: number) {
 async function refreshDetail() {
   if (!detail.value) return
   const activeID = activeProblem.value?.id
-  detail.value = (await client.get(`/assignments/${detail.value.assignment.id}`)).data
+  detail.value = (await generatedApi.getAssignment<any>({ path: { "id": detail.value.assignment.id } })).data
   activeEntry.value = detail.value.problems.find((entry: DetailProblem) => entry.problem.id === activeID) || detail.value.problems[0] || null
 }
 
 async function loadHistory() {
   if (!detail.value) return
   const [historyResponse, latest] = await Promise.all([
-    client.get('/submissions', { params: { assignment_id: detail.value.assignment.id } }),
+    generatedApi.listSubmissions<any>({ query: { assignment_id: detail.value.assignment.id } }),
     getLatestSubmissions({ assignment_id: detail.value.assignment.id })
   ])
   history.value = historyResponse.data

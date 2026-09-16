@@ -188,9 +188,7 @@
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { computed, onMounted, reactive, ref } from 'vue'
 import AdminPageHeader from '../../components/admin/AdminPageHeader.vue'
-import {
-  client,
-  type ProblemChangeAction,
+import { generatedApi, type ProblemChangeAction,
   type ProblemChangeStatus,
   type ProblemChangeTicket
 } from '../../api/client'
@@ -228,7 +226,7 @@ const applyButtonLabel = computed(() =>
 async function load() {
   loading.value = true
   try {
-    tickets.value = (await client.get<ProblemChangeTicket[]>('/problem-change-tickets')).data || []
+    tickets.value = (await generatedApi.listProblemChangeTickets<ProblemChangeTicket[]>()).data || []
   } catch (error: any) {
     ElMessage.error(error.response?.data?.error || error.message)
   } finally {
@@ -247,7 +245,7 @@ async function open(row: ProblemChangeTicket) {
   })
   drawer.value = true
   try {
-    active.value = (await client.get<ProblemChangeTicket>(`/problem-change-tickets/${row.id}`)).data
+    active.value = (await generatedApi.getProblemChangeTicket<ProblemChangeTicket>({ path: { "id": row.id } })).data
   } catch (error: any) {
     ElMessage.error(error.response?.data?.error || error.message)
   }
@@ -293,7 +291,7 @@ async function apply() {
     data.append('difficulty', applyForm.difficulty)
     data.append('resolution_note', applyForm.note.trim())
     data.append('operation_mode', problemChangeOperationMode(active.value.action))
-    await client.post(`/problem-change-tickets/${active.value.id}/apply`, data)
+    await generatedApi.applyProblemChangeTicket<any>({ path: { "id": active.value.id }, body: data })
     ElMessage.success(
       active.value.action === 'archive' ? '题目已覆盖归档' : '工单已执行并生成题目版本'
     )
@@ -313,9 +311,9 @@ async function reject() {
       inputType: 'textarea',
       inputValidator: (value) => Boolean(value.trim()) || '必须填写原因'
     })
-    await client.post(`/problem-change-tickets/${active.value.id}/reject`, {
+    await generatedApi.rejectProblemChangeTicket<any>({ path: { "id": active.value.id }, body: {
       note: note.value.trim()
-    })
+    } })
     drawer.value = false
     await load()
   } catch (error: any) {
@@ -326,9 +324,7 @@ async function reject() {
 
 async function downloadAttachment(ticket: ProblemChangeTicket) {
   try {
-    const response = await client.get(`/problem-change-tickets/${ticket.id}/attachment`, {
-      responseType: 'blob'
-    })
+    const response = await generatedApi.downloadProblemChangeTicketAttachment<any>({ responseType: 'blob', path: { "id": ticket.id } })
     const url = URL.createObjectURL(response.data)
     const anchor = document.createElement('a')
     anchor.href = url

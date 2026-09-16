@@ -11,6 +11,7 @@ import (
 	"strings"
 	"time"
 
+	teamdomain "school-oj/apps/api/internal/domain/team"
 	"school-oj/apps/api/internal/middleware"
 	"school-oj/apps/api/internal/models"
 	"school-oj/apps/api/internal/services"
@@ -409,7 +410,7 @@ func (s Server) joinTeam(c *gin.Context) {
 		c.JSON(400, gin.H{"error": "申请说明不能超过 300 字"})
 		return
 	}
-	joined, err := s.joinTeamTransaction(team.ID, user.ID, req.JoinCode, req.Message)
+	joined, err := s.teamAccess().Join(c.Request.Context(), team.ID, user.ID, req.JoinCode, req.Message)
 	if err != nil {
 		examMutationError(c, err)
 		return
@@ -428,7 +429,7 @@ func (s Server) leaveTeam(c *gin.Context) {
 	if !ok {
 		return
 	}
-	if err := s.changeTeamMembership(user, team.ID, user.ID, "leave", ""); err != nil {
+	if err := s.teamAccess().ChangeMembership(c.Request.Context(), user.ID, team.ID, user.ID, "leave", ""); err != nil {
 		examMutationError(c, err)
 		return
 	}
@@ -484,7 +485,7 @@ func (s Server) updateTeamMember(c *gin.Context) {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "成员职级只能设为管理员或团员"})
 		return
 	}
-	if err := s.changeTeamMembership(user, team.ID, targetID, "role", req.Role); err != nil {
+	if err := s.teamAccess().ChangeMembership(c.Request.Context(), user.ID, team.ID, targetID, "role", req.Role); err != nil {
 		examMutationError(c, err)
 		return
 	}
@@ -502,7 +503,7 @@ func (s Server) removeTeamMember(c *gin.Context) {
 	if !ok {
 		return
 	}
-	if err := s.changeTeamMembership(user, team.ID, targetID, "remove", ""); err != nil {
+	if err := s.teamAccess().ChangeMembership(c.Request.Context(), user.ID, team.ID, targetID, "remove", ""); err != nil {
 		examMutationError(c, err)
 		return
 	}
@@ -546,7 +547,7 @@ func (s Server) reviewTeamApplication(c *gin.Context) {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "action must be approve or reject"})
 		return
 	}
-	if err := s.reviewTeamApplicationTransaction(user, team.ID, applicationID, req.Action); err != nil {
+	if err := s.teamAccess().Review(c.Request.Context(), user.ID, team.ID, applicationID, req.Action); err != nil {
 		examMutationError(c, err)
 		return
 	}
@@ -1827,10 +1828,7 @@ func (s Server) canManageTeam(user models.User, team models.Team) bool {
 }
 
 func hasTeamManagerPermission(userRole models.Role, membershipRole models.TeamRole, joined bool) bool {
-	if userRole == models.RoleAdmin {
-		return true
-	}
-	return joined && (membershipRole == models.TeamRoleOwner || membershipRole == models.TeamRoleAdmin)
+	return teamdomain.CanManage(userRole, membershipRole, joined)
 }
 
 func (s Server) requireTeamContentPermission(c *gin.Context, user models.User, team models.Team) bool {

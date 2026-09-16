@@ -6149,21 +6149,14 @@ func (s Server) examProblemScore(examID uint, problemID uint) (int, bool) {
 }
 
 func (s Server) canAccessSubmission(user models.User, sub models.Submission) bool {
-	if user.Role == models.RoleAdmin {
+	if user.Role == models.RoleAdmin || sub.UserID == user.ID {
 		return true
+	}
+	if sub.TeamContestID != nil || sub.ProblemSetID != nil {
+		return s.canManageTeamSubmission(user, sub)
 	}
 	if isStandaloneProblemSubmission(sub) && s.isProblemPublic(sub.ProblemID) {
 		return true
-	}
-	if user.Role == models.RoleStudent {
-		if sub.UserID == user.ID {
-			return true
-		}
-		if !user.CanAuthor {
-			return false
-		}
-		var problem models.Problem
-		return s.DB.First(&problem, sub.ProblemID).Error == nil && problem.OwnerID == user.ID
 	}
 	if sub.AssignmentID != nil {
 		var assignment models.Assignment
@@ -6193,6 +6186,9 @@ func isStandaloneProblemSubmission(sub models.Submission) bool {
 func (s Server) canViewSubmissionResults(user models.User, sub models.Submission) bool {
 	if user.Role == models.RoleAdmin || sub.UserID == user.ID {
 		return true
+	}
+	if sub.TeamContestID != nil || sub.ProblemSetID != nil {
+		return s.canManageTeamSubmission(user, sub)
 	}
 	if sub.AssignmentID != nil {
 		var assignment models.Assignment

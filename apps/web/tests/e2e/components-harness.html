@@ -1,0 +1,21 @@
+<!doctype html>
+<html lang="zh-CN"><meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>组件回归验收</title>
+<body><div id="app"></div><script type="module">
+import { createApp, ref, h } from 'vue'
+import ElementPlus from 'element-plus'
+import 'element-plus/dist/index.css'
+import 'element-plus/theme-chalk/dark/css-vars.css'
+import '../../src/styles/tokens.css'
+import CodeEditor from '../../src/components/CodeEditor.vue'
+import SourceCodeViewer from '../../src/components/SourceCodeViewer.vue'
+import { monaco } from '../../src/features/editor/monaco'
+const source = ref('int main() {\nreturn 0;\n}')
+const language = ref('cpp'), mounted = ref(true), editor = ref(null)
+window.qa = { source, language, mounted, editor, monaco }
+createApp({ render: () => h('main', { style: 'max-width:1000px;margin:auto;padding:12px' }, [
+  h('h1', '代码组件'), h(SourceCodeViewer, { source: source.value }),
+  mounted.value ? h(CodeEditor, { ref: editor, modelValue: source.value, language: language.value, 'onUpdate:modelValue': value => { source.value = value } }) : null,
+  h('button', { onClick: () => editor.value.format() }, '格式化'), h('output', source.value),
+])
+}).use(ElementPlus).mount('#app')
+</script></body></html>

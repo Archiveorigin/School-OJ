@@ -1,5 +1,5 @@
 import { defineStore } from 'pinia'
-import { client } from '../api/client'
+import { generatedApi } from '../api/client'
 
 const storageKey = 'school-oj-active-exam'
 
@@ -54,7 +54,7 @@ export const useExamLockStore = defineStore('examLock', {
     },
     async syncActiveExam() {
       try {
-        const { data } = await client.get('/me/active-exam')
+        const { data } = await generatedApi.activeExam<any>()
         const exam = data?.exam as ActiveExam | undefined
         if (data?.active && exam?.id) {
           this.lock(exam.id, activeExamMessage(exam.title), exam.title || '')

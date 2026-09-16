@@ -187,7 +187,10 @@ func (c Consumer) processMessage(ctx context.Context, msg redis.XMessage) {
 			log.Printf("requeued submission message %s as %s", msg.ID, retryID)
 		}
 	} else if err != nil && isRetryable(err) {
-		c.markMessageSystemError(msg, err)
+		if persistErr := c.markMessageSystemError(msg, err); persistErr != nil {
+			log.Printf("retain submission message %s: terminal state could not be persisted: %v", msg.ID, persistErr)
+			ack = false
+		}
 	}
 	if !ack {
 		return
@@ -226,16 +229,16 @@ func (c Consumer) requeue(ctx context.Context, msg redis.XMessage) (string, erro
 	return retryID, nil
 }
 
-func (c Consumer) markMessageSystemError(msg redis.XMessage, err error) {
+func (c Consumer) markMessageSystemError(msg redis.XMessage, err error) error {
 	subID, parseErr := submissionIDFromMessage(msg)
 	if parseErr != nil {
-		return
+		return parseErr
 	}
 	var sub models.Submission
 	if loadErr := c.DB.First(&sub, subID).Error; loadErr != nil {
-		return
+		return loadErr
 	}
-	c.markSystemError(&sub, err)
+	return c.markSystemError(&sub, err)
 }
 
 func (c Consumer) handle(ctx context.Context, msg redis.XMessage) error {
@@ -287,7 +290,9 @@ func (c Consumer) handle(ctx context.Context, msg redis.XMessage) error {
 	}
 	pkg, err := runner.ParsePackage(body)
 	if err != nil {
-		c.markSystemError(&sub, err)
+		if persistErr := c.markSystemError(&sub, err); persistErr != nil {
+			return retryable(persistErr)
+		}
 		return err
 	}
 
@@ -342,7 +347,7 @@ func problemSnapshotForSubmission(sub models.Submission) models.Problem {
 	return problem
 }
 
-func (c Consumer) markSystemError(sub *models.Submission, err error) {
+func (c Consumer) markSystemError(sub *models.Submission, err error) error {
 	if updateErr := c.DB.Transaction(func(tx *gorm.DB) error {
 		result := tx.Model(&models.Submission{}).
 			Where("id = ? AND status IN ?", sub.ID, []models.SubmissionStatus{models.StatusQueued, models.StatusRunning}).
@@ -353,9 +358,10 @@ func (c Consumer) markSystemError(sub *models.Submission, err error) {
 		return updateProgress(tx, sub, models.StatusSystemError)
 	}); updateErr != nil {
 		log.Printf("mark submission %d as system error failed: %v", sub.ID, updateErr)
-		return
+		return updateErr
 	}
 	c.publishSubmission(sub.ID)
+	return nil
 }
 
 func (c Consumer) persistJudgeResult(ctx context.Context, sub *models.Submission, result runner.JudgeResult) error {

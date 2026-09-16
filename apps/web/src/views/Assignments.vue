@@ -167,7 +167,7 @@
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { computed, onMounted, reactive, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
-import { client, type PreparedProblem, type Problem } from '../api/client'
+import { generatedApi, type PreparedProblem, type Problem } from '../api/client'
 import ListPagination from '../components/ListPagination.vue'
 import {
   assignmentMatchesFilters,
@@ -251,14 +251,14 @@ const assignmentStats = computed(() => {
 
 async function load() {
   const params = courseID.value ? { course_id: courseID.value } : {}
-  const assignmentsRes = await client.get('/assignments', { params })
+  const assignmentsRes = await generatedApi.listAssignments<any>({ query: params })
   items.value = assignmentsRes.data
   clampPage()
   if (canManage.value) {
     const [coursesRes, problemsRes, preparedRes] = await Promise.all([
-      client.get('/courses'),
-      client.get('/problems'),
-      client.get('/prepared-problems')
+      generatedApi.listCourses<any>(),
+      generatedApi.listProblems<any>(),
+      generatedApi.listPreparedProblems<any>()
     ])
     courses.value = coursesRes.data
     problems.value = problemsRes.data
@@ -305,7 +305,7 @@ function onAssignmentCourseChange() {
 }
 
 async function loadClassProblems() {
-  problems.value = (await client.get('/problems')).data
+  problems.value = (await generatedApi.listProblems<any>()).data
 }
 
 function addSelectedProblem() {
@@ -330,7 +330,7 @@ async function submitCreate() {
   }
   saving.value = true
   try {
-    await client.post('/assignments', {
+    await generatedApi.createAssignment<any>({ body: {
       course_id: form.course_id,
       class_id: form.class_id === -1 ? null : form.class_id,
       title: form.title,
@@ -338,7 +338,7 @@ async function submitCreate() {
       starts_at: form.starts_at,
       due_at: form.due_at,
       problems: selectedProblems.value.map((item) => ({ problem_id: item.problem_id, score: item.score }))
-    })
+    } })
     ElMessage.success('作业已创建')
     dialogVisible.value = false
     await load()
@@ -354,14 +354,14 @@ function openDetail(row: any) {
 }
 
 async function openReport(row: any) {
-  report.value = (await client.get(`/assignments/${row.id}/report`)).data
+  report.value = (await generatedApi.assignmentReport<any>({ path: { "id": row.id } })).data
   reportVisible.value = true
 }
 
 async function removeAssignment(row: any) {
   try {
     await ElMessageBox.confirm('删除后学生端将不再显示该作业，历史提交会保留。确认删除？', '删除作业', { type: 'warning' })
-    await client.delete(`/assignments/${row.id}`)
+    await generatedApi.deleteAssignment<any>({ path: { "id": row.id } })
     ElMessage.success('作业已删除')
     await load()
   } catch (err: any) {

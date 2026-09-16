@@ -6,7 +6,7 @@
     :style="{ '--problem-columns-width': `${data.problems.length * 85}px` }"
   >
     <div class="penalty-sticky-header" data-sticky-header="penalty">
-      <div class="penalty-header-track" role="row" :style="headerTrackStyle">
+      <div class="penalty-header-track" role="row" ref="headerTrack">
         <div class="penalty-metrics penalty-header-metrics">
           <div class="penalty-col penalty-rank-col">
             <div
@@ -65,7 +65,7 @@
       data-horizontal-scroll="penalty"
       tabindex="0"
       aria-label="罚时榜横向滚动区域"
-      @scroll="syncHeader"
+      @scroll.passive="syncHeader"
     >
       <div class="penalty-grid" role="rowgroup">
         <article
@@ -159,13 +159,10 @@ const props = withDefaults(
     awardByID: () => ({}),
   },
 );
-const horizontalOffset = ref(0);
-const headerTrackStyle = computed(() => ({
-  transform: `translate3d(-${horizontalOffset.value}px, 0, 0)`,
-}));
-
+const headerTrack = ref<HTMLElement | null>(null);
 function syncHeader(event: Event) {
-  horizontalOffset.value = (event.currentTarget as HTMLElement).scrollLeft;
+  // Scroll only changes this DOM transform, not the whole results grid.
+  if (headerTrack.value) headerTrack.value.style.transform = `translate3d(-${(event.currentTarget as HTMLElement).scrollLeft}px, 0, 0)`;
 }
 
 function displayRank(row: LeaderboardRow) {
@@ -185,18 +182,25 @@ function resultFor(
   row: LeaderboardRow,
   problemID: number | string,
 ): LeaderboardResult {
-  return row.results[String(problemID)] || { status: "none", attempts: 0 };
+  return row.results[String(problemID)] || emptyResult;
 }
 
-function problemStats(problemID: number | string) {
-  let attempted = 0;
-  let solved = 0;
+const emptyResult: LeaderboardResult = { status: "none", attempts: 0 };
+const emptyStats = { attempted: 0, solved: 0 };
+const statsByProblem = computed(() => {
+  const stats = new Map<string, { attempted: number; solved: number }>();
   for (const row of props.data.rows) {
-    const result = resultFor(row, problemID);
-    if (result.attempts > 0) attempted += 1;
-    if (result.status === "accepted") solved += 1;
+    for (const [id, result] of Object.entries(row.results)) {
+      const count = stats.get(id) || { attempted: 0, solved: 0 };
+      if (result.attempts > 0) count.attempted++;
+      if (result.status === "accepted") count.solved++;
+      stats.set(id, count);
+    }
   }
-  return { attempted, solved };
+  return stats;
+});
+function problemStats(problemID: number | string) {
+  return statsByProblem.value.get(String(problemID)) || emptyStats;
 }
 
 function resultTitle(row: LeaderboardRow, problemID: number | string) {

@@ -76,7 +76,7 @@
 import { ElMessage } from 'element-plus'
 import { onMounted, reactive, ref, computed, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
-import { client, type Problem, type Submission } from '../../api/client'
+import { generatedApi, type Problem, type Submission } from '../../api/client'
 import ListPagination from '../../components/ListPagination.vue'
 import SubmissionDetailDialog from '../../components/SubmissionDetailDialog.vue'
 import StatusBadge from '../../components/StatusBadge.vue'
@@ -101,21 +101,19 @@ const pagedItems = computed(() => {
 })
 
 async function loadProblem() {
-  problem.value = (await client.get(`/problems/${encodeURIComponent(String(route.params.id))}`)).data
+  problem.value = (await generatedApi.getProblem<any>({ path: { "id": String(route.params.id) } })).data
 }
 
 async function search() {
   if (!problem.value) return
   loading.value = true
   try {
-    items.value = (await client.get('/submissions', {
-      params: {
+    items.value = (await generatedApi.listSubmissions<any>({ query: {
         visibility: 'problem',
         problem_id: problem.value.id,
         language: filters.language || undefined,
         username: filters.username.trim() || undefined
-      }
-    })).data
+      } })).data
     page.value = 1
   } catch (err: any) {
     ElMessage.error(err.response?.data?.error || err.message)
@@ -132,7 +130,7 @@ async function resetFilters() {
 
 async function openDetail(row: Submission) {
   try {
-    detail.value = (await client.get(`/submissions/${row.id}`)).data
+    detail.value = (await generatedApi.getSubmission<any>({ path: { "id": row.id } })).data
     detailVisible.value = true
   } catch (err: any) {
     ElMessage.error(err.response?.data?.error || err.message)

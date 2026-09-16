@@ -68,6 +68,7 @@ for (const [path, pathItem] of Object.entries(spec.paths || {})) {
       id: operation.operationId,
       method: method.toUpperCase(),
       path,
+      segments: (operation.parameters || []).filter(parameter => parameter['x-path-segments']).map(parameter => parameter.name),
       body: requestSchema(operation),
       response: responseSchema(operation),
     })
@@ -84,14 +85,14 @@ const schemaLines = Object.entries(spec.components?.schemas || {}).map(
 )
 const definitions = operations
   .map(
-    ({ id, method, path }) =>
-      `  ${JSON.stringify(id)}: { method: ${JSON.stringify(method)}, path: ${JSON.stringify(path)} },`,
+    ({ id, method, path, segments }) =>
+      `  ${JSON.stringify(id)}: { method: ${JSON.stringify(method)}, path: ${JSON.stringify(path)}, segments: ${JSON.stringify(segments)} },`,
   )
   .join('\n')
 const methods = operations
   .map(
     ({ id, body, response }) =>
-      `  ${JSON.stringify(id)}: (options: ApiRequestOptions<${body}> = {}) =>\n    requestOperation<${response}, ${body}>(${JSON.stringify(id)}, options),`,
+      `  ${JSON.stringify(id)}: <TResponse = ${response}>(options: ApiRequestOptions<${body}> = {}) =>\n    requestOperation<TResponse, ${body}>(${JSON.stringify(id)}, options),`,
   )
   .join('\n')
 
@@ -120,14 +121,19 @@ export interface ApiRequestOptions<TBody = unknown>
   extends Omit<AxiosRequestConfig, 'method' | 'url' | 'params' | 'data'> {
   path?: Record<string, ApiPathValue>
   query?: Record<string, ApiQueryValue>
-  body?: TBody
+  body?: TBody | FormData | Blob
 }
 
-function resolvePath(template: string, values: Record<string, ApiPathValue> = {}) {
+function resolvePath(template: string, values: Record<string, ApiPathValue> = {}, segments: readonly string[] = []) {
   return template.replace(/\\{([^}]+)\\}/g, (_, key: string) => {
     const value = values[key]
     if (value === undefined || value === null || value === '') {
       throw new Error(\`Missing OpenAPI path parameter: \${key}\`)
+    }
+    if (segments.includes(key)) {
+      const parts = String(value).split('/')
+      if (parts.some(part => part === '..' || part === '.' || !part)) throw new Error('Invalid asset path')
+      return parts.map(part => encodeURIComponent(part)).join('/')
     }
     return encodeURIComponent(String(value))
   })
@@ -142,7 +148,7 @@ export async function requestOperation<TResponse = unknown, TBody = unknown>(
   return http.request<TResponse>({
     ...config,
     method: definition.method,
-    url: resolvePath(definition.path, path),
+    url: resolvePath(definition.path, path, definition.segments),
     params: query,
     data: body,
   })

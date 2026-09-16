@@ -1,4 +1,4 @@
-import { client, generatedApi, type PreparedProblem, type Problem } from "../client";
+import { generatedApi, type PreparedProblem, type Problem } from "../client";
 
 export async function listProblems() {
   const { data } = await generatedApi.listProblems();
@@ -13,20 +13,14 @@ export async function listPreparedProblems() {
 export async function createProblem(
   payload: FormData | Record<string, unknown>,
 ) {
-  const { data } = await client.post<Problem>("/problems", payload, {
-    timeout: payload instanceof FormData ? 120_000 : 30_000,
-  });
+  const { data } = await generatedApi.problemChangeTicketOnly<Problem>({ timeout: payload instanceof FormData ? 120_000 : 30_000, body: payload });
   return data;
 }
 
 export async function parseProblemMarkdown(file: File) {
   const payload = new FormData();
   payload.append("file", file);
-  const { data } = await client.post<{ problems?: any[]; warnings?: string[] }>(
-    "/problems/parse-markdown",
-    payload,
-    { timeout: 60_000 },
-  );
+  const { data } = await generatedApi.parseMarkdownBatch<{ problems?: any[]; warnings?: string[] }>({ timeout: 60_000, body: payload });
   return {
     problems: data.problems || [],
     warnings: data.warnings || [],

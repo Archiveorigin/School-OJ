@@ -141,7 +141,7 @@ import {
 import { ElMessage } from 'element-plus'
 import { computed, onMounted, ref } from 'vue'
 import { useRouter } from 'vue-router'
-import { client } from '../../api/client'
+import { generatedApi } from '../../api/client'
 import { apiErrorMessage } from '../../api/errors'
 import AdminPageHeader from '../../components/admin/AdminPageHeader.vue'
 import AdminSectionHeader from '../../components/admin/AdminSectionHeader.vue'
@@ -293,15 +293,13 @@ function auditLabel(item: AuditItem) {
 async function load() {
   loading.value = true
   try {
-    const examResponse = await client.get('/exams')
+    const examResponse = await generatedApi.listExams<any>()
     exams.value = Array.isArray(examResponse.data) ? examResponse.data : []
     if (auth.role === 'admin') {
       const [applicationResult, ticketResult, auditResult] = await Promise.allSettled([
-        client.get('/author-applications', { params: { status: 'pending' } }),
-        client.get('/problem-change-tickets', {
-          params: { status: 'pending' }
-        }),
-        client.get('/audit-logs')
+        generatedApi.listAuthorApplications<any>({ query: { status: 'pending' } }),
+        generatedApi.listProblemChangeTickets<any>({ query: { status: 'pending' } }),
+        generatedApi.listAuditLogs<any>()
       ])
       pendingApplications.value =
         applicationResult.status === 'fulfilled' && Array.isArray(applicationResult.value.data)

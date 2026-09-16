@@ -28,15 +28,19 @@ export function loadSubmissionDraft(scope: SubmissionDraftScope, language: strin
 }
 
 export function saveSubmissionDraft(scope: SubmissionDraftScope, language: string, source: string) {
-  const key = submissionDraftKey(scope, language)
-  if (!source) {
-    localStorage.removeItem(key)
-    return
+  try {
+    const key = submissionDraftKey(scope, language)
+    if (!source) {
+      localStorage.removeItem(key)
+      return
+    }
+    const value: StoredDraft = { source, updatedAt: new Date().toISOString() }
+    localStorage.setItem(key, JSON.stringify(value))
+  } catch {
+    // Storage quota/private mode must not interrupt editing or submission.
   }
-  const value: StoredDraft = { source, updatedAt: new Date().toISOString() }
-  localStorage.setItem(key, JSON.stringify(value))
 }
 
 export function clearSubmissionDraft(scope: SubmissionDraftScope, language: string) {
-  localStorage.removeItem(submissionDraftKey(scope, language))
+  try { localStorage.removeItem(submissionDraftKey(scope, language)) } catch { /* Storage unavailable. */ }
 }

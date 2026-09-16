@@ -119,8 +119,9 @@ export interface components {
     "problem_version_id"?: number
     "assignment_id"?: number
     "exam_id"?: number
-    "team_contest_id"?: number
-    "team_problem_set_id"?: number
+    "is_public"?: boolean
+    "team_contest_id"?: (number) | null
+    "problem_set_id"?: (number) | null
     "language": "c" | "cpp" | "python" | "java"
     "source_code"?: string
     "status": string
@@ -142,8 +143,7 @@ export interface components {
     "source_code": string
     "assignment_id"?: number
     "exam_id"?: number
-    "team_contest_id"?: number
-    "team_problem_set_id"?: number
+    "is_public"?: boolean
   }
     "ProblemChangeTicketRequest": {
     "action": "create" | "replace" | "archive"
@@ -333,169 +333,170 @@ export interface components {
 }
 
 export const apiOperations = {
-  "login": { method: "POST", path: "/auth/login" },
-  "sendEmailCode": { method: "POST", path: "/auth/send-code" },
-  "register": { method: "POST", path: "/auth/register" },
-  "resetPassword": { method: "POST", path: "/auth/password-reset" },
-  "listProblems": { method: "GET", path: "/problems" },
-  "problemChangeTicketOnly": { method: "POST", path: "/problems" },
-  "listProblemCatalog": { method: "GET", path: "/problems/catalog" },
-  "getProblemAsset": { method: "GET", path: "/problems/{id}/assets/{asset_path}" },
-  "getProblem": { method: "GET", path: "/problems/{id}" },
-  "problemChangeTicketOnlyViaProblemsId": { method: "PUT", path: "/problems/{id}" },
-  "problemChangeTicketOnlyDeleteProblem": { method: "DELETE", path: "/problems/{id}" },
-  "me": { method: "GET", path: "/me" },
-  "activeExam": { method: "GET", path: "/me/active-exam" },
-  "getProfile": { method: "GET", path: "/profile" },
-  "updateProfile": { method: "PUT", path: "/profile" },
-  "deleteProfile": { method: "DELETE", path: "/profile" },
-  "updateProfilePassword": { method: "POST", path: "/profile/password" },
-  "sendProfileEmailCode": { method: "POST", path: "/profile/email-code" },
-  "rebindEmail": { method: "POST", path: "/profile/email" },
-  "getMyAuthorApplication": { method: "GET", path: "/author-applications/me" },
-  "listAuthorApplications": { method: "GET", path: "/author-applications" },
-  "createAuthorApplication": { method: "POST", path: "/author-applications" },
-  "createFeedback": { method: "POST", path: "/feedback" },
-  "listTeams": { method: "GET", path: "/teams" },
-  "createTeam": { method: "POST", path: "/teams" },
-  "getTeam": { method: "GET", path: "/teams/{id}" },
-  "updateTeam": { method: "PUT", path: "/teams/{id}" },
-  "joinTeam": { method: "POST", path: "/teams/{id}/join" },
-  "leaveTeam": { method: "POST", path: "/teams/{id}/leave" },
-  "listTeamMembers": { method: "GET", path: "/teams/{id}/members" },
-  "updateTeamMember": { method: "PUT", path: "/teams/{id}/members/{user_id}" },
-  "removeTeamMember": { method: "DELETE", path: "/teams/{id}/members/{user_id}" },
-  "listTeamApplications": { method: "GET", path: "/teams/{id}/applications" },
-  "reviewTeamApplication": { method: "PUT", path: "/teams/{id}/applications/{application_id}" },
-  "listTeamContests": { method: "GET", path: "/teams/{id}/contests" },
-  "createTeamContest": { method: "POST", path: "/teams/{id}/contests" },
-  "getTeamContest": { method: "GET", path: "/teams/{id}/contests/{contest_id}" },
-  "updateTeamContest": { method: "PUT", path: "/teams/{id}/contests/{contest_id}" },
-  "deleteTeamContest": { method: "DELETE", path: "/teams/{id}/contests/{contest_id}" },
-  "publishTeamContest": { method: "POST", path: "/teams/{id}/contests/{contest_id}/publish" },
-  "addTeamContestProblem": { method: "POST", path: "/teams/{id}/contests/{contest_id}/problems" },
-  "removeTeamContestProblem": { method: "DELETE", path: "/teams/{id}/contests/{contest_id}/problems/{problem_id}" },
-  "listTeamContestSubmissions": { method: "GET", path: "/teams/{id}/contests/{contest_id}/submissions" },
-  "createTeamContestSubmission": { method: "POST", path: "/teams/{id}/contests/{contest_id}/submissions" },
-  "teamContestRanking": { method: "GET", path: "/teams/{id}/contests/{contest_id}/ranking" },
-  "getTeamContestViaContestsContestId": { method: "GET", path: "/contests/{contest_id}" },
-  "updateTeamContestViaContestsContestId": { method: "PUT", path: "/contests/{contest_id}" },
-  "deleteTeamContestViaContestsContestId": { method: "DELETE", path: "/contests/{contest_id}" },
-  "publishTeamContestViaContestsContestIdPublish": { method: "POST", path: "/contests/{contest_id}/publish" },
-  "addTeamContestProblemViaContestsContestIdProblems": { method: "POST", path: "/contests/{contest_id}/problems" },
-  "removeTeamContestProblemViaContestsContestIdProblemsProblemId": { method: "DELETE", path: "/contests/{contest_id}/problems/{problem_id}" },
-  "listTeamContestSubmissionsViaContestsContestIdSubmissions": { method: "GET", path: "/contests/{contest_id}/submissions" },
-  "createTeamContestSubmissionViaContestsContestIdSubmissions": { method: "POST", path: "/contests/{contest_id}/submissions" },
-  "teamContestRankingViaContestsContestIdRanking": { method: "GET", path: "/contests/{contest_id}/ranking" },
-  "listTeamProblemSets": { method: "GET", path: "/teams/{id}/problem-sets" },
-  "createTeamProblemSet": { method: "POST", path: "/teams/{id}/problem-sets" },
-  "getTeamProblemSet": { method: "GET", path: "/teams/{id}/problem-sets/{set_id}" },
-  "updateTeamProblemSet": { method: "PUT", path: "/teams/{id}/problem-sets/{set_id}" },
-  "deleteTeamProblemSet": { method: "DELETE", path: "/teams/{id}/problem-sets/{set_id}" },
-  "addTeamProblemSetProblem": { method: "POST", path: "/teams/{id}/problem-sets/{set_id}/problems" },
-  "removeTeamProblemSetProblem": { method: "DELETE", path: "/teams/{id}/problem-sets/{set_id}/problems/{problem_id}" },
-  "listTeamProblemSetSubmissions": { method: "GET", path: "/teams/{id}/problem-sets/{set_id}/submissions" },
-  "createTeamProblemSetSubmission": { method: "POST", path: "/teams/{id}/problem-sets/{set_id}/submissions" },
-  "listTeamDiscussions": { method: "GET", path: "/teams/{id}/problem-sets/{set_id}/discussions" },
-  "createTeamDiscussion": { method: "POST", path: "/teams/{id}/problem-sets/{set_id}/discussions" },
-  "getTeamProblemSetViaProblemSetsSetId": { method: "GET", path: "/problem-sets/{set_id}" },
-  "updateTeamProblemSetViaProblemSetsSetId": { method: "PUT", path: "/problem-sets/{set_id}" },
-  "deleteTeamProblemSetViaProblemSetsSetId": { method: "DELETE", path: "/problem-sets/{set_id}" },
-  "addTeamProblemSetProblemViaProblemSetsSetIdProblems": { method: "POST", path: "/problem-sets/{set_id}/problems" },
-  "removeTeamProblemSetProblemViaProblemSetsSetIdProblemsProblemId": { method: "DELETE", path: "/problem-sets/{set_id}/problems/{problem_id}" },
-  "listTeamProblemSetSubmissionsViaProblemSetsSetIdSubmissions": { method: "GET", path: "/problem-sets/{set_id}/submissions" },
-  "createTeamProblemSetSubmissionViaProblemSetsSetIdSubmissions": { method: "POST", path: "/problem-sets/{set_id}/submissions" },
-  "listTeamDiscussionsViaProblemSetsSetIdDiscussions": { method: "GET", path: "/problem-sets/{set_id}/discussions" },
-  "createTeamDiscussionViaProblemSetsSetIdDiscussions": { method: "POST", path: "/problem-sets/{set_id}/discussions" },
-  "listCourses": { method: "GET", path: "/courses" },
-  "createCourse": { method: "POST", path: "/courses" },
-  "updateCourse": { method: "PUT", path: "/courses/{id}" },
-  "archiveCourse": { method: "DELETE", path: "/courses/{id}" },
-  "archiveCourseViaCoursesIdArchive": { method: "POST", path: "/courses/{id}/archive" },
-  "createClass": { method: "POST", path: "/courses/{id}/classes" },
-  "listCourseMembers": { method: "GET", path: "/courses/{id}/members" },
-  "addCourseMember": { method: "POST", path: "/courses/{id}/members" },
-  "removeCourseMember": { method: "DELETE", path: "/courses/{id}/members/{user_id}" },
-  "previewCourseByCode": { method: "GET", path: "/courses/preview" },
-  "joinCourseByCode": { method: "POST", path: "/courses/join" },
-  "leaveCourse": { method: "POST", path: "/courses/{id}/leave" },
-  "listCourseStudents": { method: "GET", path: "/courses/{id}/students" },
-  "listClasses": { method: "GET", path: "/classes" },
-  "previewClassJoin": { method: "GET", path: "/classes/join-preview" },
-  "myClasses": { method: "GET", path: "/me/classes" },
-  "joinClassByCode": { method: "POST", path: "/classes/join" },
-  "joinClass": { method: "POST", path: "/classes/{id}/join" },
-  "leaveClass": { method: "POST", path: "/classes/{id}/leave" },
-  "updateClass": { method: "PUT", path: "/classes/{id}" },
-  "archiveClass": { method: "DELETE", path: "/classes/{id}" },
-  "archiveClassViaClassesIdArchive": { method: "POST", path: "/classes/{id}/archive" },
-  "listClassStudents": { method: "GET", path: "/classes/{id}/students" },
-  "removeClassStudent": { method: "DELETE", path: "/classes/{id}/students/{user_id}" },
-  "importClassStudents": { method: "POST", path: "/classes/{id}/students/import" },
-  "problemChangeTicketOnlyViaProblemTestUploadsUploadIdChunkIndex": { method: "PUT", path: "/problem-test-uploads/{upload_id}/{chunk_index}" },
-  "parseMarkdownBatch": { method: "POST", path: "/problems/parse-markdown" },
-  "problemChangeTicketOnlyViaProblemsUpload": { method: "POST", path: "/problems/upload" },
-  "listProblemTests": { method: "GET", path: "/problems/{id}/tests" },
-  "downloadProblemTests": { method: "GET", path: "/problems/{id}/tests/download" },
-  "downloadProblemTestFile": { method: "GET", path: "/problems/{id}/tests/file/{file_path}" },
-  "listPreparedProblems": { method: "GET", path: "/prepared-problems" },
-  "problemChangeTicketOnlyViaPreparedProblems": { method: "POST", path: "/prepared-problems" },
-  "problemChangeTicketOnlyViaPreparedProblemsUpload": { method: "POST", path: "/prepared-problems/upload" },
-  "getPreparedProblem": { method: "GET", path: "/prepared-problems/{id}" },
-  "problemChangeTicketOnlyViaPreparedProblemsId": { method: "PUT", path: "/prepared-problems/{id}" },
-  "problemChangeTicketOnlyViaPreparedProblemsIdPublish": { method: "POST", path: "/prepared-problems/{id}/publish" },
-  "listProblemChangeTickets": { method: "GET", path: "/problem-change-tickets" },
-  "createProblemChangeTicket": { method: "POST", path: "/problem-change-tickets" },
-  "listMyProblemChangeTickets": { method: "GET", path: "/problem-change-tickets/mine" },
-  "listProblemChangeTicketEligibleProblems": { method: "GET", path: "/problem-change-tickets/eligible-problems" },
-  "getProblemChangeTicket": { method: "GET", path: "/problem-change-tickets/{id}" },
-  "downloadProblemChangeTicketAttachment": { method: "GET", path: "/problem-change-tickets/{id}/attachment" },
-  "cancelProblemChangeTicket": { method: "POST", path: "/problem-change-tickets/{id}/cancel" },
-  "rejectProblemChangeTicket": { method: "POST", path: "/problem-change-tickets/{id}/reject" },
-  "applyProblemChangeTicket": { method: "POST", path: "/problem-change-tickets/{id}/apply" },
-  "listAssignments": { method: "GET", path: "/assignments" },
-  "createAssignment": { method: "POST", path: "/assignments" },
-  "getAssignment": { method: "GET", path: "/assignments/{id}" },
-  "deleteAssignment": { method: "DELETE", path: "/assignments/{id}" },
-  "assignmentReport": { method: "GET", path: "/assignments/{id}/report" },
-  "listExams": { method: "GET", path: "/exams" },
-  "createExam": { method: "POST", path: "/exams" },
-  "getExam": { method: "GET", path: "/exams/{id}" },
-  "deleteExam": { method: "DELETE", path: "/exams/{id}" },
-  "finishExam": { method: "POST", path: "/exams/{id}/finish" },
-  "exportExamReport": { method: "GET", path: "/exams/{id}/report/export" },
-  "examReport": { method: "GET", path: "/exams/{id}/report" },
-  "examRanking": { method: "GET", path: "/exams/{id}/ranking" },
-  "judgeManualExamSubmission": { method: "POST", path: "/exams/{id}/submissions/{submission_id}/judge" },
-  "gradeManualExamSubmission": { method: "PUT", path: "/exams/{id}/submissions/{submission_id}/grade" },
-  "listSubmissions": { method: "GET", path: "/submissions" },
-  "createSubmission": { method: "POST", path: "/submissions" },
-  "latestSubmissions": { method: "GET", path: "/submissions/latest" },
-  "getSubmission": { method: "GET", path: "/submissions/{id}" },
-  "submissionEvents": { method: "GET", path: "/submissions/{id}/events" },
-  "listPlagiarismJobs": { method: "GET", path: "/plagiarism/jobs" },
-  "createPlagiarismJob": { method: "POST", path: "/plagiarism/jobs" },
-  "listAuditLogs": { method: "GET", path: "/audit-logs" },
-  "listUsers": { method: "GET", path: "/users" },
-  "createUser": { method: "POST", path: "/users" },
-  "listUserPermissionDefinitions": { method: "GET", path: "/permissions" },
-  "getUser": { method: "GET", path: "/users/{id}" },
-  "updateUser": { method: "PUT", path: "/users/{id}" },
-  "deleteUser": { method: "DELETE", path: "/users/{id}" },
-  "updateUserPermission": { method: "PUT", path: "/users/{id}/permissions/{permission}" },
-  "resetUserPassword": { method: "POST", path: "/users/{id}/reset-password" },
-  "reviewAuthorApplication": { method: "PUT", path: "/author-applications/{id}/review" },
-  "listProblemAuthors": { method: "GET", path: "/problem-authors" },
-  "removeProblemAuthor": { method: "DELETE", path: "/problem-authors/{id}" },
-  "listMyProblemReviews": { method: "GET", path: "/problem-reviews/mine" },
-  "listProblemReviews": { method: "GET", path: "/problem-reviews" },
-  "problemChangeTicketOnlyViaProblemReviewsIdReview": { method: "PUT", path: "/problem-reviews/{id}/review" },
-  "problemChangeTicketOnlyViaProblemReviewsIdWithdraw": { method: "PUT", path: "/problem-reviews/{id}/withdraw" },
-  "enterExam": { method: "POST", path: "/exams/{id}/enter" },
-  "listExamActivity": { method: "GET", path: "/exams/{id}/activity" },
-  "recordExamActivity": { method: "POST", path: "/exams/{id}/activity" },
-  "getExamProblemAsset": { method: "GET", path: "/exams/{id}/problems/{problem_id}/assets/{asset_path}" },
-  "previewTeamJoin": { method: "GET", path: "/teams/{id}/join-preview" },
+  "login": { method: "POST", path: "/auth/login", segments: [] },
+  "sendEmailCode": { method: "POST", path: "/auth/send-code", segments: [] },
+  "register": { method: "POST", path: "/auth/register", segments: [] },
+  "resetPassword": { method: "POST", path: "/auth/password-reset", segments: [] },
+  "listProblems": { method: "GET", path: "/problems", segments: [] },
+  "problemChangeTicketOnly": { method: "POST", path: "/problems", segments: [] },
+  "listProblemCatalog": { method: "GET", path: "/problems/catalog", segments: [] },
+  "getProblemAsset": { method: "GET", path: "/problems/{id}/assets/{asset_path}", segments: ["asset_path"] },
+  "getProblem": { method: "GET", path: "/problems/{id}", segments: [] },
+  "problemChangeTicketOnlyViaProblemsId": { method: "PUT", path: "/problems/{id}", segments: [] },
+  "problemChangeTicketOnlyDeleteProblem": { method: "DELETE", path: "/problems/{id}", segments: [] },
+  "me": { method: "GET", path: "/me", segments: [] },
+  "activeExam": { method: "GET", path: "/me/active-exam", segments: [] },
+  "getProfile": { method: "GET", path: "/profile", segments: [] },
+  "updateProfile": { method: "PUT", path: "/profile", segments: [] },
+  "deleteProfile": { method: "DELETE", path: "/profile", segments: [] },
+  "updateProfilePassword": { method: "POST", path: "/profile/password", segments: [] },
+  "sendProfileEmailCode": { method: "POST", path: "/profile/email-code", segments: [] },
+  "rebindEmail": { method: "POST", path: "/profile/email", segments: [] },
+  "getMyAuthorApplication": { method: "GET", path: "/author-applications/me", segments: [] },
+  "listAuthorApplications": { method: "GET", path: "/author-applications", segments: [] },
+  "createAuthorApplication": { method: "POST", path: "/author-applications", segments: [] },
+  "createFeedback": { method: "POST", path: "/feedback", segments: [] },
+  "listTeams": { method: "GET", path: "/teams", segments: [] },
+  "createTeam": { method: "POST", path: "/teams", segments: [] },
+  "getTeam": { method: "GET", path: "/teams/{id}", segments: [] },
+  "updateTeam": { method: "PUT", path: "/teams/{id}", segments: [] },
+  "joinTeam": { method: "POST", path: "/teams/{id}/join", segments: [] },
+  "leaveTeam": { method: "POST", path: "/teams/{id}/leave", segments: [] },
+  "listTeamMembers": { method: "GET", path: "/teams/{id}/members", segments: [] },
+  "updateTeamMember": { method: "PUT", path: "/teams/{id}/members/{user_id}", segments: [] },
+  "removeTeamMember": { method: "DELETE", path: "/teams/{id}/members/{user_id}", segments: [] },
+  "listTeamApplications": { method: "GET", path: "/teams/{id}/applications", segments: [] },
+  "reviewTeamApplication": { method: "PUT", path: "/teams/{id}/applications/{application_id}", segments: [] },
+  "listTeamContests": { method: "GET", path: "/teams/{id}/contests", segments: [] },
+  "createTeamContest": { method: "POST", path: "/teams/{id}/contests", segments: [] },
+  "getTeamContest": { method: "GET", path: "/teams/{id}/contests/{contest_id}", segments: [] },
+  "updateTeamContest": { method: "PUT", path: "/teams/{id}/contests/{contest_id}", segments: [] },
+  "deleteTeamContest": { method: "DELETE", path: "/teams/{id}/contests/{contest_id}", segments: [] },
+  "publishTeamContest": { method: "POST", path: "/teams/{id}/contests/{contest_id}/publish", segments: [] },
+  "addTeamContestProblem": { method: "POST", path: "/teams/{id}/contests/{contest_id}/problems", segments: [] },
+  "removeTeamContestProblem": { method: "DELETE", path: "/teams/{id}/contests/{contest_id}/problems/{problem_id}", segments: [] },
+  "listTeamContestSubmissions": { method: "GET", path: "/teams/{id}/contests/{contest_id}/submissions", segments: [] },
+  "createTeamContestSubmission": { method: "POST", path: "/teams/{id}/contests/{contest_id}/submissions", segments: [] },
+  "teamContestRanking": { method: "GET", path: "/teams/{id}/contests/{contest_id}/ranking", segments: [] },
+  "getTeamContestViaContestsContestId": { method: "GET", path: "/contests/{contest_id}", segments: [] },
+  "updateTeamContestViaContestsContestId": { method: "PUT", path: "/contests/{contest_id}", segments: [] },
+  "deleteTeamContestViaContestsContestId": { method: "DELETE", path: "/contests/{contest_id}", segments: [] },
+  "publishTeamContestViaContestsContestIdPublish": { method: "POST", path: "/contests/{contest_id}/publish", segments: [] },
+  "addTeamContestProblemViaContestsContestIdProblems": { method: "POST", path: "/contests/{contest_id}/problems", segments: [] },
+  "removeTeamContestProblemViaContestsContestIdProblemsProblemId": { method: "DELETE", path: "/contests/{contest_id}/problems/{problem_id}", segments: [] },
+  "listTeamContestSubmissionsViaContestsContestIdSubmissions": { method: "GET", path: "/contests/{contest_id}/submissions", segments: [] },
+  "createTeamContestSubmissionViaContestsContestIdSubmissions": { method: "POST", path: "/contests/{contest_id}/submissions", segments: [] },
+  "teamContestRankingViaContestsContestIdRanking": { method: "GET", path: "/contests/{contest_id}/ranking", segments: [] },
+  "listTeamProblemSets": { method: "GET", path: "/teams/{id}/problem-sets", segments: [] },
+  "createTeamProblemSet": { method: "POST", path: "/teams/{id}/problem-sets", segments: [] },
+  "getTeamProblemSet": { method: "GET", path: "/teams/{id}/problem-sets/{set_id}", segments: [] },
+  "updateTeamProblemSet": { method: "PUT", path: "/teams/{id}/problem-sets/{set_id}", segments: [] },
+  "deleteTeamProblemSet": { method: "DELETE", path: "/teams/{id}/problem-sets/{set_id}", segments: [] },
+  "addTeamProblemSetProblem": { method: "POST", path: "/teams/{id}/problem-sets/{set_id}/problems", segments: [] },
+  "removeTeamProblemSetProblem": { method: "DELETE", path: "/teams/{id}/problem-sets/{set_id}/problems/{problem_id}", segments: [] },
+  "listTeamProblemSetSubmissions": { method: "GET", path: "/teams/{id}/problem-sets/{set_id}/submissions", segments: [] },
+  "createTeamProblemSetSubmission": { method: "POST", path: "/teams/{id}/problem-sets/{set_id}/submissions", segments: [] },
+  "listTeamDiscussions": { method: "GET", path: "/teams/{id}/problem-sets/{set_id}/discussions", segments: [] },
+  "createTeamDiscussion": { method: "POST", path: "/teams/{id}/problem-sets/{set_id}/discussions", segments: [] },
+  "getTeamProblemSetViaProblemSetsSetId": { method: "GET", path: "/problem-sets/{set_id}", segments: [] },
+  "updateTeamProblemSetViaProblemSetsSetId": { method: "PUT", path: "/problem-sets/{set_id}", segments: [] },
+  "deleteTeamProblemSetViaProblemSetsSetId": { method: "DELETE", path: "/problem-sets/{set_id}", segments: [] },
+  "addTeamProblemSetProblemViaProblemSetsSetIdProblems": { method: "POST", path: "/problem-sets/{set_id}/problems", segments: [] },
+  "removeTeamProblemSetProblemViaProblemSetsSetIdProblemsProblemId": { method: "DELETE", path: "/problem-sets/{set_id}/problems/{problem_id}", segments: [] },
+  "listTeamProblemSetSubmissionsViaProblemSetsSetIdSubmissions": { method: "GET", path: "/problem-sets/{set_id}/submissions", segments: [] },
+  "createTeamProblemSetSubmissionViaProblemSetsSetIdSubmissions": { method: "POST", path: "/problem-sets/{set_id}/submissions", segments: [] },
+  "listTeamDiscussionsViaProblemSetsSetIdDiscussions": { method: "GET", path: "/problem-sets/{set_id}/discussions", segments: [] },
+  "createTeamDiscussionViaProblemSetsSetIdDiscussions": { method: "POST", path: "/problem-sets/{set_id}/discussions", segments: [] },
+  "listCourses": { method: "GET", path: "/courses", segments: [] },
+  "createCourse": { method: "POST", path: "/courses", segments: [] },
+  "updateCourse": { method: "PUT", path: "/courses/{id}", segments: [] },
+  "archiveCourse": { method: "DELETE", path: "/courses/{id}", segments: [] },
+  "archiveCourseViaCoursesIdArchive": { method: "POST", path: "/courses/{id}/archive", segments: [] },
+  "createClass": { method: "POST", path: "/courses/{id}/classes", segments: [] },
+  "listCourseMembers": { method: "GET", path: "/courses/{id}/members", segments: [] },
+  "addCourseMember": { method: "POST", path: "/courses/{id}/members", segments: [] },
+  "removeCourseMember": { method: "DELETE", path: "/courses/{id}/members/{user_id}", segments: [] },
+  "previewCourseByCode": { method: "GET", path: "/courses/preview", segments: [] },
+  "joinCourseByCode": { method: "POST", path: "/courses/join", segments: [] },
+  "leaveCourse": { method: "POST", path: "/courses/{id}/leave", segments: [] },
+  "listCourseStudents": { method: "GET", path: "/courses/{id}/students", segments: [] },
+  "listClasses": { method: "GET", path: "/classes", segments: [] },
+  "previewClassJoin": { method: "GET", path: "/classes/join-preview", segments: [] },
+  "myClasses": { method: "GET", path: "/me/classes", segments: [] },
+  "joinClassByCode": { method: "POST", path: "/classes/join", segments: [] },
+  "joinClass": { method: "POST", path: "/classes/{id}/join", segments: [] },
+  "leaveClass": { method: "POST", path: "/classes/{id}/leave", segments: [] },
+  "updateClass": { method: "PUT", path: "/classes/{id}", segments: [] },
+  "archiveClass": { method: "DELETE", path: "/classes/{id}", segments: [] },
+  "archiveClassViaClassesIdArchive": { method: "POST", path: "/classes/{id}/archive", segments: [] },
+  "listClassStudents": { method: "GET", path: "/classes/{id}/students", segments: [] },
+  "removeClassStudent": { method: "DELETE", path: "/classes/{id}/students/{user_id}", segments: [] },
+  "importClassStudents": { method: "POST", path: "/classes/{id}/students/import", segments: [] },
+  "problemChangeTicketOnlyViaProblemTestUploadsUploadIdChunkIndex": { method: "PUT", path: "/problem-test-uploads/{upload_id}/{chunk_index}", segments: [] },
+  "parseMarkdownBatch": { method: "POST", path: "/problems/parse-markdown", segments: [] },
+  "problemChangeTicketOnlyViaProblemsUpload": { method: "POST", path: "/problems/upload", segments: [] },
+  "listProblemTests": { method: "GET", path: "/problems/{id}/tests", segments: [] },
+  "downloadProblemTests": { method: "GET", path: "/problems/{id}/tests/download", segments: [] },
+  "downloadProblemTestFile": { method: "GET", path: "/problems/{id}/tests/file/{file_path}", segments: ["file_path"] },
+  "listPreparedProblems": { method: "GET", path: "/prepared-problems", segments: [] },
+  "problemChangeTicketOnlyViaPreparedProblems": { method: "POST", path: "/prepared-problems", segments: [] },
+  "problemChangeTicketOnlyViaPreparedProblemsUpload": { method: "POST", path: "/prepared-problems/upload", segments: [] },
+  "getPreparedProblem": { method: "GET", path: "/prepared-problems/{id}", segments: [] },
+  "problemChangeTicketOnlyViaPreparedProblemsId": { method: "PUT", path: "/prepared-problems/{id}", segments: [] },
+  "problemChangeTicketOnlyViaPreparedProblemsIdPublish": { method: "POST", path: "/prepared-problems/{id}/publish", segments: [] },
+  "listProblemChangeTickets": { method: "GET", path: "/problem-change-tickets", segments: [] },
+  "createProblemChangeTicket": { method: "POST", path: "/problem-change-tickets", segments: [] },
+  "listMyProblemChangeTickets": { method: "GET", path: "/problem-change-tickets/mine", segments: [] },
+  "listProblemChangeTicketEligibleProblems": { method: "GET", path: "/problem-change-tickets/eligible-problems", segments: [] },
+  "getProblemChangeTicket": { method: "GET", path: "/problem-change-tickets/{id}", segments: [] },
+  "downloadProblemChangeTicketAttachment": { method: "GET", path: "/problem-change-tickets/{id}/attachment", segments: [] },
+  "cancelProblemChangeTicket": { method: "POST", path: "/problem-change-tickets/{id}/cancel", segments: [] },
+  "rejectProblemChangeTicket": { method: "POST", path: "/problem-change-tickets/{id}/reject", segments: [] },
+  "applyProblemChangeTicket": { method: "POST", path: "/problem-change-tickets/{id}/apply", segments: [] },
+  "listAssignments": { method: "GET", path: "/assignments", segments: [] },
+  "createAssignment": { method: "POST", path: "/assignments", segments: [] },
+  "getAssignment": { method: "GET", path: "/assignments/{id}", segments: [] },
+  "deleteAssignment": { method: "DELETE", path: "/assignments/{id}", segments: [] },
+  "assignmentReport": { method: "GET", path: "/assignments/{id}/report", segments: [] },
+  "listExams": { method: "GET", path: "/exams", segments: [] },
+  "createExam": { method: "POST", path: "/exams", segments: [] },
+  "getExam": { method: "GET", path: "/exams/{id}", segments: [] },
+  "deleteExam": { method: "DELETE", path: "/exams/{id}", segments: [] },
+  "finishExam": { method: "POST", path: "/exams/{id}/finish", segments: [] },
+  "exportExamReport": { method: "GET", path: "/exams/{id}/report/export", segments: [] },
+  "examReport": { method: "GET", path: "/exams/{id}/report", segments: [] },
+  "examRanking": { method: "GET", path: "/exams/{id}/ranking", segments: [] },
+  "judgeManualExamSubmission": { method: "POST", path: "/exams/{id}/submissions/{submission_id}/judge", segments: [] },
+  "gradeManualExamSubmission": { method: "PUT", path: "/exams/{id}/submissions/{submission_id}/grade", segments: [] },
+  "listSubmissions": { method: "GET", path: "/submissions", segments: [] },
+  "createSubmission": { method: "POST", path: "/submissions", segments: [] },
+  "latestSubmissions": { method: "GET", path: "/submissions/latest", segments: [] },
+  "getSubmission": { method: "GET", path: "/submissions/{id}", segments: [] },
+  "submissionEvents": { method: "GET", path: "/submissions/{id}/events", segments: [] },
+  "listPlagiarismJobs": { method: "GET", path: "/plagiarism/jobs", segments: [] },
+  "createPlagiarismJob": { method: "POST", path: "/plagiarism/jobs", segments: [] },
+  "listAuditLogs": { method: "GET", path: "/audit-logs", segments: [] },
+  "listUsers": { method: "GET", path: "/users", segments: [] },
+  "createUser": { method: "POST", path: "/users", segments: [] },
+  "listUserPermissionDefinitions": { method: "GET", path: "/permissions", segments: [] },
+  "getUser": { method: "GET", path: "/users/{id}", segments: [] },
+  "updateUser": { method: "PUT", path: "/users/{id}", segments: [] },
+  "deleteUser": { method: "DELETE", path: "/users/{id}", segments: [] },
+  "updateUserPermission": { method: "PUT", path: "/users/{id}/permissions/{permission}", segments: [] },
+  "resetUserPassword": { method: "POST", path: "/users/{id}/reset-password", segments: [] },
+  "reviewAuthorApplication": { method: "PUT", path: "/author-applications/{id}/review", segments: [] },
+  "listProblemAuthors": { method: "GET", path: "/problem-authors", segments: [] },
+  "removeProblemAuthor": { method: "DELETE", path: "/problem-authors/{id}", segments: [] },
+  "listMyProblemReviews": { method: "GET", path: "/problem-reviews/mine", segments: [] },
+  "listProblemReviews": { method: "GET", path: "/problem-reviews", segments: [] },
+  "problemChangeTicketOnlyViaProblemReviewsIdReview": { method: "PUT", path: "/problem-reviews/{id}/review", segments: [] },
+  "problemChangeTicketOnlyViaProblemReviewsIdWithdraw": { method: "PUT", path: "/problem-reviews/{id}/withdraw", segments: [] },
+  "enterExam": { method: "POST", path: "/exams/{id}/enter", segments: [] },
+  "listExamActivity": { method: "GET", path: "/exams/{id}/activity", segments: [] },
+  "recordExamActivity": { method: "POST", path: "/exams/{id}/activity", segments: [] },
+  "getExamProblemAsset": { method: "GET", path: "/exams/{id}/problems/{problem_id}/assets/{asset_path}", segments: ["asset_path"] },
+  "previewTeamInvitation": { method: "POST", path: "/team-invitations/preview", segments: [] },
+  "previewTeamJoin": { method: "GET", path: "/teams/{id}/join-preview", segments: [] },
 } as const
 
 export type ApiOperationId = keyof typeof apiOperations
@@ -506,14 +507,19 @@ export interface ApiRequestOptions<TBody = unknown>
   extends Omit<AxiosRequestConfig, 'method' | 'url' | 'params' | 'data'> {
   path?: Record<string, ApiPathValue>
   query?: Record<string, ApiQueryValue>
-  body?: TBody
+  body?: TBody | FormData | Blob
 }
 
-function resolvePath(template: string, values: Record<string, ApiPathValue> = {}) {
+function resolvePath(template: string, values: Record<string, ApiPathValue> = {}, segments: readonly string[] = []) {
   return template.replace(/\{([^}]+)\}/g, (_, key: string) => {
     const value = values[key]
     if (value === undefined || value === null || value === '') {
       throw new Error(`Missing OpenAPI path parameter: ${key}`)
+    }
+    if (segments.includes(key)) {
+      const parts = String(value).split('/')
+      if (parts.some(part => part === '..' || part === '.' || !part)) throw new Error('Invalid asset path')
+      return parts.map(part => encodeURIComponent(part)).join('/')
     }
     return encodeURIComponent(String(value))
   })
@@ -528,341 +534,347 @@ export async function requestOperation<TResponse = unknown, TBody = unknown>(
   return http.request<TResponse>({
     ...config,
     method: definition.method,
-    url: resolvePath(definition.path, path),
+    url: resolvePath(definition.path, path, definition.segments),
     params: query,
     data: body,
   })
 }
 
 export const generatedApi = {
-  "login": (options: ApiRequestOptions<components['schemas']["LoginRequest"]> = {}) =>
-    requestOperation<components['schemas']["AuthResponse"], components['schemas']["LoginRequest"]>("login", options),
-  "sendEmailCode": (options: ApiRequestOptions<components['schemas']["EmailCodeRequest"]> = {}) =>
-    requestOperation<components['schemas']["JsonObject"], components['schemas']["EmailCodeRequest"]>("sendEmailCode", options),
-  "register": (options: ApiRequestOptions<components['schemas']["RegisterRequest"]> = {}) =>
-    requestOperation<components['schemas']["JsonObject"], components['schemas']["RegisterRequest"]>("register", options),
-  "resetPassword": (options: ApiRequestOptions<components['schemas']["PasswordResetRequest"]> = {}) =>
-    requestOperation<components['schemas']["JsonObject"], components['schemas']["PasswordResetRequest"]>("resetPassword", options),
-  "listProblems": (options: ApiRequestOptions<never> = {}) =>
-    requestOperation<Array<components['schemas']["Problem"]>, never>("listProblems", options),
-  "problemChangeTicketOnly": (options: ApiRequestOptions<components['schemas']["JsonObject"]> = {}) =>
-    requestOperation<components['schemas']["JsonObject"], components['schemas']["JsonObject"]>("problemChangeTicketOnly", options),
-  "listProblemCatalog": (options: ApiRequestOptions<never> = {}) =>
-    requestOperation<components['schemas']["ProblemCatalogResponse"], never>("listProblemCatalog", options),
-  "getProblemAsset": (options: ApiRequestOptions<never> = {}) =>
-    requestOperation<components['schemas']["JsonObject"], never>("getProblemAsset", options),
-  "getProblem": (options: ApiRequestOptions<never> = {}) =>
-    requestOperation<components['schemas']["Problem"], never>("getProblem", options),
-  "problemChangeTicketOnlyViaProblemsId": (options: ApiRequestOptions<components['schemas']["JsonObject"]> = {}) =>
-    requestOperation<components['schemas']["JsonObject"], components['schemas']["JsonObject"]>("problemChangeTicketOnlyViaProblemsId", options),
-  "problemChangeTicketOnlyDeleteProblem": (options: ApiRequestOptions<never> = {}) =>
-    requestOperation<components['schemas']["JsonObject"], never>("problemChangeTicketOnlyDeleteProblem", options),
-  "me": (options: ApiRequestOptions<never> = {}) =>
-    requestOperation<components['schemas']["User"], never>("me", options),
-  "activeExam": (options: ApiRequestOptions<never> = {}) =>
-    requestOperation<components['schemas']["JsonObject"], never>("activeExam", options),
-  "getProfile": (options: ApiRequestOptions<never> = {}) =>
-    requestOperation<components['schemas']["User"], never>("getProfile", options),
-  "updateProfile": (options: ApiRequestOptions<components['schemas']["ProfileUpdateRequest"]> = {}) =>
-    requestOperation<components['schemas']["User"], components['schemas']["ProfileUpdateRequest"]>("updateProfile", options),
-  "deleteProfile": (options: ApiRequestOptions<never> = {}) =>
-    requestOperation<components['schemas']["User"], never>("deleteProfile", options),
-  "updateProfilePassword": (options: ApiRequestOptions<components['schemas']["PasswordChangeRequest"]> = {}) =>
-    requestOperation<components['schemas']["JsonObject"], components['schemas']["PasswordChangeRequest"]>("updateProfilePassword", options),
-  "sendProfileEmailCode": (options: ApiRequestOptions<components['schemas']["JsonObject"]> = {}) =>
-    requestOperation<components['schemas']["JsonObject"], components['schemas']["JsonObject"]>("sendProfileEmailCode", options),
-  "rebindEmail": (options: ApiRequestOptions<components['schemas']["EmailRebindRequest"]> = {}) =>
-    requestOperation<components['schemas']["JsonObject"], components['schemas']["EmailRebindRequest"]>("rebindEmail", options),
-  "getMyAuthorApplication": (options: ApiRequestOptions<never> = {}) =>
-    requestOperation<components['schemas']["AuthorApplicationEnvelope"], never>("getMyAuthorApplication", options),
-  "listAuthorApplications": (options: ApiRequestOptions<never> = {}) =>
-    requestOperation<Array<components['schemas']["AuthorApplication"]>, never>("listAuthorApplications", options),
-  "createAuthorApplication": (options: ApiRequestOptions<components['schemas']["JsonObject"]> = {}) =>
-    requestOperation<components['schemas']["AuthorApplication"], components['schemas']["JsonObject"]>("createAuthorApplication", options),
-  "createFeedback": (options: ApiRequestOptions<components['schemas']["JsonObject"]> = {}) =>
-    requestOperation<components['schemas']["JsonObject"], components['schemas']["JsonObject"]>("createFeedback", options),
-  "listTeams": (options: ApiRequestOptions<never> = {}) =>
-    requestOperation<Array<components['schemas']["Team"]>, never>("listTeams", options),
-  "createTeam": (options: ApiRequestOptions<components['schemas']["JsonObject"]> = {}) =>
-    requestOperation<components['schemas']["Team"], components['schemas']["JsonObject"]>("createTeam", options),
-  "getTeam": (options: ApiRequestOptions<never> = {}) =>
-    requestOperation<components['schemas']["Team"], never>("getTeam", options),
-  "updateTeam": (options: ApiRequestOptions<components['schemas']["JsonObject"]> = {}) =>
-    requestOperation<components['schemas']["Team"], components['schemas']["JsonObject"]>("updateTeam", options),
-  "joinTeam": (options: ApiRequestOptions<components['schemas']["TeamJoinRequest"]> = {}) =>
-    requestOperation<components['schemas']["TeamJoinResponse"], components['schemas']["TeamJoinRequest"]>("joinTeam", options),
-  "leaveTeam": (options: ApiRequestOptions<components['schemas']["JsonObject"]> = {}) =>
-    requestOperation<components['schemas']["JsonObject"], components['schemas']["JsonObject"]>("leaveTeam", options),
-  "listTeamMembers": (options: ApiRequestOptions<never> = {}) =>
-    requestOperation<components['schemas']["JsonObject"], never>("listTeamMembers", options),
-  "updateTeamMember": (options: ApiRequestOptions<components['schemas']["JsonObject"]> = {}) =>
-    requestOperation<components['schemas']["JsonObject"], components['schemas']["JsonObject"]>("updateTeamMember", options),
-  "removeTeamMember": (options: ApiRequestOptions<never> = {}) =>
-    requestOperation<components['schemas']["JsonObject"], never>("removeTeamMember", options),
-  "listTeamApplications": (options: ApiRequestOptions<never> = {}) =>
-    requestOperation<components['schemas']["JsonObject"], never>("listTeamApplications", options),
-  "reviewTeamApplication": (options: ApiRequestOptions<components['schemas']["JsonObject"]> = {}) =>
-    requestOperation<components['schemas']["JsonObject"], components['schemas']["JsonObject"]>("reviewTeamApplication", options),
-  "listTeamContests": (options: ApiRequestOptions<never> = {}) =>
-    requestOperation<Array<components['schemas']["TeamContest"]>, never>("listTeamContests", options),
-  "createTeamContest": (options: ApiRequestOptions<components['schemas']["JsonObject"]> = {}) =>
-    requestOperation<components['schemas']["JsonObject"], components['schemas']["JsonObject"]>("createTeamContest", options),
-  "getTeamContest": (options: ApiRequestOptions<never> = {}) =>
-    requestOperation<components['schemas']["TeamContest"], never>("getTeamContest", options),
-  "updateTeamContest": (options: ApiRequestOptions<components['schemas']["JsonObject"]> = {}) =>
-    requestOperation<components['schemas']["TeamContest"], components['schemas']["JsonObject"]>("updateTeamContest", options),
-  "deleteTeamContest": (options: ApiRequestOptions<never> = {}) =>
-    requestOperation<components['schemas']["TeamContest"], never>("deleteTeamContest", options),
-  "publishTeamContest": (options: ApiRequestOptions<components['schemas']["JsonObject"]> = {}) =>
-    requestOperation<components['schemas']["TeamContest"], components['schemas']["JsonObject"]>("publishTeamContest", options),
-  "addTeamContestProblem": (options: ApiRequestOptions<components['schemas']["JsonObject"]> = {}) =>
-    requestOperation<components['schemas']["JsonObject"], components['schemas']["JsonObject"]>("addTeamContestProblem", options),
-  "removeTeamContestProblem": (options: ApiRequestOptions<never> = {}) =>
-    requestOperation<components['schemas']["JsonObject"], never>("removeTeamContestProblem", options),
-  "listTeamContestSubmissions": (options: ApiRequestOptions<never> = {}) =>
-    requestOperation<components['schemas']["JsonObject"], never>("listTeamContestSubmissions", options),
-  "createTeamContestSubmission": (options: ApiRequestOptions<components['schemas']["SubmissionCreateRequest"]> = {}) =>
-    requestOperation<components['schemas']["JsonObject"], components['schemas']["SubmissionCreateRequest"]>("createTeamContestSubmission", options),
-  "teamContestRanking": (options: ApiRequestOptions<never> = {}) =>
-    requestOperation<components['schemas']["JsonObject"], never>("teamContestRanking", options),
-  "getTeamContestViaContestsContestId": (options: ApiRequestOptions<never> = {}) =>
-    requestOperation<components['schemas']["TeamContest"], never>("getTeamContestViaContestsContestId", options),
-  "updateTeamContestViaContestsContestId": (options: ApiRequestOptions<components['schemas']["JsonObject"]> = {}) =>
-    requestOperation<components['schemas']["TeamContest"], components['schemas']["JsonObject"]>("updateTeamContestViaContestsContestId", options),
-  "deleteTeamContestViaContestsContestId": (options: ApiRequestOptions<never> = {}) =>
-    requestOperation<components['schemas']["TeamContest"], never>("deleteTeamContestViaContestsContestId", options),
-  "publishTeamContestViaContestsContestIdPublish": (options: ApiRequestOptions<components['schemas']["JsonObject"]> = {}) =>
-    requestOperation<components['schemas']["TeamContest"], components['schemas']["JsonObject"]>("publishTeamContestViaContestsContestIdPublish", options),
-  "addTeamContestProblemViaContestsContestIdProblems": (options: ApiRequestOptions<components['schemas']["JsonObject"]> = {}) =>
-    requestOperation<components['schemas']["JsonObject"], components['schemas']["JsonObject"]>("addTeamContestProblemViaContestsContestIdProblems", options),
-  "removeTeamContestProblemViaContestsContestIdProblemsProblemId": (options: ApiRequestOptions<never> = {}) =>
-    requestOperation<components['schemas']["JsonObject"], never>("removeTeamContestProblemViaContestsContestIdProblemsProblemId", options),
-  "listTeamContestSubmissionsViaContestsContestIdSubmissions": (options: ApiRequestOptions<never> = {}) =>
-    requestOperation<components['schemas']["JsonObject"], never>("listTeamContestSubmissionsViaContestsContestIdSubmissions", options),
-  "createTeamContestSubmissionViaContestsContestIdSubmissions": (options: ApiRequestOptions<components['schemas']["SubmissionCreateRequest"]> = {}) =>
-    requestOperation<components['schemas']["JsonObject"], components['schemas']["SubmissionCreateRequest"]>("createTeamContestSubmissionViaContestsContestIdSubmissions", options),
-  "teamContestRankingViaContestsContestIdRanking": (options: ApiRequestOptions<never> = {}) =>
-    requestOperation<components['schemas']["JsonObject"], never>("teamContestRankingViaContestsContestIdRanking", options),
-  "listTeamProblemSets": (options: ApiRequestOptions<never> = {}) =>
-    requestOperation<Array<components['schemas']["TeamProblemSet"]>, never>("listTeamProblemSets", options),
-  "createTeamProblemSet": (options: ApiRequestOptions<components['schemas']["JsonObject"]> = {}) =>
-    requestOperation<components['schemas']["JsonObject"], components['schemas']["JsonObject"]>("createTeamProblemSet", options),
-  "getTeamProblemSet": (options: ApiRequestOptions<never> = {}) =>
-    requestOperation<components['schemas']["TeamProblemSet"], never>("getTeamProblemSet", options),
-  "updateTeamProblemSet": (options: ApiRequestOptions<components['schemas']["JsonObject"]> = {}) =>
-    requestOperation<components['schemas']["TeamProblemSet"], components['schemas']["JsonObject"]>("updateTeamProblemSet", options),
-  "deleteTeamProblemSet": (options: ApiRequestOptions<never> = {}) =>
-    requestOperation<components['schemas']["TeamProblemSet"], never>("deleteTeamProblemSet", options),
-  "addTeamProblemSetProblem": (options: ApiRequestOptions<components['schemas']["JsonObject"]> = {}) =>
-    requestOperation<components['schemas']["JsonObject"], components['schemas']["JsonObject"]>("addTeamProblemSetProblem", options),
-  "removeTeamProblemSetProblem": (options: ApiRequestOptions<never> = {}) =>
-    requestOperation<components['schemas']["JsonObject"], never>("removeTeamProblemSetProblem", options),
-  "listTeamProblemSetSubmissions": (options: ApiRequestOptions<never> = {}) =>
-    requestOperation<components['schemas']["JsonObject"], never>("listTeamProblemSetSubmissions", options),
-  "createTeamProblemSetSubmission": (options: ApiRequestOptions<components['schemas']["SubmissionCreateRequest"]> = {}) =>
-    requestOperation<components['schemas']["JsonObject"], components['schemas']["SubmissionCreateRequest"]>("createTeamProblemSetSubmission", options),
-  "listTeamDiscussions": (options: ApiRequestOptions<never> = {}) =>
-    requestOperation<components['schemas']["JsonObject"], never>("listTeamDiscussions", options),
-  "createTeamDiscussion": (options: ApiRequestOptions<components['schemas']["JsonObject"]> = {}) =>
-    requestOperation<components['schemas']["JsonObject"], components['schemas']["JsonObject"]>("createTeamDiscussion", options),
-  "getTeamProblemSetViaProblemSetsSetId": (options: ApiRequestOptions<never> = {}) =>
-    requestOperation<components['schemas']["TeamProblemSet"], never>("getTeamProblemSetViaProblemSetsSetId", options),
-  "updateTeamProblemSetViaProblemSetsSetId": (options: ApiRequestOptions<components['schemas']["JsonObject"]> = {}) =>
-    requestOperation<components['schemas']["TeamProblemSet"], components['schemas']["JsonObject"]>("updateTeamProblemSetViaProblemSetsSetId", options),
-  "deleteTeamProblemSetViaProblemSetsSetId": (options: ApiRequestOptions<never> = {}) =>
-    requestOperation<components['schemas']["TeamProblemSet"], never>("deleteTeamProblemSetViaProblemSetsSetId", options),
-  "addTeamProblemSetProblemViaProblemSetsSetIdProblems": (options: ApiRequestOptions<components['schemas']["JsonObject"]> = {}) =>
-    requestOperation<components['schemas']["JsonObject"], components['schemas']["JsonObject"]>("addTeamProblemSetProblemViaProblemSetsSetIdProblems", options),
-  "removeTeamProblemSetProblemViaProblemSetsSetIdProblemsProblemId": (options: ApiRequestOptions<never> = {}) =>
-    requestOperation<components['schemas']["JsonObject"], never>("removeTeamProblemSetProblemViaProblemSetsSetIdProblemsProblemId", options),
-  "listTeamProblemSetSubmissionsViaProblemSetsSetIdSubmissions": (options: ApiRequestOptions<never> = {}) =>
-    requestOperation<components['schemas']["JsonObject"], never>("listTeamProblemSetSubmissionsViaProblemSetsSetIdSubmissions", options),
-  "createTeamProblemSetSubmissionViaProblemSetsSetIdSubmissions": (options: ApiRequestOptions<components['schemas']["SubmissionCreateRequest"]> = {}) =>
-    requestOperation<components['schemas']["JsonObject"], components['schemas']["SubmissionCreateRequest"]>("createTeamProblemSetSubmissionViaProblemSetsSetIdSubmissions", options),
-  "listTeamDiscussionsViaProblemSetsSetIdDiscussions": (options: ApiRequestOptions<never> = {}) =>
-    requestOperation<components['schemas']["JsonObject"], never>("listTeamDiscussionsViaProblemSetsSetIdDiscussions", options),
-  "createTeamDiscussionViaProblemSetsSetIdDiscussions": (options: ApiRequestOptions<components['schemas']["JsonObject"]> = {}) =>
-    requestOperation<components['schemas']["JsonObject"], components['schemas']["JsonObject"]>("createTeamDiscussionViaProblemSetsSetIdDiscussions", options),
-  "listCourses": (options: ApiRequestOptions<never> = {}) =>
-    requestOperation<components['schemas']["JsonObject"], never>("listCourses", options),
-  "createCourse": (options: ApiRequestOptions<components['schemas']["JsonObject"]> = {}) =>
-    requestOperation<components['schemas']["JsonObject"], components['schemas']["JsonObject"]>("createCourse", options),
-  "updateCourse": (options: ApiRequestOptions<components['schemas']["JsonObject"]> = {}) =>
-    requestOperation<components['schemas']["JsonObject"], components['schemas']["JsonObject"]>("updateCourse", options),
-  "archiveCourse": (options: ApiRequestOptions<never> = {}) =>
-    requestOperation<components['schemas']["JsonObject"], never>("archiveCourse", options),
-  "archiveCourseViaCoursesIdArchive": (options: ApiRequestOptions<components['schemas']["JsonObject"]> = {}) =>
-    requestOperation<components['schemas']["JsonObject"], components['schemas']["JsonObject"]>("archiveCourseViaCoursesIdArchive", options),
-  "createClass": (options: ApiRequestOptions<components['schemas']["JsonObject"]> = {}) =>
-    requestOperation<components['schemas']["JsonObject"], components['schemas']["JsonObject"]>("createClass", options),
-  "listCourseMembers": (options: ApiRequestOptions<never> = {}) =>
-    requestOperation<components['schemas']["JsonObject"], never>("listCourseMembers", options),
-  "addCourseMember": (options: ApiRequestOptions<components['schemas']["JsonObject"]> = {}) =>
-    requestOperation<components['schemas']["JsonObject"], components['schemas']["JsonObject"]>("addCourseMember", options),
-  "removeCourseMember": (options: ApiRequestOptions<never> = {}) =>
-    requestOperation<components['schemas']["JsonObject"], never>("removeCourseMember", options),
-  "previewCourseByCode": (options: ApiRequestOptions<never> = {}) =>
-    requestOperation<components['schemas']["JsonObject"], never>("previewCourseByCode", options),
-  "joinCourseByCode": (options: ApiRequestOptions<components['schemas']["JsonObject"]> = {}) =>
-    requestOperation<components['schemas']["JsonObject"], components['schemas']["JsonObject"]>("joinCourseByCode", options),
-  "leaveCourse": (options: ApiRequestOptions<components['schemas']["JsonObject"]> = {}) =>
-    requestOperation<components['schemas']["JsonObject"], components['schemas']["JsonObject"]>("leaveCourse", options),
-  "listCourseStudents": (options: ApiRequestOptions<never> = {}) =>
-    requestOperation<components['schemas']["JsonObject"], never>("listCourseStudents", options),
-  "listClasses": (options: ApiRequestOptions<never> = {}) =>
-    requestOperation<components['schemas']["JsonObject"], never>("listClasses", options),
-  "previewClassJoin": (options: ApiRequestOptions<never> = {}) =>
-    requestOperation<components['schemas']["JsonObject"], never>("previewClassJoin", options),
-  "myClasses": (options: ApiRequestOptions<never> = {}) =>
-    requestOperation<components['schemas']["JsonObject"], never>("myClasses", options),
-  "joinClassByCode": (options: ApiRequestOptions<components['schemas']["JsonObject"]> = {}) =>
-    requestOperation<components['schemas']["JsonObject"], components['schemas']["JsonObject"]>("joinClassByCode", options),
-  "joinClass": (options: ApiRequestOptions<components['schemas']["JsonObject"]> = {}) =>
-    requestOperation<components['schemas']["JsonObject"], components['schemas']["JsonObject"]>("joinClass", options),
-  "leaveClass": (options: ApiRequestOptions<components['schemas']["JsonObject"]> = {}) =>
-    requestOperation<components['schemas']["JsonObject"], components['schemas']["JsonObject"]>("leaveClass", options),
-  "updateClass": (options: ApiRequestOptions<components['schemas']["JsonObject"]> = {}) =>
-    requestOperation<components['schemas']["JsonObject"], components['schemas']["JsonObject"]>("updateClass", options),
-  "archiveClass": (options: ApiRequestOptions<never> = {}) =>
-    requestOperation<components['schemas']["JsonObject"], never>("archiveClass", options),
-  "archiveClassViaClassesIdArchive": (options: ApiRequestOptions<components['schemas']["JsonObject"]> = {}) =>
-    requestOperation<components['schemas']["JsonObject"], components['schemas']["JsonObject"]>("archiveClassViaClassesIdArchive", options),
-  "listClassStudents": (options: ApiRequestOptions<never> = {}) =>
-    requestOperation<components['schemas']["JsonObject"], never>("listClassStudents", options),
-  "removeClassStudent": (options: ApiRequestOptions<never> = {}) =>
-    requestOperation<components['schemas']["JsonObject"], never>("removeClassStudent", options),
-  "importClassStudents": (options: ApiRequestOptions<components['schemas']["JsonObject"]> = {}) =>
-    requestOperation<components['schemas']["JsonObject"], components['schemas']["JsonObject"]>("importClassStudents", options),
-  "problemChangeTicketOnlyViaProblemTestUploadsUploadIdChunkIndex": (options: ApiRequestOptions<components['schemas']["JsonObject"]> = {}) =>
-    requestOperation<components['schemas']["JsonObject"], components['schemas']["JsonObject"]>("problemChangeTicketOnlyViaProblemTestUploadsUploadIdChunkIndex", options),
-  "parseMarkdownBatch": (options: ApiRequestOptions<components['schemas']["JsonObject"]> = {}) =>
-    requestOperation<components['schemas']["JsonObject"], components['schemas']["JsonObject"]>("parseMarkdownBatch", options),
-  "problemChangeTicketOnlyViaProblemsUpload": (options: ApiRequestOptions<components['schemas']["JsonObject"]> = {}) =>
-    requestOperation<components['schemas']["JsonObject"], components['schemas']["JsonObject"]>("problemChangeTicketOnlyViaProblemsUpload", options),
-  "listProblemTests": (options: ApiRequestOptions<never> = {}) =>
-    requestOperation<components['schemas']["JsonObject"], never>("listProblemTests", options),
-  "downloadProblemTests": (options: ApiRequestOptions<never> = {}) =>
-    requestOperation<components['schemas']["JsonObject"], never>("downloadProblemTests", options),
-  "downloadProblemTestFile": (options: ApiRequestOptions<never> = {}) =>
-    requestOperation<components['schemas']["JsonObject"], never>("downloadProblemTestFile", options),
-  "listPreparedProblems": (options: ApiRequestOptions<never> = {}) =>
-    requestOperation<Array<components['schemas']["PreparedProblem"]>, never>("listPreparedProblems", options),
-  "problemChangeTicketOnlyViaPreparedProblems": (options: ApiRequestOptions<components['schemas']["JsonObject"]> = {}) =>
-    requestOperation<components['schemas']["JsonObject"], components['schemas']["JsonObject"]>("problemChangeTicketOnlyViaPreparedProblems", options),
-  "problemChangeTicketOnlyViaPreparedProblemsUpload": (options: ApiRequestOptions<components['schemas']["JsonObject"]> = {}) =>
-    requestOperation<components['schemas']["JsonObject"], components['schemas']["JsonObject"]>("problemChangeTicketOnlyViaPreparedProblemsUpload", options),
-  "getPreparedProblem": (options: ApiRequestOptions<never> = {}) =>
-    requestOperation<components['schemas']["JsonObject"], never>("getPreparedProblem", options),
-  "problemChangeTicketOnlyViaPreparedProblemsId": (options: ApiRequestOptions<components['schemas']["JsonObject"]> = {}) =>
-    requestOperation<components['schemas']["JsonObject"], components['schemas']["JsonObject"]>("problemChangeTicketOnlyViaPreparedProblemsId", options),
-  "problemChangeTicketOnlyViaPreparedProblemsIdPublish": (options: ApiRequestOptions<components['schemas']["JsonObject"]> = {}) =>
-    requestOperation<components['schemas']["JsonObject"], components['schemas']["JsonObject"]>("problemChangeTicketOnlyViaPreparedProblemsIdPublish", options),
-  "listProblemChangeTickets": (options: ApiRequestOptions<never> = {}) =>
-    requestOperation<Array<components['schemas']["ProblemChangeTicket"]>, never>("listProblemChangeTickets", options),
-  "createProblemChangeTicket": (options: ApiRequestOptions<components['schemas']["ProblemChangeTicketRequest"]> = {}) =>
-    requestOperation<components['schemas']["JsonObject"], components['schemas']["ProblemChangeTicketRequest"]>("createProblemChangeTicket", options),
-  "listMyProblemChangeTickets": (options: ApiRequestOptions<never> = {}) =>
-    requestOperation<Array<components['schemas']["ProblemChangeTicket"]>, never>("listMyProblemChangeTickets", options),
-  "listProblemChangeTicketEligibleProblems": (options: ApiRequestOptions<never> = {}) =>
-    requestOperation<Array<components['schemas']["Problem"]>, never>("listProblemChangeTicketEligibleProblems", options),
-  "getProblemChangeTicket": (options: ApiRequestOptions<never> = {}) =>
-    requestOperation<components['schemas']["ProblemChangeTicket"], never>("getProblemChangeTicket", options),
-  "downloadProblemChangeTicketAttachment": (options: ApiRequestOptions<never> = {}) =>
-    requestOperation<components['schemas']["JsonObject"], never>("downloadProblemChangeTicketAttachment", options),
-  "cancelProblemChangeTicket": (options: ApiRequestOptions<components['schemas']["JsonObject"]> = {}) =>
-    requestOperation<components['schemas']["ProblemChangeTicket"], components['schemas']["JsonObject"]>("cancelProblemChangeTicket", options),
-  "rejectProblemChangeTicket": (options: ApiRequestOptions<components['schemas']["JsonObject"]> = {}) =>
-    requestOperation<components['schemas']["ProblemChangeTicket"], components['schemas']["JsonObject"]>("rejectProblemChangeTicket", options),
-  "applyProblemChangeTicket": (options: ApiRequestOptions<components['schemas']["JsonObject"]> = {}) =>
-    requestOperation<components['schemas']["ProblemChangeTicket"], components['schemas']["JsonObject"]>("applyProblemChangeTicket", options),
-  "listAssignments": (options: ApiRequestOptions<never> = {}) =>
-    requestOperation<components['schemas']["JsonObject"], never>("listAssignments", options),
-  "createAssignment": (options: ApiRequestOptions<components['schemas']["JsonObject"]> = {}) =>
-    requestOperation<components['schemas']["JsonObject"], components['schemas']["JsonObject"]>("createAssignment", options),
-  "getAssignment": (options: ApiRequestOptions<never> = {}) =>
-    requestOperation<components['schemas']["JsonObject"], never>("getAssignment", options),
-  "deleteAssignment": (options: ApiRequestOptions<never> = {}) =>
-    requestOperation<components['schemas']["JsonObject"], never>("deleteAssignment", options),
-  "assignmentReport": (options: ApiRequestOptions<never> = {}) =>
-    requestOperation<components['schemas']["JsonObject"], never>("assignmentReport", options),
-  "listExams": (options: ApiRequestOptions<never> = {}) =>
-    requestOperation<components['schemas']["JsonObject"], never>("listExams", options),
-  "createExam": (options: ApiRequestOptions<components['schemas']["JsonObject"]> = {}) =>
-    requestOperation<components['schemas']["JsonObject"], components['schemas']["JsonObject"]>("createExam", options),
-  "getExam": (options: ApiRequestOptions<never> = {}) =>
-    requestOperation<components['schemas']["ExamDetail"], never>("getExam", options),
-  "deleteExam": (options: ApiRequestOptions<never> = {}) =>
-    requestOperation<components['schemas']["JsonObject"], never>("deleteExam", options),
-  "finishExam": (options: ApiRequestOptions<components['schemas']["JsonObject"]> = {}) =>
-    requestOperation<components['schemas']["JsonObject"], components['schemas']["JsonObject"]>("finishExam", options),
-  "exportExamReport": (options: ApiRequestOptions<never> = {}) =>
-    requestOperation<components['schemas']["JsonObject"], never>("exportExamReport", options),
-  "examReport": (options: ApiRequestOptions<never> = {}) =>
-    requestOperation<components['schemas']["JsonObject"], never>("examReport", options),
-  "examRanking": (options: ApiRequestOptions<never> = {}) =>
-    requestOperation<components['schemas']["JsonObject"], never>("examRanking", options),
-  "judgeManualExamSubmission": (options: ApiRequestOptions<components['schemas']["JsonObject"]> = {}) =>
-    requestOperation<components['schemas']["JsonObject"], components['schemas']["JsonObject"]>("judgeManualExamSubmission", options),
-  "gradeManualExamSubmission": (options: ApiRequestOptions<components['schemas']["JsonObject"]> = {}) =>
-    requestOperation<components['schemas']["JsonObject"], components['schemas']["JsonObject"]>("gradeManualExamSubmission", options),
-  "listSubmissions": (options: ApiRequestOptions<never> = {}) =>
-    requestOperation<Array<components['schemas']["Submission"]>, never>("listSubmissions", options),
-  "createSubmission": (options: ApiRequestOptions<components['schemas']["SubmissionCreateRequest"]> = {}) =>
-    requestOperation<components['schemas']["Submission"], components['schemas']["SubmissionCreateRequest"]>("createSubmission", options),
-  "latestSubmissions": (options: ApiRequestOptions<never> = {}) =>
-    requestOperation<Array<components['schemas']["Submission"]>, never>("latestSubmissions", options),
-  "getSubmission": (options: ApiRequestOptions<never> = {}) =>
-    requestOperation<components['schemas']["SubmissionDetail"], never>("getSubmission", options),
-  "submissionEvents": (options: ApiRequestOptions<never> = {}) =>
-    requestOperation<components['schemas']["JsonObject"], never>("submissionEvents", options),
-  "listPlagiarismJobs": (options: ApiRequestOptions<never> = {}) =>
-    requestOperation<components['schemas']["JsonObject"], never>("listPlagiarismJobs", options),
-  "createPlagiarismJob": (options: ApiRequestOptions<components['schemas']["JsonObject"]> = {}) =>
-    requestOperation<components['schemas']["JsonObject"], components['schemas']["JsonObject"]>("createPlagiarismJob", options),
-  "listAuditLogs": (options: ApiRequestOptions<never> = {}) =>
-    requestOperation<components['schemas']["JsonObject"], never>("listAuditLogs", options),
-  "listUsers": (options: ApiRequestOptions<never> = {}) =>
-    requestOperation<Array<components['schemas']["User"]>, never>("listUsers", options),
-  "createUser": (options: ApiRequestOptions<components['schemas']["JsonObject"]> = {}) =>
-    requestOperation<components['schemas']["JsonObject"], components['schemas']["JsonObject"]>("createUser", options),
-  "listUserPermissionDefinitions": (options: ApiRequestOptions<never> = {}) =>
-    requestOperation<Array<components['schemas']["PermissionDefinition"]>, never>("listUserPermissionDefinitions", options),
-  "getUser": (options: ApiRequestOptions<never> = {}) =>
-    requestOperation<components['schemas']["User"], never>("getUser", options),
-  "updateUser": (options: ApiRequestOptions<components['schemas']["JsonObject"]> = {}) =>
-    requestOperation<components['schemas']["JsonObject"], components['schemas']["JsonObject"]>("updateUser", options),
-  "deleteUser": (options: ApiRequestOptions<never> = {}) =>
-    requestOperation<components['schemas']["JsonObject"], never>("deleteUser", options),
-  "updateUserPermission": (options: ApiRequestOptions<components['schemas']["JsonObject"]> = {}) =>
-    requestOperation<components['schemas']["JsonObject"], components['schemas']["JsonObject"]>("updateUserPermission", options),
-  "resetUserPassword": (options: ApiRequestOptions<components['schemas']["JsonObject"]> = {}) =>
-    requestOperation<components['schemas']["JsonObject"], components['schemas']["JsonObject"]>("resetUserPassword", options),
-  "reviewAuthorApplication": (options: ApiRequestOptions<components['schemas']["JsonObject"]> = {}) =>
-    requestOperation<components['schemas']["AuthorApplication"], components['schemas']["JsonObject"]>("reviewAuthorApplication", options),
-  "listProblemAuthors": (options: ApiRequestOptions<never> = {}) =>
-    requestOperation<components['schemas']["JsonObject"], never>("listProblemAuthors", options),
-  "removeProblemAuthor": (options: ApiRequestOptions<never> = {}) =>
-    requestOperation<components['schemas']["JsonObject"], never>("removeProblemAuthor", options),
-  "listMyProblemReviews": (options: ApiRequestOptions<never> = {}) =>
-    requestOperation<components['schemas']["JsonObject"], never>("listMyProblemReviews", options),
-  "listProblemReviews": (options: ApiRequestOptions<never> = {}) =>
-    requestOperation<components['schemas']["JsonObject"], never>("listProblemReviews", options),
-  "problemChangeTicketOnlyViaProblemReviewsIdReview": (options: ApiRequestOptions<components['schemas']["JsonObject"]> = {}) =>
-    requestOperation<components['schemas']["JsonObject"], components['schemas']["JsonObject"]>("problemChangeTicketOnlyViaProblemReviewsIdReview", options),
-  "problemChangeTicketOnlyViaProblemReviewsIdWithdraw": (options: ApiRequestOptions<components['schemas']["JsonObject"]> = {}) =>
-    requestOperation<components['schemas']["JsonObject"], components['schemas']["JsonObject"]>("problemChangeTicketOnlyViaProblemReviewsIdWithdraw", options),
-  "enterExam": (options: ApiRequestOptions<never> = {}) =>
-    requestOperation<components['schemas']["ExamEnterResponse"], never>("enterExam", options),
-  "listExamActivity": (options: ApiRequestOptions<never> = {}) =>
-    requestOperation<components['schemas']["ExamActivityPage"], never>("listExamActivity", options),
-  "recordExamActivity": (options: ApiRequestOptions<components['schemas']["ExamActivityRequest"]> = {}) =>
-    requestOperation<{
+  "login": <TResponse = components['schemas']["AuthResponse"]>(options: ApiRequestOptions<components['schemas']["LoginRequest"]> = {}) =>
+    requestOperation<TResponse, components['schemas']["LoginRequest"]>("login", options),
+  "sendEmailCode": <TResponse = components['schemas']["JsonObject"]>(options: ApiRequestOptions<components['schemas']["EmailCodeRequest"]> = {}) =>
+    requestOperation<TResponse, components['schemas']["EmailCodeRequest"]>("sendEmailCode", options),
+  "register": <TResponse = components['schemas']["JsonObject"]>(options: ApiRequestOptions<components['schemas']["RegisterRequest"]> = {}) =>
+    requestOperation<TResponse, components['schemas']["RegisterRequest"]>("register", options),
+  "resetPassword": <TResponse = components['schemas']["JsonObject"]>(options: ApiRequestOptions<components['schemas']["PasswordResetRequest"]> = {}) =>
+    requestOperation<TResponse, components['schemas']["PasswordResetRequest"]>("resetPassword", options),
+  "listProblems": <TResponse = Array<components['schemas']["Problem"]>>(options: ApiRequestOptions<never> = {}) =>
+    requestOperation<TResponse, never>("listProblems", options),
+  "problemChangeTicketOnly": <TResponse = components['schemas']["JsonObject"]>(options: ApiRequestOptions<components['schemas']["JsonObject"]> = {}) =>
+    requestOperation<TResponse, components['schemas']["JsonObject"]>("problemChangeTicketOnly", options),
+  "listProblemCatalog": <TResponse = components['schemas']["ProblemCatalogResponse"]>(options: ApiRequestOptions<never> = {}) =>
+    requestOperation<TResponse, never>("listProblemCatalog", options),
+  "getProblemAsset": <TResponse = components['schemas']["JsonObject"]>(options: ApiRequestOptions<never> = {}) =>
+    requestOperation<TResponse, never>("getProblemAsset", options),
+  "getProblem": <TResponse = components['schemas']["Problem"]>(options: ApiRequestOptions<never> = {}) =>
+    requestOperation<TResponse, never>("getProblem", options),
+  "problemChangeTicketOnlyViaProblemsId": <TResponse = components['schemas']["JsonObject"]>(options: ApiRequestOptions<components['schemas']["JsonObject"]> = {}) =>
+    requestOperation<TResponse, components['schemas']["JsonObject"]>("problemChangeTicketOnlyViaProblemsId", options),
+  "problemChangeTicketOnlyDeleteProblem": <TResponse = components['schemas']["JsonObject"]>(options: ApiRequestOptions<never> = {}) =>
+    requestOperation<TResponse, never>("problemChangeTicketOnlyDeleteProblem", options),
+  "me": <TResponse = components['schemas']["User"]>(options: ApiRequestOptions<never> = {}) =>
+    requestOperation<TResponse, never>("me", options),
+  "activeExam": <TResponse = components['schemas']["JsonObject"]>(options: ApiRequestOptions<never> = {}) =>
+    requestOperation<TResponse, never>("activeExam", options),
+  "getProfile": <TResponse = components['schemas']["User"]>(options: ApiRequestOptions<never> = {}) =>
+    requestOperation<TResponse, never>("getProfile", options),
+  "updateProfile": <TResponse = components['schemas']["User"]>(options: ApiRequestOptions<components['schemas']["ProfileUpdateRequest"]> = {}) =>
+    requestOperation<TResponse, components['schemas']["ProfileUpdateRequest"]>("updateProfile", options),
+  "deleteProfile": <TResponse = components['schemas']["User"]>(options: ApiRequestOptions<never> = {}) =>
+    requestOperation<TResponse, never>("deleteProfile", options),
+  "updateProfilePassword": <TResponse = components['schemas']["JsonObject"]>(options: ApiRequestOptions<components['schemas']["PasswordChangeRequest"]> = {}) =>
+    requestOperation<TResponse, components['schemas']["PasswordChangeRequest"]>("updateProfilePassword", options),
+  "sendProfileEmailCode": <TResponse = components['schemas']["JsonObject"]>(options: ApiRequestOptions<components['schemas']["JsonObject"]> = {}) =>
+    requestOperation<TResponse, components['schemas']["JsonObject"]>("sendProfileEmailCode", options),
+  "rebindEmail": <TResponse = components['schemas']["JsonObject"]>(options: ApiRequestOptions<components['schemas']["EmailRebindRequest"]> = {}) =>
+    requestOperation<TResponse, components['schemas']["EmailRebindRequest"]>("rebindEmail", options),
+  "getMyAuthorApplication": <TResponse = components['schemas']["AuthorApplicationEnvelope"]>(options: ApiRequestOptions<never> = {}) =>
+    requestOperation<TResponse, never>("getMyAuthorApplication", options),
+  "listAuthorApplications": <TResponse = Array<components['schemas']["AuthorApplication"]>>(options: ApiRequestOptions<never> = {}) =>
+    requestOperation<TResponse, never>("listAuthorApplications", options),
+  "createAuthorApplication": <TResponse = components['schemas']["AuthorApplication"]>(options: ApiRequestOptions<components['schemas']["JsonObject"]> = {}) =>
+    requestOperation<TResponse, components['schemas']["JsonObject"]>("createAuthorApplication", options),
+  "createFeedback": <TResponse = components['schemas']["JsonObject"]>(options: ApiRequestOptions<components['schemas']["JsonObject"]> = {}) =>
+    requestOperation<TResponse, components['schemas']["JsonObject"]>("createFeedback", options),
+  "listTeams": <TResponse = Array<components['schemas']["Team"]>>(options: ApiRequestOptions<never> = {}) =>
+    requestOperation<TResponse, never>("listTeams", options),
+  "createTeam": <TResponse = components['schemas']["Team"]>(options: ApiRequestOptions<components['schemas']["JsonObject"]> = {}) =>
+    requestOperation<TResponse, components['schemas']["JsonObject"]>("createTeam", options),
+  "getTeam": <TResponse = components['schemas']["Team"]>(options: ApiRequestOptions<never> = {}) =>
+    requestOperation<TResponse, never>("getTeam", options),
+  "updateTeam": <TResponse = components['schemas']["Team"]>(options: ApiRequestOptions<components['schemas']["JsonObject"]> = {}) =>
+    requestOperation<TResponse, components['schemas']["JsonObject"]>("updateTeam", options),
+  "joinTeam": <TResponse = components['schemas']["TeamJoinResponse"]>(options: ApiRequestOptions<components['schemas']["TeamJoinRequest"]> = {}) =>
+    requestOperation<TResponse, components['schemas']["TeamJoinRequest"]>("joinTeam", options),
+  "leaveTeam": <TResponse = components['schemas']["JsonObject"]>(options: ApiRequestOptions<components['schemas']["JsonObject"]> = {}) =>
+    requestOperation<TResponse, components['schemas']["JsonObject"]>("leaveTeam", options),
+  "listTeamMembers": <TResponse = components['schemas']["JsonObject"]>(options: ApiRequestOptions<never> = {}) =>
+    requestOperation<TResponse, never>("listTeamMembers", options),
+  "updateTeamMember": <TResponse = components['schemas']["JsonObject"]>(options: ApiRequestOptions<components['schemas']["JsonObject"]> = {}) =>
+    requestOperation<TResponse, components['schemas']["JsonObject"]>("updateTeamMember", options),
+  "removeTeamMember": <TResponse = components['schemas']["JsonObject"]>(options: ApiRequestOptions<never> = {}) =>
+    requestOperation<TResponse, never>("removeTeamMember", options),
+  "listTeamApplications": <TResponse = components['schemas']["JsonObject"]>(options: ApiRequestOptions<never> = {}) =>
+    requestOperation<TResponse, never>("listTeamApplications", options),
+  "reviewTeamApplication": <TResponse = components['schemas']["JsonObject"]>(options: ApiRequestOptions<components['schemas']["JsonObject"]> = {}) =>
+    requestOperation<TResponse, components['schemas']["JsonObject"]>("reviewTeamApplication", options),
+  "listTeamContests": <TResponse = Array<components['schemas']["TeamContest"]>>(options: ApiRequestOptions<never> = {}) =>
+    requestOperation<TResponse, never>("listTeamContests", options),
+  "createTeamContest": <TResponse = components['schemas']["JsonObject"]>(options: ApiRequestOptions<components['schemas']["JsonObject"]> = {}) =>
+    requestOperation<TResponse, components['schemas']["JsonObject"]>("createTeamContest", options),
+  "getTeamContest": <TResponse = components['schemas']["TeamContest"]>(options: ApiRequestOptions<never> = {}) =>
+    requestOperation<TResponse, never>("getTeamContest", options),
+  "updateTeamContest": <TResponse = components['schemas']["TeamContest"]>(options: ApiRequestOptions<components['schemas']["JsonObject"]> = {}) =>
+    requestOperation<TResponse, components['schemas']["JsonObject"]>("updateTeamContest", options),
+  "deleteTeamContest": <TResponse = components['schemas']["TeamContest"]>(options: ApiRequestOptions<never> = {}) =>
+    requestOperation<TResponse, never>("deleteTeamContest", options),
+  "publishTeamContest": <TResponse = components['schemas']["TeamContest"]>(options: ApiRequestOptions<components['schemas']["JsonObject"]> = {}) =>
+    requestOperation<TResponse, components['schemas']["JsonObject"]>("publishTeamContest", options),
+  "addTeamContestProblem": <TResponse = components['schemas']["JsonObject"]>(options: ApiRequestOptions<components['schemas']["JsonObject"]> = {}) =>
+    requestOperation<TResponse, components['schemas']["JsonObject"]>("addTeamContestProblem", options),
+  "removeTeamContestProblem": <TResponse = components['schemas']["JsonObject"]>(options: ApiRequestOptions<never> = {}) =>
+    requestOperation<TResponse, never>("removeTeamContestProblem", options),
+  "listTeamContestSubmissions": <TResponse = components['schemas']["JsonObject"]>(options: ApiRequestOptions<never> = {}) =>
+    requestOperation<TResponse, never>("listTeamContestSubmissions", options),
+  "createTeamContestSubmission": <TResponse = components['schemas']["JsonObject"]>(options: ApiRequestOptions<components['schemas']["SubmissionCreateRequest"]> = {}) =>
+    requestOperation<TResponse, components['schemas']["SubmissionCreateRequest"]>("createTeamContestSubmission", options),
+  "teamContestRanking": <TResponse = components['schemas']["JsonObject"]>(options: ApiRequestOptions<never> = {}) =>
+    requestOperation<TResponse, never>("teamContestRanking", options),
+  "getTeamContestViaContestsContestId": <TResponse = components['schemas']["TeamContest"]>(options: ApiRequestOptions<never> = {}) =>
+    requestOperation<TResponse, never>("getTeamContestViaContestsContestId", options),
+  "updateTeamContestViaContestsContestId": <TResponse = components['schemas']["TeamContest"]>(options: ApiRequestOptions<components['schemas']["JsonObject"]> = {}) =>
+    requestOperation<TResponse, components['schemas']["JsonObject"]>("updateTeamContestViaContestsContestId", options),
+  "deleteTeamContestViaContestsContestId": <TResponse = components['schemas']["TeamContest"]>(options: ApiRequestOptions<never> = {}) =>
+    requestOperation<TResponse, never>("deleteTeamContestViaContestsContestId", options),
+  "publishTeamContestViaContestsContestIdPublish": <TResponse = components['schemas']["TeamContest"]>(options: ApiRequestOptions<components['schemas']["JsonObject"]> = {}) =>
+    requestOperation<TResponse, components['schemas']["JsonObject"]>("publishTeamContestViaContestsContestIdPublish", options),
+  "addTeamContestProblemViaContestsContestIdProblems": <TResponse = components['schemas']["JsonObject"]>(options: ApiRequestOptions<components['schemas']["JsonObject"]> = {}) =>
+    requestOperation<TResponse, components['schemas']["JsonObject"]>("addTeamContestProblemViaContestsContestIdProblems", options),
+  "removeTeamContestProblemViaContestsContestIdProblemsProblemId": <TResponse = components['schemas']["JsonObject"]>(options: ApiRequestOptions<never> = {}) =>
+    requestOperation<TResponse, never>("removeTeamContestProblemViaContestsContestIdProblemsProblemId", options),
+  "listTeamContestSubmissionsViaContestsContestIdSubmissions": <TResponse = components['schemas']["JsonObject"]>(options: ApiRequestOptions<never> = {}) =>
+    requestOperation<TResponse, never>("listTeamContestSubmissionsViaContestsContestIdSubmissions", options),
+  "createTeamContestSubmissionViaContestsContestIdSubmissions": <TResponse = components['schemas']["JsonObject"]>(options: ApiRequestOptions<components['schemas']["SubmissionCreateRequest"]> = {}) =>
+    requestOperation<TResponse, components['schemas']["SubmissionCreateRequest"]>("createTeamContestSubmissionViaContestsContestIdSubmissions", options),
+  "teamContestRankingViaContestsContestIdRanking": <TResponse = components['schemas']["JsonObject"]>(options: ApiRequestOptions<never> = {}) =>
+    requestOperation<TResponse, never>("teamContestRankingViaContestsContestIdRanking", options),
+  "listTeamProblemSets": <TResponse = Array<components['schemas']["TeamProblemSet"]>>(options: ApiRequestOptions<never> = {}) =>
+    requestOperation<TResponse, never>("listTeamProblemSets", options),
+  "createTeamProblemSet": <TResponse = components['schemas']["JsonObject"]>(options: ApiRequestOptions<components['schemas']["JsonObject"]> = {}) =>
+    requestOperation<TResponse, components['schemas']["JsonObject"]>("createTeamProblemSet", options),
+  "getTeamProblemSet": <TResponse = components['schemas']["TeamProblemSet"]>(options: ApiRequestOptions<never> = {}) =>
+    requestOperation<TResponse, never>("getTeamProblemSet", options),
+  "updateTeamProblemSet": <TResponse = components['schemas']["TeamProblemSet"]>(options: ApiRequestOptions<components['schemas']["JsonObject"]> = {}) =>
+    requestOperation<TResponse, components['schemas']["JsonObject"]>("updateTeamProblemSet", options),
+  "deleteTeamProblemSet": <TResponse = components['schemas']["TeamProblemSet"]>(options: ApiRequestOptions<never> = {}) =>
+    requestOperation<TResponse, never>("deleteTeamProblemSet", options),
+  "addTeamProblemSetProblem": <TResponse = components['schemas']["JsonObject"]>(options: ApiRequestOptions<components['schemas']["JsonObject"]> = {}) =>
+    requestOperation<TResponse, components['schemas']["JsonObject"]>("addTeamProblemSetProblem", options),
+  "removeTeamProblemSetProblem": <TResponse = components['schemas']["JsonObject"]>(options: ApiRequestOptions<never> = {}) =>
+    requestOperation<TResponse, never>("removeTeamProblemSetProblem", options),
+  "listTeamProblemSetSubmissions": <TResponse = components['schemas']["JsonObject"]>(options: ApiRequestOptions<never> = {}) =>
+    requestOperation<TResponse, never>("listTeamProblemSetSubmissions", options),
+  "createTeamProblemSetSubmission": <TResponse = components['schemas']["JsonObject"]>(options: ApiRequestOptions<components['schemas']["SubmissionCreateRequest"]> = {}) =>
+    requestOperation<TResponse, components['schemas']["SubmissionCreateRequest"]>("createTeamProblemSetSubmission", options),
+  "listTeamDiscussions": <TResponse = components['schemas']["JsonObject"]>(options: ApiRequestOptions<never> = {}) =>
+    requestOperation<TResponse, never>("listTeamDiscussions", options),
+  "createTeamDiscussion": <TResponse = components['schemas']["JsonObject"]>(options: ApiRequestOptions<components['schemas']["JsonObject"]> = {}) =>
+    requestOperation<TResponse, components['schemas']["JsonObject"]>("createTeamDiscussion", options),
+  "getTeamProblemSetViaProblemSetsSetId": <TResponse = components['schemas']["TeamProblemSet"]>(options: ApiRequestOptions<never> = {}) =>
+    requestOperation<TResponse, never>("getTeamProblemSetViaProblemSetsSetId", options),
+  "updateTeamProblemSetViaProblemSetsSetId": <TResponse = components['schemas']["TeamProblemSet"]>(options: ApiRequestOptions<components['schemas']["JsonObject"]> = {}) =>
+    requestOperation<TResponse, components['schemas']["JsonObject"]>("updateTeamProblemSetViaProblemSetsSetId", options),
+  "deleteTeamProblemSetViaProblemSetsSetId": <TResponse = components['schemas']["TeamProblemSet"]>(options: ApiRequestOptions<never> = {}) =>
+    requestOperation<TResponse, never>("deleteTeamProblemSetViaProblemSetsSetId", options),
+  "addTeamProblemSetProblemViaProblemSetsSetIdProblems": <TResponse = components['schemas']["JsonObject"]>(options: ApiRequestOptions<components['schemas']["JsonObject"]> = {}) =>
+    requestOperation<TResponse, components['schemas']["JsonObject"]>("addTeamProblemSetProblemViaProblemSetsSetIdProblems", options),
+  "removeTeamProblemSetProblemViaProblemSetsSetIdProblemsProblemId": <TResponse = components['schemas']["JsonObject"]>(options: ApiRequestOptions<never> = {}) =>
+    requestOperation<TResponse, never>("removeTeamProblemSetProblemViaProblemSetsSetIdProblemsProblemId", options),
+  "listTeamProblemSetSubmissionsViaProblemSetsSetIdSubmissions": <TResponse = components['schemas']["JsonObject"]>(options: ApiRequestOptions<never> = {}) =>
+    requestOperation<TResponse, never>("listTeamProblemSetSubmissionsViaProblemSetsSetIdSubmissions", options),
+  "createTeamProblemSetSubmissionViaProblemSetsSetIdSubmissions": <TResponse = components['schemas']["JsonObject"]>(options: ApiRequestOptions<components['schemas']["SubmissionCreateRequest"]> = {}) =>
+    requestOperation<TResponse, components['schemas']["SubmissionCreateRequest"]>("createTeamProblemSetSubmissionViaProblemSetsSetIdSubmissions", options),
+  "listTeamDiscussionsViaProblemSetsSetIdDiscussions": <TResponse = components['schemas']["JsonObject"]>(options: ApiRequestOptions<never> = {}) =>
+    requestOperation<TResponse, never>("listTeamDiscussionsViaProblemSetsSetIdDiscussions", options),
+  "createTeamDiscussionViaProblemSetsSetIdDiscussions": <TResponse = components['schemas']["JsonObject"]>(options: ApiRequestOptions<components['schemas']["JsonObject"]> = {}) =>
+    requestOperation<TResponse, components['schemas']["JsonObject"]>("createTeamDiscussionViaProblemSetsSetIdDiscussions", options),
+  "listCourses": <TResponse = components['schemas']["JsonObject"]>(options: ApiRequestOptions<never> = {}) =>
+    requestOperation<TResponse, never>("listCourses", options),
+  "createCourse": <TResponse = components['schemas']["JsonObject"]>(options: ApiRequestOptions<components['schemas']["JsonObject"]> = {}) =>
+    requestOperation<TResponse, components['schemas']["JsonObject"]>("createCourse", options),
+  "updateCourse": <TResponse = components['schemas']["JsonObject"]>(options: ApiRequestOptions<components['schemas']["JsonObject"]> = {}) =>
+    requestOperation<TResponse, components['schemas']["JsonObject"]>("updateCourse", options),
+  "archiveCourse": <TResponse = components['schemas']["JsonObject"]>(options: ApiRequestOptions<never> = {}) =>
+    requestOperation<TResponse, never>("archiveCourse", options),
+  "archiveCourseViaCoursesIdArchive": <TResponse = components['schemas']["JsonObject"]>(options: ApiRequestOptions<components['schemas']["JsonObject"]> = {}) =>
+    requestOperation<TResponse, components['schemas']["JsonObject"]>("archiveCourseViaCoursesIdArchive", options),
+  "createClass": <TResponse = components['schemas']["JsonObject"]>(options: ApiRequestOptions<components['schemas']["JsonObject"]> = {}) =>
+    requestOperation<TResponse, components['schemas']["JsonObject"]>("createClass", options),
+  "listCourseMembers": <TResponse = components['schemas']["JsonObject"]>(options: ApiRequestOptions<never> = {}) =>
+    requestOperation<TResponse, never>("listCourseMembers", options),
+  "addCourseMember": <TResponse = components['schemas']["JsonObject"]>(options: ApiRequestOptions<components['schemas']["JsonObject"]> = {}) =>
+    requestOperation<TResponse, components['schemas']["JsonObject"]>("addCourseMember", options),
+  "removeCourseMember": <TResponse = components['schemas']["JsonObject"]>(options: ApiRequestOptions<never> = {}) =>
+    requestOperation<TResponse, never>("removeCourseMember", options),
+  "previewCourseByCode": <TResponse = components['schemas']["JsonObject"]>(options: ApiRequestOptions<never> = {}) =>
+    requestOperation<TResponse, never>("previewCourseByCode", options),
+  "joinCourseByCode": <TResponse = components['schemas']["JsonObject"]>(options: ApiRequestOptions<components['schemas']["JsonObject"]> = {}) =>
+    requestOperation<TResponse, components['schemas']["JsonObject"]>("joinCourseByCode", options),
+  "leaveCourse": <TResponse = components['schemas']["JsonObject"]>(options: ApiRequestOptions<components['schemas']["JsonObject"]> = {}) =>
+    requestOperation<TResponse, components['schemas']["JsonObject"]>("leaveCourse", options),
+  "listCourseStudents": <TResponse = components['schemas']["JsonObject"]>(options: ApiRequestOptions<never> = {}) =>
+    requestOperation<TResponse, never>("listCourseStudents", options),
+  "listClasses": <TResponse = components['schemas']["JsonObject"]>(options: ApiRequestOptions<never> = {}) =>
+    requestOperation<TResponse, never>("listClasses", options),
+  "previewClassJoin": <TResponse = components['schemas']["JsonObject"]>(options: ApiRequestOptions<never> = {}) =>
+    requestOperation<TResponse, never>("previewClassJoin", options),
+  "myClasses": <TResponse = components['schemas']["JsonObject"]>(options: ApiRequestOptions<never> = {}) =>
+    requestOperation<TResponse, never>("myClasses", options),
+  "joinClassByCode": <TResponse = components['schemas']["JsonObject"]>(options: ApiRequestOptions<components['schemas']["JsonObject"]> = {}) =>
+    requestOperation<TResponse, components['schemas']["JsonObject"]>("joinClassByCode", options),
+  "joinClass": <TResponse = components['schemas']["JsonObject"]>(options: ApiRequestOptions<components['schemas']["JsonObject"]> = {}) =>
+    requestOperation<TResponse, components['schemas']["JsonObject"]>("joinClass", options),
+  "leaveClass": <TResponse = components['schemas']["JsonObject"]>(options: ApiRequestOptions<components['schemas']["JsonObject"]> = {}) =>
+    requestOperation<TResponse, components['schemas']["JsonObject"]>("leaveClass", options),
+  "updateClass": <TResponse = components['schemas']["JsonObject"]>(options: ApiRequestOptions<components['schemas']["JsonObject"]> = {}) =>
+    requestOperation<TResponse, components['schemas']["JsonObject"]>("updateClass", options),
+  "archiveClass": <TResponse = components['schemas']["JsonObject"]>(options: ApiRequestOptions<never> = {}) =>
+    requestOperation<TResponse, never>("archiveClass", options),
+  "archiveClassViaClassesIdArchive": <TResponse = components['schemas']["JsonObject"]>(options: ApiRequestOptions<components['schemas']["JsonObject"]> = {}) =>
+    requestOperation<TResponse, components['schemas']["JsonObject"]>("archiveClassViaClassesIdArchive", options),
+  "listClassStudents": <TResponse = components['schemas']["JsonObject"]>(options: ApiRequestOptions<never> = {}) =>
+    requestOperation<TResponse, never>("listClassStudents", options),
+  "removeClassStudent": <TResponse = components['schemas']["JsonObject"]>(options: ApiRequestOptions<never> = {}) =>
+    requestOperation<TResponse, never>("removeClassStudent", options),
+  "importClassStudents": <TResponse = components['schemas']["JsonObject"]>(options: ApiRequestOptions<components['schemas']["JsonObject"]> = {}) =>
+    requestOperation<TResponse, components['schemas']["JsonObject"]>("importClassStudents", options),
+  "problemChangeTicketOnlyViaProblemTestUploadsUploadIdChunkIndex": <TResponse = components['schemas']["JsonObject"]>(options: ApiRequestOptions<components['schemas']["JsonObject"]> = {}) =>
+    requestOperation<TResponse, components['schemas']["JsonObject"]>("problemChangeTicketOnlyViaProblemTestUploadsUploadIdChunkIndex", options),
+  "parseMarkdownBatch": <TResponse = components['schemas']["JsonObject"]>(options: ApiRequestOptions<components['schemas']["JsonObject"]> = {}) =>
+    requestOperation<TResponse, components['schemas']["JsonObject"]>("parseMarkdownBatch", options),
+  "problemChangeTicketOnlyViaProblemsUpload": <TResponse = components['schemas']["JsonObject"]>(options: ApiRequestOptions<components['schemas']["JsonObject"]> = {}) =>
+    requestOperation<TResponse, components['schemas']["JsonObject"]>("problemChangeTicketOnlyViaProblemsUpload", options),
+  "listProblemTests": <TResponse = components['schemas']["JsonObject"]>(options: ApiRequestOptions<never> = {}) =>
+    requestOperation<TResponse, never>("listProblemTests", options),
+  "downloadProblemTests": <TResponse = components['schemas']["JsonObject"]>(options: ApiRequestOptions<never> = {}) =>
+    requestOperation<TResponse, never>("downloadProblemTests", options),
+  "downloadProblemTestFile": <TResponse = components['schemas']["JsonObject"]>(options: ApiRequestOptions<never> = {}) =>
+    requestOperation<TResponse, never>("downloadProblemTestFile", options),
+  "listPreparedProblems": <TResponse = Array<components['schemas']["PreparedProblem"]>>(options: ApiRequestOptions<never> = {}) =>
+    requestOperation<TResponse, never>("listPreparedProblems", options),
+  "problemChangeTicketOnlyViaPreparedProblems": <TResponse = components['schemas']["JsonObject"]>(options: ApiRequestOptions<components['schemas']["JsonObject"]> = {}) =>
+    requestOperation<TResponse, components['schemas']["JsonObject"]>("problemChangeTicketOnlyViaPreparedProblems", options),
+  "problemChangeTicketOnlyViaPreparedProblemsUpload": <TResponse = components['schemas']["JsonObject"]>(options: ApiRequestOptions<components['schemas']["JsonObject"]> = {}) =>
+    requestOperation<TResponse, components['schemas']["JsonObject"]>("problemChangeTicketOnlyViaPreparedProblemsUpload", options),
+  "getPreparedProblem": <TResponse = components['schemas']["JsonObject"]>(options: ApiRequestOptions<never> = {}) =>
+    requestOperation<TResponse, never>("getPreparedProblem", options),
+  "problemChangeTicketOnlyViaPreparedProblemsId": <TResponse = components['schemas']["JsonObject"]>(options: ApiRequestOptions<components['schemas']["JsonObject"]> = {}) =>
+    requestOperation<TResponse, components['schemas']["JsonObject"]>("problemChangeTicketOnlyViaPreparedProblemsId", options),
+  "problemChangeTicketOnlyViaPreparedProblemsIdPublish": <TResponse = components['schemas']["JsonObject"]>(options: ApiRequestOptions<components['schemas']["JsonObject"]> = {}) =>
+    requestOperation<TResponse, components['schemas']["JsonObject"]>("problemChangeTicketOnlyViaPreparedProblemsIdPublish", options),
+  "listProblemChangeTickets": <TResponse = Array<components['schemas']["ProblemChangeTicket"]>>(options: ApiRequestOptions<never> = {}) =>
+    requestOperation<TResponse, never>("listProblemChangeTickets", options),
+  "createProblemChangeTicket": <TResponse = components['schemas']["JsonObject"]>(options: ApiRequestOptions<components['schemas']["ProblemChangeTicketRequest"]> = {}) =>
+    requestOperation<TResponse, components['schemas']["ProblemChangeTicketRequest"]>("createProblemChangeTicket", options),
+  "listMyProblemChangeTickets": <TResponse = Array<components['schemas']["ProblemChangeTicket"]>>(options: ApiRequestOptions<never> = {}) =>
+    requestOperation<TResponse, never>("listMyProblemChangeTickets", options),
+  "listProblemChangeTicketEligibleProblems": <TResponse = Array<components['schemas']["Problem"]>>(options: ApiRequestOptions<never> = {}) =>
+    requestOperation<TResponse, never>("listProblemChangeTicketEligibleProblems", options),
+  "getProblemChangeTicket": <TResponse = components['schemas']["ProblemChangeTicket"]>(options: ApiRequestOptions<never> = {}) =>
+    requestOperation<TResponse, never>("getProblemChangeTicket", options),
+  "downloadProblemChangeTicketAttachment": <TResponse = components['schemas']["JsonObject"]>(options: ApiRequestOptions<never> = {}) =>
+    requestOperation<TResponse, never>("downloadProblemChangeTicketAttachment", options),
+  "cancelProblemChangeTicket": <TResponse = components['schemas']["ProblemChangeTicket"]>(options: ApiRequestOptions<components['schemas']["JsonObject"]> = {}) =>
+    requestOperation<TResponse, components['schemas']["JsonObject"]>("cancelProblemChangeTicket", options),
+  "rejectProblemChangeTicket": <TResponse = components['schemas']["ProblemChangeTicket"]>(options: ApiRequestOptions<components['schemas']["JsonObject"]> = {}) =>
+    requestOperation<TResponse, components['schemas']["JsonObject"]>("rejectProblemChangeTicket", options),
+  "applyProblemChangeTicket": <TResponse = components['schemas']["ProblemChangeTicket"]>(options: ApiRequestOptions<components['schemas']["JsonObject"]> = {}) =>
+    requestOperation<TResponse, components['schemas']["JsonObject"]>("applyProblemChangeTicket", options),
+  "listAssignments": <TResponse = components['schemas']["JsonObject"]>(options: ApiRequestOptions<never> = {}) =>
+    requestOperation<TResponse, never>("listAssignments", options),
+  "createAssignment": <TResponse = components['schemas']["JsonObject"]>(options: ApiRequestOptions<components['schemas']["JsonObject"]> = {}) =>
+    requestOperation<TResponse, components['schemas']["JsonObject"]>("createAssignment", options),
+  "getAssignment": <TResponse = components['schemas']["JsonObject"]>(options: ApiRequestOptions<never> = {}) =>
+    requestOperation<TResponse, never>("getAssignment", options),
+  "deleteAssignment": <TResponse = components['schemas']["JsonObject"]>(options: ApiRequestOptions<never> = {}) =>
+    requestOperation<TResponse, never>("deleteAssignment", options),
+  "assignmentReport": <TResponse = components['schemas']["JsonObject"]>(options: ApiRequestOptions<never> = {}) =>
+    requestOperation<TResponse, never>("assignmentReport", options),
+  "listExams": <TResponse = components['schemas']["JsonObject"]>(options: ApiRequestOptions<never> = {}) =>
+    requestOperation<TResponse, never>("listExams", options),
+  "createExam": <TResponse = components['schemas']["JsonObject"]>(options: ApiRequestOptions<components['schemas']["JsonObject"]> = {}) =>
+    requestOperation<TResponse, components['schemas']["JsonObject"]>("createExam", options),
+  "getExam": <TResponse = components['schemas']["ExamDetail"]>(options: ApiRequestOptions<never> = {}) =>
+    requestOperation<TResponse, never>("getExam", options),
+  "deleteExam": <TResponse = components['schemas']["JsonObject"]>(options: ApiRequestOptions<never> = {}) =>
+    requestOperation<TResponse, never>("deleteExam", options),
+  "finishExam": <TResponse = components['schemas']["JsonObject"]>(options: ApiRequestOptions<components['schemas']["JsonObject"]> = {}) =>
+    requestOperation<TResponse, components['schemas']["JsonObject"]>("finishExam", options),
+  "exportExamReport": <TResponse = components['schemas']["JsonObject"]>(options: ApiRequestOptions<never> = {}) =>
+    requestOperation<TResponse, never>("exportExamReport", options),
+  "examReport": <TResponse = components['schemas']["JsonObject"]>(options: ApiRequestOptions<never> = {}) =>
+    requestOperation<TResponse, never>("examReport", options),
+  "examRanking": <TResponse = components['schemas']["JsonObject"]>(options: ApiRequestOptions<never> = {}) =>
+    requestOperation<TResponse, never>("examRanking", options),
+  "judgeManualExamSubmission": <TResponse = components['schemas']["JsonObject"]>(options: ApiRequestOptions<components['schemas']["JsonObject"]> = {}) =>
+    requestOperation<TResponse, components['schemas']["JsonObject"]>("judgeManualExamSubmission", options),
+  "gradeManualExamSubmission": <TResponse = components['schemas']["JsonObject"]>(options: ApiRequestOptions<components['schemas']["JsonObject"]> = {}) =>
+    requestOperation<TResponse, components['schemas']["JsonObject"]>("gradeManualExamSubmission", options),
+  "listSubmissions": <TResponse = Array<components['schemas']["Submission"]>>(options: ApiRequestOptions<never> = {}) =>
+    requestOperation<TResponse, never>("listSubmissions", options),
+  "createSubmission": <TResponse = components['schemas']["Submission"]>(options: ApiRequestOptions<components['schemas']["SubmissionCreateRequest"]> = {}) =>
+    requestOperation<TResponse, components['schemas']["SubmissionCreateRequest"]>("createSubmission", options),
+  "latestSubmissions": <TResponse = Array<components['schemas']["Submission"]>>(options: ApiRequestOptions<never> = {}) =>
+    requestOperation<TResponse, never>("latestSubmissions", options),
+  "getSubmission": <TResponse = components['schemas']["SubmissionDetail"]>(options: ApiRequestOptions<never> = {}) =>
+    requestOperation<TResponse, never>("getSubmission", options),
+  "submissionEvents": <TResponse = components['schemas']["JsonObject"]>(options: ApiRequestOptions<never> = {}) =>
+    requestOperation<TResponse, never>("submissionEvents", options),
+  "listPlagiarismJobs": <TResponse = components['schemas']["JsonObject"]>(options: ApiRequestOptions<never> = {}) =>
+    requestOperation<TResponse, never>("listPlagiarismJobs", options),
+  "createPlagiarismJob": <TResponse = components['schemas']["JsonObject"]>(options: ApiRequestOptions<components['schemas']["JsonObject"]> = {}) =>
+    requestOperation<TResponse, components['schemas']["JsonObject"]>("createPlagiarismJob", options),
+  "listAuditLogs": <TResponse = components['schemas']["JsonObject"]>(options: ApiRequestOptions<never> = {}) =>
+    requestOperation<TResponse, never>("listAuditLogs", options),
+  "listUsers": <TResponse = Array<components['schemas']["User"]>>(options: ApiRequestOptions<never> = {}) =>
+    requestOperation<TResponse, never>("listUsers", options),
+  "createUser": <TResponse = components['schemas']["JsonObject"]>(options: ApiRequestOptions<components['schemas']["JsonObject"]> = {}) =>
+    requestOperation<TResponse, components['schemas']["JsonObject"]>("createUser", options),
+  "listUserPermissionDefinitions": <TResponse = Array<components['schemas']["PermissionDefinition"]>>(options: ApiRequestOptions<never> = {}) =>
+    requestOperation<TResponse, never>("listUserPermissionDefinitions", options),
+  "getUser": <TResponse = components['schemas']["User"]>(options: ApiRequestOptions<never> = {}) =>
+    requestOperation<TResponse, never>("getUser", options),
+  "updateUser": <TResponse = components['schemas']["JsonObject"]>(options: ApiRequestOptions<components['schemas']["JsonObject"]> = {}) =>
+    requestOperation<TResponse, components['schemas']["JsonObject"]>("updateUser", options),
+  "deleteUser": <TResponse = components['schemas']["JsonObject"]>(options: ApiRequestOptions<never> = {}) =>
+    requestOperation<TResponse, never>("deleteUser", options),
+  "updateUserPermission": <TResponse = components['schemas']["JsonObject"]>(options: ApiRequestOptions<components['schemas']["JsonObject"]> = {}) =>
+    requestOperation<TResponse, components['schemas']["JsonObject"]>("updateUserPermission", options),
+  "resetUserPassword": <TResponse = components['schemas']["JsonObject"]>(options: ApiRequestOptions<components['schemas']["JsonObject"]> = {}) =>
+    requestOperation<TResponse, components['schemas']["JsonObject"]>("resetUserPassword", options),
+  "reviewAuthorApplication": <TResponse = components['schemas']["AuthorApplication"]>(options: ApiRequestOptions<components['schemas']["JsonObject"]> = {}) =>
+    requestOperation<TResponse, components['schemas']["JsonObject"]>("reviewAuthorApplication", options),
+  "listProblemAuthors": <TResponse = components['schemas']["JsonObject"]>(options: ApiRequestOptions<never> = {}) =>
+    requestOperation<TResponse, never>("listProblemAuthors", options),
+  "removeProblemAuthor": <TResponse = components['schemas']["JsonObject"]>(options: ApiRequestOptions<never> = {}) =>
+    requestOperation<TResponse, never>("removeProblemAuthor", options),
+  "listMyProblemReviews": <TResponse = components['schemas']["JsonObject"]>(options: ApiRequestOptions<never> = {}) =>
+    requestOperation<TResponse, never>("listMyProblemReviews", options),
+  "listProblemReviews": <TResponse = components['schemas']["JsonObject"]>(options: ApiRequestOptions<never> = {}) =>
+    requestOperation<TResponse, never>("listProblemReviews", options),
+  "problemChangeTicketOnlyViaProblemReviewsIdReview": <TResponse = components['schemas']["JsonObject"]>(options: ApiRequestOptions<components['schemas']["JsonObject"]> = {}) =>
+    requestOperation<TResponse, components['schemas']["JsonObject"]>("problemChangeTicketOnlyViaProblemReviewsIdReview", options),
+  "problemChangeTicketOnlyViaProblemReviewsIdWithdraw": <TResponse = components['schemas']["JsonObject"]>(options: ApiRequestOptions<components['schemas']["JsonObject"]> = {}) =>
+    requestOperation<TResponse, components['schemas']["JsonObject"]>("problemChangeTicketOnlyViaProblemReviewsIdWithdraw", options),
+  "enterExam": <TResponse = components['schemas']["ExamEnterResponse"]>(options: ApiRequestOptions<never> = {}) =>
+    requestOperation<TResponse, never>("enterExam", options),
+  "listExamActivity": <TResponse = components['schemas']["ExamActivityPage"]>(options: ApiRequestOptions<never> = {}) =>
+    requestOperation<TResponse, never>("listExamActivity", options),
+  "recordExamActivity": <TResponse = {
     "recorded": boolean
-  }, components['schemas']["ExamActivityRequest"]>("recordExamActivity", options),
-  "getExamProblemAsset": (options: ApiRequestOptions<never> = {}) =>
-    requestOperation<unknown, never>("getExamProblemAsset", options),
-  "previewTeamJoin": (options: ApiRequestOptions<never> = {}) =>
-    requestOperation<components['schemas']["TeamJoinPreview"], never>("previewTeamJoin", options),
+  }>(options: ApiRequestOptions<components['schemas']["ExamActivityRequest"]> = {}) =>
+    requestOperation<TResponse, components['schemas']["ExamActivityRequest"]>("recordExamActivity", options),
+  "getExamProblemAsset": <TResponse = unknown>(options: ApiRequestOptions<never> = {}) =>
+    requestOperation<TResponse, never>("getExamProblemAsset", options),
+  "previewTeamInvitation": <TResponse = components['schemas']["TeamJoinPreview"]>(options: ApiRequestOptions<{
+    "join_code": string
+  }> = {}) =>
+    requestOperation<TResponse, {
+    "join_code": string
+  }>("previewTeamInvitation", options),
+  "previewTeamJoin": <TResponse = components['schemas']["TeamJoinPreview"]>(options: ApiRequestOptions<never> = {}) =>
+    requestOperation<TResponse, never>("previewTeamJoin", options),
 }
 
 // 兼容现有页面的 Axios 调用；新代码优先使用 generatedApi 的 operationId 方法。

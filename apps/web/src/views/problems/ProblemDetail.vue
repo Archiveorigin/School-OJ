@@ -85,10 +85,11 @@
 </template>
 
 <script setup lang="ts">
+import { submissionLanguage } from '../../features/submissions/presentation'
 import { ElMessage } from 'element-plus'
 import { computed, onBeforeUnmount, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
-import { AuthenticatedEventSource, client, getLatestSubmissions, openEventStream, type Problem } from '../../api/client'
+import { generatedApi, AuthenticatedEventSource, getLatestSubmissions, openEventStream, type Problem } from '../../api/client'
 import MarkdownRenderer from '../../components/MarkdownRenderer.vue'
 import ProblemMetaCard from '../../components/ProblemMetaCard.vue'
 import ProblemTestDownloads from '../../components/ProblemTestDownloads.vue'
@@ -123,7 +124,7 @@ async function loadProblem() {
   problem.value = null
   live.value = null
   try {
-    const { data } = await client.get(`/problems/${encodeURIComponent(String(route.params.id))}`)
+    const { data } = await generatedApi.getProblem<any>({ path: { "id": String(route.params.id) } })
     problem.value = data
     await loadLastSubmission()
   } catch (err: any) {
@@ -159,12 +160,12 @@ async function submit() {
   }
   submitting.value = true
   try {
-    const { data } = await client.post('/submissions', {
+    const { data } = await generatedApi.createSubmission<any>({ body: {
       problem_id: problem.value.id,
-      language: language.value,
+      language: submissionLanguage(language.value),
       source_code: source.value,
       is_public: isPublic.value
-    })
+    } })
     composerRef.value?.clearDraft()
     live.value = data
     ElMessage.success('提交已进入评测队列')

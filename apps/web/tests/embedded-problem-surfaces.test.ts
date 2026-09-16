@@ -44,7 +44,7 @@ describe('embedded exam and contest problem surfaces', () => {
     )
     expect(wrapper.get('.statement-box').exists()).toBe(true)
     expect(wrapper.find('aside').exists()).toBe(false)
-    expect(wrapper.text()).toContain(problem.title)
+    expect(wrapper.getComponent({ name: 'MarkdownRenderer' }).props('source')).toBe(problem.statement)
   })
 
   it('enables the shared embedded mode at every exam and team contest entry', () => {

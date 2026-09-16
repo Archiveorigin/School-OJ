@@ -77,7 +77,7 @@ Set-Location apps/api
 go test ./... -count=1
 ```
 
-测试先构造现有 ORM 基线，再运行正向 SQL 迁移，包含 `025_exam_activity.sql`。这是已有版本升级回归，不等于空库首次安装验证；既有空库安装的约束命名兼容问题需单独治理。
+测试先构造现有 ORM 基线，再运行正向 SQL 迁移，当前包含 `026_team_access_constraints.sql`。这是已有版本升级回归，不等于空库首次安装验证；既有空库安装的约束命名兼容问题需单独治理。`db/migrations_integration_test.go` 另行验证单文件失败的 SQL/台账回滚、修正重试、校验和保护和并发迁移连接锁。
 
 浏览器验收使用 `TestExamBrowserFixture`（仅存在于测试代码）启动真实 API，明确绑定 `127.0.0.1:18086`。设置 `OJ_BROWSER_FIXTURE_ADDR=127.0.0.1:18086` 后执行：
 
@@ -94,7 +94,29 @@ node --input-type=module -e "import('vite').then(v=>v.preview({preview:{host:'12
 
 最后在 `apps/web` 运行 `node tests/e2e/exam-security-qa.mjs`。脚本限定回环地址，通过真实登录、进入考试、上报、交卷和加入/审核接口操作；不得用于生产。视口为 `1440×1100`、`390×844`，结果与截图输出到根目录 `tmp/exam-security-qa/`（忽略提交）。每次完整重跑应重新启动 fixture，以获得未交卷、未入组的数据；登录限流仍然生效。
 
+随后在同一个 fixture 上运行 `node tests/e2e/governance-qa.mjs`，检查全局/练习/作业/比赛/题单提交详情、人工阅卷、复制代码位置和原文、申请/邀请分享入口以及三级职级权限。输出到 `tmp/governance-qa/`。两套脚本应顺序运行；不要对已经交卷的旧 fixture 重跑考试流程。
+
+Worker 的恢复测试也使用上述数据库/Redis 变量，在 `apps/worker` 运行 `go test ./... -count=1`。Redis 逻辑库 14 用于 Worker 随机测试键，15 用于 Outbox 专用 Stream；不清空整个 Redis。故障通过停止测试租约续期、调整测试消息空闲时间、关闭测试客户端和取消 SQL 请求模拟，恢复阶段连接真实 PostgreSQL/Redis。它们验证恢复边界，不等同于实际杀死生产进程或执行 Docker 沙箱。
+
 判题终态由 fixture 预置以核验显示和脱敏，不伪装成 Worker 实际执行；图片对象使用受控 S3 传输测试验证版本和权限。真正的应用镜像构建、MinIO/Worker 沙箱端到端与生产健康检查仍须在 Docker 可用后另行执行。
+
+### 4.2 本轮验收记录（2026-09-07）
+
+开发基线 `99c78d5`，本轮尚未 Git 提交或部署。
+
+| 检查 | 结果 |
+| --- | --- |
+| Web 完整单测 | 29 个测试文件、104 项通过 |
+| 契约与生产构建 | 164 个操作、生成一致性、前端架构检查、vue-tsc 和 Vite 构建通过；保留已有大分包体积警告 |
+| API / Worker | `go test ./... -count=1` 通过；已提供隔离 PostgreSQL/Redis 变量，故障恢复与权限集成用例实际执行 |
+| 数据库环境 | 本地 PostgreSQL 18、Redis 7；生产 PostgreSQL 16 的容器部署验收不以此替代 |
+| Playwright | 桌面 1440×1100、手机 390×844，考试/准入 68 个检查点，共享详情/治理 18 个检查点通过；无运行时异常 |
+| 视觉复核 | 复制位置、原文、行号、白底、三级职级、弹窗横向边界与手机阅卷布局通过；记录在 `tmp/governance-qa/design-qa.md` |
+| Compose / 文档 | 根 Compose 与部署入口配置通过；259 个文档相对链接、`git diff --check` 通过 |
+| 应用镜像构建 | 未完成：本机 Docker Desktop 的 `dockerInference` 初始化失败，Linux Engine 命名管道不存在；实际执行构建命令失败，未重置 Docker |
+| 发布 | 等待维护者确认本机 Git 提交，以及容器构建验收安排；服务器、数据卷及 GitHub 本轮均未变更 |
+
+截图和 JSON 检查结果属于忽略提交的本地产物，不长期纳入源码仓库。`final result: passed` 仅指页面验收，不表示容器发布已通过。
 
 ## 5. 关键环境变量
 
@@ -121,34 +143,32 @@ node --input-type=module -e "import('vite').then(v=>v.preview({preview:{host:'12
 git pull --ff-only
 docker compose config --quiet
 docker compose build api worker web
-docker compose up -d --remove-orphans
+docker compose up -d --no-deps api worker web
 docker compose ps
 curl -fsS http://127.0.0.1:${WEB_PORT:-25565}/healthz
 ```
 
 推荐发布顺序：
 
-1. 记录当前提交和应用镜像编号，准备回滚点。
+1. 等待维护者手动确认 Git 提交；使用本机 Git 提交并推送部署用 origin。备份 PostgreSQL，记录当前提交和应用镜像编号，保留带标签的回滚镜像。
 2. 以快进方式更新部署分支，禁止在生产目录制造合并提交。
 3. 校验 Compose 配置，构建三个应用镜像。
-4. 使用 `up -d --remove-orphans` 替换应用容器。
+4. 使用 `up -d --no-deps api worker web` 替换应用容器，不重建数据服务或删除卷。
 5. 等待 API、Worker 及依赖服务健康。
 6. 运行健康接口、登录、题库和关键业务 Playwright 验收。
-7. 验收通过后再清理无用镜像和缓存并推送最终远端。
+7. 验收通过后，只清理核实属于本项目的闲置资源；最后推送 GitHub 同名分支，不强推。失败则恢复上一应用提交/镜像，不上传失败版本。
 
 API 和 Worker 必须部署同一 Git 版本，避免新数据库结构或提交上下文被旧 Worker 错误消费。
+
+迁移 026 前执行只读预检：确认 `team_memberships.role` 没有 `owner/admin/member` 以外的值、每个团队没有多个 `owner`。发现异常应停止部署并人工核对，不自动降级用户或删除关系。迁移失败会阻止 API 启动；不要通过改写已执行 SQL 的方式绕过检查。
 
 ## 7. 回滚与清理
 
 如果新容器未通过健康检查，切回更新前提交或镜像，重新创建 API、Worker 和 Web；不要回滚或删除数据卷。数据库迁移应保持向前兼容，生产迁移前仍应完成备份。
 
-仓库提供安全清理脚本：
+清理前查看 `docker system df`，按 `com.docker.compose.project=school-oj` 标签、应用服务和镜像引用核对归属，只删除确认无用的停止容器及悬空镜像，并保留回滚镜像。构建缓存只有能确认属于本项目或使用专用 Builder 时才清理，不能确认归属就保留；任何情况下不清理数据卷。
 
-```bash
-./scripts/cleanup_docker.sh
-```
-
-该脚本只清理停止容器、悬空镜像和超过七天的构建缓存，不删除卷。可通过 `DOCKER_CACHE_MAX_AGE` 调整缓存年龄。执行更激进的镜像清理前先查看 `docker system df`。
+注意：当前 `scripts/cleanup_docker.sh` 包含宿主机级 `prune`，没有项目过滤。它虽不删除卷，也可能影响其他项目；多项目服务器不要直接执行，应使用核实后的资源 ID 或项目过滤操作。`DOCKER_CACHE_MAX_AGE` 只限制缓存年龄，不限制项目归属。
 
 ## 8. Kubernetes 与 JPlag
 

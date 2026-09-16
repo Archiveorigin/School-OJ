@@ -79,7 +79,12 @@
 | [`handlers/submission_events.go`](../apps/api/internal/handlers/submission_events.go) | 提交状态 SSE：先返回数据库快照，再订阅 Redis 通知直至终态。 |
 | [`handlers/exam_security.go`](../apps/api/internal/handlers/exam_security.go) | 考试统一白名单、显式事务入场、SSE 撤权、窗口行为日志及绑定版本的图片接口。 |
 | [`handlers/submission_case_summary.go`](../apps/api/internal/handlers/submission_case_summary.go) | 以提交版本的完整测试集计算通过/总数；未评测、人工与隐藏结果返回空统计。 |
-| [`handlers/team_join.go`](../apps/api/internal/handlers/team_join.go) | 安全加入预览、加入与审批状态机；成员退出/移除/角色变更共享团队行锁。 |
+| [`handlers/team_join.go`](../apps/api/internal/handlers/team_join.go) | 加入链接/邀请码预览的 HTTP 适配及应用服务装配；业务状态机已下沉。 |
+| [`domain/team/access.go`](../apps/api/internal/domain/team/access.go) | 团队三级职级、权限与审批状态机，仓储接口及安全预览 DTO。 |
+| [`services/team_access.go`](../apps/api/internal/services/team_access.go) | 邀请码预览、加入、审批、退出、移除及职级变更用例，不依赖 Gin/GORM。 |
+| [`repositories/team_access.go`](../apps/api/internal/repositories/team_access.go) | GORM 事务、团队行锁、活动账号、申请和成员的幂等持久化。 |
+| [`handlers/team_submission_access.go`](../apps/api/internal/handlers/team_submission_access.go) | 按团队比赛/题单归属检查提交详情、结果及 SSE 权限。 |
+| [`middleware/api_version.go`](../apps/api/internal/middleware/api_version.go) | 两套 API 入口的版本响应头与去敏路由用量观察。 |
 | [`handlers/submission_visibility.go`](../apps/api/internal/handlers/submission_visibility.go) | OI 与封榜期的统一服务端脱敏，隐藏状态、分数、测试点、资源消耗等结果。 |
 | [`handlers/teams.go`](../apps/api/internal/handlers/teams.go) | 团队、成员申请、比赛、赛题、三赛制排行榜、团队题单、讨论与团队范围提交。 |
 
@@ -176,7 +181,7 @@
 
 ### 4.7 团队、比赛与题单接口
 
-团队主体业务位于 [`handlers/teams.go`](../apps/api/internal/handlers/teams.go)，准入及成员事务位于 [`handlers/team_join.go`](../apps/api/internal/handlers/team_join.go)。`/teams/:id/contests/:contest_id/*` 与 `/contests/:contest_id/*` 是同一组 Handler 的两种路由入口；前者适合团队管理上下文，后者供独立比赛页面使用。
+团队主体路由位于 [`handlers/teams.go`](../apps/api/internal/handlers/teams.go)，准入及成员用例位于 [`services/team_access.go`](../apps/api/internal/services/team_access.go)，事务实现位于 [`repositories/team_access.go`](../apps/api/internal/repositories/team_access.go)。`/teams/:id/contests/:contest_id/*` 与 `/contests/:contest_id/*` 是同一组 Handler 的两种路由入口；前者适合团队管理上下文，后者供独立比赛页面使用。
 
 | 接口族 | 主要路由 | 作用 |
 | --- | --- | --- |
@@ -184,6 +189,7 @@
 | 成员 | `GET/PUT/DELETE /teams/:id/members/*` | 查看成员，调整 owner/admin/member 权限，移除成员。 |
 | 加入申请 | `GET /teams/:id/applications`、`PUT /teams/:id/applications/:application_id` | 团队管理员审核加入申请。 |
 | 加入预览 | `GET /teams/:id/join-preview` | 私有团队的最小安全 DTO，包含加入模式和本人申请状态，不包含邀请码或内部内容。 |
+| 邀请码预览 | `POST /team-invitations/preview` | 仅凭邀请码定位唯一邀请制团队；认证、限流、最小预览，不自动加入。 |
 | 比赛 | `GET/POST /teams/:id/contests`、`GET/PUT/DELETE /contests/:contest_id` | 创建和维护草稿、已发布、进行中、已结束比赛。 |
 | 发布与赛题 | `POST /contests/:contest_id/publish`、`POST/DELETE /contests/:contest_id/problems/*` | 发布比赛，按题目为最小单位绑定/移除赛题版本。 |
 | 比赛提交 | `GET/POST /contests/:contest_id/submissions` | 查询比赛提交或创建指定赛题提交。 |
@@ -258,6 +264,7 @@
 | [`023_submission_outbox.sql`](../apps/api/migrations/023_submission_outbox.sql) | 可靠提交入队的事务发件箱。 |
 | [`024_problem_change_tickets_and_scoring.sql`](../apps/api/migrations/024_problem_change_tickets_and_scoring.sql) | 不可变题目版本、工单、归档、考试/比赛/提交版本回填、OI/IOI/ACM 与封榜字段。 |
 | [`025_exam_activity.sql`](../apps/api/migrations/025_exam_activity.sql) | 考试行为日志及事件唯一索引，只新增结构、不清理历史数据。 |
+| [`026_team_access_constraints.sql`](../apps/api/migrations/026_team_access_constraints.sql) | 三级团队职级检查、每团队创建者唯一性和规范化邀请码查询索引，不改写历史角色。 |
 
 ## 6. Worker 判题服务
 
@@ -319,6 +326,7 @@
 | `/exams/:id/overview|submit|records|ranking` | `router/index.ts`、`features/events/workspace.ts` | 旧地址兼容重定向；四个被替换的专属内容组件已删除。 |
 | `/admin/exams/:id/activity` | [`exam/ExamActivity.vue`](../apps/web/src/views/exam/ExamActivity.vue) | 按学生、事件、时间分页查询行为日志，展开查看登录关联和拦截接口。 |
 | `/teams/:teamSlug/join` | [`teams/TeamJoin.vue`](../apps/web/src/views/teams/TeamJoin.vue) | 最小信息预览、邀请/申请/开放加入，独立于私有团队工作区。 |
+| `/teams/join` | [`teams/TeamJoin.vue`](../apps/web/src/views/teams/TeamJoin.vue) | 邀请码加入、链接申请的分流入口；邀请制不再先索取链接。 |
 | `/teams` | [`TeamList.vue`](../apps/web/src/views/teams/TeamList.vue) | 我的/可发现团队、创建团队和加入申请。 |
 | `/teams/:teamSlug/*` | [`TeamWorkspace.vue`](../apps/web/src/views/teams/TeamWorkspace.vue) | 团队容器、设置、退出和子路由出口。 |
 | `/teams/:teamSlug/contests` | [`TeamContests.vue`](../apps/web/src/views/teams/TeamContests.vue) | 团队比赛列表、创建和删除。 |
@@ -352,7 +360,8 @@
 | [`CodeEditor.vue`](../apps/web/src/components/CodeEditor.vue) | Monaco 代码编辑器和语言切换。 |
 | [`SubmissionComposer.vue`](../apps/web/src/components/SubmissionComposer.vue) | 统一代码提交表单，配合草稿保存。 |
 | [`SubmissionDetailDialog.vue`](../apps/web/src/components/SubmissionDetailDialog.vue) | 紧凑提交细则、版本测试点统计与源码；隐藏结果不显示资源和通过数。 |
-| [`SourceCodeViewer.vue`](../apps/web/src/components/SourceCodeViewer.vue) | 白底源码、左侧复制、逐行行号、绿色分隔线和长行滚动。 |
+| [`SubmissionDetailContent.vue`](../apps/web/src/components/SubmissionDetailContent.vue) | 全部提交详情及人工阅卷共享的细则与源码内容。 |
+| [`SourceCodeViewer.vue`](../apps/web/src/components/SourceCodeViewer.vue) | 白底源码、右上角复制、左侧行号、绿色分隔线和长行滚动。 |
 | [`EventWorkspaceHeader.vue`](../apps/web/src/components/EventWorkspaceHeader.vue)、[`EventProblemList.vue`](../apps/web/src/components/EventProblemList.vue)、[`EventProblemPanel.vue`](../apps/web/src/components/EventProblemPanel.vue) | 考试/团队比赛公共展示层；不直接决定业务权限。 |
 | [`SubmissionStatusMark.vue`](../apps/web/src/components/SubmissionStatusMark.vue)、[`VerdictTag.vue`](../apps/web/src/components/VerdictTag.vue)、[`StatusBadge.vue`](../apps/web/src/components/StatusBadge.vue) | 提交状态和业务状态的统一视觉映射。 |
 | [`LeaderboardBoard.vue`](../apps/web/src/components/LeaderboardBoard.vue) | 考试与比赛共用排行榜外壳、说明、封榜提示和表格选择。 |
@@ -395,6 +404,8 @@
 | [`features/clipboard.ts`](../apps/web/src/features/clipboard.ts) | 现代 Clipboard API 与兼容复制回退。 |
 | [`features/time.ts`](../apps/web/src/features/time.ts) | 统一日期时间格式化。 |
 
+新增前端逻辑：[`features/submissions/detail.ts`](../apps/web/src/features/submissions/detail.ts) 封装详情获取、错误和旧请求丢弃；[`api/modules/assets.ts`](../apps/web/src/api/modules/assets.ts) 按题库/考试范围调用生成的图片接口。
+
 ## 8. 部署、容器与运维文件
 
 | 文件 | 结构作用 |
@@ -422,12 +433,18 @@
 | [`middleware/auth_test.go`](../apps/api/internal/middleware/auth_test.go) | JWT 签名算法、可选认证和禁止查询参数 Token。 |
 | [`middleware/security_test.go`](../apps/api/internal/middleware/security_test.go) | 限流键匿名化和安全响应头。 |
 | [`db/migrations_test.go`](../apps/api/internal/db/migrations_test.go) | 内嵌迁移排序和关键迁移存在性。 |
+| [`db/migrations_integration_test.go`](../apps/api/internal/db/migrations_integration_test.go) | 真实 PostgreSQL 下迁移 SQL/台账回滚、重试、校验和及同连接并发迁移锁。 |
+| [`handlers/governance_integration_test.go`](../apps/api/internal/handlers/governance_integration_test.go) | 两套前缀等价、邀请码、安全 DTO、三级职级、团队提交权限和 Outbox 故障恢复。 |
+| [`architecture/boundaries_test.go`](../apps/api/internal/architecture/boundaries_test.go) | 领域/应用/仓储依赖和 API/Worker 题目版本字段约束。 |
+| [`streams/recovery_integration_test.go`](../apps/worker/internal/streams/recovery_integration_test.go) | Redis 租约接管、pending 恢复、重发失败及终态落库失败不 ACK。 |
 | [`runner/package_test.go`](../apps/worker/internal/runner/package_test.go) | Worker 题包解析、BOM、权重、比较器和错误输入。 |
 | [`runner/docker_test.go`](../apps/worker/internal/runner/docker_test.go) | 沙箱准备、限制、状态分类和指标解析。 |
 | [`runner/docker_integration_test.go`](../apps/worker/internal/runner/docker_integration_test.go) | Docker 沙箱实际运行与资源指标集成。 |
 | [`streams/consumer_test.go`](../apps/worker/internal/streams/consumer_test.go) | 消费重试、租约、题目版本读取和结果持久化。 |
 | [`features/**/*.test.ts`](../apps/web/src/features) | 前端考试构建、草稿、提交草稿和剪贴板等纯逻辑单测。 |
 | [`apps/web/tests/e2e`](../apps/web/tests/e2e) | Playwright 页面流程与设计验收脚本。 |
+| [`apps/web/tests/governance-ui.test.ts`](../apps/web/tests/governance-ui.test.ts) | 邀请码直达、待审切换、复制原文、资源路径、multipart 与详情组件复用。 |
+| [`apps/web/scripts/check-architecture.mjs`](../apps/web/scripts/check-architecture.mjs) | 构建期约束 operationId 调用与已收敛页面的语义颜色。 |
 
 常用验证入口见[开发、测试与部署](deployment.md)。文档改动至少执行 Markdown 相对链接检查和 `git diff --check`；业务代码改动还应执行 API/Worker `go test ./...`、Web `npm test` 与 `npm run build`，涉及交互时补充 Playwright。
 

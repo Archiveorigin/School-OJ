@@ -318,7 +318,7 @@
 import { ElMessage } from 'element-plus'
 import { computed, onMounted, reactive, ref, watch } from 'vue'
 import { useRouter } from 'vue-router'
-import { client, type PreparedProblem } from '../api/client'
+import { generatedApi, type PreparedProblem } from '../api/client'
 import ListPagination from '../components/ListPagination.vue'
 import MarkdownRenderer from '../components/MarkdownRenderer.vue'
 import ProblemTagSelector from '../components/ProblemTagSelector.vue'
@@ -397,7 +397,7 @@ async function load() {
   if (filters.folder) params.folder = filters.folder
   if (filters.tags.length) params.tag = filters.tags.join(',')
   if (filters.difficulty) params.difficulty = filters.difficulty
-  items.value = (await client.get('/prepared-problems', { params })).data
+  items.value = (await generatedApi.listPreparedProblems<any>({ query: params })).data
   if ((page.value - 1) * pageSize.value >= items.value.length) page.value = 1
   if (!selected.value || !items.value.some((item) => item.id === selected.value?.id)) {
     selected.value = items.value[0] || null
@@ -437,7 +437,7 @@ async function createFromForm() {
   }
   saving.value = true
   try {
-    const { data } = await client.post('/prepared-problems', {
+    const { data } = await generatedApi.problemChangeTicketOnlyViaPreparedProblems<any>({ body: {
       ...metadataPayload(),
       title: problemForm.title,
       statement: problemForm.statement,
@@ -446,7 +446,7 @@ async function createFromForm() {
       output_limit_kb: problemForm.output_limit_kb,
       assets: problemForm.assets.map(({ name, path, content_type, data }) => ({ name, path, content_type, data })),
       cases: problemForm.cases
-    })
+    } })
     ElMessage.success('预备题已创建')
     createVisible.value = false
     await load()
@@ -468,7 +468,7 @@ async function uploadZip(options: any) {
     fd.append('source', metaForm.source)
     fd.append('notes', metaForm.notes)
     metaForm.tags.forEach((tag) => fd.append('tags', tag))
-    const { data } = await client.post('/prepared-problems/upload', fd)
+    const { data } = await generatedApi.problemChangeTicketOnlyViaPreparedProblemsUpload<any>({ body: fd })
     ElMessage.success('预备题包已上传')
     createVisible.value = false
     await load()
@@ -483,13 +483,13 @@ async function uploadZip(options: any) {
 async function saveEdit() {
   saving.value = true
   try {
-    const { data } = await client.put(`/prepared-problems/${editForm.id}`, {
+    const { data } = await generatedApi.problemChangeTicketOnlyViaPreparedProblemsId<any>({ path: { "id": editForm.id }, body: {
       folder: editForm.folder,
       difficulty: editForm.difficulty,
       source: editForm.source,
       notes: editForm.notes,
       tags: editForm.tags
-    })
+    } })
     ElMessage.success('分类已保存')
     editVisible.value = false
     await load()
@@ -503,14 +503,14 @@ async function saveEdit() {
 
 async function toggleArchive(row: PreparedProblem) {
   try {
-    await client.put(`/prepared-problems/${row.id}`, {
+    await generatedApi.problemChangeTicketOnlyViaPreparedProblemsId<any>({ path: { "id": row.id }, body: {
       folder: row.folder || '',
       difficulty: row.difficulty || '',
       source: row.source || '',
       notes: row.notes || '',
       tags: tagList(row.problem?.tags),
       archived: !row.archived
-    })
+    } })
     ElMessage.success(row.archived ? '已恢复' : '已归档')
     await load()
   } catch (err: any) {
@@ -522,7 +522,7 @@ async function publish() {
   if (!publishing.value) return
   saving.value = true
   try {
-    await client.post(`/prepared-problems/${publishing.value.id}/publish`)
+    await generatedApi.problemChangeTicketOnlyViaPreparedProblemsIdPublish<any>({ path: { "id": publishing.value.id } })
     ElMessage.success('已发布到公共题库')
     publishVisible.value = false
     await load()

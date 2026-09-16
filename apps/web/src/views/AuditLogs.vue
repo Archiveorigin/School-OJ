@@ -26,7 +26,7 @@
 <script setup lang="ts">
 import { ElMessage } from 'element-plus'
 import { computed, onMounted, ref, watch } from 'vue'
-import { client } from '../api/client'
+import { generatedApi } from '../api/client'
 import ListPagination from '../components/ListPagination.vue'
 import { formatDateTime } from '../features/time'
 
@@ -39,7 +39,7 @@ const pagedItems = computed(() => items.value.slice((page.value - 1) * pageSize.
 async function load() {
   loading.value = true
   try {
-    items.value = (await client.get('/audit-logs')).data || []
+    items.value = (await generatedApi.listAuditLogs<any>()).data || []
   } catch (err: any) {
     ElMessage.error(err.response?.data?.error || err.message)
   } finally {

@@ -45,7 +45,7 @@
 <script setup lang="ts">
 import { ElMessage } from 'element-plus'
 import { computed, onMounted, reactive, ref, watch } from 'vue'
-import { client } from '../api/client'
+import { generatedApi } from '../api/client'
 import ListPagination from '../components/ListPagination.vue'
 import { formatDateTime } from '../features/time'
 
@@ -60,9 +60,9 @@ const pagedJobs = computed(() => jobs.value.slice((page.value - 1) * pageSize.va
 
 async function load() {
   const [jobsRes, coursesRes, assignmentsRes] = await Promise.all([
-    client.get('/plagiarism/jobs'),
-    client.get('/courses'),
-    client.get('/assignments')
+    generatedApi.listPlagiarismJobs<any>(),
+    generatedApi.listCourses<any>(),
+    generatedApi.listAssignments<any>()
   ])
   jobs.value = jobsRes.data
   courses.value = coursesRes.data
@@ -77,11 +77,11 @@ async function create() {
     ElMessage.error('请选择课程')
     return
   }
-  await client.post('/plagiarism/jobs', {
+  await generatedApi.createPlagiarismJob<any>({ body: {
     course_id: form.course_id,
     assignment_id: form.assignment_id,
     language: form.language
-  })
+  } })
   ElMessage.success('已启动')
   load()
 }

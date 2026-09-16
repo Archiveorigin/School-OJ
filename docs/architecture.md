@@ -37,6 +37,8 @@
 
 团队域管理团队资料、申请、成员、比赛和题单。团队成员角色为 `owner`、`admin`、`member`，比赛内容权限还受团队的 `contest_permission` 配置约束。
 
+准入与职级管理采用 `handlers/team_join.go、teams.go → services/TeamAccess → domain/team.Repository → repositories/TeamAccess`。领域层定义权限和审批状态机，应用层编排用例，GORM 仓储集中实施团队行锁、账号状态检查和幂等写入。HTTP 层只转换输入、状态码和安全 DTO。大型 Handler 的其余业务仍按功能逐步迁移，不把本轮团队准入切片描述成全项目分层重写。
+
 团队比赛使用 `/contest/:contestId/*` 独立路由。题单和比赛只保存公共题目的关联及版本，页面根据关联顺序生成 A、B、C 等场内题号，避免把公共题号当作场内标识。
 
 ### 2.4 提交与判题域
@@ -69,6 +71,7 @@
 ## 4. 一致性与状态机
 
 - 数据库迁移是嵌入 API 的有序 SQL 文件，执行记录保存在 `schema_migrations`，并使用 SHA-256 校验防止已执行迁移被改写。
+- 迁移锁、台账创建和迁移执行固定在同一 PostgreSQL 连接，避免连接池导致锁和解锁落在不同会话。单个 SQL 迁移与台账写入同事务；失败仅回滚该文件，保留此前已提交迁移。兼容性 AutoMigrate 并不因此成为跨文件原子事务。
 - API 拥有提交创建、上下文绑定和 Outbox 写入权；Worker 拥有判题状态推进和结果写入权。
 - Worker 的 Redis 租约防止重复消费并支持崩溃后回收；基础设施故障按配置进行有限重试。
 - 团队比赛状态为 `draft → published → running → closed`。发布后冻结题目关联与赛制，开始和结束状态按时间窗同步。
@@ -90,6 +93,7 @@
 
 - `/api/*` 为现有客户端兼容入口。
 - `/api/v1/*` 与 `/api/*` 注册相同业务路由，新集成优先使用 `/api/v1`。
+- Web 默认使用 `/api/v1`，业务请求已改用生成客户端 operationId；构建约束禁止页面重新引入直接 Axios 请求。传输拦截器和 SSE/页面离开时的 keepalive 保留专用实现，路径仍来自契约。
 - 跨域来源由 `CORS_ALLOWED_ORIGINS` 控制，可信反向代理由 `TRUSTED_PROXIES` 控制。
 - Bearer Token 只通过 `Authorization` 请求头传递；SSE 和私有文件下载使用带认证的 Fetch，不把 JWT 放入 URL。
 - 前端路由按公共题库、课程、考试、团队和后台管理分区，具体页面见 [功能说明](features.md)。
@@ -99,3 +103,11 @@
 每个测试点的 `time_ms` 来自沙箱进程组的 cgroup CPU 使用量，另设墙钟超时终止休眠或阻塞程序；`memory_kb` 使用 cgroup 峰值。内存超限通过 OOM 计数和 Docker 状态识别，不根据错误文本猜测。若已经观察到时间超限事件，清理阶段的退出信号不会覆盖该判定。
 
 题目数据库中的时间、内存和输出限制为权威值；旧题包清单中的限制只作为兼容回退。
+
+## 8. 可执行架构约束
+
+- `internal/architecture`：领域、应用服务和仓储依赖方向；团队准入 Handler 不出现直接 SQL；API/Worker 绑定题目版本的字段一致。
+- `internal/domain/team`：基础角色与团队三级职级的权限矩阵、审批状态机及重放规则。
+- 路由兼容测试：两套 API 前缀具有相同方法、路径和业务 Handler。
+- `scripts/check-architecture.mjs`：业务操作使用生成客户端；已收敛的团队页和提交详情不得增加硬编码颜色。其余历史页面按模块逐步收敛，不以全局样式替换掩盖差异。
+- PostgreSQL/Redis 恢复测试验证 Outbox 补发、过期领取、Worker 租约接管、结果落库后 ACK 中断、迁移失败回滚与重试。使用隔离数据，不在生产执行故障注入。

@@ -64,7 +64,7 @@
           <el-radio-group v-model="form.join_mode">
             <el-radio-button value="invitation">邀请制</el-radio-button>
             <el-radio-button value="application">申请制</el-radio-button>
-            <el-radio-button value="open">随便进</el-radio-button>
+            <el-radio-button value="open">自由加入</el-radio-button>
           </el-radio-group>
         </el-form-item>
         <el-form-item label="谁可以组织比赛">
@@ -91,11 +91,10 @@
 </template>
 
 <script setup lang="ts">
-import { parseTeamJoinSlug } from '../../features/teams/join'
-import { ElMessage, ElMessageBox } from 'element-plus'
+import { ElMessage } from 'element-plus'
 import { onMounted, reactive, ref, watch } from 'vue'
 import { useRouter } from 'vue-router'
-import { client, type Team, type TeamRole } from '../../api/client'
+import { generatedApi, type Team, type TeamRole } from '../../api/client'
 import TeamIconUpload from '../../components/TeamIconUpload.vue'
 
 const router = useRouter()
@@ -118,7 +117,7 @@ const form = reactive({
 async function load() {
   loading.value = true
   try {
-    const { data } = await client.get<Team[]>('/teams', { params: { scope: activeTab.value } })
+    const { data } = await generatedApi.listTeams<Team[]>({ query: { scope: activeTab.value } })
     teams.value = data || []
   } catch (err: any) {
     ElMessage.error(err.response?.data?.error || err.message)
@@ -139,10 +138,10 @@ async function createTeam() {
   }
   creating.value = true
   try {
-    const { data } = await client.post<Team>('/teams', form)
+    const { data } = await generatedApi.createTeam<Team>({ body: form })
     createVisible.value = false
     ElMessage.success('团队创建成功')
-    await router.push(`/teams/${data.slug}`)
+    await router.push(`/teams/${data.slug}/contests`)
   } catch (err: any) {
     ElMessage.error(err.response?.data?.error || err.message)
   } finally {
@@ -151,15 +150,10 @@ async function createTeam() {
 }
 
 function requestJoin(team: Team) { void router.push(`/teams/${team.slug}/join`) }
-async function openJoinLink() {
-  try {
-    const { value } = await ElMessageBox.prompt('输入团队链接名或加入链接', '加入团队', { confirmButtonText: '下一步', inputValidator: value => Boolean(parseTeamJoinSlug(value || '')) || '请输入有效的团队链接名或链接' })
-    await router.push(`/teams/${parseTeamJoinSlug(value)}/join`)
-  } catch { /* Cancel keeps the current list. */ }
-}
+function openJoinLink() { void router.push('/teams/join') }
 
 function openTeam(team: Team) {
-  router.push(team.joined || team.can_manage ? `/teams/${team.slug}` : `/teams/${team.slug}/join`)
+  router.push(team.joined || team.can_manage ? `/teams/${team.slug}/contests` : `/teams/${team.slug}/join`)
 }
 
 function teamRoleLabel(role: TeamRole) {
@@ -181,11 +175,11 @@ onMounted(load)
 .team-tabs button.active { color: var(--accent); border-bottom-color: var(--accent); font-weight: 800; }
 .team-tabs > .el-button { margin: 0 0 7px auto; }
 .team-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 20px; min-height: 100px; }
-.team-card { position: relative; min-width: 0; overflow: hidden; border: 1px solid var(--border); border-top: 4px solid #c5304f; border-radius: 10px; background: var(--surface-strong); box-shadow: var(--shadow); cursor: pointer; transition: transform .18s ease, border-color .18s ease; }
+.team-card { position: relative; min-width: 0; overflow: hidden; border: 1px solid var(--border); border-top: 4px solid var(--color-danger); border-radius: 10px; background: var(--surface-strong); box-shadow: var(--shadow); cursor: pointer; transition: transform .18s ease, border-color .18s ease; }
 .team-card:hover { border-color: color-mix(in srgb, var(--accent) 50%, var(--border)); transform: translateY(-2px); }
 .team-card-main { display: grid; grid-template-columns: 88px minmax(0, 1fr); gap: 17px; min-height: 132px; padding: 20px 20px 16px; }
-.team-icon { width: 88px; height: 88px; display: grid; place-items: center; overflow: hidden; color: #fff; border: 1px solid var(--border); border-radius: 9px; background: var(--accent); font-size: 30px; font-weight: 900; }
-.team-icon img { width: 100%; height: 100%; object-fit: cover; background: #fff; }
+.team-icon { width: 88px; height: 88px; display: grid; place-items: center; overflow: hidden; color: var(--color-on-emphasis); border: 1px solid var(--border); border-radius: 9px; background: var(--accent); font-size: 30px; font-weight: 900; }
+.team-icon img { width: 100%; height: 100%; object-fit: cover; background: var(--color-surface-solid); }
 .team-name-row { display: flex; align-items: center; flex-wrap: wrap; gap: 10px; }
 .team-name-row h2 { margin: 0; font-size: 20px; }
 .team-copy p { display: -webkit-box; margin: 10px 0 0; overflow: hidden; color: var(--muted); line-height: 1.65; -webkit-box-orient: vertical; -webkit-line-clamp: 2; }

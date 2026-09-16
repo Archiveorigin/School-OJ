@@ -1,7 +1,7 @@
 <template>
   <section class="workspace-view">
     <div class="view-heading">
-      <div><h3>团队成员</h3><p>职级按创建者、管理员、团员细分，管理权限清晰可控。</p></div>
+      <div><h3>团队成员</h3></div>
       <el-tag type="info">{{ members.length }} 名成员</el-tag>
     </div>
 
@@ -62,7 +62,7 @@
 <script setup lang="ts">
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { computed, onMounted, ref } from 'vue'
-import { client, type Role, type Team, type TeamRole } from '../../api/client'
+import { generatedApi, type Role, type Team, type TeamRole } from '../../api/client'
 import { useAuthStore } from '../../stores/auth'
 
 const props = defineProps<{ team: Team }>()
@@ -75,8 +75,8 @@ const canManage = computed(() => Boolean(props.team.can_manage))
 async function load() {
   loading.value = true
   try {
-    members.value = (await client.get(`/teams/${props.team.id}/members`)).data || []
-    applications.value = canManage.value ? (await client.get(`/teams/${props.team.id}/applications`)).data || [] : []
+    members.value = (await generatedApi.listTeamMembers<any>({ path: { "id": props.team.id } })).data || []
+    applications.value = canManage.value ? (await generatedApi.listTeamApplications<any>({ path: { "id": props.team.id } })).data || [] : []
   } catch (err: any) {
     ElMessage.error(err.response?.data?.error || err.message)
   } finally {
@@ -86,7 +86,7 @@ async function load() {
 
 async function review(item: any, action: 'approve' | 'reject') {
   try {
-    await client.put(`/teams/${props.team.id}/applications/${item.id}`, { action })
+    await generatedApi.reviewTeamApplication<any>({ path: { "id": props.team.id, "application_id": item.id }, body: { action } })
     ElMessage.success(action === 'approve' ? '已同意加入申请' : '已拒绝加入申请')
     await load()
   } catch (err: any) {
@@ -106,7 +106,7 @@ function canRemove(row: any) {
 
 async function changeRole(row: any, role: string) {
   try {
-    await client.put(`/teams/${props.team.id}/members/${row.user_id}`, { role })
+    await generatedApi.updateTeamMember<any>({ path: { "id": props.team.id, "user_id": row.user_id }, body: { role } })
     ElMessage.success('成员职级已更新')
     await load()
   } catch (err: any) {
@@ -117,7 +117,7 @@ async function changeRole(row: any, role: string) {
 async function removeMember(row: any) {
   try {
     await ElMessageBox.confirm(`确认将 ${row.name} 移出团队？`, '移除成员', { type: 'warning' })
-    await client.delete(`/teams/${props.team.id}/members/${row.user_id}`)
+    await generatedApi.removeTeamMember<any>({ path: { "id": props.team.id, "user_id": row.user_id } })
     ElMessage.success('成员已移除')
     await load()
   } catch (err: any) {
