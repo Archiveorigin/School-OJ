@@ -6274,13 +6274,51 @@
       "post": {
         "operationId": "createProblemChangeTicket",
         "tags": [
-          "题目"
+          "工单"
         ],
-        "summary": "创建题目修改工单",
+        "summary": "createProblemChangeTicket",
         "x-handler": "createProblemChangeTicket",
         "x-auth": "bearer",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "成功",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemChangeTicket"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "404": {
+            "description": "对象不存在"
+          },
+          "409": {
+            "description": "工单状态或版本冲突"
+          },
+          "503": {
+            "$ref": "#/components/responses/ServiceUnavailable"
+          },
+          "201": {
+            "description": "已创建",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemChangeTicket"
+                }
+              }
+            }
+          }
+        },
         "requestBody": {
-          "required": false,
+          "required": true,
           "content": {
             "application/json": {
               "schema": {
@@ -6289,56 +6327,63 @@
             },
             "multipart/form-data": {
               "schema": {
-                "$ref": "#/components/schemas/JsonObject"
+                "$ref": "#/components/schemas/ProblemChangeTicketRequest"
               }
             }
-          }
-        },
-        "responses": {
-          "200": {
-            "description": "成功",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/JsonObject"
-                }
-              }
-            }
-          },
-          "201": {
-            "description": "已创建",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/JsonObject"
-                }
-              }
-            }
-          },
-          "400": {
-            "$ref": "#/components/responses/BadRequest"
-          },
-          "401": {
-            "$ref": "#/components/responses/Unauthorized"
-          },
-          "403": {
-            "$ref": "#/components/responses/Forbidden"
-          },
-          "503": {
-            "$ref": "#/components/responses/ServiceUnavailable"
           }
         }
       },
       "get": {
         "operationId": "listProblemChangeTickets",
         "tags": [
-          "题目"
+          "工单"
         ],
-        "summary": "管理端查询题目工单",
+        "summary": "listProblemChangeTickets",
         "x-handler": "listProblemChangeTickets",
         "x-auth": "bearer",
-        "x-roles": [
-          "admin"
+        "parameters": [
+          {
+            "name": "page",
+            "in": "query",
+            "schema": {
+              "type": "integer"
+            }
+          },
+          {
+            "name": "page_size",
+            "in": "query",
+            "schema": {
+              "type": "integer"
+            }
+          },
+          {
+            "name": "status",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "action",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "context",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "problem_id",
+            "in": "query",
+            "schema": {
+              "type": "integer"
+            }
+          }
         ],
         "responses": {
           "200": {
@@ -6346,10 +6391,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "type": "array",
-                  "items": {
-                    "$ref": "#/components/schemas/ProblemChangeTicket"
-                  }
+                  "$ref": "#/components/schemas/TicketPage"
                 }
               }
             }
@@ -6357,37 +6399,84 @@
           "400": {
             "$ref": "#/components/responses/BadRequest"
           },
-          "401": {
-            "$ref": "#/components/responses/Unauthorized"
-          },
           "403": {
             "$ref": "#/components/responses/Forbidden"
+          },
+          "404": {
+            "description": "对象不存在"
+          },
+          "409": {
+            "description": "工单状态或版本冲突"
           },
           "503": {
             "$ref": "#/components/responses/ServiceUnavailable"
           }
-        }
+        },
+        "x-roles": [
+          "admin"
+        ]
       }
     },
     "/problem-change-tickets/mine": {
       "get": {
         "operationId": "listMyProblemChangeTickets",
         "tags": [
-          "题目"
+          "工单"
         ],
-        "summary": "查询我的题目工单",
+        "summary": "listMyProblemChangeTickets",
         "x-handler": "listMyProblemChangeTickets",
         "x-auth": "bearer",
+        "parameters": [
+          {
+            "name": "page",
+            "in": "query",
+            "schema": {
+              "type": "integer"
+            }
+          },
+          {
+            "name": "page_size",
+            "in": "query",
+            "schema": {
+              "type": "integer"
+            }
+          },
+          {
+            "name": "status",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "action",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "context",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "problem_id",
+            "in": "query",
+            "schema": {
+              "type": "integer"
+            }
+          }
+        ],
         "responses": {
           "200": {
             "description": "成功",
             "content": {
               "application/json": {
                 "schema": {
-                  "type": "array",
-                  "items": {
-                    "$ref": "#/components/schemas/ProblemChangeTicket"
-                  }
+                  "$ref": "#/components/schemas/TicketPage"
                 }
               }
             }
@@ -6395,11 +6484,14 @@
           "400": {
             "$ref": "#/components/responses/BadRequest"
           },
-          "401": {
-            "$ref": "#/components/responses/Unauthorized"
-          },
           "403": {
             "$ref": "#/components/responses/Forbidden"
+          },
+          "404": {
+            "description": "对象不存在"
+          },
+          "409": {
+            "description": "工单状态或版本冲突"
           },
           "503": {
             "$ref": "#/components/responses/ServiceUnavailable"
@@ -6411,11 +6503,55 @@
       "get": {
         "operationId": "listProblemChangeTicketEligibleProblems",
         "tags": [
-          "题目"
+          "工单"
         ],
-        "summary": "GET /problem-change-tickets/eligible-problems",
+        "summary": "listProblemChangeTicketEligibleProblems",
         "x-handler": "listProblemChangeTicketEligibleProblems",
         "x-auth": "bearer",
+        "parameters": [
+          {
+            "name": "page",
+            "in": "query",
+            "schema": {
+              "type": "integer"
+            }
+          },
+          {
+            "name": "page_size",
+            "in": "query",
+            "schema": {
+              "type": "integer"
+            }
+          },
+          {
+            "name": "status",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "action",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "context",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "problem_id",
+            "in": "query",
+            "schema": {
+              "type": "integer"
+            }
+          }
+        ],
         "responses": {
           "200": {
             "description": "成功",
@@ -6424,7 +6560,7 @@
                 "schema": {
                   "type": "array",
                   "items": {
-                    "$ref": "#/components/schemas/Problem"
+                    "$ref": "#/components/schemas/TicketProblem"
                   }
                 }
               }
@@ -6433,11 +6569,14 @@
           "400": {
             "$ref": "#/components/responses/BadRequest"
           },
-          "401": {
-            "$ref": "#/components/responses/Unauthorized"
-          },
           "403": {
             "$ref": "#/components/responses/Forbidden"
+          },
+          "404": {
+            "description": "对象不存在"
+          },
+          "409": {
+            "description": "工单状态或版本冲突"
           },
           "503": {
             "$ref": "#/components/responses/ServiceUnavailable"
@@ -6449,9 +6588,9 @@
       "get": {
         "operationId": "getProblemChangeTicket",
         "tags": [
-          "题目"
+          "工单"
         ],
-        "summary": "GET /problem-change-tickets/:id",
+        "summary": "getProblemChangeTicket",
         "x-handler": "getProblemChangeTicket",
         "x-auth": "bearer",
         "parameters": [
@@ -6478,26 +6617,27 @@
           "400": {
             "$ref": "#/components/responses/BadRequest"
           },
-          "401": {
-            "$ref": "#/components/responses/Unauthorized"
-          },
           "403": {
             "$ref": "#/components/responses/Forbidden"
+          },
+          "404": {
+            "description": "对象不存在"
+          },
+          "409": {
+            "description": "工单状态或版本冲突"
           },
           "503": {
             "$ref": "#/components/responses/ServiceUnavailable"
           }
         }
-      }
-    },
-    "/problem-change-tickets/{id}/attachment": {
-      "get": {
-        "operationId": "downloadProblemChangeTicketAttachment",
+      },
+      "patch": {
+        "operationId": "updateProblemChangeTicket",
         "tags": [
-          "题目"
+          "工单"
         ],
-        "summary": "GET /problem-change-tickets/:id/attachment",
-        "x-handler": "downloadProblemChangeTicketAttachment",
+        "summary": "updateProblemChangeTicket",
+        "x-handler": "updateProblemChangeTicket",
         "x-auth": "bearer",
         "parameters": [
           {
@@ -6515,7 +6655,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/JsonObject"
+                  "$ref": "#/components/schemas/ProblemChangeTicket"
                 }
               }
             }
@@ -6523,11 +6663,146 @@
           "400": {
             "$ref": "#/components/responses/BadRequest"
           },
-          "401": {
-            "$ref": "#/components/responses/Unauthorized"
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "404": {
+            "description": "对象不存在"
+          },
+          "409": {
+            "description": "工单状态或版本冲突"
+          },
+          "503": {
+            "$ref": "#/components/responses/ServiceUnavailable"
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ProblemChangeTicketRequest"
+              }
+            },
+            "multipart/form-data": {
+              "schema": {
+                "$ref": "#/components/schemas/ProblemChangeTicketRequest"
+              }
+            }
+          }
+        }
+      },
+      "delete": {
+        "operationId": "deleteProblemChangeTicket",
+        "tags": [
+          "工单"
+        ],
+        "summary": "deleteProblemChangeTicket",
+        "x-handler": "deleteProblemChangeTicket",
+        "x-auth": "bearer",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "成功",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "deleted": {
+                      "type": "boolean"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
           },
           "403": {
             "$ref": "#/components/responses/Forbidden"
+          },
+          "404": {
+            "description": "对象不存在"
+          },
+          "409": {
+            "description": "工单状态或版本冲突"
+          },
+          "503": {
+            "$ref": "#/components/responses/ServiceUnavailable"
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/TicketDecision"
+              }
+            }
+          }
+        }
+      }
+    },
+    "/problem-change-tickets/{id}/attachment": {
+      "get": {
+        "operationId": "downloadProblemChangeTicketAttachment",
+        "tags": [
+          "工单"
+        ],
+        "summary": "downloadProblemChangeTicketAttachment",
+        "x-handler": "downloadProblemChangeTicketAttachment",
+        "x-auth": "bearer",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer"
+            }
+          },
+          {
+            "name": "preview",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "成功",
+            "content": {
+              "application/octet-stream": {
+                "schema": {
+                  "type": "string",
+                  "format": "binary"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "404": {
+            "description": "对象不存在"
+          },
+          "409": {
+            "description": "工单状态或版本冲突"
           },
           "503": {
             "$ref": "#/components/responses/ServiceUnavailable"
@@ -6539,9 +6814,9 @@
       "post": {
         "operationId": "cancelProblemChangeTicket",
         "tags": [
-          "题目"
+          "工单"
         ],
-        "summary": "POST /problem-change-tickets/:id/cancel",
+        "summary": "cancelProblemChangeTicket",
         "x-handler": "cancelProblemChangeTicket",
         "x-auth": "bearer",
         "parameters": [
@@ -6554,21 +6829,6 @@
             }
           }
         ],
-        "requestBody": {
-          "required": false,
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/JsonObject"
-              }
-            },
-            "multipart/form-data": {
-              "schema": {
-                "$ref": "#/components/schemas/JsonObject"
-              }
-            }
-          }
-        },
         "responses": {
           "200": {
             "description": "成功",
@@ -6580,27 +6840,30 @@
               }
             }
           },
-          "201": {
-            "description": "已创建",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ProblemChangeTicket"
-                }
-              }
-            }
-          },
           "400": {
             "$ref": "#/components/responses/BadRequest"
-          },
-          "401": {
-            "$ref": "#/components/responses/Unauthorized"
           },
           "403": {
             "$ref": "#/components/responses/Forbidden"
           },
+          "404": {
+            "description": "对象不存在"
+          },
+          "409": {
+            "description": "工单状态或版本冲突"
+          },
           "503": {
             "$ref": "#/components/responses/ServiceUnavailable"
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/TicketDecision"
+              }
+            }
           }
         }
       }
@@ -6609,14 +6872,11 @@
       "post": {
         "operationId": "rejectProblemChangeTicket",
         "tags": [
-          "题目"
+          "工单"
         ],
-        "summary": "POST /problem-change-tickets/:id/reject",
+        "summary": "rejectProblemChangeTicket",
         "x-handler": "rejectProblemChangeTicket",
         "x-auth": "bearer",
-        "x-roles": [
-          "admin"
-        ],
         "parameters": [
           {
             "name": "id",
@@ -6627,21 +6887,6 @@
             }
           }
         ],
-        "requestBody": {
-          "required": false,
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/JsonObject"
-              }
-            },
-            "multipart/form-data": {
-              "schema": {
-                "$ref": "#/components/schemas/JsonObject"
-              }
-            }
-          }
-        },
         "responses": {
           "200": {
             "description": "成功",
@@ -6653,27 +6898,30 @@
               }
             }
           },
-          "201": {
-            "description": "已创建",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ProblemChangeTicket"
-                }
-              }
-            }
-          },
           "400": {
             "$ref": "#/components/responses/BadRequest"
-          },
-          "401": {
-            "$ref": "#/components/responses/Unauthorized"
           },
           "403": {
             "$ref": "#/components/responses/Forbidden"
           },
+          "404": {
+            "description": "对象不存在"
+          },
+          "409": {
+            "description": "工单状态或版本冲突"
+          },
           "503": {
             "$ref": "#/components/responses/ServiceUnavailable"
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/TicketDecision"
+              }
+            }
           }
         }
       }
@@ -6682,14 +6930,11 @@
       "post": {
         "operationId": "applyProblemChangeTicket",
         "tags": [
-          "题目"
+          "工单"
         ],
-        "summary": "执行题目修改工单",
+        "summary": "applyProblemChangeTicket",
         "x-handler": "applyProblemChangeTicket",
         "x-auth": "bearer",
-        "x-roles": [
-          "admin"
-        ],
         "parameters": [
           {
             "name": "id",
@@ -6700,21 +6945,6 @@
             }
           }
         ],
-        "requestBody": {
-          "required": false,
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/JsonObject"
-              }
-            },
-            "multipart/form-data": {
-              "schema": {
-                "$ref": "#/components/schemas/JsonObject"
-              }
-            }
-          }
-        },
         "responses": {
           "200": {
             "description": "成功",
@@ -6726,29 +6956,40 @@
               }
             }
           },
-          "201": {
-            "description": "已创建",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ProblemChangeTicket"
-                }
-              }
-            }
-          },
           "400": {
             "$ref": "#/components/responses/BadRequest"
-          },
-          "401": {
-            "$ref": "#/components/responses/Unauthorized"
           },
           "403": {
             "$ref": "#/components/responses/Forbidden"
           },
+          "404": {
+            "description": "对象不存在"
+          },
+          "409": {
+            "description": "工单状态或版本冲突"
+          },
           "503": {
             "$ref": "#/components/responses/ServiceUnavailable"
           }
-        }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/TicketApply"
+              }
+            },
+            "multipart/form-data": {
+              "schema": {
+                "$ref": "#/components/schemas/TicketApply"
+              }
+            }
+          }
+        },
+        "x-roles": [
+          "admin"
+        ]
       }
     },
     "/assignments": {
@@ -9017,20 +9258,74 @@
     },
     "/team-invitations/preview": {
       "post": {
-        "operationId": "previewTeamInvitation", "tags": ["团队"],
+        "operationId": "previewTeamInvitation",
+        "tags": [
+          "团队"
+        ],
         "summary": "凭邀请码查找邀请制团队，无需先提供团队链接",
         "description": "仅返回最小预览，不自动加入。邀请码仅放在请求体。每账号每分钟20次；加入仍重新校验当前准入方式和邀请码。",
-        "x-handler": "previewTeamInvitation", "x-auth": "bearer",
-        "requestBody": { "required": true, "content": { "application/json": { "schema": {
-          "type": "object", "required": ["join_code"], "properties": { "join_code": { "type": "string", "minLength": 6, "maxLength": 24 } }
-        } } } },
+        "x-handler": "previewTeamInvitation",
+        "x-auth": "bearer",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "join_code"
+                ],
+                "properties": {
+                  "join_code": {
+                    "type": "string",
+                    "minLength": 6,
+                    "maxLength": 24
+                  }
+                }
+              }
+            }
+          }
+        },
         "responses": {
-          "200": { "description": "最小预览，响应不可缓存", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/TeamJoinPreview" } } } },
-          "400": { "$ref": "#/components/responses/BadRequest" },
-          "401": { "$ref": "#/components/responses/Unauthorized" },
-          "403": { "description": "邀请码无效、重复、失效或考试访问受限；无效码统一返回 team_invitation_invalid", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ErrorResponse" } } } },
-          "429": { "description": "查询过于频繁", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ErrorResponse" } } } },
-          "503": { "$ref": "#/components/responses/ServiceUnavailable" }
+          "200": {
+            "description": "最小预览，响应不可缓存",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TeamJoinPreview"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "description": "邀请码无效、重复、失效或考试访问受限；无效码统一返回 team_invitation_invalid",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "查询过于频繁",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "503": {
+            "$ref": "#/components/responses/ServiceUnavailable"
+          }
         }
       }
     },
@@ -9085,6 +9380,2003 @@
           },
           "503": {
             "$ref": "#/components/responses/ServiceUnavailable"
+          }
+        }
+      }
+    },
+    "/problem-change-tickets/{id}/resolve": {
+      "post": {
+        "operationId": "resolveProblemChangeTicket",
+        "tags": [
+          "工单"
+        ],
+        "summary": "resolveProblemChangeTicket",
+        "x-handler": "resolveProblemChangeTicket",
+        "x-auth": "bearer",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "成功",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemChangeTicket"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "404": {
+            "description": "对象不存在"
+          },
+          "409": {
+            "description": "工单状态或版本冲突"
+          },
+          "503": {
+            "$ref": "#/components/responses/ServiceUnavailable"
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/TicketDecision"
+              }
+            }
+          }
+        }
+      }
+    },
+    "/problem-change-tickets/{id}/attachments/{attachment_id}": {
+      "get": {
+        "operationId": "downloadTicketAttachment",
+        "tags": [
+          "工单"
+        ],
+        "summary": "downloadProblemChangeTicketAttachment",
+        "x-handler": "downloadProblemChangeTicketAttachment",
+        "x-auth": "bearer",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer"
+            }
+          },
+          {
+            "name": "attachment_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer"
+            }
+          },
+          {
+            "name": "preview",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "成功",
+            "content": {
+              "application/octet-stream": {
+                "schema": {
+                  "type": "string",
+                  "format": "binary"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "404": {
+            "description": "对象不存在"
+          },
+          "409": {
+            "description": "工单状态或版本冲突"
+          },
+          "503": {
+            "$ref": "#/components/responses/ServiceUnavailable"
+          }
+        }
+      }
+    },
+    "/problems/{id}/change-tickets": {
+      "get": {
+        "operationId": "listProblemFeedbackTickets",
+        "tags": [
+          "工单"
+        ],
+        "summary": "listScopedProblemChangeTickets",
+        "x-handler": "listScopedProblemChangeTickets",
+        "x-auth": "optional",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer"
+            }
+          },
+          {
+            "name": "page",
+            "in": "query",
+            "schema": {
+              "type": "integer"
+            }
+          },
+          {
+            "name": "page_size",
+            "in": "query",
+            "schema": {
+              "type": "integer"
+            }
+          },
+          {
+            "name": "status",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "action",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "context",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "problem_id",
+            "in": "query",
+            "schema": {
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "成功",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TicketPage"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "404": {
+            "description": "对象不存在"
+          },
+          "409": {
+            "description": "工单状态或版本冲突"
+          },
+          "503": {
+            "$ref": "#/components/responses/ServiceUnavailable"
+          }
+        }
+      },
+      "post": {
+        "operationId": "createProblemFeedbackTicket",
+        "tags": [
+          "工单"
+        ],
+        "summary": "createProblemChangeTicket",
+        "x-handler": "createProblemChangeTicket",
+        "x-auth": "bearer",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "成功",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemChangeTicket"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "404": {
+            "description": "对象不存在"
+          },
+          "409": {
+            "description": "工单状态或版本冲突"
+          },
+          "503": {
+            "$ref": "#/components/responses/ServiceUnavailable"
+          },
+          "201": {
+            "description": "已创建",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemChangeTicket"
+                }
+              }
+            }
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ProblemChangeTicketRequest"
+              }
+            },
+            "multipart/form-data": {
+              "schema": {
+                "$ref": "#/components/schemas/ProblemChangeTicketRequest"
+              }
+            }
+          }
+        }
+      }
+    },
+    "/problems/{id}/change-tickets/{ticket_id}": {
+      "get": {
+        "operationId": "getProblemFeedbackTicket",
+        "tags": [
+          "工单"
+        ],
+        "summary": "getProblemChangeTicket",
+        "x-handler": "getProblemChangeTicket",
+        "x-auth": "optional",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer"
+            }
+          },
+          {
+            "name": "ticket_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "成功",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemChangeTicket"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "404": {
+            "description": "对象不存在"
+          },
+          "409": {
+            "description": "工单状态或版本冲突"
+          },
+          "503": {
+            "$ref": "#/components/responses/ServiceUnavailable"
+          }
+        }
+      },
+      "patch": {
+        "operationId": "updateProblemFeedbackTicket",
+        "tags": [
+          "工单"
+        ],
+        "summary": "updateProblemChangeTicket",
+        "x-handler": "updateProblemChangeTicket",
+        "x-auth": "bearer",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer"
+            }
+          },
+          {
+            "name": "ticket_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "成功",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemChangeTicket"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "404": {
+            "description": "对象不存在"
+          },
+          "409": {
+            "description": "工单状态或版本冲突"
+          },
+          "503": {
+            "$ref": "#/components/responses/ServiceUnavailable"
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ProblemChangeTicketRequest"
+              }
+            },
+            "multipart/form-data": {
+              "schema": {
+                "$ref": "#/components/schemas/ProblemChangeTicketRequest"
+              }
+            }
+          }
+        }
+      },
+      "delete": {
+        "operationId": "deleteProblemFeedbackTicket",
+        "tags": [
+          "工单"
+        ],
+        "summary": "deleteProblemChangeTicket",
+        "x-handler": "deleteProblemChangeTicket",
+        "x-auth": "bearer",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer"
+            }
+          },
+          {
+            "name": "ticket_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "成功",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "deleted": {
+                      "type": "boolean"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "404": {
+            "description": "对象不存在"
+          },
+          "409": {
+            "description": "工单状态或版本冲突"
+          },
+          "503": {
+            "$ref": "#/components/responses/ServiceUnavailable"
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/TicketDecision"
+              }
+            }
+          }
+        }
+      }
+    },
+    "/problems/{id}/change-tickets/{ticket_id}/attachments/{attachment_id}": {
+      "get": {
+        "operationId": "downloadProblemFeedbackTicketAttachment",
+        "tags": [
+          "工单"
+        ],
+        "summary": "downloadProblemChangeTicketAttachment",
+        "x-handler": "downloadProblemChangeTicketAttachment",
+        "x-auth": "bearer",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer"
+            }
+          },
+          {
+            "name": "ticket_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer"
+            }
+          },
+          {
+            "name": "attachment_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer"
+            }
+          },
+          {
+            "name": "preview",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "成功",
+            "content": {
+              "application/octet-stream": {
+                "schema": {
+                  "type": "string",
+                  "format": "binary"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "404": {
+            "description": "对象不存在"
+          },
+          "409": {
+            "description": "工单状态或版本冲突"
+          },
+          "503": {
+            "$ref": "#/components/responses/ServiceUnavailable"
+          }
+        }
+      }
+    },
+    "/problems/{id}/change-tickets/{ticket_id}/cancel": {
+      "post": {
+        "operationId": "cancelProblemFeedbackTicket",
+        "tags": [
+          "工单"
+        ],
+        "summary": "cancelProblemChangeTicket",
+        "x-handler": "cancelProblemChangeTicket",
+        "x-auth": "bearer",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer"
+            }
+          },
+          {
+            "name": "ticket_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "成功",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemChangeTicket"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "404": {
+            "description": "对象不存在"
+          },
+          "409": {
+            "description": "工单状态或版本冲突"
+          },
+          "503": {
+            "$ref": "#/components/responses/ServiceUnavailable"
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/TicketDecision"
+              }
+            }
+          }
+        }
+      }
+    },
+    "/problems/{id}/change-tickets/{ticket_id}/reject": {
+      "post": {
+        "operationId": "rejectProblemFeedbackTicket",
+        "tags": [
+          "工单"
+        ],
+        "summary": "rejectProblemChangeTicket",
+        "x-handler": "rejectProblemChangeTicket",
+        "x-auth": "bearer",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer"
+            }
+          },
+          {
+            "name": "ticket_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "成功",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemChangeTicket"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "404": {
+            "description": "对象不存在"
+          },
+          "409": {
+            "description": "工单状态或版本冲突"
+          },
+          "503": {
+            "$ref": "#/components/responses/ServiceUnavailable"
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/TicketDecision"
+              }
+            }
+          }
+        }
+      }
+    },
+    "/problems/{id}/change-tickets/{ticket_id}/resolve": {
+      "post": {
+        "operationId": "resolveProblemFeedbackTicket",
+        "tags": [
+          "工单"
+        ],
+        "summary": "resolveProblemChangeTicket",
+        "x-handler": "resolveProblemChangeTicket",
+        "x-auth": "bearer",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer"
+            }
+          },
+          {
+            "name": "ticket_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "成功",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemChangeTicket"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "404": {
+            "description": "对象不存在"
+          },
+          "409": {
+            "description": "工单状态或版本冲突"
+          },
+          "503": {
+            "$ref": "#/components/responses/ServiceUnavailable"
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/TicketDecision"
+              }
+            }
+          }
+        }
+      }
+    },
+    "/exams/{id}/change-tickets": {
+      "get": {
+        "operationId": "listExamFeedbackTickets",
+        "tags": [
+          "工单"
+        ],
+        "summary": "listScopedProblemChangeTickets",
+        "x-handler": "listScopedProblemChangeTickets",
+        "x-auth": "bearer",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer"
+            }
+          },
+          {
+            "name": "page",
+            "in": "query",
+            "schema": {
+              "type": "integer"
+            }
+          },
+          {
+            "name": "page_size",
+            "in": "query",
+            "schema": {
+              "type": "integer"
+            }
+          },
+          {
+            "name": "status",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "action",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "context",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "problem_id",
+            "in": "query",
+            "schema": {
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "成功",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TicketPage"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "404": {
+            "description": "对象不存在"
+          },
+          "409": {
+            "description": "工单状态或版本冲突"
+          },
+          "503": {
+            "$ref": "#/components/responses/ServiceUnavailable"
+          }
+        }
+      },
+      "post": {
+        "operationId": "createExamFeedbackTicket",
+        "tags": [
+          "工单"
+        ],
+        "summary": "createProblemChangeTicket",
+        "x-handler": "createProblemChangeTicket",
+        "x-auth": "bearer",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "成功",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemChangeTicket"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "404": {
+            "description": "对象不存在"
+          },
+          "409": {
+            "description": "工单状态或版本冲突"
+          },
+          "503": {
+            "$ref": "#/components/responses/ServiceUnavailable"
+          },
+          "201": {
+            "description": "已创建",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemChangeTicket"
+                }
+              }
+            }
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ProblemChangeTicketRequest"
+              }
+            },
+            "multipart/form-data": {
+              "schema": {
+                "$ref": "#/components/schemas/ProblemChangeTicketRequest"
+              }
+            }
+          }
+        }
+      }
+    },
+    "/exams/{id}/change-tickets/{ticket_id}": {
+      "get": {
+        "operationId": "getExamFeedbackTicket",
+        "tags": [
+          "工单"
+        ],
+        "summary": "getProblemChangeTicket",
+        "x-handler": "getProblemChangeTicket",
+        "x-auth": "bearer",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer"
+            }
+          },
+          {
+            "name": "ticket_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "成功",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemChangeTicket"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "404": {
+            "description": "对象不存在"
+          },
+          "409": {
+            "description": "工单状态或版本冲突"
+          },
+          "503": {
+            "$ref": "#/components/responses/ServiceUnavailable"
+          }
+        }
+      },
+      "patch": {
+        "operationId": "updateExamFeedbackTicket",
+        "tags": [
+          "工单"
+        ],
+        "summary": "updateProblemChangeTicket",
+        "x-handler": "updateProblemChangeTicket",
+        "x-auth": "bearer",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer"
+            }
+          },
+          {
+            "name": "ticket_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "成功",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemChangeTicket"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "404": {
+            "description": "对象不存在"
+          },
+          "409": {
+            "description": "工单状态或版本冲突"
+          },
+          "503": {
+            "$ref": "#/components/responses/ServiceUnavailable"
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ProblemChangeTicketRequest"
+              }
+            },
+            "multipart/form-data": {
+              "schema": {
+                "$ref": "#/components/schemas/ProblemChangeTicketRequest"
+              }
+            }
+          }
+        }
+      },
+      "delete": {
+        "operationId": "deleteExamFeedbackTicket",
+        "tags": [
+          "工单"
+        ],
+        "summary": "deleteProblemChangeTicket",
+        "x-handler": "deleteProblemChangeTicket",
+        "x-auth": "bearer",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer"
+            }
+          },
+          {
+            "name": "ticket_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "成功",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "deleted": {
+                      "type": "boolean"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "404": {
+            "description": "对象不存在"
+          },
+          "409": {
+            "description": "工单状态或版本冲突"
+          },
+          "503": {
+            "$ref": "#/components/responses/ServiceUnavailable"
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/TicketDecision"
+              }
+            }
+          }
+        }
+      }
+    },
+    "/exams/{id}/change-tickets/{ticket_id}/attachments/{attachment_id}": {
+      "get": {
+        "operationId": "downloadExamFeedbackTicketAttachment",
+        "tags": [
+          "工单"
+        ],
+        "summary": "downloadProblemChangeTicketAttachment",
+        "x-handler": "downloadProblemChangeTicketAttachment",
+        "x-auth": "bearer",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer"
+            }
+          },
+          {
+            "name": "ticket_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer"
+            }
+          },
+          {
+            "name": "attachment_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer"
+            }
+          },
+          {
+            "name": "preview",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "成功",
+            "content": {
+              "application/octet-stream": {
+                "schema": {
+                  "type": "string",
+                  "format": "binary"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "404": {
+            "description": "对象不存在"
+          },
+          "409": {
+            "description": "工单状态或版本冲突"
+          },
+          "503": {
+            "$ref": "#/components/responses/ServiceUnavailable"
+          }
+        }
+      }
+    },
+    "/exams/{id}/change-tickets/{ticket_id}/cancel": {
+      "post": {
+        "operationId": "cancelExamFeedbackTicket",
+        "tags": [
+          "工单"
+        ],
+        "summary": "cancelProblemChangeTicket",
+        "x-handler": "cancelProblemChangeTicket",
+        "x-auth": "bearer",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer"
+            }
+          },
+          {
+            "name": "ticket_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "成功",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemChangeTicket"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "404": {
+            "description": "对象不存在"
+          },
+          "409": {
+            "description": "工单状态或版本冲突"
+          },
+          "503": {
+            "$ref": "#/components/responses/ServiceUnavailable"
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/TicketDecision"
+              }
+            }
+          }
+        }
+      }
+    },
+    "/exams/{id}/change-tickets/{ticket_id}/reject": {
+      "post": {
+        "operationId": "rejectExamFeedbackTicket",
+        "tags": [
+          "工单"
+        ],
+        "summary": "rejectProblemChangeTicket",
+        "x-handler": "rejectProblemChangeTicket",
+        "x-auth": "bearer",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer"
+            }
+          },
+          {
+            "name": "ticket_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "成功",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemChangeTicket"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "404": {
+            "description": "对象不存在"
+          },
+          "409": {
+            "description": "工单状态或版本冲突"
+          },
+          "503": {
+            "$ref": "#/components/responses/ServiceUnavailable"
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/TicketDecision"
+              }
+            }
+          }
+        }
+      }
+    },
+    "/exams/{id}/change-tickets/{ticket_id}/resolve": {
+      "post": {
+        "operationId": "resolveExamFeedbackTicket",
+        "tags": [
+          "工单"
+        ],
+        "summary": "resolveProblemChangeTicket",
+        "x-handler": "resolveProblemChangeTicket",
+        "x-auth": "bearer",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer"
+            }
+          },
+          {
+            "name": "ticket_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "成功",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemChangeTicket"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "404": {
+            "description": "对象不存在"
+          },
+          "409": {
+            "description": "工单状态或版本冲突"
+          },
+          "503": {
+            "$ref": "#/components/responses/ServiceUnavailable"
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/TicketDecision"
+              }
+            }
+          }
+        }
+      }
+    },
+    "/contests/{contest_id}/change-tickets": {
+      "get": {
+        "operationId": "listContestFeedbackTickets",
+        "tags": [
+          "工单"
+        ],
+        "summary": "listScopedProblemChangeTickets",
+        "x-handler": "listScopedProblemChangeTickets",
+        "x-auth": "bearer",
+        "parameters": [
+          {
+            "name": "contest_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer"
+            }
+          },
+          {
+            "name": "page",
+            "in": "query",
+            "schema": {
+              "type": "integer"
+            }
+          },
+          {
+            "name": "page_size",
+            "in": "query",
+            "schema": {
+              "type": "integer"
+            }
+          },
+          {
+            "name": "status",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "action",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "context",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "problem_id",
+            "in": "query",
+            "schema": {
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "成功",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TicketPage"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "404": {
+            "description": "对象不存在"
+          },
+          "409": {
+            "description": "工单状态或版本冲突"
+          },
+          "503": {
+            "$ref": "#/components/responses/ServiceUnavailable"
+          }
+        }
+      },
+      "post": {
+        "operationId": "createContestFeedbackTicket",
+        "tags": [
+          "工单"
+        ],
+        "summary": "createProblemChangeTicket",
+        "x-handler": "createProblemChangeTicket",
+        "x-auth": "bearer",
+        "parameters": [
+          {
+            "name": "contest_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "成功",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemChangeTicket"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "404": {
+            "description": "对象不存在"
+          },
+          "409": {
+            "description": "工单状态或版本冲突"
+          },
+          "503": {
+            "$ref": "#/components/responses/ServiceUnavailable"
+          },
+          "201": {
+            "description": "已创建",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemChangeTicket"
+                }
+              }
+            }
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ProblemChangeTicketRequest"
+              }
+            },
+            "multipart/form-data": {
+              "schema": {
+                "$ref": "#/components/schemas/ProblemChangeTicketRequest"
+              }
+            }
+          }
+        }
+      }
+    },
+    "/contests/{contest_id}/change-tickets/{ticket_id}": {
+      "get": {
+        "operationId": "getContestFeedbackTicket",
+        "tags": [
+          "工单"
+        ],
+        "summary": "getProblemChangeTicket",
+        "x-handler": "getProblemChangeTicket",
+        "x-auth": "bearer",
+        "parameters": [
+          {
+            "name": "contest_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer"
+            }
+          },
+          {
+            "name": "ticket_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "成功",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemChangeTicket"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "404": {
+            "description": "对象不存在"
+          },
+          "409": {
+            "description": "工单状态或版本冲突"
+          },
+          "503": {
+            "$ref": "#/components/responses/ServiceUnavailable"
+          }
+        }
+      },
+      "patch": {
+        "operationId": "updateContestFeedbackTicket",
+        "tags": [
+          "工单"
+        ],
+        "summary": "updateProblemChangeTicket",
+        "x-handler": "updateProblemChangeTicket",
+        "x-auth": "bearer",
+        "parameters": [
+          {
+            "name": "contest_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer"
+            }
+          },
+          {
+            "name": "ticket_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "成功",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemChangeTicket"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "404": {
+            "description": "对象不存在"
+          },
+          "409": {
+            "description": "工单状态或版本冲突"
+          },
+          "503": {
+            "$ref": "#/components/responses/ServiceUnavailable"
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ProblemChangeTicketRequest"
+              }
+            },
+            "multipart/form-data": {
+              "schema": {
+                "$ref": "#/components/schemas/ProblemChangeTicketRequest"
+              }
+            }
+          }
+        }
+      },
+      "delete": {
+        "operationId": "deleteContestFeedbackTicket",
+        "tags": [
+          "工单"
+        ],
+        "summary": "deleteProblemChangeTicket",
+        "x-handler": "deleteProblemChangeTicket",
+        "x-auth": "bearer",
+        "parameters": [
+          {
+            "name": "contest_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer"
+            }
+          },
+          {
+            "name": "ticket_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "成功",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "deleted": {
+                      "type": "boolean"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "404": {
+            "description": "对象不存在"
+          },
+          "409": {
+            "description": "工单状态或版本冲突"
+          },
+          "503": {
+            "$ref": "#/components/responses/ServiceUnavailable"
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/TicketDecision"
+              }
+            }
+          }
+        }
+      }
+    },
+    "/contests/{contest_id}/change-tickets/{ticket_id}/attachments/{attachment_id}": {
+      "get": {
+        "operationId": "downloadContestFeedbackTicketAttachment",
+        "tags": [
+          "工单"
+        ],
+        "summary": "downloadProblemChangeTicketAttachment",
+        "x-handler": "downloadProblemChangeTicketAttachment",
+        "x-auth": "bearer",
+        "parameters": [
+          {
+            "name": "contest_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer"
+            }
+          },
+          {
+            "name": "ticket_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer"
+            }
+          },
+          {
+            "name": "attachment_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer"
+            }
+          },
+          {
+            "name": "preview",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "成功",
+            "content": {
+              "application/octet-stream": {
+                "schema": {
+                  "type": "string",
+                  "format": "binary"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "404": {
+            "description": "对象不存在"
+          },
+          "409": {
+            "description": "工单状态或版本冲突"
+          },
+          "503": {
+            "$ref": "#/components/responses/ServiceUnavailable"
+          }
+        }
+      }
+    },
+    "/contests/{contest_id}/change-tickets/{ticket_id}/cancel": {
+      "post": {
+        "operationId": "cancelContestFeedbackTicket",
+        "tags": [
+          "工单"
+        ],
+        "summary": "cancelProblemChangeTicket",
+        "x-handler": "cancelProblemChangeTicket",
+        "x-auth": "bearer",
+        "parameters": [
+          {
+            "name": "contest_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer"
+            }
+          },
+          {
+            "name": "ticket_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "成功",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemChangeTicket"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "404": {
+            "description": "对象不存在"
+          },
+          "409": {
+            "description": "工单状态或版本冲突"
+          },
+          "503": {
+            "$ref": "#/components/responses/ServiceUnavailable"
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/TicketDecision"
+              }
+            }
+          }
+        }
+      }
+    },
+    "/contests/{contest_id}/change-tickets/{ticket_id}/reject": {
+      "post": {
+        "operationId": "rejectContestFeedbackTicket",
+        "tags": [
+          "工单"
+        ],
+        "summary": "rejectProblemChangeTicket",
+        "x-handler": "rejectProblemChangeTicket",
+        "x-auth": "bearer",
+        "parameters": [
+          {
+            "name": "contest_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer"
+            }
+          },
+          {
+            "name": "ticket_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "成功",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemChangeTicket"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "404": {
+            "description": "对象不存在"
+          },
+          "409": {
+            "description": "工单状态或版本冲突"
+          },
+          "503": {
+            "$ref": "#/components/responses/ServiceUnavailable"
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/TicketDecision"
+              }
+            }
+          }
+        }
+      }
+    },
+    "/contests/{contest_id}/change-tickets/{ticket_id}/resolve": {
+      "post": {
+        "operationId": "resolveContestFeedbackTicket",
+        "tags": [
+          "工单"
+        ],
+        "summary": "resolveProblemChangeTicket",
+        "x-handler": "resolveProblemChangeTicket",
+        "x-auth": "bearer",
+        "parameters": [
+          {
+            "name": "contest_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer"
+            }
+          },
+          {
+            "name": "ticket_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "成功",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemChangeTicket"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "404": {
+            "description": "对象不存在"
+          },
+          "409": {
+            "description": "工单状态或版本冲突"
+          },
+          "503": {
+            "$ref": "#/components/responses/ServiceUnavailable"
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/TicketDecision"
+              }
+            }
           }
         }
       }
@@ -9547,8 +11839,14 @@
             "type": "boolean",
             "description": "仅独立练习使用；考试、作业和团队提交不因此公开源代码"
           },
-          "team_contest_id": { "type": "integer", "nullable": true },
-          "problem_set_id": { "type": "integer", "nullable": true },
+          "team_contest_id": {
+            "type": "integer",
+            "nullable": true
+          },
+          "problem_set_id": {
+            "type": "integer",
+            "nullable": true
+          },
           "language": {
             "type": "string",
             "enum": [
@@ -9643,8 +11941,7 @@
         "type": "object",
         "required": [
           "action",
-          "description",
-          "attachment"
+          "description"
         ],
         "properties": {
           "action": {
@@ -9652,8 +11949,14 @@
             "enum": [
               "create",
               "replace",
-              "archive"
+              "archive",
+              "suggest"
             ]
+          },
+          "description": {
+            "type": "string",
+            "minLength": 8,
+            "maxLength": 10000
           },
           "problem_id": {
             "type": "integer"
@@ -9669,19 +11972,33 @@
           "team_problem_set_id": {
             "type": "integer"
           },
-          "description": {
+          "draft_title": {
             "type": "string",
-            "minLength": 8
+            "maxLength": 200
+          },
+          "draft_statement": {
+            "type": "string"
+          },
+          "revision": {
+            "type": "integer"
+          },
+          "retain_attachment_ids": {
+            "type": "array",
+            "items": {
+              "type": "integer"
+            }
+          },
+          "attachments": {
+            "type": "array",
+            "maxItems": 20,
+            "items": {
+              "type": "string",
+              "format": "binary"
+            }
           },
           "attachment": {
             "type": "string",
             "format": "binary"
-          },
-          "operation_mode": {
-            "type": "string",
-            "enum": [
-              "overwrite"
-            ]
           }
         }
       },
@@ -9690,10 +12007,21 @@
         "required": [
           "id",
           "requester_id",
+          "requester",
           "action",
           "status",
-          "target_scope",
-          "description"
+          "description",
+          "revision",
+          "created_at",
+          "updated_at",
+          "attachment_count",
+          "can_edit",
+          "can_manage",
+          "can_apply",
+          "can_resolve",
+          "is_public",
+          "attachments_private",
+          "target_scope"
         ],
         "properties": {
           "id": {
@@ -9703,20 +12031,26 @@
             "type": "integer"
           },
           "requester": {
-            "$ref": "#/components/schemas/User"
-          },
-          "problem_id": {
-            "type": "integer"
+            "type": "object",
+            "required": [
+              "name"
+            ],
+            "properties": {
+              "name": {
+                "type": "string"
+              }
+            }
           },
           "problem": {
-            "$ref": "#/components/schemas/Problem"
+            "$ref": "#/components/schemas/TicketProblem"
           },
           "action": {
             "type": "string",
             "enum": [
               "create",
               "replace",
-              "archive"
+              "archive",
+              "suggest"
             ]
           },
           "status": {
@@ -9740,19 +12074,110 @@
           "description": {
             "type": "string"
           },
-          "attachment_name": {
-            "type": "string"
-          },
           "resolution_note": {
             "type": "string"
           },
+          "draft_title": {
+            "type": "string"
+          },
+          "draft_statement": {
+            "type": "string"
+          },
+          "revision": {
+            "type": "integer"
+          },
+          "attachments": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/TicketAttachment"
+            }
+          },
+          "attachment_name": {
+            "type": "string"
+          },
+          "attachment_count": {
+            "type": "integer"
+          },
+          "impact_summary": {
+            "type": "object",
+            "properties": {
+              "future_exams": {
+                "type": "integer"
+              },
+              "pinned_exams": {
+                "type": "integer"
+              },
+              "future_contests": {
+                "type": "integer"
+              },
+              "pinned_contests": {
+                "type": "integer"
+              },
+              "historical_submissions": {
+                "type": "integer"
+              }
+            }
+          },
+          "problem_id": {
+            "type": "integer",
+            "nullable": true
+          },
+          "exam_id": {
+            "type": "integer",
+            "nullable": true
+          },
+          "contest_id": {
+            "type": "integer",
+            "nullable": true
+          },
+          "problem_version_id": {
+            "type": "integer",
+            "nullable": true
+          },
+          "current_version_id": {
+            "type": "integer",
+            "nullable": true
+          },
+          "applied_version_id": {
+            "type": "integer",
+            "nullable": true
+          },
+          "team_problem_set_id": {
+            "type": "integer",
+            "nullable": true
+          },
+          "can_edit": {
+            "type": "boolean"
+          },
+          "can_manage": {
+            "type": "boolean"
+          },
+          "can_apply": {
+            "type": "boolean"
+          },
+          "can_resolve": {
+            "type": "boolean"
+          },
+          "is_public": {
+            "type": "boolean"
+          },
+          "attachments_private": {
+            "type": "boolean"
+          },
           "created_at": {
             "type": "string",
-            "format": "date-time"
+            "format": "date-time",
+            "nullable": false
           },
           "updated_at": {
             "type": "string",
-            "format": "date-time"
+            "format": "date-time",
+            "nullable": false
+          },
+          "processed_at": {
+            "type": "string",
+            "format": "date-time",
+            "nullable": true
           }
         }
       },
@@ -10436,6 +12861,129 @@
           },
           "application_status": {
             "type": "string"
+          }
+        }
+      },
+      "TicketAttachment": {
+        "type": "object",
+        "required": [
+          "id",
+          "name",
+          "content_type",
+          "size"
+        ],
+        "properties": {
+          "id": {
+            "type": "integer"
+          },
+          "name": {
+            "type": "string"
+          },
+          "content_type": {
+            "type": "string"
+          },
+          "size": {
+            "type": "integer"
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time"
+          }
+        }
+      },
+      "TicketProblem": {
+        "type": "object",
+        "required": [
+          "id",
+          "title"
+        ],
+        "properties": {
+          "id": {
+            "type": "integer"
+          },
+          "title": {
+            "type": "string"
+          },
+          "display_code": {
+            "type": "string"
+          },
+          "difficulty": {
+            "type": "string"
+          }
+        }
+      },
+      "TicketDecision": {
+        "type": "object",
+        "required": [
+          "revision"
+        ],
+        "properties": {
+          "revision": {
+            "type": "integer"
+          },
+          "note": {
+            "type": "string",
+            "maxLength": 10000
+          }
+        }
+      },
+      "TicketApply": {
+        "type": "object",
+        "required": [
+          "revision"
+        ],
+        "properties": {
+          "revision": {
+            "type": "integer"
+          },
+          "expected_version_id": {
+            "type": "integer"
+          },
+          "package": {
+            "type": "string",
+            "format": "binary"
+          },
+          "operation_mode": {
+            "type": "string",
+            "enum": [
+              "create",
+              "overwrite"
+            ]
+          },
+          "resolution_note": {
+            "type": "string"
+          },
+          "difficulty": {
+            "type": "string"
+          },
+          "tags": {
+            "type": "string"
+          }
+        }
+      },
+      "TicketPage": {
+        "type": "object",
+        "required": [
+          "items",
+          "total",
+          "page",
+          "page_size"
+        ],
+        "properties": {
+          "items": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/ProblemChangeTicket"
+            }
+          },
+          "total": {
+            "type": "integer"
+          },
+          "page": {
+            "type": "integer"
+          },
+          "page_size": {
+            "type": "integer"
           }
         }
       }

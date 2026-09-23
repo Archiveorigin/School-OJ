@@ -74,7 +74,7 @@ markdown.renderer.rules.image = (tokens, idx, options, env, self) => {
   const original = token.attrs?.map((attr) => [...attr] as [string, string]) || null
   const resolved = (env as MarkdownEnvironment | undefined)?.assetUrls?.[src]
   if (resolved) token.attrSet('src', resolved)
-  else if (src.startsWith('assets/')) token.attrSet('src', '')
+  else if (src.startsWith('assets/') || src.startsWith('attachments/')) token.attrSet('src', '')
   token.attrSet('loading', 'lazy')
   token.attrSet('decoding', 'async')
   const html = self.renderToken(tokens, idx, options)

@@ -19,7 +19,6 @@ export const navGroups: NavGroup[] = [
     items: [
       { path: '/', label: '概览' },
       { path: '/problems', label: '题库' },
-      { path: '/problem-changes', label: '工单修改', authorOnly: true, requiresAuth: true },
       { path: '/teams', label: '团队', requiresAuth: true },
       { path: '/my/courses', label: '课程', requiresAuth: true }
     ]

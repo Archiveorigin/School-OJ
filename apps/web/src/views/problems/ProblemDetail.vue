@@ -22,17 +22,17 @@
           </div>
           <div class="heading-actions">
             <div class="toolbar submission-actions">
+              <el-button @click="ticketVisible = true">工单修改</el-button>
               <el-button v-if="auth.isAuthed" @click="openSubmissionRecords">提交记录</el-button>
               <el-button type="primary" @click="openSubmitDialog">提交代码</el-button>
             </div>
             <div v-if="canManage" class="toolbar manage-actions">
               <ProblemTestDownloads :problem-id="problem.id" :problem-code="problem.display_code" />
-              <el-button type="primary" plain @click="openTicket('replace')">题目修改</el-button>
-              <!-- <el-button type="danger" plain @click="openTicket('archive')">申请删除</el-button> -->
             </div>
           </div>
         </header>
 
+        <TicketDialog v-model="ticketVisible" :context="{ kind: 'problem', id: problem.id }" />
         <main class="problem-content">
           <div class="problem-detail-grid">
             <section class="panel statement-section">
@@ -85,6 +85,8 @@
 </template>
 
 <script setup lang="ts">
+import TicketDialog from '../../components/tickets/TicketDialog.vue'
+
 import { submissionLanguage } from '../../features/submissions/presentation'
 import { ElMessage } from 'element-plus'
 import { computed, onBeforeUnmount, ref, watch } from 'vue'
@@ -227,10 +229,7 @@ async function loadCodeFile(event: Event) {
   input.value = ''
 }
 
-function openTicket(action: 'replace' | 'archive') {
-  if (!problem.value) return
-  void router.push({ path: '/problem-changes/new', query: { action, problem_id: String(problem.value.id) } })
-}
+const ticketVisible = ref(false)
 
 watch(() => route.params.id, loadProblem, { immediate: true })
 onBeforeUnmount(() => submissionEvents?.close())

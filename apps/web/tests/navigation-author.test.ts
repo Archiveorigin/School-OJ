@@ -12,8 +12,8 @@ describe('author navigation', () => {
     expect(visiblePaths(false)).not.toContain('/problem-changes')
   })
 
-  it('shows authoring when the independent permission is granted', () => {
-    expect(visiblePaths(true)).toContain('/problem-changes')
+  it('keeps tickets out of global navigation even for authors', () => {
+    expect(visiblePaths(true)).not.toContain('/problem-changes')
   })
 
   it('shows teams to every authenticated role', () => {

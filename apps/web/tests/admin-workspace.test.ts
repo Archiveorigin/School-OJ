@@ -98,7 +98,7 @@ describe('admin workspace', () => {
           ]
         } as any
       if (url === '/author-applications') return { data: [{ id: 21, status: 'pending' }] } as any
-      if (url === '/problem-change-tickets') return { data: [{ id: 22, status: 'pending' }] } as any
+      if (url === '/problem-change-tickets') return { data: { items: [{ id: 22, status: 'pending' }], total: 1 } } as any
       if (url === '/audit-logs')
         return {
           data: [

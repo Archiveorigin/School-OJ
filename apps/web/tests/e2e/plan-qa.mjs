@@ -161,7 +161,7 @@ const ticket = {
   status: 'pending',
   target_scope: 'public',
   description: '修正道路重边条件并补充边界测试点说明。',
-  attachment_name: 'reference-notes.pdf',
+  attachment_count: 0, attachments: [], revision: 1, can_manage: true, can_apply: true, current_version_id: 1,
   resolution_note: '',
   created_at: '2026-08-31T08:15:00Z',
   updated_at: '2026-08-31T08:15:00Z',
@@ -377,7 +377,7 @@ async function mockAPI(page) {
       await route.continue()
       return
     }
-    const pathname = url.pathname.replace(/^\/api/, '')
+    const pathname = url.pathname.replace(/^\/api(?:\/v1)?/, '')
     let payload = null
     if (pathname === '/me') payload = admin
     else if (pathname === '/exams') payload = qaExams
@@ -415,7 +415,7 @@ async function mockAPI(page) {
       }
     else if (pathname === '/problem-change-tickets/eligible-problems') payload = problems
     else if (pathname === '/problem-change-tickets/mine' || pathname === '/problem-change-tickets')
-      payload = [ticket]
+      payload = { items: [ticket], total: 1, page: 1, page_size: 20 }
     else if (pathname === '/problem-change-tickets/42') payload = ticket
     else if (/^\/problem-change-tickets\/42\/(cancel|reject|apply)$/.test(pathname))
       payload = { ...ticket, status: 'completed' }
@@ -511,13 +511,8 @@ try {
     url: '/problem-changes/new?action=replace&problem_id=2&target_scope=public',
     viewport: { width: 1440, height: 1100 },
     check: async (page) => {
-      await page.getByText('覆盖当前题目并生成新版本', { exact: true }).click()
-      if (!(await page.getByRole('checkbox', { name: '覆盖当前题目并生成新版本' }).isChecked()))
-        throw new Error('overwrite confirmation was not selected')
-      if (!(await page.getByText('附件必须包含修改后的正确内容').isVisible()))
-        throw new Error('required attachment guidance missing')
-      if (!(await page.getByText('覆盖当前题目并生成新版本').isVisible()))
-        throw new Error('overwrite mode missing')
+      await page.getByText('附件（可选）', { exact: true }).waitFor()
+      if (await page.getByRole('checkbox').count()) throw new Error('applicant must not confirm overwrite')
     }
   })
   await capture(browser, {
@@ -526,8 +521,7 @@ try {
     viewport: { width: 1440, height: 1100 },
     check: async (page) => {
       await page.getByRole('button', { name: '查看' }).click()
-      if (!(await page.getByRole('heading', { name: '影响范围' }).isVisible()))
-        throw new Error('ticket impact missing')
+      await page.getByRole('heading', { name: '执行影响' }).waitFor()
     }
   })
   await capture(browser, {

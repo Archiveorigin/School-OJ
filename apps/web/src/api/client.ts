@@ -92,35 +92,11 @@ export interface TeamContest {
   updated_at?: string
 }
 
-export type ProblemChangeAction = 'create' | 'replace' | 'archive'
-export type ProblemChangeStatus = 'pending' | 'processing' | 'completed' | 'rejected' | 'cancelled'
-
-export interface ProblemChangeTicket {
-  id: number
-  requester_id: number
-  requester?: User
-  problem_id?: number
-  problem?: Problem
-  action: ProblemChangeAction
-  status: ProblemChangeStatus
-  target_scope: 'public' | 'prepared' | 'team_problem_set'
-  team_problem_set_id?: number
-  description: string
-  attachment_name?: string
-  resolution_note?: string
-  applied_version_id?: number
-  processed_by?: number
-  processed_at?: string
-  created_at: string
-  updated_at: string
-  impact_summary?: {
-    future_exams: number
-    pinned_exams: number
-    future_contests: number
-    pinned_contests: number
-    historical_submissions: number
-  }
-}
+export type ProblemChangeAction = OpenApiComponents['schemas']['ProblemChangeTicket']['action']
+export type ProblemChangeStatus = OpenApiComponents['schemas']['ProblemChangeTicket']['status']
+export type ProblemChangeTicket = OpenApiComponents['schemas']['ProblemChangeTicket']
+export type TicketAttachment = OpenApiComponents['schemas']['TicketAttachment']
+export type TicketPage = OpenApiComponents['schemas']['TicketPage']
 
 export interface ProblemCatalogItem extends Problem {
   pass_rate: number

@@ -4,6 +4,7 @@
       <EventWorkspaceHeader :title="detail.exam.title" :rule="detail.exam.scoring_rule" :status="detail.closed ? '已结束' : detail.not_started ? '未开始' : '进行中'"
         kind="考试" :base="base" :show-ranking="showRanking" :back-label="canManage ? '返回考试管理' : ''" @back="leavePage">
         <template #actions>
+          <el-button @click="openEventTicket">考试反馈</el-button>
           <el-button v-if="!canManage" type="danger" :loading="finishing" @click="finishExam">交卷</el-button>
           <el-button v-else @click="router.push(`/admin/exams/${examID}/activity`)">行为日志</el-button>
         </template>
@@ -23,7 +24,7 @@
         <EventProblemPanel v-else-if="section === 'problem' && selected" :selected="selected" :items="items" :records="problemRecords" :base="base"
           :asset-base="`/exams/${examID}/problems/${selected.problem_id}/assets`" @refresh="loadHistory" @view-submission="viewSubmission">
           <template #actions>
-            <el-button v-if="canManage" @click="openProblemTicket">工单修改</el-button>
+            <el-button @click="openProblemTicket">工单修改</el-button>
             <el-button type="primary" :disabled="!detail.can_submit" @click="openSubmit">提交代码</el-button>
           </template>
         </EventProblemPanel>
@@ -33,6 +34,7 @@
       <el-dialog v-model="submitVisible" :title="`提交 ${selected?.label || ''}.${selected?.problem.title || ''}`" width="min(940px, calc(100vw - 24px))" destroy-on-close>
         <SubmissionComposer v-model:language="language" v-model:source="source" :draft-context="draftContext" :status="liveStatus" :submitting="submitting" :disabled="!detail.can_submit" @submit="submitSolution" />
       </el-dialog>
+      <TicketDialog v-model="ticketVisible" :context="{ kind: 'exam', id: examID, problemID: ticketProblemID }" />
       <SubmissionDetailDialog v-model="submissionVisible" :detail="submissionDetail" />
     </div>
     <el-result v-else-if="error" title="无法加载考试" :sub-title="error"><template #extra><el-button @click="initialize">重试</el-button><el-button v-if="!examLock.locked" @click="leavePage">返回课程</el-button></template></el-result>
@@ -45,6 +47,8 @@
 </template>
 
 <script setup lang="ts">
+import TicketDialog from '../components/tickets/TicketDialog.vue'
+
 import { submissionLanguage } from '../features/submissions/presentation'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
@@ -179,9 +183,9 @@ async function viewSubmission(id: number) {
   try { submissionDetail.value = (await generatedApi.getSubmission({ path: { id } })).data; submissionVisible.value = true }
   catch (err: any) { ElMessage.error(err.response?.data?.error || '提交加载失败') }
 }
-function openProblemTicket() {
-  if (selected.value) void router.push({ path: '/problem-changes/new', query: { action: 'replace', problem_id: selected.value.problem_id, target_scope: 'public' } })
-}
+const ticketVisible = ref(false), ticketProblemID = ref<number | undefined>()
+function openEventTicket() { ticketProblemID.value = undefined; ticketVisible.value = true }
+function openProblemTicket() { if (selected.value) { ticketProblemID.value = selected.value.problem_id; ticketVisible.value = true } }
 async function finishExam() {
   try { await ElMessageBox.confirm('交卷后不能再次进入本场考试，也不能继续提交。确认交卷？', '交卷', { type: 'warning', confirmButtonText: '确认交卷', cancelButtonText: '取消' }) }
   catch { return }

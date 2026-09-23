@@ -146,28 +146,59 @@ export interface components {
     "is_public"?: boolean
   }
     "ProblemChangeTicketRequest": {
-    "action": "create" | "replace" | "archive"
+    "action": "create" | "replace" | "archive" | "suggest"
+    "description": string
     "problem_id"?: number
     "target_scope"?: "public" | "prepared" | "team_problem_set"
     "team_problem_set_id"?: number
-    "description": string
-    "attachment": string
-    "operation_mode"?: "overwrite"
+    "draft_title"?: string
+    "draft_statement"?: string
+    "revision"?: number
+    "retain_attachment_ids"?: Array<number>
+    "attachments"?: Array<string>
+    "attachment"?: string
   }
     "ProblemChangeTicket": {
     "id": number
     "requester_id": number
-    "requester"?: components['schemas']["User"]
-    "problem_id"?: number
-    "problem"?: components['schemas']["Problem"]
-    "action": "create" | "replace" | "archive"
+    "requester": {
+    "name": string
+  }
+    "problem"?: components['schemas']["TicketProblem"]
+    "action": "create" | "replace" | "archive" | "suggest"
     "status": "pending" | "processing" | "completed" | "rejected" | "cancelled"
     "target_scope": "public" | "prepared" | "team_problem_set"
     "description": string
-    "attachment_name"?: string
     "resolution_note"?: string
-    "created_at"?: string
-    "updated_at"?: string
+    "draft_title"?: string
+    "draft_statement"?: string
+    "revision": number
+    "attachments"?: Array<components['schemas']["TicketAttachment"]>
+    "attachment_name"?: string
+    "attachment_count": number
+    "impact_summary"?: {
+    "future_exams"?: number
+    "pinned_exams"?: number
+    "future_contests"?: number
+    "pinned_contests"?: number
+    "historical_submissions"?: number
+  }
+    "problem_id"?: (number) | null
+    "exam_id"?: (number) | null
+    "contest_id"?: (number) | null
+    "problem_version_id"?: (number) | null
+    "current_version_id"?: (number) | null
+    "applied_version_id"?: (number) | null
+    "team_problem_set_id"?: (number) | null
+    "can_edit": boolean
+    "can_manage": boolean
+    "can_apply": boolean
+    "can_resolve": boolean
+    "is_public": boolean
+    "attachments_private": boolean
+    "created_at": string
+    "updated_at": string
+    "processed_at"?: (string) | null
   }
     "Team": {
     "id": number
@@ -329,6 +360,38 @@ export interface components {
     "joined": boolean
     "application_status"?: string
   }
+    "TicketAttachment": {
+    "id": number
+    "name": string
+    "content_type": string
+    "size": number
+    "created_at"?: string
+  }
+    "TicketProblem": {
+    "id": number
+    "title": string
+    "display_code"?: string
+    "difficulty"?: string
+  }
+    "TicketDecision": {
+    "revision": number
+    "note"?: string
+  }
+    "TicketApply": {
+    "revision": number
+    "expected_version_id"?: number
+    "package"?: string
+    "operation_mode"?: "create" | "overwrite"
+    "resolution_note"?: string
+    "difficulty"?: string
+    "tags"?: string
+  }
+    "TicketPage": {
+    "items": Array<components['schemas']["ProblemChangeTicket"]>
+    "total": number
+    "page": number
+    "page_size": number
+  }
   }
 }
 
@@ -449,6 +512,8 @@ export const apiOperations = {
   "listMyProblemChangeTickets": { method: "GET", path: "/problem-change-tickets/mine", segments: [] },
   "listProblemChangeTicketEligibleProblems": { method: "GET", path: "/problem-change-tickets/eligible-problems", segments: [] },
   "getProblemChangeTicket": { method: "GET", path: "/problem-change-tickets/{id}", segments: [] },
+  "updateProblemChangeTicket": { method: "PATCH", path: "/problem-change-tickets/{id}", segments: [] },
+  "deleteProblemChangeTicket": { method: "DELETE", path: "/problem-change-tickets/{id}", segments: [] },
   "downloadProblemChangeTicketAttachment": { method: "GET", path: "/problem-change-tickets/{id}/attachment", segments: [] },
   "cancelProblemChangeTicket": { method: "POST", path: "/problem-change-tickets/{id}/cancel", segments: [] },
   "rejectProblemChangeTicket": { method: "POST", path: "/problem-change-tickets/{id}/reject", segments: [] },
@@ -497,6 +562,35 @@ export const apiOperations = {
   "getExamProblemAsset": { method: "GET", path: "/exams/{id}/problems/{problem_id}/assets/{asset_path}", segments: ["asset_path"] },
   "previewTeamInvitation": { method: "POST", path: "/team-invitations/preview", segments: [] },
   "previewTeamJoin": { method: "GET", path: "/teams/{id}/join-preview", segments: [] },
+  "resolveProblemChangeTicket": { method: "POST", path: "/problem-change-tickets/{id}/resolve", segments: [] },
+  "downloadTicketAttachment": { method: "GET", path: "/problem-change-tickets/{id}/attachments/{attachment_id}", segments: [] },
+  "listProblemFeedbackTickets": { method: "GET", path: "/problems/{id}/change-tickets", segments: [] },
+  "createProblemFeedbackTicket": { method: "POST", path: "/problems/{id}/change-tickets", segments: [] },
+  "getProblemFeedbackTicket": { method: "GET", path: "/problems/{id}/change-tickets/{ticket_id}", segments: [] },
+  "updateProblemFeedbackTicket": { method: "PATCH", path: "/problems/{id}/change-tickets/{ticket_id}", segments: [] },
+  "deleteProblemFeedbackTicket": { method: "DELETE", path: "/problems/{id}/change-tickets/{ticket_id}", segments: [] },
+  "downloadProblemFeedbackTicketAttachment": { method: "GET", path: "/problems/{id}/change-tickets/{ticket_id}/attachments/{attachment_id}", segments: [] },
+  "cancelProblemFeedbackTicket": { method: "POST", path: "/problems/{id}/change-tickets/{ticket_id}/cancel", segments: [] },
+  "rejectProblemFeedbackTicket": { method: "POST", path: "/problems/{id}/change-tickets/{ticket_id}/reject", segments: [] },
+  "resolveProblemFeedbackTicket": { method: "POST", path: "/problems/{id}/change-tickets/{ticket_id}/resolve", segments: [] },
+  "listExamFeedbackTickets": { method: "GET", path: "/exams/{id}/change-tickets", segments: [] },
+  "createExamFeedbackTicket": { method: "POST", path: "/exams/{id}/change-tickets", segments: [] },
+  "getExamFeedbackTicket": { method: "GET", path: "/exams/{id}/change-tickets/{ticket_id}", segments: [] },
+  "updateExamFeedbackTicket": { method: "PATCH", path: "/exams/{id}/change-tickets/{ticket_id}", segments: [] },
+  "deleteExamFeedbackTicket": { method: "DELETE", path: "/exams/{id}/change-tickets/{ticket_id}", segments: [] },
+  "downloadExamFeedbackTicketAttachment": { method: "GET", path: "/exams/{id}/change-tickets/{ticket_id}/attachments/{attachment_id}", segments: [] },
+  "cancelExamFeedbackTicket": { method: "POST", path: "/exams/{id}/change-tickets/{ticket_id}/cancel", segments: [] },
+  "rejectExamFeedbackTicket": { method: "POST", path: "/exams/{id}/change-tickets/{ticket_id}/reject", segments: [] },
+  "resolveExamFeedbackTicket": { method: "POST", path: "/exams/{id}/change-tickets/{ticket_id}/resolve", segments: [] },
+  "listContestFeedbackTickets": { method: "GET", path: "/contests/{contest_id}/change-tickets", segments: [] },
+  "createContestFeedbackTicket": { method: "POST", path: "/contests/{contest_id}/change-tickets", segments: [] },
+  "getContestFeedbackTicket": { method: "GET", path: "/contests/{contest_id}/change-tickets/{ticket_id}", segments: [] },
+  "updateContestFeedbackTicket": { method: "PATCH", path: "/contests/{contest_id}/change-tickets/{ticket_id}", segments: [] },
+  "deleteContestFeedbackTicket": { method: "DELETE", path: "/contests/{contest_id}/change-tickets/{ticket_id}", segments: [] },
+  "downloadContestFeedbackTicketAttachment": { method: "GET", path: "/contests/{contest_id}/change-tickets/{ticket_id}/attachments/{attachment_id}", segments: [] },
+  "cancelContestFeedbackTicket": { method: "POST", path: "/contests/{contest_id}/change-tickets/{ticket_id}/cancel", segments: [] },
+  "rejectContestFeedbackTicket": { method: "POST", path: "/contests/{contest_id}/change-tickets/{ticket_id}/reject", segments: [] },
+  "resolveContestFeedbackTicket": { method: "POST", path: "/contests/{contest_id}/change-tickets/{ticket_id}/resolve", segments: [] },
 } as const
 
 export type ApiOperationId = keyof typeof apiOperations
@@ -763,24 +857,30 @@ export const generatedApi = {
     requestOperation<TResponse, components['schemas']["JsonObject"]>("problemChangeTicketOnlyViaPreparedProblemsId", options),
   "problemChangeTicketOnlyViaPreparedProblemsIdPublish": <TResponse = components['schemas']["JsonObject"]>(options: ApiRequestOptions<components['schemas']["JsonObject"]> = {}) =>
     requestOperation<TResponse, components['schemas']["JsonObject"]>("problemChangeTicketOnlyViaPreparedProblemsIdPublish", options),
-  "listProblemChangeTickets": <TResponse = Array<components['schemas']["ProblemChangeTicket"]>>(options: ApiRequestOptions<never> = {}) =>
+  "listProblemChangeTickets": <TResponse = components['schemas']["TicketPage"]>(options: ApiRequestOptions<never> = {}) =>
     requestOperation<TResponse, never>("listProblemChangeTickets", options),
-  "createProblemChangeTicket": <TResponse = components['schemas']["JsonObject"]>(options: ApiRequestOptions<components['schemas']["ProblemChangeTicketRequest"]> = {}) =>
+  "createProblemChangeTicket": <TResponse = components['schemas']["ProblemChangeTicket"]>(options: ApiRequestOptions<components['schemas']["ProblemChangeTicketRequest"]> = {}) =>
     requestOperation<TResponse, components['schemas']["ProblemChangeTicketRequest"]>("createProblemChangeTicket", options),
-  "listMyProblemChangeTickets": <TResponse = Array<components['schemas']["ProblemChangeTicket"]>>(options: ApiRequestOptions<never> = {}) =>
+  "listMyProblemChangeTickets": <TResponse = components['schemas']["TicketPage"]>(options: ApiRequestOptions<never> = {}) =>
     requestOperation<TResponse, never>("listMyProblemChangeTickets", options),
-  "listProblemChangeTicketEligibleProblems": <TResponse = Array<components['schemas']["Problem"]>>(options: ApiRequestOptions<never> = {}) =>
+  "listProblemChangeTicketEligibleProblems": <TResponse = Array<components['schemas']["TicketProblem"]>>(options: ApiRequestOptions<never> = {}) =>
     requestOperation<TResponse, never>("listProblemChangeTicketEligibleProblems", options),
   "getProblemChangeTicket": <TResponse = components['schemas']["ProblemChangeTicket"]>(options: ApiRequestOptions<never> = {}) =>
     requestOperation<TResponse, never>("getProblemChangeTicket", options),
-  "downloadProblemChangeTicketAttachment": <TResponse = components['schemas']["JsonObject"]>(options: ApiRequestOptions<never> = {}) =>
+  "updateProblemChangeTicket": <TResponse = components['schemas']["ProblemChangeTicket"]>(options: ApiRequestOptions<components['schemas']["ProblemChangeTicketRequest"]> = {}) =>
+    requestOperation<TResponse, components['schemas']["ProblemChangeTicketRequest"]>("updateProblemChangeTicket", options),
+  "deleteProblemChangeTicket": <TResponse = {
+    "deleted"?: boolean
+  }>(options: ApiRequestOptions<components['schemas']["TicketDecision"]> = {}) =>
+    requestOperation<TResponse, components['schemas']["TicketDecision"]>("deleteProblemChangeTicket", options),
+  "downloadProblemChangeTicketAttachment": <TResponse = unknown>(options: ApiRequestOptions<never> = {}) =>
     requestOperation<TResponse, never>("downloadProblemChangeTicketAttachment", options),
-  "cancelProblemChangeTicket": <TResponse = components['schemas']["ProblemChangeTicket"]>(options: ApiRequestOptions<components['schemas']["JsonObject"]> = {}) =>
-    requestOperation<TResponse, components['schemas']["JsonObject"]>("cancelProblemChangeTicket", options),
-  "rejectProblemChangeTicket": <TResponse = components['schemas']["ProblemChangeTicket"]>(options: ApiRequestOptions<components['schemas']["JsonObject"]> = {}) =>
-    requestOperation<TResponse, components['schemas']["JsonObject"]>("rejectProblemChangeTicket", options),
-  "applyProblemChangeTicket": <TResponse = components['schemas']["ProblemChangeTicket"]>(options: ApiRequestOptions<components['schemas']["JsonObject"]> = {}) =>
-    requestOperation<TResponse, components['schemas']["JsonObject"]>("applyProblemChangeTicket", options),
+  "cancelProblemChangeTicket": <TResponse = components['schemas']["ProblemChangeTicket"]>(options: ApiRequestOptions<components['schemas']["TicketDecision"]> = {}) =>
+    requestOperation<TResponse, components['schemas']["TicketDecision"]>("cancelProblemChangeTicket", options),
+  "rejectProblemChangeTicket": <TResponse = components['schemas']["ProblemChangeTicket"]>(options: ApiRequestOptions<components['schemas']["TicketDecision"]> = {}) =>
+    requestOperation<TResponse, components['schemas']["TicketDecision"]>("rejectProblemChangeTicket", options),
+  "applyProblemChangeTicket": <TResponse = components['schemas']["ProblemChangeTicket"]>(options: ApiRequestOptions<components['schemas']["TicketApply"]> = {}) =>
+    requestOperation<TResponse, components['schemas']["TicketApply"]>("applyProblemChangeTicket", options),
   "listAssignments": <TResponse = components['schemas']["JsonObject"]>(options: ApiRequestOptions<never> = {}) =>
     requestOperation<TResponse, never>("listAssignments", options),
   "createAssignment": <TResponse = components['schemas']["JsonObject"]>(options: ApiRequestOptions<components['schemas']["JsonObject"]> = {}) =>
@@ -875,6 +975,70 @@ export const generatedApi = {
   }>("previewTeamInvitation", options),
   "previewTeamJoin": <TResponse = components['schemas']["TeamJoinPreview"]>(options: ApiRequestOptions<never> = {}) =>
     requestOperation<TResponse, never>("previewTeamJoin", options),
+  "resolveProblemChangeTicket": <TResponse = components['schemas']["ProblemChangeTicket"]>(options: ApiRequestOptions<components['schemas']["TicketDecision"]> = {}) =>
+    requestOperation<TResponse, components['schemas']["TicketDecision"]>("resolveProblemChangeTicket", options),
+  "downloadTicketAttachment": <TResponse = unknown>(options: ApiRequestOptions<never> = {}) =>
+    requestOperation<TResponse, never>("downloadTicketAttachment", options),
+  "listProblemFeedbackTickets": <TResponse = components['schemas']["TicketPage"]>(options: ApiRequestOptions<never> = {}) =>
+    requestOperation<TResponse, never>("listProblemFeedbackTickets", options),
+  "createProblemFeedbackTicket": <TResponse = components['schemas']["ProblemChangeTicket"]>(options: ApiRequestOptions<components['schemas']["ProblemChangeTicketRequest"]> = {}) =>
+    requestOperation<TResponse, components['schemas']["ProblemChangeTicketRequest"]>("createProblemFeedbackTicket", options),
+  "getProblemFeedbackTicket": <TResponse = components['schemas']["ProblemChangeTicket"]>(options: ApiRequestOptions<never> = {}) =>
+    requestOperation<TResponse, never>("getProblemFeedbackTicket", options),
+  "updateProblemFeedbackTicket": <TResponse = components['schemas']["ProblemChangeTicket"]>(options: ApiRequestOptions<components['schemas']["ProblemChangeTicketRequest"]> = {}) =>
+    requestOperation<TResponse, components['schemas']["ProblemChangeTicketRequest"]>("updateProblemFeedbackTicket", options),
+  "deleteProblemFeedbackTicket": <TResponse = {
+    "deleted"?: boolean
+  }>(options: ApiRequestOptions<components['schemas']["TicketDecision"]> = {}) =>
+    requestOperation<TResponse, components['schemas']["TicketDecision"]>("deleteProblemFeedbackTicket", options),
+  "downloadProblemFeedbackTicketAttachment": <TResponse = unknown>(options: ApiRequestOptions<never> = {}) =>
+    requestOperation<TResponse, never>("downloadProblemFeedbackTicketAttachment", options),
+  "cancelProblemFeedbackTicket": <TResponse = components['schemas']["ProblemChangeTicket"]>(options: ApiRequestOptions<components['schemas']["TicketDecision"]> = {}) =>
+    requestOperation<TResponse, components['schemas']["TicketDecision"]>("cancelProblemFeedbackTicket", options),
+  "rejectProblemFeedbackTicket": <TResponse = components['schemas']["ProblemChangeTicket"]>(options: ApiRequestOptions<components['schemas']["TicketDecision"]> = {}) =>
+    requestOperation<TResponse, components['schemas']["TicketDecision"]>("rejectProblemFeedbackTicket", options),
+  "resolveProblemFeedbackTicket": <TResponse = components['schemas']["ProblemChangeTicket"]>(options: ApiRequestOptions<components['schemas']["TicketDecision"]> = {}) =>
+    requestOperation<TResponse, components['schemas']["TicketDecision"]>("resolveProblemFeedbackTicket", options),
+  "listExamFeedbackTickets": <TResponse = components['schemas']["TicketPage"]>(options: ApiRequestOptions<never> = {}) =>
+    requestOperation<TResponse, never>("listExamFeedbackTickets", options),
+  "createExamFeedbackTicket": <TResponse = components['schemas']["ProblemChangeTicket"]>(options: ApiRequestOptions<components['schemas']["ProblemChangeTicketRequest"]> = {}) =>
+    requestOperation<TResponse, components['schemas']["ProblemChangeTicketRequest"]>("createExamFeedbackTicket", options),
+  "getExamFeedbackTicket": <TResponse = components['schemas']["ProblemChangeTicket"]>(options: ApiRequestOptions<never> = {}) =>
+    requestOperation<TResponse, never>("getExamFeedbackTicket", options),
+  "updateExamFeedbackTicket": <TResponse = components['schemas']["ProblemChangeTicket"]>(options: ApiRequestOptions<components['schemas']["ProblemChangeTicketRequest"]> = {}) =>
+    requestOperation<TResponse, components['schemas']["ProblemChangeTicketRequest"]>("updateExamFeedbackTicket", options),
+  "deleteExamFeedbackTicket": <TResponse = {
+    "deleted"?: boolean
+  }>(options: ApiRequestOptions<components['schemas']["TicketDecision"]> = {}) =>
+    requestOperation<TResponse, components['schemas']["TicketDecision"]>("deleteExamFeedbackTicket", options),
+  "downloadExamFeedbackTicketAttachment": <TResponse = unknown>(options: ApiRequestOptions<never> = {}) =>
+    requestOperation<TResponse, never>("downloadExamFeedbackTicketAttachment", options),
+  "cancelExamFeedbackTicket": <TResponse = components['schemas']["ProblemChangeTicket"]>(options: ApiRequestOptions<components['schemas']["TicketDecision"]> = {}) =>
+    requestOperation<TResponse, components['schemas']["TicketDecision"]>("cancelExamFeedbackTicket", options),
+  "rejectExamFeedbackTicket": <TResponse = components['schemas']["ProblemChangeTicket"]>(options: ApiRequestOptions<components['schemas']["TicketDecision"]> = {}) =>
+    requestOperation<TResponse, components['schemas']["TicketDecision"]>("rejectExamFeedbackTicket", options),
+  "resolveExamFeedbackTicket": <TResponse = components['schemas']["ProblemChangeTicket"]>(options: ApiRequestOptions<components['schemas']["TicketDecision"]> = {}) =>
+    requestOperation<TResponse, components['schemas']["TicketDecision"]>("resolveExamFeedbackTicket", options),
+  "listContestFeedbackTickets": <TResponse = components['schemas']["TicketPage"]>(options: ApiRequestOptions<never> = {}) =>
+    requestOperation<TResponse, never>("listContestFeedbackTickets", options),
+  "createContestFeedbackTicket": <TResponse = components['schemas']["ProblemChangeTicket"]>(options: ApiRequestOptions<components['schemas']["ProblemChangeTicketRequest"]> = {}) =>
+    requestOperation<TResponse, components['schemas']["ProblemChangeTicketRequest"]>("createContestFeedbackTicket", options),
+  "getContestFeedbackTicket": <TResponse = components['schemas']["ProblemChangeTicket"]>(options: ApiRequestOptions<never> = {}) =>
+    requestOperation<TResponse, never>("getContestFeedbackTicket", options),
+  "updateContestFeedbackTicket": <TResponse = components['schemas']["ProblemChangeTicket"]>(options: ApiRequestOptions<components['schemas']["ProblemChangeTicketRequest"]> = {}) =>
+    requestOperation<TResponse, components['schemas']["ProblemChangeTicketRequest"]>("updateContestFeedbackTicket", options),
+  "deleteContestFeedbackTicket": <TResponse = {
+    "deleted"?: boolean
+  }>(options: ApiRequestOptions<components['schemas']["TicketDecision"]> = {}) =>
+    requestOperation<TResponse, components['schemas']["TicketDecision"]>("deleteContestFeedbackTicket", options),
+  "downloadContestFeedbackTicketAttachment": <TResponse = unknown>(options: ApiRequestOptions<never> = {}) =>
+    requestOperation<TResponse, never>("downloadContestFeedbackTicketAttachment", options),
+  "cancelContestFeedbackTicket": <TResponse = components['schemas']["ProblemChangeTicket"]>(options: ApiRequestOptions<components['schemas']["TicketDecision"]> = {}) =>
+    requestOperation<TResponse, components['schemas']["TicketDecision"]>("cancelContestFeedbackTicket", options),
+  "rejectContestFeedbackTicket": <TResponse = components['schemas']["ProblemChangeTicket"]>(options: ApiRequestOptions<components['schemas']["TicketDecision"]> = {}) =>
+    requestOperation<TResponse, components['schemas']["TicketDecision"]>("rejectContestFeedbackTicket", options),
+  "resolveContestFeedbackTicket": <TResponse = components['schemas']["ProblemChangeTicket"]>(options: ApiRequestOptions<components['schemas']["TicketDecision"]> = {}) =>
+    requestOperation<TResponse, components['schemas']["TicketDecision"]>("resolveContestFeedbackTicket", options),
 }
 
 // 兼容现有页面的 Axios 调用；新代码优先使用 generatedApi 的 operationId 方法。

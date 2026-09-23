@@ -55,10 +55,10 @@
             <span class="pending-icon ticket"
               ><el-icon><Document /></el-icon></span
             ><span><strong>题目修改工单</strong></span
-            ><em>{{ pendingTickets.length }}</em
+            ><em>{{ pendingTicketCount }}</em
             ><el-icon><Right /></el-icon>
           </button>
-          <p v-if="!pendingApplications.length && !pendingTickets.length" class="all-clear">
+          <p v-if="!pendingApplications.length && !pendingTicketCount" class="all-clear">
             <el-icon><CircleCheckFilled /></el-icon>当前没有待处理事项
           </p>
         </template>
@@ -169,7 +169,7 @@ const auth = useAuthStore()
 const loading = ref(false)
 const exams = ref<ExamItem[]>([])
 const pendingApplications = ref<any[]>([])
-const pendingTickets = ref<any[]>([])
+const pendingTicketCount = ref(0)
 const auditLogs = ref<AuditItem[]>([])
 const currentDate = new Intl.DateTimeFormat('zh-CN', {
   year: 'numeric',
@@ -305,10 +305,7 @@ async function load() {
         applicationResult.status === 'fulfilled' && Array.isArray(applicationResult.value.data)
           ? applicationResult.value.data
           : []
-      pendingTickets.value =
-        ticketResult.status === 'fulfilled' && Array.isArray(ticketResult.value.data)
-          ? ticketResult.value.data
-          : []
+      pendingTicketCount.value = ticketResult.status === 'fulfilled' ? ticketResult.value.data.total || 0 : 0
       auditLogs.value =
         auditResult.status === 'fulfilled' && Array.isArray(auditResult.value.data)
           ? auditResult.value.data

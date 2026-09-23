@@ -10,6 +10,7 @@
     "test": "vitest",
     "api:generate": "node scripts/generate-openapi-client.mjs",
     "api:check": "node scripts/check-openapi-routes.mjs && node scripts/generate-openapi-client.mjs --check && node scripts/check-architecture.mjs",
+    "qa:tickets": "node tests/e2e/ticket-feedback-qa.mjs",
     "qa:design": "node tests/e2e/plan-qa.mjs",
     "format": "prettier --write src"
   },

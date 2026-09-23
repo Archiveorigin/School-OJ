@@ -2044,14 +2044,26 @@ type problemPackageArtifacts struct {
 }
 
 func (s Server) uploadProblemPackageArtifacts(c *gin.Context, body []byte, pkg *services.ParsedProblemPackage) (problemPackageArtifacts, bool) {
+	if s.MinIO == nil {
+		c.JSON(http.StatusServiceUnavailable, gin.H{"error": "题包存储服务暂不可用"})
+		return problemPackageArtifacts{}, false
+	}
 	baseObject := fmt.Sprintf("problems/%s/%d", pkg.Manifest.Slug, time.Now().UnixNano())
 	object := baseObject + ".zip"
+	uploaded := []models.ProblemTicketAttachment{{Object: object}}
+	complete := false
+	defer func() {
+		if !complete {
+			s.cleanupTicketUploads(uploaded)
+		}
+	}()
 	if _, err := s.MinIO.PutObject(c.Request.Context(), s.Cfg.MinIOBucket, object, bytes.NewReader(body), int64(len(body)), minio.PutObjectOptions{ContentType: "application/zip"}); err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 		return problemPackageArtifacts{}, false
 	}
 	for _, asset := range pkg.Assets {
 		assetObject := fmt.Sprintf("%s/%s", baseObject, asset.Path)
+		uploaded = append(uploaded, models.ProblemTicketAttachment{Object: assetObject})
 		if _, err := s.MinIO.PutObject(c.Request.Context(), s.Cfg.MinIOBucket, assetObject, bytes.NewReader(asset.Body), asset.Size, minio.PutObjectOptions{ContentType: asset.ContentType}); err != nil {
 			c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 			return problemPackageArtifacts{}, false
@@ -2066,6 +2078,7 @@ func (s Server) uploadProblemPackageArtifacts(c *gin.Context, body []byte, pkg *
 	manifestJSON, _ := json.Marshal(pkg.Manifest)
 	var manifest datatypes.JSONMap
 	_ = json.Unmarshal(manifestJSON, &manifest)
+	complete = true
 	return problemPackageArtifacts{Object: object, Checksum: pkg.SHA256, Manifest: manifest}, true
 }
 

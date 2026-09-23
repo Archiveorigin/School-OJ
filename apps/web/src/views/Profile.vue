@@ -26,11 +26,12 @@
       </div>
     </section>
 
+    <section class="panel ticket-entry-panel"><div><h2>我的工单</h2><p>查看问题反馈、处理进度与申请记录。</p></div><el-button @click="router.push('/problem-changes')">进入我的工单</el-button></section>
     <section class="panel author-panel">
       <div class="author-copy">
         <span class="eyebrow">PROBLEM AUTHOR PROGRAM</span>
         <h2>{{ canAuthor ? '出题工作台已开放' : '申请成为出题者' }}</h2>
-        <p v-if="canAuthor">你可以发起题目新增、覆盖修改与覆盖删除工单；基础角色保持不变。</p>
+        <p v-if="canAuthor">你可以申请新增和删除题目；修改与建议对所有登录用户开放。</p>
         <p v-else-if="authorApplication?.status === 'pending'">申请已提交，管理员审核通过后会为当前账号开通独立出题权限，基础角色保持不变。</p>
         <p v-else>说明你的出题经验、擅长方向或计划提供的题目类型，管理员审核通过后即可开始出题。</p>
         <el-alert
@@ -41,7 +42,7 @@
         />
       </div>
       <div v-if="canAuthor" class="author-actions">
-        <el-button type="primary" size="large" @click="router.push('/problem-changes/new')">进入工单修改</el-button>
+        <el-button type="primary" size="large" @click="router.push('/problem-changes/new')">新增题目</el-button>
         <el-button size="large" @click="router.push('/problems')">查看题库</el-button>
       </div>
       <div v-else-if="authorApplication?.status === 'pending'" class="application-status">
@@ -513,6 +514,9 @@ onMounted(load)
 </script>
 
 <style scoped>
+.ticket-entry-panel { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 12px; padding: 20px; margin: 20px 0; }
+.ticket-entry-panel h2 { margin-top: 0; }
+.ticket-entry-panel p { color: var(--muted); }
 .profile-page { max-width: 1220px; margin: 0 auto; padding: 38px 28px 68px; }
 .identity-panel { display: flex; align-items: center; justify-content: space-between; gap: 34px; padding: 34px 38px; overflow: hidden; background: radial-gradient(circle at 92% 8%, rgba(56,189,248,.12), transparent 30%), var(--surface); }
 .identity-main { display: flex; align-items: center; gap: 22px; min-width: 0; }

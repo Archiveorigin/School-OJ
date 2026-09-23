@@ -326,6 +326,7 @@ const (
 	ProblemChangeCreate  ProblemChangeAction = "create"
 	ProblemChangeReplace ProblemChangeAction = "replace"
 	ProblemChangeArchive ProblemChangeAction = "archive"
+	ProblemChangeSuggest ProblemChangeAction = "suggest"
 )
 
 type ProblemChangeStatus string
@@ -339,25 +340,45 @@ const (
 )
 
 type ProblemChangeTicket struct {
-	ID               uint                        `json:"id" gorm:"primaryKey"`
-	RequesterID      uint                        `json:"requester_id" gorm:"index;not null"`
-	Requester        User                        `json:"requester,omitempty" gorm:"foreignKey:RequesterID"`
-	ProblemID        *uint                       `json:"problem_id,omitempty" gorm:"index"`
-	Problem          *Problem                    `json:"problem,omitempty" gorm:"foreignKey:ProblemID"`
-	Action           ProblemChangeAction         `json:"action" gorm:"type:varchar(16);index;not null"`
-	Status           ProblemChangeStatus         `json:"status" gorm:"type:varchar(16);index;not null;default:'pending'"`
-	TargetScope      string                      `json:"target_scope" gorm:"size:24;not null;default:'public'"`
-	TeamProblemSetID *uint                       `json:"team_problem_set_id,omitempty" gorm:"index"`
-	Description      string                      `json:"description" gorm:"type:text;not null"`
-	AttachmentObject string                      `json:"-" gorm:"size:512"`
-	AttachmentName   string                      `json:"attachment_name,omitempty" gorm:"size:255"`
-	ResolutionNote   string                      `json:"resolution_note" gorm:"type:text"`
-	AppliedVersionID *uint                       `json:"applied_version_id,omitempty" gorm:"index"`
-	ProcessedBy      *uint                       `json:"processed_by,omitempty" gorm:"index"`
-	ProcessedAt      *time.Time                  `json:"processed_at,omitempty"`
-	CreatedAt        time.Time                   `json:"created_at"`
-	UpdatedAt        time.Time                   `json:"updated_at"`
-	ImpactSummary    *ProblemChangeImpactSummary `json:"impact_summary,omitempty" gorm:"-"`
+	ExamID            *uint                       `json:"exam_id,omitempty" gorm:"index"`
+	ContestID         *uint                       `json:"contest_id,omitempty" gorm:"index"`
+	ProblemVersionID  *uint                       `json:"problem_version_id,omitempty"`
+	DraftTitle        string                      `json:"draft_title,omitempty" gorm:"size:200"`
+	DraftStatement    string                      `json:"draft_statement,omitempty" gorm:"type:text"`
+	IsPublic          bool                        `json:"is_public" gorm:"not null;default:false"`
+	Revision          int                         `json:"revision" gorm:"not null;default:1"`
+	DeletedAt         *time.Time                  `json:"-" gorm:"index"`
+	Attachments       []ProblemTicketAttachment   `json:"-" gorm:"foreignKey:TicketID"`
+	ExpectedVersionID *uint                       `json:"-" gorm:"-"`
+	ID                uint                        `json:"id" gorm:"primaryKey"`
+	RequesterID       uint                        `json:"requester_id" gorm:"index;not null"`
+	Requester         User                        `json:"requester,omitempty" gorm:"foreignKey:RequesterID"`
+	ProblemID         *uint                       `json:"problem_id,omitempty" gorm:"index"`
+	Problem           *Problem                    `json:"problem,omitempty" gorm:"foreignKey:ProblemID"`
+	Action            ProblemChangeAction         `json:"action" gorm:"type:varchar(16);index;not null"`
+	Status            ProblemChangeStatus         `json:"status" gorm:"type:varchar(16);index;not null;default:'pending'"`
+	TargetScope       string                      `json:"target_scope" gorm:"size:24;not null;default:'public'"`
+	TeamProblemSetID  *uint                       `json:"team_problem_set_id,omitempty" gorm:"index"`
+	Description       string                      `json:"description" gorm:"type:text;not null"`
+	AttachmentObject  string                      `json:"-" gorm:"size:512"`
+	AttachmentName    string                      `json:"attachment_name,omitempty" gorm:"size:255"`
+	ResolutionNote    string                      `json:"resolution_note" gorm:"type:text"`
+	AppliedVersionID  *uint                       `json:"applied_version_id,omitempty" gorm:"index"`
+	ProcessedBy       *uint                       `json:"processed_by,omitempty" gorm:"index"`
+	ProcessedAt       *time.Time                  `json:"processed_at,omitempty"`
+	CreatedAt         time.Time                   `json:"created_at"`
+	UpdatedAt         time.Time                   `json:"updated_at"`
+	ImpactSummary     *ProblemChangeImpactSummary `json:"impact_summary,omitempty" gorm:"-"`
+}
+
+type ProblemTicketAttachment struct {
+	ID          uint      `json:"id" gorm:"primaryKey"`
+	TicketID    uint      `json:"-" gorm:"index;not null"`
+	Name        string    `json:"name" gorm:"size:255;not null"`
+	Object      string    `json:"-" gorm:"size:512;not null"`
+	ContentType string    `json:"content_type" gorm:"size:100;not null"`
+	Size        int64     `json:"size" gorm:"not null"`
+	CreatedAt   time.Time `json:"created_at"`
 }
 
 type ProblemChangeImpactSummary struct {
@@ -628,6 +649,7 @@ func AllModels() []any {
 		&AuthorApplication{},
 		&ProblemReview{},
 		&ProblemChangeTicket{},
+		&ProblemTicketAttachment{},
 		&PlagiarismJob{},
 		&AuditLog{},
 		&EmailVerification{},

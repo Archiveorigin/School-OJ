@@ -66,6 +66,7 @@
               </nav>
             </template>
             <template #sidebar-footer>
+              <el-button @click="ticketVisible = true">工单修改</el-button>
               <el-button type="primary" class="submit-current" @click="openSubmit(selectedLink)">提交代码</el-button>
             </template>
           </ProblemStatementView>
@@ -176,6 +177,7 @@
       </template>
     </el-dialog>
     <SubmissionDetailDialog v-model="submissionVisible" :detail="submissionDetail" />
+    <TicketDialog v-if="selectedLink" v-model="ticketVisible" :context="{ kind: 'problem', id: selectedLink.problem_id }" />
   </section>
 </template>
 
@@ -186,6 +188,7 @@ import { computed, onBeforeUnmount, reactive, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { generatedApi, getLatestSubmissions, openEventStream, type AuthenticatedEventSource, type Submission } from '../../api/client'
 import ListPagination from '../../components/ListPagination.vue'
+import TicketDialog from '../../components/tickets/TicketDialog.vue'
 import MarkdownRenderer from '../../components/MarkdownRenderer.vue'
 import ProblemStatementView from '../../components/ProblemStatementView.vue'
 import StatusBadge from '../../components/StatusBadge.vue'
@@ -215,6 +218,7 @@ const discussionProblemID = ref<number>()
 const discussionContent = ref('')
 const posting = ref(false)
 const addVisible = ref(false)
+const ticketVisible = ref(false)
 const adding = ref(false)
 const problemCode = ref('')
 const editVisible = ref(false)

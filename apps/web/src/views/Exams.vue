@@ -76,6 +76,7 @@
       </div>
     </div>
 
+    <TicketDialog v-model="ticketVisible" :context="ticketContext" />
     <el-drawer v-model="reportVisible" title="考试完成情况" size="86%">
       <div v-if="report" class="panel">
         <div class="toolbar report-toolbar">
@@ -161,6 +162,8 @@ import { computed, onMounted, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { generatedApi, type Problem } from '../api/client'
 import ListPagination from '../components/ListPagination.vue'
+import TicketDialog from '../components/tickets/TicketDialog.vue'
+import type { TicketContext } from '../api/modules/tickets'
 import StatusBadge from '../components/StatusBadge.vue'
 import SubmissionDetailContent from '../components/SubmissionDetailContent.vue'
 import { formatDateTime } from '../features/time'
@@ -175,6 +178,8 @@ const items = ref<any[]>([])
 const page = ref(1)
 const pageSize = ref(10)
 const reportVisible = ref(false)
+const ticketVisible = ref(false)
+const ticketContext = ref<TicketContext>({ kind: 'exam', id: 0 })
 const gradeVisible = ref(false)
 const grading = ref(false)
 const report = ref<any>(null)
@@ -254,7 +259,9 @@ async function openGradeDialog(problemScore: any) {
 }
 
 function openProblemTicket(problem: Problem) {
-  router.push({ path: '/problem-changes/new', query: { action: 'replace', problem_id: problem.id, target_scope: 'public' } })
+  if (!report.value?.exam?.id) return
+  ticketContext.value = { kind: 'exam', id: report.value.exam.id, problemID: problem.id }
+  ticketVisible.value = true
 }
 
 async function runReferenceJudge() {

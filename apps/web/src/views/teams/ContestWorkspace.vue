@@ -2,7 +2,7 @@
   <section class="contest-page">
     <div v-if="detail" class="contest-shell">
       <EventWorkspaceHeader :title="detail.contest.title" :subtitle="detail.team.name" :rule="detail.contest.scoring_rule" :status="statusLabel(detail.contest.status)"
-        kind="比赛" :base="`/contest/${contestID}`" :show-ranking="true" back-label="返回团队比赛" @back="goBack" />
+        kind="比赛" :base="`/contest/${contestID}`" :show-ranking="true" back-label="返回团队比赛" @back="goBack"><template #actions><el-button @click="openEventTicket">比赛反馈</el-button></template></EventWorkspaceHeader>
 
       <main class="contest-content">
         <template v-if="section === 'description'">
@@ -64,7 +64,7 @@
         </EventProblemList>
         <EventProblemPanel v-else-if="section === 'problem' && selectedLink" :selected="{ ...selectedLink, score: 100 }" :items="problemItems"
           :records="problemRecords" :base="`/contest/${contestID}`" @refresh="loadRecords" @view-submission="viewSubmission">
-          <template #actions><el-button type="primary" :disabled="!detail.can_submit" @click="openSubmit">提交代码</el-button></template>
+          <template #actions><el-button @click="openProblemTicket">工单修改</el-button><el-button type="primary" :disabled="!detail.can_submit" @click="openSubmit">提交代码</el-button></template>
         </EventProblemPanel>
 
         <template v-else-if="section === 'scoreboard' && detail.contest.scoring_rule !== 'oi'">
@@ -84,6 +84,7 @@
         <el-result v-else title="题目不存在或页面未开放"><template #extra><el-button @click="router.replace(`/contest/${contestID}/problems`)">题目列表</el-button></template></el-result>
       </main>
 
+      <TicketDialog v-model="ticketVisible" :context="{ kind: 'contest', id: contestID, problemID: ticketProblemID }" />
       <SubmissionDetailDialog v-model="submissionVisible" :detail="submissionDetail" />
       <el-dialog
         v-model="submitVisible"
@@ -155,6 +156,8 @@
 </template>
 
 <script setup lang="ts">
+import TicketDialog from '../../components/tickets/TicketDialog.vue'
+
 import { submissionLanguage } from '../../features/submissions/presentation'
 import { ElMessage } from 'element-plus'
 import { computed, onBeforeUnmount, onMounted, reactive, ref, watch } from 'vue'
@@ -200,6 +203,9 @@ const detail = ref<any>(null),
   publishing = ref(false)
 let stream: AuthenticatedEventSource | null = null
 let rankingTimer: number | undefined
+const ticketVisible = ref(false), ticketProblemID = ref<number | undefined>()
+function openEventTicket() { ticketProblemID.value = undefined; ticketVisible.value = true }
+function openProblemTicket() { if (selectedLink.value) { ticketProblemID.value = selectedLink.value.problem_id; ticketVisible.value = true } }
 const scoringOptions = [
   { label: 'OI', value: 'oi' },
   { label: 'IOI', value: 'ioi' },

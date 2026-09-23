@@ -87,6 +87,16 @@ func (s Server) examRequestAllowed(c *gin.Context, userID, examID uint) (bool, e
 		if err != nil || uint(id) != examID {
 			return false, nil
 		}
+		switch path {
+		case "/exams/:id/change-tickets":
+			return method == http.MethodGet || method == http.MethodPost, nil
+		case "/exams/:id/change-tickets/:ticket_id":
+			return method == http.MethodGet || method == http.MethodPatch || method == http.MethodDelete, nil
+		case "/exams/:id/change-tickets/:ticket_id/attachments/:attachment_id":
+			return method == http.MethodGet, nil
+		case "/exams/:id/change-tickets/:ticket_id/cancel":
+			return method == http.MethodPost, nil
+		}
 		if method == http.MethodGet {
 			return path == "/exams/:id" || path == "/exams/:id/ranking" || path == "/exams/:id/problems/:problem_id/assets/*asset_path", nil
 		}
