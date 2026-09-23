@@ -2,6 +2,16 @@ import { describe, expect, it } from 'vitest'
 import { validateProblemChangeTicketDraft, problemChangeOperationMode } from '../src/features/problems/changeTicket'
 const base = { action: 'replace' as const, problemID: 2, targetScope: 'public', description: '修正题目内容并补充测试数据', attachments: [] as File[] }
 describe('ticket feedback validation', () => {
+  it('accepts four Unicode characters and excludes surrounding whitespace', () => {
+    for (const description of ['修改样例', '  补充说明  ', '修正😀题']) expect(validateProblemChangeTicketDraft({ ...base, description })).toBe('')
+    for (const description of ['改样例', '  😀😀😀  ']) expect(validateProblemChangeTicketDraft({ ...base, description })).toContain('4 至')
+  })
+  it('allows 50 new-problem attachments, including retained files, with unchanged size limits', () => {
+    const create = { ...base, action: 'create' as const, draftTitle: '新题目', draftStatement: '题面', attachments: [new File(['1'], 'new.in')] }
+    expect(validateProblemChangeTicketDraft({ ...create, retainedCount: 49 })).toBe('')
+    expect(validateProblemChangeTicketDraft({ ...create, retainedCount: 50 })).toContain('50')
+    expect(validateProblemChangeTicketDraft({ ...create, retainedSize: 96 * 1024 * 1024 })).toContain('96')
+  })
   it('accepts feedback without attachments or an overwrite confirmation', () => {
     for (const action of ['replace', 'suggest', 'archive'] as const) expect(validateProblemChangeTicketDraft({ ...base, action })).toBe('')
   })

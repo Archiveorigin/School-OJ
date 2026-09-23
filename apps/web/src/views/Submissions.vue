@@ -2,10 +2,6 @@
   <section class="page sub-page">
     <div class="sub-hero">
       <div class="sub-hero-inner">
-        <div class="sub-hero-text">
-          <h1 class="sub-hero-title">提交记录</h1>
-          <p class="sub-hero-sub">查看所有提交与详细评测结果</p>
-        </div>
         <div class="sub-hero-stats">
           <div class="sub-hero-stat">
             <span class="sub-hero-stat-val">{{ items.length }}</span>
@@ -24,8 +20,17 @@
     </div>
 
     <div class="sub-content">
+      <section class="panel submission-filters">
+        <el-select v-model="filters.language" clearable placeholder="代码语言" aria-label="代码语言">
+          <el-option label="C++17" value="cpp" /><el-option label="C" value="c" /><el-option label="Python 3" value="python" /><el-option label="Java 21" value="java" />
+        </el-select>
+        <el-input v-model="filters.username" clearable placeholder="输入用户名查询" @keyup.enter="load" />
+        <el-checkbox v-model="filters.mine" @change="load">我的提交</el-checkbox>
+        <el-button type="primary" :loading="loading" @click="load">搜索</el-button>
+        <el-button @click="resetFilters">清空筛选</el-button>
+      </section>
       <div class="panel">
-        <el-table :data="pagedItems" @row-click="open">
+        <el-table :data="pagedItems" v-loading="loading" @row-click="open">
           <el-table-column label="提交人" min-width="140">
             <template #default="{ row }">{{ submitterText(row) }}</template>
           </el-table-column>
@@ -58,7 +63,8 @@
 </template>
 
 <script setup lang="ts">
-import { computed, onMounted, ref, watch } from 'vue'
+import { computed, onBeforeUnmount, onMounted, reactive, ref, watch } from 'vue'
+import { ElMessage } from 'element-plus'
 import { generatedApi, type Submission } from '../api/client'
 import ListPagination from '../components/ListPagination.vue'
 import SubmissionDetailDialog from '../components/SubmissionDetailDialog.vue'
@@ -66,6 +72,10 @@ import StatusBadge from '../components/StatusBadge.vue'
 import { formatDateTime } from '../features/time'
 
 const items = ref<Submission[]>([])
+const filters = reactive({ language: '', username: '', mine: false })
+const loading = ref(false)
+let pending: AbortController | undefined
+onBeforeUnmount(() => pending?.abort())
 const detail = ref<any>(null)
 const visible = ref(false)
 const page = ref(1)
@@ -78,8 +88,24 @@ const acceptRate = computed(() => {
 })
 
 async function load() {
-  items.value = (await generatedApi.listSubmissions<any>()).data
-  clampPage()
+  pending?.abort()
+  const request = new AbortController()
+  pending = request
+  loading.value = true
+  try {
+    const { data } = await generatedApi.listSubmissions<Submission[]>({ signal: request.signal, query: { language: filters.language || undefined, username: filters.username.trim() || undefined, mine: filters.mine || undefined } })
+    if (request.signal.aborted) return
+    items.value = data
+    page.value = 1
+  } catch (err: any) {
+    if (!request.signal.aborted) ElMessage.error(err.response?.data?.error || err.message)
+  } finally {
+    if (pending === request) loading.value = false
+  }
+}
+function resetFilters() {
+  Object.assign(filters, { language: '', username: '', mine: false })
+  void load()
 }
 
 async function open(row: Submission) {
@@ -113,6 +139,7 @@ function clampPage() {
 </script>
 
 <style scoped>
+.submission-filters { display: grid; grid-template-columns: 180px minmax(180px, 1fr) auto auto auto; gap: 12px; align-items: center; margin-bottom: 16px; }
 .sub-page {
   padding: 0;
   overflow-x: hidden;
@@ -129,25 +156,6 @@ function clampPage() {
   display: flex;
   flex-direction: column;
   gap: 20px;
-}
-
-.sub-hero-text {
-  display: flex;
-  flex-direction: column;
-  gap: 4px;
-}
-
-.sub-hero-title {
-  margin: 0;
-  font-size: 26px;
-  font-weight: 700;
-  color: #f8fafc;
-}
-
-.sub-hero-sub {
-  margin: 0;
-  font-size: 14px;
-  color: rgba(248, 250, 252, 0.6);
 }
 
 .sub-hero-stats {
@@ -202,6 +210,7 @@ function clampPage() {
 }
 
 @media (max-width: 760px) {
+  .submission-filters { grid-template-columns: 1fr; }
   .sub-hero-inner {
     padding: 24px 20px 32px;
     gap: 16px;

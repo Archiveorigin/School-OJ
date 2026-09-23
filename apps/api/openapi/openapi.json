@@ -7883,7 +7883,81 @@
           "503": {
             "$ref": "#/components/responses/ServiceUnavailable"
           }
-        }
+        },
+        "parameters": [
+          {
+            "name": "mine",
+            "in": "query",
+            "required": false,
+            "description": "仅查询当前登录用户的提交，在结果数量限制前筛选",
+            "schema": {
+              "type": "boolean"
+            }
+          },
+          {
+            "name": "visibility",
+            "in": "query",
+            "required": false,
+            "description": "题目页显示本人的提交与他人公开的独立练习代码",
+            "schema": {
+              "type": "string",
+              "enum": [
+                "problem"
+              ]
+            }
+          },
+          {
+            "name": "problem_id",
+            "in": "query",
+            "required": false,
+            "description": "题目 ID",
+            "schema": {
+              "type": "integer"
+            }
+          },
+          {
+            "name": "language",
+            "in": "query",
+            "required": false,
+            "description": "提交语言",
+            "schema": {
+              "type": "string",
+              "enum": [
+                "c",
+                "cpp",
+                "python",
+                "java"
+              ]
+            }
+          },
+          {
+            "name": "username",
+            "in": "query",
+            "required": false,
+            "description": "提交人姓名（模糊查询）",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "assignment_id",
+            "in": "query",
+            "required": false,
+            "description": "作业 ID",
+            "schema": {
+              "type": "integer"
+            }
+          },
+          {
+            "name": "exam_id",
+            "in": "query",
+            "required": false,
+            "description": "考试 ID",
+            "schema": {
+              "type": "integer"
+            }
+          }
+        ]
       }
     },
     "/submissions/latest": {
@@ -11955,7 +12029,7 @@
           },
           "description": {
             "type": "string",
-            "minLength": 8,
+            "minLength": 4,
             "maxLength": 10000
           },
           "problem_id": {
@@ -11984,13 +12058,16 @@
           },
           "retain_attachment_ids": {
             "type": "array",
+            "maxItems": 50,
+            "description": "与新上传附件合计：新增题目最多 50 个，其他工单最多 20 个；总大小不超过 96 MiB",
             "items": {
               "type": "integer"
             }
           },
           "attachments": {
             "type": "array",
-            "maxItems": 20,
+            "maxItems": 50,
+            "description": "新增题目最多 50 个，其他工单最多 20 个（均含保留附件）；单个不超过 32 MiB，总计不超过 96 MiB",
             "items": {
               "type": "string",
               "format": "binary"

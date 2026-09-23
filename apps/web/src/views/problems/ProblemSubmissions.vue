@@ -7,15 +7,6 @@
         </template>
       </el-page-header>
 
-      <header class="records-heading">
-        <div>
-          <span class="eyebrow">PUBLIC SOLUTIONS</span>
-          <h1>题目提交记录</h1>
-          <p>可查看自己的全部提交，以及其他用户主动公开的题库练习代码。</p>
-        </div>
-        <el-button type="primary" @click="goBack">返回提交代码</el-button>
-      </header>
-
       <section class="panel record-filters">
         <el-select v-model="filters.language" clearable placeholder="代码语言">
           <el-option label="C++17" value="cpp" />
@@ -29,6 +20,7 @@
           placeholder="输入用户名查询"
           @keyup.enter="search"
         />
+        <el-checkbox v-model="filters.mine" @change="search">我的提交</el-checkbox>
         <el-button type="primary" :loading="loading" @click="search">搜索</el-button>
         <el-button @click="resetFilters">清空筛选</el-button>
       </section>
@@ -74,7 +66,7 @@
 
 <script setup lang="ts">
 import { ElMessage } from 'element-plus'
-import { onMounted, reactive, ref, computed, watch } from 'vue'
+import { onBeforeUnmount, onMounted, reactive, ref, computed, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { generatedApi, type Problem, type Submission } from '../../api/client'
 import ListPagination from '../../components/ListPagination.vue'
@@ -94,7 +86,9 @@ const detailVisible = ref(false)
 const loading = ref(false)
 const page = ref(1)
 const pageSize = ref(20)
-const filters = reactive({ language: '', username: '' })
+const filters = reactive({ language: '', username: '', mine: false })
+let pending: AbortController | undefined
+onBeforeUnmount(() => pending?.abort())
 const pagedItems = computed(() => {
   const start = (page.value - 1) * pageSize.value
   return items.value.slice(start, start + pageSize.value)
@@ -106,25 +100,32 @@ async function loadProblem() {
 
 async function search() {
   if (!problem.value) return
+  pending?.abort()
+  const request = new AbortController()
+  pending = request
   loading.value = true
   try {
-    items.value = (await generatedApi.listSubmissions<any>({ query: {
+    const { data } = await generatedApi.listSubmissions<Submission[]>({ signal: request.signal, query: {
         visibility: 'problem',
         problem_id: problem.value.id,
         language: filters.language || undefined,
-        username: filters.username.trim() || undefined
-      } })).data
+        username: filters.username.trim() || undefined,
+        mine: filters.mine || undefined
+      } })
+    if (request.signal.aborted) return
+    items.value = data
     page.value = 1
   } catch (err: any) {
-    ElMessage.error(err.response?.data?.error || err.message)
+    if (!request.signal.aborted) ElMessage.error(err.response?.data?.error || err.message)
   } finally {
-    loading.value = false
+    if (pending === request) loading.value = false
   }
 }
 
 async function resetFilters() {
   filters.language = ''
   filters.username = ''
+  filters.mine = false
   await search()
 }
 
@@ -159,15 +160,10 @@ onMounted(async () => {
 <style scoped>
 .problem-records-page { padding: 22px 20px 48px; }
 .records-container { width: min(1180px, 100%); margin: 0 auto; }
-.records-heading { display: flex; align-items: end; justify-content: space-between; gap: 24px; padding: 34px 0 24px; }
-.records-heading h1 { margin: 6px 0; font-size: 30px; }
-.records-heading p { margin: 0; color: var(--muted); }
-.eyebrow { color: var(--accent); font-size: 11px; font-weight: 800; letter-spacing: .16em; }
-.record-filters { display: grid; grid-template-columns: 180px minmax(220px, 1fr) auto auto; gap: 12px; margin-bottom: 16px; }
+.record-filters { display: grid; grid-template-columns: 180px minmax(180px, 1fr) auto auto auto; gap: 12px; align-items: center; margin: 24px 0 16px; }
 .records-table { overflow: hidden; }
 @media (max-width: 760px) {
   .problem-records-page { padding: 16px 12px 36px; }
-  .records-heading { align-items: stretch; flex-direction: column; }
   .record-filters { grid-template-columns: 1fr; }
 }
 </style>

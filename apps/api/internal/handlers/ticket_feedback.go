@@ -29,7 +29,13 @@ import (
 
 const problemTicketAttachmentLimit int64 = 32 << 20
 const ticketTotalAttachmentLimit int64 = 96 << 20
-const ticketFileLimit = 20
+
+func ticketFileLimit(action models.ProblemChangeAction) int {
+	if action == models.ProblemChangeCreate {
+		return 50
+	}
+	return 20
+}
 
 type problemChangeTicketInput struct {
 	Action              models.ProblemChangeAction `json:"action"`
@@ -276,8 +282,8 @@ func parseTicketInput(c *gin.Context) (problemChangeTicketInput, []ticketUpload,
 		}
 	}
 	files := append(c.Request.MultipartForm.File["attachments"], c.Request.MultipartForm.File["attachment"]...)
-	if len(files) > ticketFileLimit {
-		return req, nil, errors.New("最多上传 20 个附件")
+	if limit := ticketFileLimit(req.Action); len(files) > limit {
+		return req, nil, fmt.Errorf("最多上传 %d 个附件", limit)
 	}
 	var total int64
 	for _, file := range files {
@@ -339,8 +345,8 @@ func validateTicketText(req problemChangeTicketInput, user models.User) error {
 	default:
 		return errors.New("工单类型无效")
 	}
-	if n := len([]rune(strings.TrimSpace(req.Description))); n < 8 || n > 10000 {
-		return errors.New("修改说明须为 8 至 10000 个字")
+	if n := len([]rune(strings.TrimSpace(req.Description))); n < 4 || n > 10000 {
+		return errors.New("修改说明须为 4 至 10000 个字")
 	}
 	if req.Action == models.ProblemChangeCreate && (strings.TrimSpace(req.DraftTitle) == "" || strings.TrimSpace(req.DraftStatement) == "") {
 		return errors.New("新增题目必须填写标题和 Markdown 题面")
@@ -741,7 +747,7 @@ func (s Server) updateProblemChangeTicket(c *gin.Context) {
 	for _, u := range uploads {
 		size += int64(len(u.body))
 	}
-	if len(keep)+len(uploads) > ticketFileLimit || size > ticketTotalAttachmentLimit {
+	if len(keep)+len(uploads) > ticketFileLimit(ticket.Action) || size > ticketTotalAttachmentLimit {
 		c.JSON(400, gin.H{"error": "附件超过数量或总大小限制"})
 		return
 	}

@@ -4642,6 +4642,16 @@ func (s Server) listSubmissions(c *gin.Context) {
 	if problemID := c.Query("problem_id"); problemID != "" {
 		q = q.Where("problem_id = ?", problemID)
 	}
+	if raw := strings.TrimSpace(c.Query("mine")); raw != "" {
+		mine, err := strconv.ParseBool(raw)
+		if err != nil {
+			c.JSON(http.StatusBadRequest, gin.H{"error": "mine must be a boolean"})
+			return
+		}
+		if mine {
+			q = q.Where("user_id = ?", user.ID)
+		}
+	}
 	if language := strings.TrimSpace(c.Query("language")); language != "" {
 		if !validLanguage(language) {
 			c.JSON(http.StatusBadRequest, gin.H{"error": "unsupported language"})

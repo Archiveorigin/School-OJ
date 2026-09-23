@@ -22,7 +22,7 @@
           </div>
           <div class="heading-actions">
             <div class="toolbar submission-actions">
-              <el-button @click="ticketVisible = true">工单修改</el-button>
+              <el-button @click="ticketVisible = true">题目反馈</el-button>
               <el-button v-if="auth.isAuthed" @click="openSubmissionRecords">提交记录</el-button>
               <el-button type="primary" @click="openSubmitDialog">提交代码</el-button>
             </div>
@@ -108,7 +108,7 @@ const loading = ref(false)
 const loadError = ref('')
 const submitVisible = ref(false)
 const language = ref('cpp')
-const isPublic = ref(false)
+const isPublic = ref(true)
 const submitting = ref(false)
 const live = ref<any>(null)
 const codeFileInput = ref<HTMLInputElement>()
@@ -128,6 +128,7 @@ async function loadProblem() {
   try {
     const { data } = await generatedApi.getProblem<any>({ path: { "id": String(route.params.id) } })
     problem.value = data
+    isPublic.value = !data.team_id
     await loadLastSubmission()
   } catch (err: any) {
     loadError.value = err.response?.status === 404 ? '该题目不存在或尚未公开' : err.response?.data?.error || err.message

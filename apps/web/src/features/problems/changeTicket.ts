@@ -29,6 +29,9 @@ export interface ProblemChangeTicketDraft {
   draftTitle?: string;
   draftStatement?: string;
 }
+export function ticketAttachmentLimit(action: ProblemChangeAction) {
+  return action === "create" ? 50 : 20;
+}
 export function validateProblemChangeTicketDraft(
   draft: ProblemChangeTicketDraft,
 ) {
@@ -42,18 +45,17 @@ export function validateProblemChangeTicketDraft(
     !draft.teamProblemSetID
   )
     return "请填写团队题单 ID";
-  if (
-    draft.description.trim().length < 8 ||
-    draft.description.trim().length > 10000
-  )
-    return "修改说明须为 8 至 10000 个字";
+  const descriptionLength = Array.from(draft.description.trim()).length;
+  if (descriptionLength < 4 || descriptionLength > 10000)
+    return "修改说明须为 4 至 10000 个字";
   if (
     draft.action === "create" &&
     (!draft.draftTitle?.trim() || !draft.draftStatement?.trim())
   )
     return "请填写题目标题和 Markdown 题面";
-  if (draft.attachments.length + (draft.retainedCount || 0) > 20)
-    return "最多上传 20 个附件";
+  const limit = ticketAttachmentLimit(draft.action);
+  if (draft.attachments.length + (draft.retainedCount || 0) > limit)
+    return `最多上传 ${limit} 个附件`;
   if (
     draft.attachments.some((file) => !file.size || file.size > 32 * 1024 * 1024)
   )

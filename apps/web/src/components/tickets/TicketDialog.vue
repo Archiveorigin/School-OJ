@@ -1,7 +1,7 @@
 <template>
   <el-dialog
     v-model="visible"
-    title="工单修改"
+    :title="context.kind === 'problem' ? '题目反馈' : '工单修改'"
     width="min(1160px, calc(100vw - 24px))"
     destroy-on-close
     :close-on-click-modal="false"

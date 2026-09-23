@@ -199,6 +199,8 @@ const props = withDefaults(
   defineProps<{
     context: TicketContext;
     initialNew?: boolean;
+    newBackPath?: string;
+    createdPath?: string;
     title?: string;
   }>(),
   { title: "工单管理" },
@@ -286,11 +288,20 @@ function create() {
   mode.value = "new";
 }
 function back() {
+  if (mode.value === "new" && props.initialNew && props.newBackPath) {
+    void router.replace(props.newBackPath);
+    return;
+  }
   mode.value = "list";
   active.value = null;
   void load();
 }
 function saved(ticket: ProblemChangeTicket) {
+  if (mode.value === "new" && props.createdPath) {
+    if (route.path !== props.createdPath) void router.replace(props.createdPath);
+    else back();
+    return;
+  }
   active.value = ticket;
   mode.value = "view";
 }

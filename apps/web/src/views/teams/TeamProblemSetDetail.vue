@@ -50,6 +50,12 @@
             :status-type="statusType(selectedLink.submission_status)"
             :show-tags="false"
           >
+            <template #statement-header>
+              <header class="statement-heading">
+                <h2>{{ selectedLink.problem.title }}</h2>
+                <el-button @click="ticketVisible = true">题目反馈</el-button>
+              </header>
+            </template>
             <template #sidebar-header>
               <nav class="problem-navigation" aria-label="题目导航">
                 <h3>题目导航</h3>
@@ -66,7 +72,6 @@
               </nav>
             </template>
             <template #sidebar-footer>
-              <el-button @click="ticketVisible = true">工单修改</el-button>
               <el-button type="primary" class="submit-current" @click="openSubmit(selectedLink)">提交代码</el-button>
             </template>
           </ProblemStatementView>
@@ -527,6 +532,9 @@ onBeforeUnmount(() => { for (const stream of liveStreams) stream.close() })
 </script>
 
 <style scoped>
+.statement-heading { display: flex; align-items: center; justify-content: space-between; gap: 16px; margin-bottom: 20px; }
+.statement-heading h2 { min-width: 0; margin: 0; font-size: 22px; overflow-wrap: anywhere; }
+.statement-heading .el-button { flex-shrink: 0; }
 .problem-set-page { padding: 12px 20px 40px; }
 .problem-set-container { width: min(1200px, 100%); margin: 0 auto; }
 .set-heading { display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 8px 12px; padding: 0 0 6px; }

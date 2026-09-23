@@ -7,6 +7,7 @@
     }"
   >
     <section class="panel statement-box">
+      <slot name="statement-header" />
       <MarkdownRenderer :source="problem.statement" :problem-id="problem.id" :asset-base="assetBase" />
     </section>
 

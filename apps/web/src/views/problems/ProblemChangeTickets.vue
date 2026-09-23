@@ -1,8 +1,13 @@
 <template>
   <section class="page personal-tickets">
     <TicketBoard
+      :key="route.fullPath"
       :context="context"
       :initial-new="route.path.endsWith('/new')"
+      :new-back-path="
+        route.query.from === 'catalog' ? '/problems' : '/problem-changes'
+      "
+      created-path="/problem-changes"
       title="我的工单"
     />
   </section>

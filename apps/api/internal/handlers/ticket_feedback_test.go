@@ -555,6 +555,54 @@ func TestTicketNewProblemPreviewAndPrivateScopePostgres(t *testing.T) {
 	}
 }
 
+func TestTicketDescriptionAndAttachmentLimitsPostgres(t *testing.T) {
+	f := newTicketFixture(t)
+	setupTicketObjects(t, f)
+	f.s.DB.Model(&f.student).Update("can_author", true)
+	f.student.CanAuthor = true
+	for _, description := range []string{"修改样例", "  补充说明  ", "修正😀题"} {
+		req := ticketDraft("suggest", f.problem.ID)
+		req["description"] = description
+		assertStatus(t, f.request("POST", "/api/problem-change-tickets", &f.student, req), 201)
+	}
+	req := ticketDraft("create", 0)
+	req["draft_title"], req["draft_statement"], req["description"] = "五十附件", "题目描述", "增加测试"
+	files := map[string][]byte{}
+	for i := 1; i <= 25; i++ {
+		files[fmt.Sprintf("%d.in", i)] = []byte("1 2\n")
+		files[fmt.Sprintf("%d.out", i)] = []byte("3\n")
+	}
+	r := ticketMultipart(t, f, "POST", "/api/problem-change-tickets", f.student, req, files, nil)
+	assertStatus(t, r, 201)
+	ticket := readTicket(t, r)
+	if len(ticket.Attachments) != 50 {
+		t.Fatalf("want 50 attachments, got %d", len(ticket.Attachments))
+	}
+	files["extra.in"] = []byte("1")
+	assertStatus(t, ticketMultipart(t, f, "POST", "/api/problem-change-tickets", f.student, req, files, nil), 400)
+	ids := make([]uint, 0, 50)
+	for _, file := range ticket.Attachments {
+		ids = append(ids, file.ID)
+	}
+	url := fmt.Sprintf("/api/problem-change-tickets/%d", ticket.ID)
+	req["revision"], req["retain_attachment_ids"] = 1, ids
+	assertStatus(t, ticketMultipart(t, f, "PATCH", url, f.student, req, map[string][]byte{"extra.in": []byte("1")}, nil), 400)
+	req["retain_attachment_ids"] = ids[:49]
+	r = ticketMultipart(t, f, "PATCH", url, f.student, req, map[string][]byte{"extra.in": []byte("1")}, nil)
+	assertStatus(t, r, 200)
+	if len(readTicket(t, r).Attachments) != 50 {
+		t.Fatal("replacement did not retain 50 files")
+	}
+	req["revision"], req["description"] = 2, "😀😀😀"
+	assertStatus(t, f.request("PATCH", url, &f.student, req), 400)
+	feedback := ticketDraft("suggest", f.problem.ID)
+	small := map[string][]byte{}
+	for i := 0; i < 21; i++ {
+		small[fmt.Sprintf("%d.in", i)] = []byte("1")
+	}
+	assertStatus(t, ticketMultipart(t, f, "POST", "/api/problem-change-tickets", f.student, feedback, small, nil), 400)
+}
+
 func TestTicketBrowserFixture(t *testing.T) {
 	if os.Getenv("OJ_TICKET_BROWSER_FIXTURE_ADDR") == "" {
 		t.Skip("opt-in browser fixture")
@@ -576,6 +624,21 @@ func TestTicketBrowserFixture(t *testing.T) {
 			role = models.TeamRoleOwner
 		}
 		f.s.DB.Create(&models.TeamMembership{TeamID: team.ID, UserID: user.ID, Role: role})
+	}
+	set := models.TeamProblemSet{TeamID: team.ID, CreatedBy: f.teacher.ID, Title: "反馈验收题单"}
+	if err := f.s.DB.Create(&set).Error; err != nil {
+		t.Fatal(err)
+	}
+	if err := f.s.DB.Create(&models.TeamProblemSetProblem{ProblemSetID: set.ID, ProblemID: f.problem.ID, Label: "A"}).Error; err != nil {
+		t.Fatal(err)
+	}
+	for _, user := range []models.User{f.student, f.peer} {
+		for _, public := range []bool{false, true} {
+			sub := models.Submission{UserID: user.ID, ProblemID: f.problem.ID, ProblemVersionID: f.version.ID, Language: "python", SourceCode: "print(3)", Status: models.StatusAccepted, IsPublic: public}
+			if err := f.s.DB.Create(&sub).Error; err != nil {
+				t.Fatal(err)
+			}
+		}
 	}
 	start := time.Now().Add(-time.Hour)
 	contest := models.TeamContest{TeamID: team.ID, CreatedBy: f.teacher.ID, Title: "工单反馈比赛", Description: "检查反馈只在本场内流转。", StartsAt: &start, PublishedAt: &start, DurationMinutes: 240, State: "published", ScoringRule: "ioi"}

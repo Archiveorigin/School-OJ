@@ -6,7 +6,7 @@
         <h1>题库</h1>
         <p>按题号、难度与算法标签筛选，选择一道题开始练习。</p>
       </div>
-      <el-button v-if="canAuthor" type="primary" @click="router.push('/problem-changes/new')">发起工单</el-button>
+      <el-button v-if="canAuthor" tag="a" :href="router.resolve('/problem-changes/new?from=catalog').href" target="_blank" rel="noopener" type="primary">发起工单</el-button>
     </header>
 
     <section class="filter-card panel">

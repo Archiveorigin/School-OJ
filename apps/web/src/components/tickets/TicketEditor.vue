@@ -42,22 +42,24 @@
         :rows="4"
         maxlength="10000"
         show-word-limit
-        placeholder="请具体说明问题、修改理由或建议（至少 8 个字）"
+        placeholder="请具体说明问题、修改理由或建议（至少 4 个字）"
     /></el-form-item>
     <el-form-item label="附件（可选）">
       <div class="attachments-input">
         <el-upload
           :auto-upload="false"
           multiple
-          :limit="20"
+          :limit="Math.max(0, attachmentLimit - retained.length)"
+          :disabled="retained.length >= attachmentLimit"
           :file-list="uploads"
           :on-change="changeFiles"
           :on-remove="changeFiles"
           :on-exceed="tooManyFiles"
-          ><el-button>选择附件</el-button
+          ><el-button :disabled="retained.length >= attachmentLimit">选择附件</el-button
           ><template #tip
             ><div class="muted">
-              支持测试点文件、ZIP 和图片；最多 20 个，单个 32 MiB，总计 96
+              支持测试点文件、ZIP 和图片；最多
+              {{ attachmentLimit }} 个（含保留附件），单个 32 MiB，总计 96
               MiB。附件仅申请人和有权管理者可见。
             </div></template
           ></el-upload
@@ -98,14 +100,9 @@
       </div>
       <div class="markdown-grid" :class="`mobile-${mobileTab}`">
         <section class="markdown-source">
-          <label for="ticket-markdown">Markdown 题面</label
-          ><el-input
-            id="ticket-markdown"
+          <ProblemStatementEditor
+            ref="statementEditor"
             v-model="form.draft_statement"
-            type="textarea"
-            :rows="20"
-            maxlength="200000"
-            placeholder="## 题目描述&#10;&#10;## 输入格式&#10;&#10;## 输出格式&#10;&#10;## 样例"
           />
         </section>
         <section class="markdown-preview" aria-label="新题目实时预览">
@@ -128,6 +125,7 @@
 <script setup lang="ts">
 import { computed, onBeforeUnmount, reactive, ref, watch } from "vue";
 import { ElMessage, type UploadFile } from "element-plus";
+import ProblemStatementEditor from "./ProblemStatementEditor.vue";
 import MarkdownRenderer from "../MarkdownRenderer.vue";
 import type {
   ProblemChangeAction,
@@ -136,6 +134,7 @@ import type {
 import { ticketRequest, type TicketContext } from "../../api/modules/tickets";
 import {
   ticketActionLabels,
+  ticketAttachmentLimit,
   validateProblemChangeTicketDraft,
 } from "../../features/problems/changeTicket";
 import { useAuthStore } from "../../stores/auth";
@@ -164,6 +163,8 @@ const form = reactive({
   draft_title: props.ticket?.draft_title || "",
   draft_statement: props.ticket?.draft_statement || "",
 });
+const statementEditor = ref<InstanceType<typeof ProblemStatementEditor>>();
+const attachmentLimit = computed(() => ticketAttachmentLimit(form.action));
 const actions = computed<ProblemChangeAction[]>(() => {
   if (props.ticket) return [props.ticket.action];
   if (props.context.kind === "mine") return ["create"];
@@ -236,15 +237,20 @@ function changeFiles(_file: UploadFile, next: UploadFile[]) {
   uploads.value = next;
 }
 function tooManyFiles() {
-  ElMessage.warning("最多上传 20 个附件");
+  ElMessage.warning(`最多上传 ${attachmentLimit.value} 个附件（含保留附件）`);
 }
 function removeRetained(id: number) {
   retained.value = retained.value.filter((file) => file.id !== id);
 }
 function insertImage(name: string) {
-  form.draft_statement += `\n\n![附件图片](${imageKey(name)})\n`;
+  statementEditor.value?.insertImage(`\n\n![附件图片](${imageKey(name)})\n`);
 }
 async function submit() {
+  if (saving.value) return;
+  if (form.action === "create") {
+    const statementError = statementEditor.value?.validate();
+    if (statementError) return void ElMessage.warning(statementError);
+  }
   const problemID =
     props.ticket?.problem_id ||
     (props.context.kind === "problem"
@@ -341,10 +347,6 @@ async function submit() {
 .markdown-source,
 .markdown-preview {
   min-width: 0;
-}
-.markdown-source label {
-  display: block;
-  margin-bottom: 8px;
 }
 .markdown-preview {
   padding: 18px;
