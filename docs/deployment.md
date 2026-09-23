@@ -136,6 +136,14 @@ Worker 的恢复测试也使用上述数据库/Redis 变量，在 `apps/worker` 
 
 服务器发布证据与备份保存在 `/opt/School-OJ-backups/release-components-269729c6449a/`，其中 `release.json` 记录旧/新镜像、数据容器 ID、备份校验和及清理结果。线上页面截图与结果在忽略提交的 `tmp/components-production-qa/`。源码已移除不安全的旧格式化逻辑、失效标题参数与样式；完整范围见 [复用组件性能与生命周期](component-performance.md)。
 
+### 4.4 工单与提交界面更新（2026-09-23）
+
+应用版本 `3986614` 已从 `435a226` 更新上线，API、Worker、Web 使用同一代码版本构建，数据服务保持原容器。此次包括工单返回／创建跳转、4 字说明、新题 50 附件、固定栏目题面编辑、Profile 工作台清理、默认公开代码、本人提交筛选及题目反馈入口调整。
+
+服务器隔离 PostgreSQL 16 / Redis 7 下 API 140 项、Worker 36 项、Web 128 项测试通过；真实镜像两个视口 33 项交互、MinIO 题包与 Worker 实际判题、Docker 沙箱专项均通过。上线后健康、镜像匹配、管理员／学生只读权限与本人筛选、10 项线上浏览器检查通过，无 HTTP 5xx 或 panic。
+
+已清理本次 8 个测试容器、4 个测试镜像和 13 个无用构建层，保留 6 个正式服务、回滚镜像、数据库及附件备份。证据目录为 `/opt/School-OJ-backups/release-ticket-update-3986614b4ad4/`，完整说明见 [工单反馈与发布验收](ticket-feedback.md)。
+
 ## 5. 关键环境变量
 
 | 变量 | 用途 |
@@ -168,7 +176,7 @@ curl -fsS http://127.0.0.1:${WEB_PORT:-25565}/healthz
 
 推荐发布顺序：
 
-1. 等待维护者手动确认 Git 提交；使用本机 Git 提交并推送部署用 origin。备份 PostgreSQL，记录当前提交和应用镜像编号，保留带标签的回滚镜像。
+1. 取得维护者发布授权后，使用本机 Git 提交并推送部署用 origin。备份 PostgreSQL，记录当前提交和应用镜像编号，保留带标签的回滚镜像。
 2. 以快进方式更新部署分支，禁止在生产目录制造合并提交。
 3. 校验 Compose 配置，构建三个应用镜像。
 4. 使用 `up -d --no-deps api worker web` 替换应用容器，不重建数据服务或删除卷。
