@@ -14,6 +14,7 @@
       <el-descriptions-item label="状态">{{
         ticketStatusLabels[ticket.status]
       }}</el-descriptions-item>
+      <el-descriptions-item v-if="ticket.action === 'create'" label="入库范围">{{ { public: '公共题库', prepared: '预备题库', team_problem_set: '团队题单' }[ticket.target_scope] }}<span v-if="ticket.team_problem_set_id"> #{{ ticket.team_problem_set_id }}</span></el-descriptions-item>
       <el-descriptions-item label="提交时间">{{
         formatDateTime(ticket.created_at)
       }}</el-descriptions-item>
@@ -53,7 +54,10 @@
       <el-button link @click="previewUrl = ''">关闭图片预览</el-button
       ><img :src="previewUrl" alt="工单附件预览" />
     </div>
-    <ProblemDraftPreview v-if="ticket.action === 'create' && ticket.draft_statement" class="draft-preview" :title="ticket.draft_title || ''" :source="ticket.draft_statement" :asset-urls="imageUrls" />
+    <ProblemDraftPreview v-if="ticket.action === 'create' && ticket.draft_statement && !(ticket.can_apply && ticket.status === 'pending')" class="draft-preview" :title="ticket.draft_title || ''" :source="ticket.draft_statement" :asset-urls="imageUrls" />
+    <el-alert v-if="ticket.status === 'awaiting_changes'" type="warning" :closable="false" title="工单已退回补充，请根据处理说明修改材料后重新提交。" />
+    <router-link v-if="ticket.status === 'completed' && ticket.applied_version_id && ticket.problem_id" :to="`/problems/${ticket.problem_id}`">查看已入库题目：{{ ticket.problem?.title || ticket.draft_title }}</router-link>
+    <el-collapse v-if="ticket.history?.length"><el-collapse-item title="处理记录" name="history"><ol class="ticket-history"><li v-for="item in ticket.history" :key="item.revision"><strong>{{ historyLabels[item.action] || item.action }}</strong> · {{ item.actor }} · {{ formatDateTime(item.at) }}<p v-if="item.note" class="plain-text">{{ item.note }}</p></li></ol></el-collapse-item></el-collapse>
     <section
       v-if="ticket.can_apply && ticket.impact_summary"
       class="impact-panel"
@@ -79,19 +83,22 @@
       v-if="ticket.can_manage && ticket.status === 'pending'"
       label-position="top"
       class="decision-form"
+      :disabled="working"
     >
       <template v-if="ticket.can_apply && ticket.action !== 'archive'">
-        <el-form-item label="管理员最终完整题包"
+        <el-form-item label="入库材料"><el-radio-group v-model="packageMode" :disabled="working"><el-radio-button value="materials">使用工单材料</el-radio-button><el-radio-button value="zip">使用完整 ZIP 题包</el-radio-button></el-radio-group></el-form-item>
+        <TicketPackageReview v-if="packageMode === 'materials'" ref="packageReview" :ticket="ticket" :image-urls="imageUrls" :disabled="working" />
+        <el-form-item v-else label="完整 ZIP 题包（可选方式）"
           ><el-upload
             :auto-upload="false"
             accept=".zip"
             :limit="1"
             :on-change="pickPackage"
             :on-remove="clearPackage"
-            ><el-button>选择最终 ZIP 题包</el-button
+            ><el-button>选择完整 ZIP 题包</el-button
             ><template #tip
               ><p>
-                参考附件不会自动替换题目数据；请核对后提交最终题包。
+                此方式使用完整题包中的题面、图片和测试点，覆盖本次入库内容。普通附件请使用“工单材料”。
               </p></template
             ></el-upload
           ></el-form-item
@@ -105,6 +112,7 @@
               :value="value" /></el-select
         ></el-form-item>
       </template>
+      <el-alert v-if="ticket.can_resolve && (ticket.exam_id || ticket.contest_id)" type="info" :closable="false" title="填写处置结果后可直接结单，不更改题库、不更新当前场次版本，也不触发重判。题库修正需单独执行。" />
       <el-form-item label="处理说明"
         ><el-input
           v-model="note"
@@ -120,12 +128,13 @@
           :loading="working"
           @click="decide('reject')"
           >驳回</el-button
+        ><el-button :disabled="working" @click="decide('return')">退回补充</el-button
         ><el-button
           v-if="ticket.can_resolve"
           type="primary"
           :loading="working"
           @click="decide('resolve')"
-          >处理完成</el-button
+          >{{ ticket.exam_id || ticket.contest_id ? '记录处置并结单' : '处理完成' }}</el-button
         ><el-button
           v-if="ticket.can_apply"
           type="primary"
@@ -157,12 +166,17 @@ import {
 } from "../../features/problems/changeTicket";
 import { problemDifficultyOptions } from "../../features/problems/problemMeta";
 import { formatDateTime } from "../../features/time";
+import { mapConcurrent } from "../../features/async";
 import ProblemDraftPreview from "./ProblemDraftPreview.vue";
+import TicketPackageReview from "./TicketPackageReview.vue";
 const props = defineProps<{
   ticket: ProblemChangeTicket;
   context: TicketContext;
 }>();
 const emit = defineEmits<{ changed: [] }>();
+const packageMode = ref<'materials' | 'zip'>('materials');
+const packageReview = ref<InstanceType<typeof TicketPackageReview>>();
+const historyLabels: Record<string, string> = { return: '退回补充', resubmit: '补充后重新提交', update: '修改材料', reject: '驳回', resolve: '记录处置并完成', apply: '执行题库变更', cancel: '撤回' };
 const note = ref(""),
   difficulty = ref(props.ticket.problem?.difficulty || ""),
   packageFile = ref<File | null>(null),
@@ -229,18 +243,18 @@ watch(
   () => props.ticket.id,
   async () => {
     if (!props.ticket.draft_statement) return;
-    for (const file of props.ticket.attachments || [])
-      if (file.content_type.startsWith("image/")) {
+    const loaded: Record<string, string> = {};
+    await mapConcurrent((props.ticket.attachments || []).filter(file => file.content_type.startsWith('image/')), 3, async file => {
+      if (!controller.signal.aborted) {
         try {
           const url = await attachment(file, true);
-          imageUrls.value = {
-            ...imageUrls.value,
-            [`attachments/${encodeURIComponent(file.name)}`]: url,
-          };
+          loaded[`attachments/${encodeURIComponent(file.name)}`] = url;
         } catch {
           /* Private assets have no public fallback. */
         }
       }
+    });
+    if (!controller.signal.aborted) imageUrls.value = loaded;
   },
   { immediate: true },
 );
@@ -248,7 +262,8 @@ onBeforeUnmount(() => {
   controller.abort();
   urls.forEach(URL.revokeObjectURL);
 });
-async function decide(action: "reject" | "resolve") {
+async function decide(action: "reject" | "resolve" | "return") {
+  if (working.value) return;
   if (!note.value.trim())
     return void ElMessage.warning("请填写处理结果或驳回原因");
   working.value = true;
@@ -256,7 +271,7 @@ async function decide(action: "reject" | "resolve") {
     await ticketRequest(props.context, action, props.ticket.id, {
       body: { revision: props.ticket.revision, note: note.value.trim() },
     });
-    ElMessage.success(action === "reject" ? "工单已驳回" : "工单已完成");
+    ElMessage.success(action === "return" ? "已退回作者补充" : action === "reject" ? "工单已驳回" : "工单已完成");
     emit("changed");
   } catch (error: any) {
     ElMessage.error(error.response?.data?.error || "处理失败");
@@ -265,8 +280,12 @@ async function decide(action: "reject" | "resolve") {
   }
 }
 async function apply() {
-  if (props.ticket.action !== "archive" && !packageFile.value)
-    return void ElMessage.warning("请上传管理员最终完整题包");
+  if (working.value) return;
+  const data = new FormData();
+  if (props.ticket.action !== 'archive') {
+    if (packageMode.value === 'materials') { if (!packageReview.value?.appendTo(data)) return; }
+    else if (!packageFile.value) return void ElMessage.warning('请选择完整 ZIP 题包');
+  }
   try {
     await ElMessageBox.confirm(
       props.ticket.action === "archive"
@@ -284,7 +303,6 @@ async function apply() {
   }
   working.value = true;
   try {
-    const data = new FormData();
     data.append("revision", String(props.ticket.revision));
     if (props.ticket.current_version_id)
       data.append(
@@ -297,10 +315,11 @@ async function apply() {
     );
     data.append("resolution_note", note.value.trim());
     data.append("difficulty", difficulty.value);
-    if (packageFile.value) data.append("package", packageFile.value);
+    if (packageMode.value === 'zip' && packageFile.value) data.append("package", packageFile.value);
     await generatedApi.applyProblemChangeTicket({
       path: { id: props.ticket.id },
       body: data,
+      timeout: 600000,
     });
     ElMessage.success("工单已执行");
     emit("changed");
@@ -321,6 +340,10 @@ async function apply() {
   white-space: pre-wrap;
   overflow-wrap: anywhere;
 }
+.ticket-history { display: grid; gap: 12px; padding-left: 24px; }
+.ticket-history p { margin: 6px 0; }
+.decision-form > .el-alert { margin: 16px 0; }
+.decision-form .package-review { margin-bottom: 20px; }
 .attachment-row {
   display: flex;
   flex-wrap: wrap;

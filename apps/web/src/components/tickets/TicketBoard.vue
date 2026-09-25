@@ -49,7 +49,7 @@
     />
     <template v-else-if="mode === 'view' && active">
       <div v-if="active.can_edit" class="own-actions">
-        <el-button @click="mode = 'edit'">编辑工单</el-button
+        <el-button @click="mode = 'edit'">{{ active.status === 'awaiting_changes' ? '补充材料并重提' : '编辑工单' }}</el-button
         ><el-button type="danger" plain @click="remove">删除工单</el-button>
       </div>
       <TicketDetail

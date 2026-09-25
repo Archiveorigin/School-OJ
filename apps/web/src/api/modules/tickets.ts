@@ -20,6 +20,7 @@ type TicketOperation =
   | "delete"
   | "reject"
   | "resolve"
+  | "return"
   | "attachment";
 const operations: Record<
   TicketContext["kind"],
@@ -33,6 +34,7 @@ const operations: Record<
     delete: "deleteProblemChangeTicket",
     reject: "rejectProblemChangeTicket",
     resolve: "resolveProblemChangeTicket",
+    return: "returnProblemChangeTicket",
     attachment: "downloadTicketAttachment",
   },
   manage: {
@@ -43,6 +45,7 @@ const operations: Record<
     delete: "deleteProblemChangeTicket",
     reject: "rejectProblemChangeTicket",
     resolve: "resolveProblemChangeTicket",
+    return: "returnProblemChangeTicket",
     attachment: "downloadTicketAttachment",
   },
   problem: {
@@ -53,6 +56,7 @@ const operations: Record<
     delete: "deleteProblemFeedbackTicket",
     reject: "rejectProblemFeedbackTicket",
     resolve: "resolveProblemFeedbackTicket",
+    return: "returnProblemFeedbackTicket",
     attachment: "downloadProblemFeedbackTicketAttachment",
   },
   exam: {
@@ -63,6 +67,7 @@ const operations: Record<
     delete: "deleteExamFeedbackTicket",
     reject: "rejectExamFeedbackTicket",
     resolve: "resolveExamFeedbackTicket",
+    return: "returnExamFeedbackTicket",
     attachment: "downloadExamFeedbackTicketAttachment",
   },
   contest: {
@@ -73,6 +78,7 @@ const operations: Record<
     delete: "deleteContestFeedbackTicket",
     reject: "rejectContestFeedbackTicket",
     resolve: "resolveContestFeedbackTicket",
+    return: "returnContestFeedbackTicket",
     attachment: "downloadContestFeedbackTicketAttachment",
   },
 };

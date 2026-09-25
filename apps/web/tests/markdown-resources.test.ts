@@ -16,6 +16,14 @@ beforeEach(() => {
 afterEach(() => vi.unstubAllGlobals())
 
 describe('Markdown resource lifecycle', () => {
+  it('resolves encoded image names without double-encoding attachment paths', async () => {
+    vi.mocked(getStatementAsset).mockResolvedValue({ data: new Blob(['image']) } as any)
+    const wrapper = mount(MarkdownRenderer, { props: { source: '![图](assets/%E5%9B%BE%201.png)', problemId: 1 } })
+    await flushPromises()
+    expect(getStatementAsset).toHaveBeenCalledWith(1, 'assets/图 1.png', undefined, expect.any(AbortSignal))
+    expect(wrapper.get('img').attributes('src')).toBe('blob:test-1')
+    wrapper.unmount()
+  })
   it('parses once per source and does not reload unchanged asset paths on text edits', async () => {
     vi.mocked(getStatementAsset).mockResolvedValue({ data: new Blob(['image']) } as any)
     const parse = vi.spyOn(markdown, 'parse')

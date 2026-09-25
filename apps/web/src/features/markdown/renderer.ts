@@ -3,6 +3,9 @@ import MarkdownIt from 'markdown-it'
 import type Token from 'markdown-it/lib/token.mjs'
 
 export interface MarkdownEnvironment { assetUrls?: Record<string, string> }
+export function decodeAssetPath(path: string) {
+  try { return decodeURIComponent(path) } catch { return path }
+}
 
 export const markdown = new MarkdownIt({
   html: false,
@@ -72,7 +75,8 @@ markdown.renderer.rules.image = (tokens, idx, options, env, self) => {
   const token = tokens[idx]
   const src = token.attrGet('src') || ''
   const original = token.attrs?.map((attr) => [...attr] as [string, string]) || null
-  const resolved = (env as MarkdownEnvironment | undefined)?.assetUrls?.[src]
+  const urls = (env as MarkdownEnvironment | undefined)?.assetUrls
+  const resolved = urls?.[src] || urls?.[decodeAssetPath(src)]
   if (resolved) token.attrSet('src', resolved)
   else if (src.startsWith('assets/') || src.startsWith('attachments/')) token.attrSet('src', '')
   token.attrSet('loading', 'lazy')
@@ -122,7 +126,7 @@ export function collectAssetPaths(tokens: Token[]) {
     for (const token of tokens) {
       if (token.type === 'image') {
         const src = token.attrGet?.('src') || ''
-        if (src.startsWith('assets/')) paths.add(src)
+        if (src.startsWith('assets/')) paths.add(decodeAssetPath(src))
       }
       if (Array.isArray(token.children)) visit(token.children)
     }

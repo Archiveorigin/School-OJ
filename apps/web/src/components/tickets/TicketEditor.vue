@@ -1,5 +1,5 @@
 <template>
-  <el-form label-position="top" class="ticket-editor" @submit.prevent="submit">
+  <el-form label-position="top" class="ticket-editor" :disabled="saving" @submit.prevent="submit">
     <div class="editor-fields">
       <el-form-item label="工单类型" required
         ><el-select
@@ -15,7 +15,7 @@
       <el-form-item v-if="form.action === 'create'" label="入库范围"
         ><el-select
           v-model="form.target_scope"
-          :disabled="Boolean(ticket)"
+          :disabled="saving"
           aria-label="入库范围"
           ><el-option value="public" label="公共题库" /><el-option
             value="prepared"
@@ -37,7 +37,7 @@
         ><el-input-number
           v-model="form.team_problem_set_id"
           :min="1"
-          :disabled="Boolean(ticket)"
+          :disabled="saving"
       /></el-form-item>
     </div>
     <el-form-item label="修改说明" required
@@ -92,7 +92,7 @@
     <div class="editor-actions">
       <el-button :disabled="saving" @click="$emit('cancel')">取消</el-button
       ><el-button type="primary" native-type="submit" :loading="saving">{{
-        ticket ? "保存修改" : "提交工单"
+        ticket?.status === 'awaiting_changes' ? '重新提交工单' : ticket ? "保存修改" : "提交工单"
       }}</el-button>
     </div>
   </el-form>
@@ -288,7 +288,7 @@ async function submit() {
       props.ticket?.id,
       { body: data, timeout: 600000, onUploadProgress: (event) => { if (event.total) uploadProgress.value = Math.round(event.loaded / event.total * 100); } },
     );
-    ElMessage.success(props.ticket ? "工单已更新" : "工单已提交");
+    ElMessage.success(props.ticket?.status === 'awaiting_changes' ? '已补充材料并重新提交' : props.ticket ? "工单已更新" : "工单已提交");
     emit("saved", response.data);
   } catch (error: any) {
     ElMessage.error(error.response?.data?.error || "无法确认保存结果，请先查看我的工单后再重试");

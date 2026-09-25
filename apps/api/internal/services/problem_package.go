@@ -461,12 +461,29 @@ func BuildProblemPackage(draft ProblemPackageDraft) ([]byte, ParsedProblemPackag
 	return body, parsed, nil
 }
 
-func RebuildProblemPackage(base []byte, manifest ProblemManifest, replacementCases []ProblemCaseDraft) ([]byte, ParsedProblemPackage, error) {
+func RebuildProblemPackage(base []byte, manifest ProblemManifest, replacementCases []ProblemCaseDraft, replacementAssets ...ParsedProblemAsset) ([]byte, ParsedProblemPackage, error) {
 	files, err := packageFiles(base)
 	if err != nil {
 		return nil, ParsedProblemPackage{}, err
 	}
 	delete(files, "problem.yaml")
+	for _, asset := range replacementAssets {
+		assetPath, err := NormalizeAssetPath(asset.Path)
+		if err != nil {
+			return nil, ParsedProblemPackage{}, err
+		}
+		if _, err := ValidateProblemAsset(assetPath, asset.Body); err != nil {
+			return nil, ParsedProblemPackage{}, err
+		}
+		files[assetPath] = asset.Body
+		kept := manifest.Assets[:0]
+		for _, existing := range manifest.Assets {
+			if existing.Path != assetPath {
+				kept = append(kept, existing)
+			}
+		}
+		manifest.Assets = append(kept, AssetManifest{Name: asset.Name, Path: assetPath, ContentType: asset.ContentType, Size: int64(len(asset.Body))})
+	}
 	if replacementCases != nil {
 		if len(replacementCases) == 0 {
 			return nil, ParsedProblemPackage{}, fmt.Errorf("at least one test case is required")

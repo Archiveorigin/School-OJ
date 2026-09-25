@@ -166,7 +166,7 @@ export interface components {
   }
     "problem"?: components['schemas']["TicketProblem"]
     "action": "create" | "replace" | "archive" | "suggest"
-    "status": "pending" | "processing" | "completed" | "rejected" | "cancelled"
+    "status": "pending" | "awaiting_changes" | "processing" | "completed" | "rejected" | "cancelled"
     "target_scope": "public" | "prepared" | "team_problem_set"
     "description": string
     "resolution_note"?: string
@@ -199,6 +199,15 @@ export interface components {
     "created_at": string
     "updated_at": string
     "processed_at"?: (string) | null
+    "review"?: components['schemas']["TicketPackageReview"]
+    "review_error"?: string
+    "history"?: (Array<{
+    "action": string
+    "actor": string
+    "note": string
+    "revision": number
+    "at": string
+  }>) | null
   }
     "Team": {
     "id": number
@@ -386,6 +395,7 @@ export interface components {
     "resolution_note"?: string
     "difficulty"?: string
     "tags"?: string
+    "review"?: string
   }
     "TicketPage": {
     "items": Array<components['schemas']["ProblemChangeTicket"]>
@@ -404,6 +414,34 @@ export interface components {
     "problem_code"?: string
     "label"?: string
     "sort_order"?: number
+  }
+    "TicketPackageReview": {
+    "revision": number
+    "expected_version_id"?: (number) | null
+    "title": string
+    "statement": string
+    "time_limit_ms": number
+    "memory_limit_mb": number
+    "output_limit_kb": number
+    "checker": {
+    "type": "exact" | "tokens" | "float"
+    "absolute_tolerance"?: number
+    "relative_tolerance"?: number
+  }
+    "replace_tests": boolean
+    "attachment_ids": Array<number>
+  }
+    "TicketPackagePreview": {
+    "title": string
+    "statement": string
+    "case_count": number
+    "case_names": Array<string>
+    "asset_count": number
+    "asset_urls": {
+    [key: string]: string
+  }
+    "revision": number
+    "expected_version_id"?: (number) | null
   }
   }
 }
@@ -604,6 +642,11 @@ export const apiOperations = {
   "cancelContestFeedbackTicket": { method: "POST", path: "/contests/{contest_id}/change-tickets/{ticket_id}/cancel", segments: [] },
   "rejectContestFeedbackTicket": { method: "POST", path: "/contests/{contest_id}/change-tickets/{ticket_id}/reject", segments: [] },
   "resolveContestFeedbackTicket": { method: "POST", path: "/contests/{contest_id}/change-tickets/{ticket_id}/resolve", segments: [] },
+  "returnProblemChangeTicket": { method: "POST", path: "/problem-change-tickets/{id}/return", segments: [] },
+  "returnProblemFeedbackTicket": { method: "POST", path: "/problems/{id}/change-tickets/{ticket_id}/return", segments: [] },
+  "returnExamFeedbackTicket": { method: "POST", path: "/exams/{id}/change-tickets/{ticket_id}/return", segments: [] },
+  "returnContestFeedbackTicket": { method: "POST", path: "/contests/{contest_id}/change-tickets/{ticket_id}/return", segments: [] },
+  "previewProblemChangeTicket": { method: "POST", path: "/problem-change-tickets/{id}/preview", segments: [] },
 } as const
 
 export type ApiOperationId = keyof typeof apiOperations
@@ -1052,6 +1095,16 @@ export const generatedApi = {
     requestOperation<TResponse, components['schemas']["TicketDecision"]>("rejectContestFeedbackTicket", options),
   "resolveContestFeedbackTicket": <TResponse = components['schemas']["ProblemChangeTicket"]>(options: ApiRequestOptions<components['schemas']["TicketDecision"]> = {}) =>
     requestOperation<TResponse, components['schemas']["TicketDecision"]>("resolveContestFeedbackTicket", options),
+  "returnProblemChangeTicket": <TResponse = components['schemas']["ProblemChangeTicket"]>(options: ApiRequestOptions<components['schemas']["TicketDecision"]> = {}) =>
+    requestOperation<TResponse, components['schemas']["TicketDecision"]>("returnProblemChangeTicket", options),
+  "returnProblemFeedbackTicket": <TResponse = components['schemas']["ProblemChangeTicket"]>(options: ApiRequestOptions<components['schemas']["TicketDecision"]> = {}) =>
+    requestOperation<TResponse, components['schemas']["TicketDecision"]>("returnProblemFeedbackTicket", options),
+  "returnExamFeedbackTicket": <TResponse = components['schemas']["ProblemChangeTicket"]>(options: ApiRequestOptions<components['schemas']["TicketDecision"]> = {}) =>
+    requestOperation<TResponse, components['schemas']["TicketDecision"]>("returnExamFeedbackTicket", options),
+  "returnContestFeedbackTicket": <TResponse = components['schemas']["ProblemChangeTicket"]>(options: ApiRequestOptions<components['schemas']["TicketDecision"]> = {}) =>
+    requestOperation<TResponse, components['schemas']["TicketDecision"]>("returnContestFeedbackTicket", options),
+  "previewProblemChangeTicket": <TResponse = components['schemas']["TicketPackagePreview"]>(options: ApiRequestOptions<components['schemas']["TicketPackageReview"]> = {}) =>
+    requestOperation<TResponse, components['schemas']["TicketPackageReview"]>("previewProblemChangeTicket", options),
 }
 
 // 兼容现有页面的 Axios 调用；新代码优先使用 generatedApi 的 operationId 方法。

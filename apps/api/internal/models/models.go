@@ -333,6 +333,7 @@ type ProblemChangeStatus string
 
 const (
 	ProblemChangePending    ProblemChangeStatus = "pending"
+	ProblemChangeReturned   ProblemChangeStatus = "awaiting_changes"
 	ProblemChangeProcessing ProblemChangeStatus = "processing"
 	ProblemChangeCompleted  ProblemChangeStatus = "completed"
 	ProblemChangeRejected   ProblemChangeStatus = "rejected"
@@ -363,6 +364,7 @@ type ProblemChangeTicket struct {
 	AttachmentObject  string                      `json:"-" gorm:"size:512"`
 	AttachmentName    string                      `json:"attachment_name,omitempty" gorm:"size:255"`
 	ResolutionNote    string                      `json:"resolution_note" gorm:"type:text"`
+	History           datatypes.JSON              `json:"history" gorm:"type:jsonb;not null;default:'[]'"`
 	AppliedVersionID  *uint                       `json:"applied_version_id,omitempty" gorm:"index"`
 	ProcessedBy       *uint                       `json:"processed_by,omitempty" gorm:"index"`
 	ProcessedAt       *time.Time                  `json:"processed_at,omitempty"`

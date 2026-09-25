@@ -101,6 +101,10 @@ func sameTicketID(a, b *uint) bool { return a == nil && b == nil || a != nil && 
 // Context access is checked on every operation, including attachment reads.
 // Existing private feedback remains readable by its requester after an event ends.
 func (s Server) ticketContextAccess(user models.User, ticket models.ProblemChangeTicket, writing bool) (bool, bool) {
+	// Administrators must be able to close orphaned tickets after a target is removed.
+	if user.Role == models.RoleAdmin {
+		return true, true
+	}
 	if ticket.ExamID != nil {
 		var exam models.Exam
 		if s.DB.Where("deleted_at IS NULL").First(&exam, *ticket.ExamID).Error != nil {
@@ -194,9 +198,12 @@ func (s Server) authorizedTicket(c *gin.Context) (models.ProblemChangeTicket, bo
 
 // Never serialize User/Problem ORM records through a ticket endpoint.
 func (s Server) ticketView(user models.User, ticket models.ProblemChangeTicket) gin.H {
-	_, manager := s.ticketReadable(user, ticket)
+	return s.ticketProjection(user, ticket, true)
+}
+
+func (s Server) ticketProjection(user models.User, ticket models.ProblemChangeTicket, detail bool) gin.H {
+	readable, manager := s.ticketReadable(user, ticket)
 	private := manager || user.ID != 0 && ticket.RequesterID == user.ID
-	canWrite, _ := s.ticketContextAccess(user, ticket, true)
 	view := gin.H{
 		"id": ticket.ID, "requester_id": ticket.RequesterID, "requester": gin.H{"name": ticket.Requester.Name},
 		"problem_id": ticket.ProblemID, "exam_id": ticket.ExamID, "contest_id": ticket.ContestID,
@@ -206,9 +213,9 @@ func (s Server) ticketView(user models.User, ticket models.ProblemChangeTicket) 
 		"revision": ticket.Revision, "created_at": ticket.CreatedAt, "updated_at": ticket.UpdatedAt,
 		"processed_at": ticket.ProcessedAt, "applied_version_id": ticket.AppliedVersionID,
 		"attachment_count": len(ticket.Attachments), "attachments_private": !private,
-		"can_edit":   canWrite && user.ID != 0 && user.ID == ticket.RequesterID && ticket.Status == models.ProblemChangePending,
+		"can_edit":   readable && user.ID != 0 && user.ID == ticket.RequesterID && ticketEditableStatus(ticket.Status),
 		"can_manage": manager, "can_apply": user.Role == models.RoleAdmin && ticket.Action != models.ProblemChangeSuggest && (ticket.ProblemID != nil || ticket.Action == models.ProblemChangeCreate),
-		"can_resolve": manager && (ticket.Action == models.ProblemChangeSuggest || ticket.ProblemID == nil && ticket.Action == models.ProblemChangeReplace),
+		"can_resolve": manager && ticketCanResolve(ticket),
 	}
 	if ticket.ProblemID != nil {
 		var p struct {
@@ -229,7 +236,8 @@ func (s Server) ticketView(user models.User, ticket models.ProblemChangeTicket) 
 			view["current_version_id"] = p.CurrentVersionID
 		}
 	}
-	if private {
+	if private && detail {
+		view["history"] = ticket.History
 		view["attachments"] = ticket.Attachments
 		if ticket.Action == models.ProblemChangeCreate {
 			view["draft_title"], view["draft_statement"] = ticket.DraftTitle, ticket.DraftStatement
@@ -238,7 +246,7 @@ func (s Server) ticketView(user models.User, ticket models.ProblemChangeTicket) 
 			view["attachment_name"] = ticket.Attachments[0].Name
 		}
 	}
-	if user.Role == models.RoleAdmin {
+	if user.Role == models.RoleAdmin && detail {
 		s.loadProblemChangeTicketImpact(&ticket)
 		view["impact_summary"] = ticket.ImpactSummary
 	}
@@ -290,8 +298,8 @@ func parseTicketInput(c *gin.Context) (problemChangeTicketInput, []ticketUpload,
 	var total, expanded int64
 	names := map[string]bool{}
 	for _, file := range files {
-		if file.Size <= 0 || file.Size > problemTicketAttachmentLimit || total+file.Size > ticketTotalAttachmentLimit {
-			return req, nil, errors.New("附件必须非空，单个不超过 32 MiB，总计不超过 96 MiB")
+		if file.Size < 0 || file.Size > problemTicketAttachmentLimit || total+file.Size > ticketTotalAttachmentLimit {
+			return req, nil, errors.New("单个附件不超过 32 MiB，总计不超过 96 MiB")
 		}
 		stream, err := file.Open()
 		if err != nil {
@@ -302,11 +310,11 @@ func parseTicketInput(c *gin.Context) (problemChangeTicketInput, []ticketUpload,
 			stream.Close()
 			return req, nil, err
 		}
-		if names[name] {
+		if names[strings.ToLower(name)] {
 			stream.Close()
 			return req, nil, errors.New("请为附件使用不同文件名")
 		}
-		names[name] = true
+		names[strings.ToLower(name)] = true
 		total += file.Size
 		if total > ticketTotalAttachmentLimit {
 			stream.Close()
@@ -341,7 +349,8 @@ func validateProblemChangeTicketAttachment(name string, size int64) error {
 	if name == "" && size == 0 {
 		return nil
 	}
-	if strings.TrimSpace(name) == "" || len([]rune(name)) > 255 || strings.ContainsAny(name, "\r\n\x00") || size <= 0 {
+	ext := strings.ToLower(filepath.Ext(name))
+	if strings.TrimSpace(name) == "" || len([]rune(name)) > 255 || strings.ContainsAny(name, "\r\n\x00") || size < 0 || size == 0 && ext != ".in" && ext != ".out" {
 		return errors.New("附件名称无效或文件为空")
 	}
 	if size > problemTicketAttachmentLimit {
@@ -622,7 +631,7 @@ func (s Server) listTicketFeedback(c *gin.Context, mode string) {
 	items := make([]gin.H, 0, len(tickets))
 	for _, ticket := range tickets {
 		if readable, _ := s.ticketReadable(user, ticket); readable {
-			items = append(items, s.ticketView(user, ticket))
+			items = append(items, s.ticketProjection(user, ticket, false))
 		}
 	}
 	c.JSON(200, gin.H{"items": items, "total": total, "page": page, "page_size": size})
@@ -652,7 +661,15 @@ func (s Server) getProblemChangeTicket(c *gin.Context) {
 		return
 	}
 	user, _ := middleware.CurrentUser(c)
-	c.JSON(200, s.ticketView(user, ticket))
+	view := s.ticketView(user, ticket)
+	if user.Role == models.RoleAdmin && ticket.Status == models.ProblemChangePending && (ticket.Action == models.ProblemChangeCreate || ticket.Action == models.ProblemChangeReplace && ticket.ProblemID != nil) {
+		if review, err := s.ticketReviewDefaults(ticket); err == nil {
+			view["review"] = review
+		} else {
+			view["review_error"] = err.Error()
+		}
+	}
+	c.JSON(200, view)
 }
 
 func (s Server) downloadProblemChangeTicketAttachment(c *gin.Context) {
@@ -728,7 +745,7 @@ func (s Server) updateProblemChangeTicket(c *gin.Context) {
 		return
 	}
 	user, _ := middleware.CurrentUser(c)
-	writable, _ := s.ticketContextAccess(user, ticket, true)
+	writable, _ := s.ticketContextAccess(user, ticket, false)
 	if ticket.RequesterID != user.ID || !writable {
 		c.JSON(403, gin.H{"error": "只能编辑本人当前可访问的工单"})
 		return
@@ -746,6 +763,20 @@ func (s Server) updateProblemChangeTicket(c *gin.Context) {
 		c.JSON(400, gin.H{"error": err.Error()})
 		return
 	}
+	if ticket.Action == models.ProblemChangeCreate {
+		if req.TargetScope == "" {
+			req.TargetScope, req.TeamProblemSetID = ticket.TargetScope, ticket.TeamProblemSetID
+		}
+		updated, e := s.prepareTicket(c, user, req)
+		if e != nil {
+			c.JSON(400, gin.H{"error": e.Error()})
+			return
+		}
+		if updated.TeamProblemSetID != nil && !s.canSubmitTicketToProblemSet(c, user, *updated.TeamProblemSetID) {
+			return
+		}
+		ticket.TargetScope, ticket.TeamProblemSetID = updated.TargetScope, updated.TeamProblemSetID
+	}
 	keep := map[uint]bool{}
 	var size int64
 	for _, id := range req.RetainAttachmentIDs {
@@ -760,7 +791,7 @@ func (s Server) updateProblemChangeTicket(c *gin.Context) {
 						return
 					}
 					info, err := s.MinIO.StatObject(c.Request.Context(), s.Cfg.MinIOBucket, a.Object, minio.StatObjectOptions{})
-					if err != nil || info.Size <= 0 || info.Size > problemTicketAttachmentLimit {
+					if err != nil || validateProblemChangeTicketAttachment(a.Name, info.Size) != nil {
 						c.JSON(400, gin.H{"error": "历史附件不可用或超过大小限制，请移除后重试"})
 						return
 					}
@@ -777,14 +808,25 @@ func (s Server) updateProblemChangeTicket(c *gin.Context) {
 			return
 		}
 	}
+	names := map[string]bool{}
+	for _, a := range ticket.Attachments {
+		if keep[a.ID] {
+			names[strings.ToLower(a.Name)] = true
+		}
+	}
 	for _, u := range uploads {
+		if names[strings.ToLower(u.name)] {
+			c.JSON(400, gin.H{"error": "附件名称与保留附件重复，请先移除原附件"})
+			return
+		}
+		names[strings.ToLower(u.name)] = true
 		size += u.size
 	}
 	if len(keep)+len(uploads) > ticketFileLimit(ticket.Action) || size > ticketTotalAttachmentLimit {
 		c.JSON(400, gin.H{"error": "附件超过数量或总大小限制"})
 		return
 	}
-	if req.Revision != ticket.Revision || ticket.Status != models.ProblemChangePending {
+	if req.Revision != ticket.Revision || !ticketEditableStatus(ticket.Status) {
 		c.JSON(409, gin.H{"error": "工单已变更或处理，请刷新"})
 		return
 	}
@@ -794,8 +836,12 @@ func (s Server) updateProblemChangeTicket(c *gin.Context) {
 		return
 	}
 	removed := []models.ProblemTicketAttachment{}
+	action := "update"
+	if ticket.Status == models.ProblemChangeReturned {
+		action = "resubmit"
+	}
 	err = s.DB.WithContext(c.Request.Context()).Transaction(func(tx *gorm.DB) error {
-		result := tx.Model(&models.ProblemChangeTicket{}).Where("id = ? AND revision = ? AND status = ? AND deleted_at IS NULL", ticket.ID, req.Revision, models.ProblemChangePending).Updates(map[string]any{"description": strings.TrimSpace(req.Description), "draft_title": strings.TrimSpace(req.DraftTitle), "draft_statement": req.DraftStatement, "revision": gorm.Expr("revision + 1"), "attachment_name": "", "attachment_object": ""})
+		result := tx.Model(&models.ProblemChangeTicket{}).Where("id = ? AND revision = ? AND status = ? AND deleted_at IS NULL", ticket.ID, req.Revision, ticket.Status).Updates(map[string]any{"description": strings.TrimSpace(req.Description), "draft_title": strings.TrimSpace(req.DraftTitle), "draft_statement": req.DraftStatement, "target_scope": ticket.TargetScope, "team_problem_set_id": ticket.TeamProblemSetID, "status": models.ProblemChangePending, "resolution_note": "", "processed_by": nil, "processed_at": nil, "history": ticketHistory(ticket, user, action, ""), "revision": gorm.Expr("revision + 1"), "attachment_name": "", "attachment_object": ""})
 		if result.Error != nil {
 			return result.Error
 		}
@@ -833,6 +879,7 @@ func (s Server) cancelProblemChangeTicket(c *gin.Context)  { s.finishTicketFeedb
 func (s Server) deleteProblemChangeTicket(c *gin.Context)  { s.finishTicketFeedback(c, "delete") }
 func (s Server) rejectProblemChangeTicket(c *gin.Context)  { s.finishTicketFeedback(c, "reject") }
 func (s Server) resolveProblemChangeTicket(c *gin.Context) { s.finishTicketFeedback(c, "resolve") }
+func (s Server) returnProblemChangeTicket(c *gin.Context)  { s.finishTicketFeedback(c, "return") }
 func (s Server) finishTicketFeedback(c *gin.Context, operation string) {
 	ticket, manager, ok := s.authorizedTicket(c)
 	if !ok {
@@ -847,7 +894,7 @@ func (s Server) finishTicketFeedback(c *gin.Context, operation string) {
 		return
 	}
 	if operation == "cancel" || operation == "delete" {
-		writable, _ := s.ticketContextAccess(user, ticket, true)
+		writable, _ := s.ticketContextAccess(user, ticket, false)
 		if user.ID != ticket.RequesterID || !writable {
 			c.JSON(403, gin.H{"error": "只能删除或撤回本人当前可访问的工单"})
 			return
@@ -861,9 +908,16 @@ func (s Server) finishTicketFeedback(c *gin.Context, operation string) {
 			c.JSON(400, gin.H{"error": "请填写处理原因（最多 10000 字）"})
 			return
 		}
-		if operation == "resolve" && ticket.Action != models.ProblemChangeSuggest && !(ticket.Action == models.ProblemChangeReplace && ticket.ProblemID == nil) {
+		if operation == "resolve" && !ticketCanResolve(ticket) {
 			c.JSON(400, gin.H{"error": "题库变更须由系统管理员执行"})
 			return
+		}
+		if operation == "return" {
+			readable, _ := s.ticketContextAccess(ticket.Requester, ticket, false)
+			if !readable || (ticket.Action == models.ProblemChangeCreate || ticket.Action == models.ProblemChangeArchive) && !canCreateProblems(ticket.Requester) {
+				c.JSON(409, gin.H{"error": "申请人已失去访问或出题权限，无法补充；请说明原因后驳回或完成处置"})
+				return
+			}
 		}
 	}
 	status := models.ProblemChangeCancelled
@@ -873,14 +927,21 @@ func (s Server) finishTicketFeedback(c *gin.Context, operation string) {
 	if operation == "resolve" {
 		status = models.ProblemChangeCompleted
 	}
-	updates := map[string]any{"status": status, "processed_at": time.Now(), "processed_by": user.ID, "revision": gorm.Expr("revision + 1")}
+	if operation == "return" {
+		status = models.ProblemChangeReturned
+	}
+	if ticket.Status != models.ProblemChangePending && !((operation == "delete" || operation == "cancel") && ticket.Status == models.ProblemChangeReturned) {
+		c.JSON(409, gin.H{"error": "工单已变更或处理，请刷新"})
+		return
+	}
+	updates := map[string]any{"status": status, "processed_at": time.Now(), "processed_by": user.ID, "history": ticketHistory(ticket, user, operation, strings.TrimSpace(req.Note)), "revision": gorm.Expr("revision + 1")}
 	if operation == "delete" {
 		updates["deleted_at"] = time.Now()
 	}
-	if operation == "reject" || operation == "resolve" {
+	if operation == "reject" || operation == "resolve" || operation == "return" {
 		updates["resolution_note"] = strings.TrimSpace(req.Note)
 	}
-	result := s.DB.Model(&models.ProblemChangeTicket{}).Where("id = ? AND revision = ? AND status = ? AND deleted_at IS NULL", ticket.ID, req.Revision, models.ProblemChangePending).Updates(updates)
+	result := s.DB.Model(&models.ProblemChangeTicket{}).Where("id = ? AND revision = ? AND status = ? AND deleted_at IS NULL", ticket.ID, req.Revision, ticket.Status).Updates(updates)
 	if result.Error != nil || result.RowsAffected != 1 {
 		c.JSON(409, gin.H{"error": "工单已变更或处理，请刷新"})
 		return
@@ -895,6 +956,8 @@ func (s Server) finishTicketFeedback(c *gin.Context, operation string) {
 }
 
 func (s Server) applyProblemChangeTicket(c *gin.Context) {
+	defer cleanupTicketMultipart(c)
+	s.DB = s.DB.WithContext(c.Request.Context())
 	ticket, _, ok := s.authorizedTicket(c)
 	if !ok {
 		return
@@ -909,7 +972,6 @@ func (s Server) applyProblemChangeTicket(c *gin.Context) {
 		c.JSON(400, gin.H{"error": "表单无效或题包过大"})
 		return
 	}
-	defer c.Request.MultipartForm.RemoveAll()
 	revision, _ := strconv.Atoi(c.PostForm("revision"))
 	if revision != ticket.Revision || ticket.Status != models.ProblemChangePending {
 		c.JSON(409, gin.H{"error": "工单已变更或处理，请刷新"})
@@ -941,23 +1003,39 @@ func (s Server) applyProblemChangeTicket(c *gin.Context) {
 	if ticket.Action == models.ProblemChangeArchive {
 		err = s.applyArchiveProblemTicket(ticket, admin, note)
 	} else {
-		file, e := c.FormFile("package")
-		if e != nil {
-			c.JSON(400, gin.H{"error": "请上传管理员最终完整题包"})
-			return
+		var body []byte
+		var pkg services.ParsedProblemPackage
+		var e error
+		if raw := c.PostForm("review"); raw != "" {
+			if _, exists := c.Request.MultipartForm.File["package"]; exists {
+				c.JSON(400, gin.H{"error": "请选择在线组包或完整题包中的一种方式"})
+				return
+			}
+			var review ticketPackageReview
+			if e = json.Unmarshal([]byte(raw), &review); e == nil {
+				if review.Revision != revision || !sameTicketID(review.ExpectedVersionID, ticket.ExpectedVersionID) {
+					c.JSON(409, gin.H{"error": "审核内容与工单或题目版本不一致"})
+					return
+				}
+				body, pkg, e = s.assembleTicketPackage(c, ticket, review)
+			}
+		} else {
+			file, readErr := c.FormFile("package")
+			if readErr != nil {
+				c.JSON(400, gin.H{"error": "请核对工单材料生成题包，或选择完整 ZIP 题包"})
+				return
+			}
+			src, readErr := file.Open()
+			if readErr != nil {
+				c.JSON(400, gin.H{"error": "无法读取题包"})
+				return
+			}
+			body, e = services.ReadLimited(src, services.MaxProblemPackageSize, "题包")
+			src.Close()
+			if e == nil {
+				pkg, e = services.ParseProblemPackage(body)
+			}
 		}
-		src, e := file.Open()
-		if e != nil {
-			c.JSON(400, gin.H{"error": "无法读取题包"})
-			return
-		}
-		body, e := services.ReadLimited(src, services.MaxProblemPackageSize, "题包")
-		src.Close()
-		if e != nil {
-			c.JSON(400, gin.H{"error": e.Error()})
-			return
-		}
-		pkg, e := services.ParseProblemPackage(body)
 		if e != nil {
 			c.JSON(400, gin.H{"error": e.Error()})
 			return

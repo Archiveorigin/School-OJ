@@ -21,6 +21,7 @@
 import { computed, ref } from 'vue'
 import { ElMessage } from 'element-plus'
 import type { TicketAttachment } from '../../api/client'
+import { validTicketFileSize } from '../../features/problems/changeTicket'
 const props = defineProps<{ modelValue: File[]; retained: TicketAttachment[]; limit: number; disabled?: boolean }>()
 const emit = defineEmits<{ 'update:modelValue': [File[]]; 'update:retained': [TicketAttachment[]] }>()
 const input = ref<HTMLInputElement>(), visible = ref(false)
@@ -32,9 +33,9 @@ function choose(event: Event) {
   target.value = ''
   if (!files.length || props.disabled) return
   if (count.value + files.length > props.limit) return void ElMessage.warning(`最多上传 ${props.limit} 个附件（含保留附件）`)
-  if (files.some(file => !file.size || file.size > 32 * 1024 * 1024)) return void ElMessage.warning('附件须非空，单个不超过 32 MiB')
+  if (files.some(file => !validTicketFileSize(file))) return void ElMessage.warning('单个附件不超过 32 MiB，仅 .in / .out 测试文件允许为空')
   if (totalSize.value + files.reduce((n, f) => n + f.size, 0) > 96 * 1024 * 1024) return void ElMessage.warning('附件总计不能超过 96 MiB')
-  const names = [...props.retained, ...props.modelValue, ...files].map(file => file.name)
+  const names = [...props.retained, ...props.modelValue, ...files].map(file => file.name.toLowerCase())
   if (new Set(names).size !== names.length) return void ElMessage.warning('请为附件使用不同文件名')
   emit('update:modelValue', [...props.modelValue, ...files])
 }

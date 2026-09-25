@@ -46,6 +46,7 @@ func (s Server) applyArchiveProblemTicket(ticket models.ProblemChangeTicket, adm
 		}
 		return tx.Model(&models.ProblemChangeTicket{}).Where("id = ?", ticket.ID).Updates(map[string]any{
 			"status": models.ProblemChangeCompleted, "resolution_note": note,
+			"history":      ticketHistory(ticket, admin, "apply", note),
 			"processed_by": admin.ID, "processed_at": now,
 		}).Error
 	})
@@ -151,6 +152,7 @@ func (s Server) replaceProblemVersion(ticket models.ProblemChangeTicket, admin m
 		}
 		return tx.Model(&models.ProblemChangeTicket{}).Where("id = ?", ticket.ID).Updates(map[string]any{
 			"status": models.ProblemChangeCompleted, "resolution_note": note,
+			"history":            ticketHistory(ticket, admin, "apply", note),
 			"applied_version_id": version.ID, "processed_by": admin.ID, "processed_at": now,
 		}).Error
 	})
@@ -197,7 +199,7 @@ func (s Server) createProblemFromTicket(c *gin.Context, ticket models.ProblemCha
 		}
 		if ticket.TargetScope == "team_problem_set" && ticket.TeamProblemSetID != nil {
 			var set models.TeamProblemSet
-			if err := tx.Where("deleted_at IS NULL").First(&set, *ticket.TeamProblemSetID).Error; err != nil {
+			if err := tx.Clauses(clause.Locking{Strength: "UPDATE"}).Where("deleted_at IS NULL").First(&set, *ticket.TeamProblemSetID).Error; err != nil {
 				return err
 			}
 			problem.TeamID = &set.TeamID
@@ -225,11 +227,11 @@ func (s Server) createProblemFromTicket(c *gin.Context, ticket models.ProblemCha
 			}
 		}
 		if ticket.TargetScope == "team_problem_set" && ticket.TeamProblemSetID != nil {
-			var count int64
-			if err := tx.Model(&models.TeamProblemSetProblem{}).Where("problem_set_id = ?", *ticket.TeamProblemSetID).Count(&count).Error; err != nil {
+			var nextOrder int
+			if err := tx.Model(&models.TeamProblemSetProblem{}).Where("problem_set_id = ?", *ticket.TeamProblemSetID).Select("COALESCE(MAX(sort_order), 0) + 1").Scan(&nextOrder).Error; err != nil {
 				return err
 			}
-			link := models.TeamProblemSetProblem{ProblemSetID: *ticket.TeamProblemSetID, ProblemID: problem.ID, SortOrder: int(count)}
+			link := models.TeamProblemSetProblem{ProblemSetID: *ticket.TeamProblemSetID, ProblemID: problem.ID, SortOrder: nextOrder}
 			if err := tx.Create(&link).Error; err != nil {
 				return err
 			}
@@ -237,6 +239,7 @@ func (s Server) createProblemFromTicket(c *gin.Context, ticket models.ProblemCha
 		return tx.Model(&models.ProblemChangeTicket{}).Where("id = ?", ticket.ID).Updates(map[string]any{
 			"problem_id": problem.ID, "status": models.ProblemChangeCompleted,
 			"resolution_note": note, "applied_version_id": version.ID,
+			"history":      ticketHistory(ticket, admin, "apply", note),
 			"processed_by": admin.ID, "processed_at": now,
 		}).Error
 	})

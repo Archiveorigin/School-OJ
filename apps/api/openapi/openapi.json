@@ -6960,11 +6960,6 @@
         "requestBody": {
           "required": true,
           "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/TicketApply"
-              }
-            },
             "multipart/form-data": {
               "schema": {
                 "$ref": "#/components/schemas/TicketApply"
@@ -11439,6 +11434,323 @@
           }
         }
       }
+    },
+    "/problem-change-tickets/{id}/return": {
+      "post": {
+        "operationId": "returnProblemChangeTicket",
+        "tags": [
+          "工单"
+        ],
+        "summary": "Return ticket for additional materials",
+        "x-handler": "returnProblemChangeTicket",
+        "x-auth": "bearer",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "成功",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemChangeTicket"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "404": {
+            "description": "对象不存在"
+          },
+          "409": {
+            "description": "工单状态或版本冲突"
+          },
+          "503": {
+            "$ref": "#/components/responses/ServiceUnavailable"
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/TicketDecision"
+              }
+            }
+          }
+        }
+      }
+    },
+    "/problems/{id}/change-tickets/{ticket_id}/return": {
+      "post": {
+        "operationId": "returnProblemFeedbackTicket",
+        "tags": [
+          "工单"
+        ],
+        "summary": "Return ticket for additional materials",
+        "x-handler": "returnProblemChangeTicket",
+        "x-auth": "bearer",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer"
+            }
+          },
+          {
+            "name": "ticket_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "成功",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemChangeTicket"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "404": {
+            "description": "对象不存在"
+          },
+          "409": {
+            "description": "工单状态或版本冲突"
+          },
+          "503": {
+            "$ref": "#/components/responses/ServiceUnavailable"
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/TicketDecision"
+              }
+            }
+          }
+        }
+      }
+    },
+    "/exams/{id}/change-tickets/{ticket_id}/return": {
+      "post": {
+        "operationId": "returnExamFeedbackTicket",
+        "tags": [
+          "工单"
+        ],
+        "summary": "Return ticket for additional materials",
+        "x-handler": "returnProblemChangeTicket",
+        "x-auth": "bearer",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer"
+            }
+          },
+          {
+            "name": "ticket_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "成功",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemChangeTicket"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "404": {
+            "description": "对象不存在"
+          },
+          "409": {
+            "description": "工单状态或版本冲突"
+          },
+          "503": {
+            "$ref": "#/components/responses/ServiceUnavailable"
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/TicketDecision"
+              }
+            }
+          }
+        }
+      }
+    },
+    "/contests/{contest_id}/change-tickets/{ticket_id}/return": {
+      "post": {
+        "operationId": "returnContestFeedbackTicket",
+        "tags": [
+          "工单"
+        ],
+        "summary": "Return ticket for additional materials",
+        "x-handler": "returnProblemChangeTicket",
+        "x-auth": "bearer",
+        "parameters": [
+          {
+            "name": "contest_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer"
+            }
+          },
+          {
+            "name": "ticket_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "成功",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemChangeTicket"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "404": {
+            "description": "对象不存在"
+          },
+          "409": {
+            "description": "工单状态或版本冲突"
+          },
+          "503": {
+            "$ref": "#/components/responses/ServiceUnavailable"
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/TicketDecision"
+              }
+            }
+          }
+        }
+      }
+    },
+    "/problem-change-tickets/{id}/preview": {
+      "post": {
+        "operationId": "previewProblemChangeTicket",
+        "tags": [
+          "工单"
+        ],
+        "summary": "Validate and preview a package assembled from ticket materials",
+        "x-handler": "previewProblemChangeTicket",
+        "x-auth": "bearer",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "成功",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TicketPackagePreview"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "404": {
+            "description": "对象不存在"
+          },
+          "409": {
+            "description": "工单状态或版本冲突"
+          },
+          "503": {
+            "$ref": "#/components/responses/ServiceUnavailable"
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/TicketPackageReview"
+              }
+            }
+          }
+        },
+        "x-roles": [
+          "admin"
+        ]
+      }
     }
   },
   "components": {
@@ -12043,16 +12355,16 @@
           },
           "retain_attachment_ids": {
             "type": "array",
-            "maxItems": 50,
-            "description": "与新上传附件合计：新增题目最多 50 个，其他工单最多 20 个；总大小不超过 96 MiB",
+            "maxItems": 30,
+            "description": "Create tickets allow 30 attachments; other types allow 20. Each file is at most 32 MiB, total 96 MiB; empty .in/.out files are allowed.",
             "items": {
               "type": "integer"
             }
           },
           "attachments": {
             "type": "array",
-            "maxItems": 50,
-            "description": "新增题目最多 50 个，其他工单最多 20 个（均含保留附件）；单个不超过 32 MiB，总计不超过 96 MiB",
+            "maxItems": 30,
+            "description": "Create tickets allow 30 attachments; other types allow 20. Each file is at most 32 MiB, total 96 MiB; empty .in/.out files are allowed.",
             "items": {
               "type": "string",
               "format": "binary"
@@ -12119,6 +12431,7 @@
             "type": "string",
             "enum": [
               "pending",
+              "awaiting_changes",
               "processing",
               "completed",
               "rejected",
@@ -12240,6 +12553,44 @@
             "type": "string",
             "format": "date-time",
             "nullable": true
+          },
+          "review": {
+            "$ref": "#/components/schemas/TicketPackageReview"
+          },
+          "review_error": {
+            "type": "string"
+          },
+          "history": {
+            "type": "array",
+            "nullable": true,
+            "items": {
+              "type": "object",
+              "required": [
+                "action",
+                "actor",
+                "note",
+                "revision",
+                "at"
+              ],
+              "properties": {
+                "action": {
+                  "type": "string"
+                },
+                "actor": {
+                  "type": "string"
+                },
+                "note": {
+                  "type": "string"
+                },
+                "revision": {
+                  "type": "integer"
+                },
+                "at": {
+                  "type": "string",
+                  "format": "date-time"
+                }
+              }
+            }
           }
         }
       },
@@ -13023,6 +13374,10 @@
           },
           "tags": {
             "type": "string"
+          },
+          "review": {
+            "type": "string",
+            "description": "JSON TicketPackageReview; mutually exclusive with package."
           }
         }
       },
@@ -13094,6 +13449,120 @@
           },
           "sort_order": {
             "type": "integer"
+          }
+        }
+      },
+      "TicketPackageReview": {
+        "type": "object",
+        "required": [
+          "revision",
+          "title",
+          "statement",
+          "time_limit_ms",
+          "memory_limit_mb",
+          "output_limit_kb",
+          "checker",
+          "replace_tests",
+          "attachment_ids"
+        ],
+        "properties": {
+          "revision": {
+            "type": "integer"
+          },
+          "expected_version_id": {
+            "type": "integer",
+            "nullable": true
+          },
+          "title": {
+            "type": "string"
+          },
+          "statement": {
+            "type": "string"
+          },
+          "time_limit_ms": {
+            "type": "integer"
+          },
+          "memory_limit_mb": {
+            "type": "integer"
+          },
+          "output_limit_kb": {
+            "type": "integer"
+          },
+          "checker": {
+            "type": "object",
+            "required": [
+              "type"
+            ],
+            "properties": {
+              "type": {
+                "type": "string",
+                "enum": [
+                  "exact",
+                  "tokens",
+                  "float"
+                ]
+              },
+              "absolute_tolerance": {
+                "type": "number"
+              },
+              "relative_tolerance": {
+                "type": "number"
+              }
+            }
+          },
+          "replace_tests": {
+            "type": "boolean"
+          },
+          "attachment_ids": {
+            "type": "array",
+            "items": {
+              "type": "integer"
+            }
+          }
+        }
+      },
+      "TicketPackagePreview": {
+        "type": "object",
+        "required": [
+          "title",
+          "statement",
+          "case_count",
+          "case_names",
+          "asset_count",
+          "asset_urls",
+          "revision"
+        ],
+        "properties": {
+          "title": {
+            "type": "string"
+          },
+          "statement": {
+            "type": "string"
+          },
+          "case_count": {
+            "type": "integer"
+          },
+          "case_names": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "asset_count": {
+            "type": "integer"
+          },
+          "asset_urls": {
+            "type": "object",
+            "additionalProperties": {
+              "type": "string"
+            }
+          },
+          "revision": {
+            "type": "integer"
+          },
+          "expected_version_id": {
+            "type": "integer",
+            "nullable": true
           }
         }
       }

@@ -30,7 +30,8 @@ describe('ticket feedback validation', () => {
     const file = new File(['1 2'], '1.in')
     expect(validateProblemChangeTicketDraft({ ...base, attachments: [file], retainedCount: 20 })).toContain('20')
     expect(validateProblemChangeTicketDraft({ ...base, attachments: [file], retainedSize: 96 * 1024 * 1024 })).toContain('96')
-    expect(validateProblemChangeTicketDraft({ ...base, attachments: [new File([], 'empty.in')] })).toContain('非空')
+    expect(validateProblemChangeTicketDraft({ ...base, attachments: [new File([], 'empty.in'), new File([], 'empty.out')] })).toBe('')
+    expect(validateProblemChangeTicketDraft({ ...base, attachments: [new File([], 'empty.zip')] })).toContain('允许为空')
     expect(validateProblemChangeTicketDraft({ ...base, attachments: [file, new File(['3'], '1.out')] })).toBe('')
   })
   it('keeps explicit overwrite mode for administrators applying packages', () => {

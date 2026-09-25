@@ -279,7 +279,7 @@ func TestTicketPrivateAttachmentsAndFailuresPostgres(t *testing.T) {
 	edit["revision"] = 1
 	edit["retain_attachment_ids"] = []uint{999999}
 	assertStatus(t, f.request("PATCH", fmt.Sprintf("%s/%d", base, ticket.ID), &f.student, edit), 400)
-	assertStatus(t, ticketMultipart(t, f, "POST", base, f.student, ticketDraft("replace", f.problem.ID), map[string][]byte{"empty.in": {}}, nil), 400)
+	assertStatus(t, ticketMultipart(t, f, "POST", base, f.student, ticketDraft("replace", f.problem.ID), map[string][]byte{"empty.zip": {}}, nil), 400)
 	files := map[string][]byte{}
 	for i := 0; i < 21; i++ {
 		files[fmt.Sprintf("%d.in", i)] = []byte("1")
@@ -334,8 +334,8 @@ func TestTicketExamScopeAndVersionPostgres(t *testing.T) {
 	forged := ticketDraft("suggest", f.problem.ID)
 	forged["exam_id"] = f.other.ID
 	assertStatus(t, f.request("POST", ticketBase, &f.student, forged), 400)
-	assertStatus(t, f.request("POST", detail+"/resolve", &f.teacher, gin.H{"revision": 1, "note": "不允许跳过题库执行"}), 400)
-	assertStatus(t, f.request("POST", detail+"/reject", &f.teacher, gin.H{"revision": 1, "note": "核对后暂不需要修改本题"}), 200)
+	assertStatus(t, f.request("POST", detail+"/resolve", &f.teacher, gin.H{"revision": 1, "note": "已向考生说明，当前场次保持原题目版本"}), 200)
+	assertStatus(t, f.request("POST", detail+"/reject", &f.teacher, gin.H{"revision": 1, "note": "重复处理不应成功"}), 409)
 	r = f.request("POST", ticketBase, &f.student, ticketDraft("suggest", 0))
 	assertStatus(t, r, 201)
 	overall := readTicket(t, r)

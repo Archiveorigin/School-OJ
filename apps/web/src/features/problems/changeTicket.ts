@@ -11,6 +11,7 @@ export const ticketActionLabels: Record<ProblemChangeAction, string> = {
 };
 export const ticketStatusLabels: Record<ProblemChangeStatus, string> = {
   pending: "待处理",
+  awaiting_changes: "待补充",
   processing: "处理中",
   completed: "已完成",
   rejected: "已驳回",
@@ -31,6 +32,9 @@ export interface ProblemChangeTicketDraft {
 }
 export function ticketAttachmentLimit(action: ProblemChangeAction) {
   return action === "create" ? 30 : 20;
+}
+export function validTicketFileSize(file: Pick<File, "name" | "size">) {
+  return file.size <= 32 * 1024 * 1024 && (file.size > 0 || file.size === 0 && /\.(in|out)$/i.test(file.name));
 }
 export function validateProblemChangeTicketDraft(
   draft: ProblemChangeTicketDraft,
@@ -57,9 +61,9 @@ export function validateProblemChangeTicketDraft(
   if (draft.attachments.length + (draft.retainedCount || 0) > limit)
     return `最多上传 ${limit} 个附件`;
   if (
-    draft.attachments.some((file) => !file.size || file.size > 32 * 1024 * 1024)
+    draft.attachments.some((file) => !validTicketFileSize(file))
   )
-    return "附件须非空，单个不超过 32 MiB";
+    return "单个附件不超过 32 MiB，仅 .in / .out 测试文件允许为空";
   if (
     draft.attachments.reduce(
       (sum, file) => sum + file.size,
