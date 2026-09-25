@@ -30,7 +30,7 @@ export interface ProblemChangeTicketDraft {
   draftStatement?: string;
 }
 export function ticketAttachmentLimit(action: ProblemChangeAction) {
-  return action === "create" ? 50 : 20;
+  return action === "create" ? 30 : 20;
 }
 export function validateProblemChangeTicketDraft(
   draft: ProblemChangeTicketDraft,

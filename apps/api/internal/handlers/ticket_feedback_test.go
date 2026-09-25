@@ -566,32 +566,32 @@ func TestTicketDescriptionAndAttachmentLimitsPostgres(t *testing.T) {
 		assertStatus(t, f.request("POST", "/api/problem-change-tickets", &f.student, req), 201)
 	}
 	req := ticketDraft("create", 0)
-	req["draft_title"], req["draft_statement"], req["description"] = "五十附件", "题目描述", "增加测试"
+	req["draft_title"], req["draft_statement"], req["description"] = "三十附件", "题目描述", "增加测试"
 	files := map[string][]byte{}
-	for i := 1; i <= 25; i++ {
+	for i := 1; i <= 15; i++ {
 		files[fmt.Sprintf("%d.in", i)] = []byte("1 2\n")
 		files[fmt.Sprintf("%d.out", i)] = []byte("3\n")
 	}
 	r := ticketMultipart(t, f, "POST", "/api/problem-change-tickets", f.student, req, files, nil)
 	assertStatus(t, r, 201)
 	ticket := readTicket(t, r)
-	if len(ticket.Attachments) != 50 {
-		t.Fatalf("want 50 attachments, got %d", len(ticket.Attachments))
+	if len(ticket.Attachments) != 30 {
+		t.Fatalf("want 30 attachments, got %d", len(ticket.Attachments))
 	}
 	files["extra.in"] = []byte("1")
 	assertStatus(t, ticketMultipart(t, f, "POST", "/api/problem-change-tickets", f.student, req, files, nil), 400)
-	ids := make([]uint, 0, 50)
+	ids := make([]uint, 0, 30)
 	for _, file := range ticket.Attachments {
 		ids = append(ids, file.ID)
 	}
 	url := fmt.Sprintf("/api/problem-change-tickets/%d", ticket.ID)
 	req["revision"], req["retain_attachment_ids"] = 1, ids
 	assertStatus(t, ticketMultipart(t, f, "PATCH", url, f.student, req, map[string][]byte{"extra.in": []byte("1")}, nil), 400)
-	req["retain_attachment_ids"] = ids[:49]
+	req["retain_attachment_ids"] = ids[:29]
 	r = ticketMultipart(t, f, "PATCH", url, f.student, req, map[string][]byte{"extra.in": []byte("1")}, nil)
 	assertStatus(t, r, 200)
-	if len(readTicket(t, r).Attachments) != 50 {
-		t.Fatal("replacement did not retain 50 files")
+	if len(readTicket(t, r).Attachments) != 30 {
+		t.Fatal("replacement did not retain 30 files")
 	}
 	req["revision"], req["description"] = 2, "😀😀😀"
 	assertStatus(t, f.request("PATCH", url, &f.student, req), 400)

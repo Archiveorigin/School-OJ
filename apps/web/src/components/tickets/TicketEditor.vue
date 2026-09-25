@@ -46,6 +46,9 @@
     /></el-form-item>
     <el-form-item label="附件（可选）">
       <div class="attachments-input">
+        <p class="muted" role="status">
+          已选择 {{ retained.length + files.length }} / {{ attachmentLimit }} 个附件（含保留附件）
+        </p>
         <el-upload
           :auto-upload="false"
           multiple

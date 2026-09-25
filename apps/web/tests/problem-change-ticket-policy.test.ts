@@ -6,10 +6,13 @@ describe('ticket feedback validation', () => {
     for (const description of ['修改样例', '  补充说明  ', '修正😀题']) expect(validateProblemChangeTicketDraft({ ...base, description })).toBe('')
     for (const description of ['改样例', '  😀😀😀  ']) expect(validateProblemChangeTicketDraft({ ...base, description })).toContain('4 至')
   })
-  it('allows 50 new-problem attachments, including retained files, with unchanged size limits', () => {
+  it('allows 30 new-problem attachments, including retained files, with unchanged size limits', () => {
     const create = { ...base, action: 'create' as const, draftTitle: '新题目', draftStatement: '题面', attachments: [new File(['1'], 'new.in')] }
-    expect(validateProblemChangeTicketDraft({ ...create, retainedCount: 49 })).toBe('')
-    expect(validateProblemChangeTicketDraft({ ...create, retainedCount: 50 })).toContain('50')
+    expect(validateProblemChangeTicketDraft({ ...create, retainedCount: 29 })).toBe('')
+    expect(validateProblemChangeTicketDraft({ ...create, retainedCount: 30 })).toContain('30')
+    const pairs = Array.from({ length: 15 }, (_, i) => [new File(['1 2'], `${i}.in`), new File(['3'], `${i}.out`)]).flat()
+    expect(validateProblemChangeTicketDraft({ ...create, attachments: pairs })).toBe('')
+    expect(validateProblemChangeTicketDraft({ ...create, attachments: [...pairs, new File(['1'], 'extra.in')] })).toContain('30')
     expect(validateProblemChangeTicketDraft({ ...create, retainedSize: 96 * 1024 * 1024 })).toContain('96')
   })
   it('accepts feedback without attachments or an overwrite confirmation', () => {

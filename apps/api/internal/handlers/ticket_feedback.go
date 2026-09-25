@@ -32,7 +32,7 @@ const ticketTotalAttachmentLimit int64 = 96 << 20
 
 func ticketFileLimit(action models.ProblemChangeAction) int {
 	if action == models.ProblemChangeCreate {
-		return 50
+		return 30
 	}
 	return 20
 }
