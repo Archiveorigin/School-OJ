@@ -149,7 +149,7 @@ onBeforeUnmount(() => { generation++; joinCode.value = ''; window.removeEventLis
 .team-join-page { max-width: 640px; margin: 20px auto; }
 .join-panel { margin-top: 16px; padding: 28px; min-height: 240px; }
 .join-panel h1 { margin: 0 0 8px; font-size: 25px; overflow-wrap: anywhere; }
-.team-icon { width: 60px; height: 60px; object-fit: cover; border-radius: var(--radius-lg); margin-bottom: 16px; }
+.team-icon { width: 60px; height: 60px; object-fit: contain; object-position: center; border-radius: var(--radius-lg); margin-bottom: 16px; }
 .join-modes { margin: 20px 0 24px; }
 .join-submit { margin-top: 12px; width: 100%; }
 .change-entry, .join-error { margin-top: 20px; }

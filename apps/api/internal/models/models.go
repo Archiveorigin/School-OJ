@@ -599,6 +599,7 @@ type TeamProblemSet struct {
 	TeamID      uint       `json:"team_id" gorm:"index;not null"`
 	Title       string     `json:"title" gorm:"size:200;not null"`
 	Description string     `json:"description" gorm:"type:text"`
+	IconURL     string     `json:"icon_url" gorm:"type:text"`
 	CreatedBy   uint       `json:"created_by" gorm:"index;not null"`
 	CreatedAt   time.Time  `json:"created_at"`
 	UpdatedAt   time.Time  `json:"updated_at"`

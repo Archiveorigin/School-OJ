@@ -401,7 +401,17 @@
           "503": {
             "$ref": "#/components/responses/ServiceUnavailable"
           }
-        }
+        },
+        "parameters": [
+          {
+            "name": "team_id",
+            "in": "query",
+            "schema": {
+              "type": "integer"
+            },
+            "description": "Include own team private problems; requires team content permission."
+          }
+        ]
       }
     },
     "/problems/{id}/assets/{asset_path}": {
@@ -3037,16 +3047,11 @@
           }
         ],
         "requestBody": {
-          "required": false,
+          "required": true,
           "content": {
             "application/json": {
               "schema": {
-                "$ref": "#/components/schemas/JsonObject"
-              }
-            },
-            "multipart/form-data": {
-              "schema": {
-                "$ref": "#/components/schemas/JsonObject"
+                "$ref": "#/components/schemas/TeamProblemSetInput"
               }
             }
           }
@@ -3166,16 +3171,11 @@
           }
         ],
         "requestBody": {
-          "required": false,
+          "required": true,
           "content": {
             "application/json": {
               "schema": {
-                "$ref": "#/components/schemas/JsonObject"
-              }
-            },
-            "multipart/form-data": {
-              "schema": {
-                "$ref": "#/components/schemas/JsonObject"
+                "$ref": "#/components/schemas/TeamProblemSetInput"
               }
             }
           }
@@ -3285,16 +3285,11 @@
           }
         ],
         "requestBody": {
-          "required": false,
+          "required": true,
           "content": {
             "application/json": {
               "schema": {
-                "$ref": "#/components/schemas/JsonObject"
-              }
-            },
-            "multipart/form-data": {
-              "schema": {
-                "$ref": "#/components/schemas/JsonObject"
+                "$ref": "#/components/schemas/TeamProblemSelectionRequest"
               }
             }
           }
@@ -3717,16 +3712,11 @@
           }
         ],
         "requestBody": {
-          "required": false,
+          "required": true,
           "content": {
             "application/json": {
               "schema": {
-                "$ref": "#/components/schemas/JsonObject"
-              }
-            },
-            "multipart/form-data": {
-              "schema": {
-                "$ref": "#/components/schemas/JsonObject"
+                "$ref": "#/components/schemas/TeamProblemSetInput"
               }
             }
           }
@@ -3820,16 +3810,11 @@
           }
         ],
         "requestBody": {
-          "required": false,
+          "required": true,
           "content": {
             "application/json": {
               "schema": {
-                "$ref": "#/components/schemas/JsonObject"
-              }
-            },
-            "multipart/form-data": {
-              "schema": {
-                "$ref": "#/components/schemas/JsonObject"
+                "$ref": "#/components/schemas/TeamProblemSelectionRequest"
               }
             }
           }
@@ -12433,6 +12418,9 @@
           },
           "can_delete": {
             "type": "boolean"
+          },
+          "icon_url": {
+            "type": "string"
           }
         }
       },
@@ -13060,6 +13048,51 @@
             "type": "integer"
           },
           "page_size": {
+            "type": "integer"
+          }
+        }
+      },
+      "TeamProblemSetInput": {
+        "type": "object",
+        "required": [
+          "title"
+        ],
+        "properties": {
+          "title": {
+            "type": "string",
+            "maxLength": 200
+          },
+          "description": {
+            "type": "string"
+          },
+          "icon_url": {
+            "type": "string",
+            "description": "PNG/JPEG/WebP data URL or existing image URL; blank uses team icon."
+          }
+        }
+      },
+      "TeamProblemSelectionRequest": {
+        "type": "object",
+        "properties": {
+          "problem_ids": {
+            "type": "array",
+            "minItems": 1,
+            "maxItems": 100,
+            "items": {
+              "type": "integer",
+              "minimum": 1
+            }
+          },
+          "problem_id": {
+            "type": "integer"
+          },
+          "problem_code": {
+            "type": "string"
+          },
+          "label": {
+            "type": "string"
+          },
+          "sort_order": {
             "type": "integer"
           }
         }

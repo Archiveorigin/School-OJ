@@ -44,6 +44,7 @@ export function serializeStatement(draft: StatementDraft) {
     )
     .join("\n\n");
   return [draft.description, draft.input, draft.output, samples, draft.hints]
+    .filter((body, index) => index !== 4 || body.trim())
     .map((body, index) => `## ${titles[index]}\n\n${body.trim()}`)
     .join("\n\n");
 }
@@ -99,7 +100,7 @@ export function parseStatement(source: string): {
       : [],
   );
   if (
-    headings.length === 5 &&
+    (headings.length === 4 || headings.length === 5) &&
     headings[0].start === 0 &&
     headings.every((h, i) => h.title === titles[i])
   ) {
@@ -110,6 +111,7 @@ export function parseStatement(source: string): {
         .trim(),
     );
     [draft.description, draft.input, draft.output, , draft.hints] = bodies;
+    draft.hints ||= "";
     const sampleLines = bodies[3].split("\n"),
       sampleTokens = parser.parse(bodies[3], {});
     const starts = sampleTokens.flatMap((token, index) =>
@@ -146,7 +148,8 @@ export function parseStatement(source: string): {
       return sample;
     });
     // Only accept a lossless round trip; unfamiliar drafts remain available in the description field.
-    if (draft.samples.length && serializeStatement(draft).trim() === source)
+    const normalizedSource = draft.hints ? source : source.replace(/\n+## 数据范围与提示\s*$/, "");
+    if (draft.samples.length && serializeStatement(draft).trim() === normalizedSource)
       return { draft, legacy: false };
   }
   return {
@@ -218,7 +221,7 @@ export function validateStatement(draft: StatementDraft) {
       : [],
   );
   if (
-    headings.length !== titles.length ||
+    headings.length !== (draft.hints.trim() ? 5 : 4) ||
     headings.some((title, i) => title !== titles[i])
   )
     return "题面栏目格式不完整，请检查并闭合正文中的代码块";

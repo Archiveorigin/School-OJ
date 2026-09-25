@@ -23,6 +23,11 @@
             value="team_problem_set"
             label="团队题单" /></el-select
       ></el-form-item>
+      <el-form-item v-if="form.action === 'create'" label="题目文档">
+        <el-button :disabled="saving" @click="markdownInput?.click()">导入题目</el-button>
+        <el-button v-if="beforeImport" link :disabled="saving" @click="undoImport">撤销导入</el-button>
+        <input ref="markdownInput" class="hidden-input" type="file" accept=".md,.markdown,text/markdown" aria-label="导入题目 Markdown" @change="importMarkdown" />
+      </el-form-item>
       <el-form-item
         v-if="
           form.action === 'create' && form.target_scope === 'team_problem_set'
@@ -45,35 +50,7 @@
         placeholder="请具体说明问题、修改理由或建议（至少 4 个字）"
     /></el-form-item>
     <el-form-item label="附件（可选）">
-      <div class="attachments-input">
-        <p class="muted" role="status">
-          已选择 {{ retained.length + files.length }} / {{ attachmentLimit }} 个附件（含保留附件）
-        </p>
-        <el-upload
-          :auto-upload="false"
-          multiple
-          :limit="Math.max(0, attachmentLimit - retained.length)"
-          :disabled="retained.length >= attachmentLimit"
-          :file-list="uploads"
-          :on-change="changeFiles"
-          :on-remove="changeFiles"
-          :on-exceed="tooManyFiles"
-          ><el-button :disabled="retained.length >= attachmentLimit">选择附件</el-button
-          ><template #tip
-            ><div class="muted">
-              支持测试点文件、ZIP 和图片；最多
-              {{ attachmentLimit }} 个（含保留附件），单个 32 MiB，总计 96
-              MiB。附件仅申请人和有权管理者可见。
-            </div></template
-          ></el-upload
-        >
-        <div v-for="file in retained" :key="file.id" class="retained-file">
-          <span>{{ file.name }}</span
-          ><el-button link type="danger" @click="removeRetained(file.id)"
-            >移除</el-button
-          >
-        </div>
-      </div>
+      <TicketAttachmentPicker v-model="files" v-model:retained="retained" :limit="attachmentLimit" :disabled="saving" />
     </el-form-item>
     <template v-if="form.action === 'create'">
       <el-form-item label="题目标题" required
@@ -108,17 +85,12 @@
             v-model="form.draft_statement"
           />
         </section>
-        <section class="markdown-preview" aria-label="新题目实时预览">
-          <h2>{{ form.draft_title || "题目预览" }}</h2>
-          <MarkdownRenderer
-            :source="form.draft_statement"
-            :asset-urls="imageUrls"
-          />
-        </section>
+        <ProblemDraftPreview class="markdown-preview" :title="form.draft_title" :source="form.draft_statement" :asset-urls="imageUrls" />
       </div>
     </template>
+    <div v-if="saving" class="upload-progress" role="status"><el-progress :percentage="uploadProgress" /><p>{{ uploadProgress < 100 ? '正在上传附件，请保持页面打开…' : '上传完成，正在校验测试包并保存工单…' }}</p></div>
     <div class="editor-actions">
-      <el-button @click="$emit('cancel')">取消</el-button
+      <el-button :disabled="saving" @click="$emit('cancel')">取消</el-button
       ><el-button type="primary" native-type="submit" :loading="saving">{{
         ticket ? "保存修改" : "提交工单"
       }}</el-button>
@@ -127,9 +99,11 @@
 </template>
 <script setup lang="ts">
 import { computed, onBeforeUnmount, reactive, ref, watch } from "vue";
-import { ElMessage, type UploadFile } from "element-plus";
+import { ElMessage } from "element-plus";
 import ProblemStatementEditor from "./ProblemStatementEditor.vue";
-import MarkdownRenderer from "../MarkdownRenderer.vue";
+import TicketAttachmentPicker from "./TicketAttachmentPicker.vue";
+import ProblemDraftPreview from "./ProblemDraftPreview.vue";
+import { importProblemMarkdown } from "../../features/problems/importMarkdown";
 import type {
   ProblemChangeAction,
   ProblemChangeTicket,
@@ -148,7 +122,7 @@ const props = defineProps<{
 const emit = defineEmits<{ saved: [ProblemChangeTicket]; cancel: [] }>();
 const auth = useAuthStore(),
   saving = ref(false),
-  uploads = ref<UploadFile[]>([]),
+  files = ref<File[]>([]),
   mobileTab = ref("edit");
 const retained = ref([...(props.ticket?.attachments || [])]);
 const form = reactive({
@@ -181,9 +155,6 @@ const actions = computed<ProblemChangeAction[]>(() => {
       : []),
   ];
 });
-const files = computed(() =>
-  uploads.value.flatMap((file) => (file.raw ? [file.raw] : [])),
-);
 const imageFiles = computed(() => [
   ...retained.value.filter((file) => file.content_type.startsWith("image/")),
   ...files.value.filter((file) => /^image\/(png|jpeg|gif)$/.test(file.type)),
@@ -236,14 +207,30 @@ watch(
 onBeforeUnmount(() => {
   imageGeneration++;
 });
-function changeFiles(_file: UploadFile, next: UploadFile[]) {
-  uploads.value = next;
+const markdownInput = ref<HTMLInputElement>();
+const beforeImport = ref<{ title: string; statement: string }>();
+const uploadProgress = ref(0);
+async function importMarkdown(event: Event) {
+  const input = event.target as HTMLInputElement, file = input.files?.[0];
+  input.value = '';
+  if (!file || saving.value) return;
+  try {
+    if (!/\.(md|markdown)$/i.test(file.name) || file.size > 200000) throw new Error('请选择不超过 200000 字节的 Markdown 文档');
+    const source = new TextDecoder('utf-8', { fatal: true }).decode(await file.arrayBuffer());
+    const imported = importProblemMarkdown(source);
+    beforeImport.value = { title: form.draft_title, statement: form.draft_statement };
+    form.draft_title = imported.title;
+    form.draft_statement = imported.statement;
+    mobileTab.value = 'edit';
+    if (imported.warnings.length) ElMessage.warning(`已导入。${imported.warnings.join('；')}`);
+    else ElMessage.success('题目已导入，请核对题面与样例');
+  } catch (error: any) { ElMessage.error(error.message || 'Markdown 导入失败，请使用 UTF-8 编码'); }
 }
-function tooManyFiles() {
-  ElMessage.warning(`最多上传 ${attachmentLimit.value} 个附件（含保留附件）`);
-}
-function removeRetained(id: number) {
-  retained.value = retained.value.filter((file) => file.id !== id);
+function undoImport() {
+  if (!beforeImport.value) return;
+  form.draft_title = beforeImport.value.title;
+  form.draft_statement = beforeImport.value.statement;
+  beforeImport.value = undefined;
 }
 function insertImage(name: string) {
   statementEditor.value?.insertImage(`\n\n![附件图片](${imageKey(name)})\n`);
@@ -282,6 +269,7 @@ async function submit() {
   )
     return void ElMessage.warning("请为附件使用不同文件名");
   saving.value = true;
+  uploadProgress.value = 0;
   try {
     const data = new FormData();
     data.append(
@@ -298,12 +286,12 @@ async function submit() {
       props.context,
       props.ticket ? "update" : "create",
       props.ticket?.id,
-      { body: data },
+      { body: data, timeout: 600000, onUploadProgress: (event) => { if (event.total) uploadProgress.value = Math.round(event.loaded / event.total * 100); } },
     );
     ElMessage.success(props.ticket ? "工单已更新" : "工单已提交");
     emit("saved", response.data);
   } catch (error: any) {
-    ElMessage.error(error.response?.data?.error || "工单保存失败");
+    ElMessage.error(error.response?.data?.error || "无法确认保存结果，请先查看我的工单后再重试");
   } finally {
     saving.value = false;
   }
@@ -321,23 +309,18 @@ async function submit() {
 .editor-fields .el-form-item {
   min-width: 180px;
 }
-.attachments-input {
-  width: 100%;
-}
+.hidden-input { display: none; }
+.upload-progress { margin-top: 18px; color: var(--muted); }
 .muted {
   color: var(--muted);
   margin-top: 8px;
   line-height: 1.6;
 }
-.retained-file,
 .preview-heading {
   display: flex;
   justify-content: space-between;
   gap: 14px;
   align-items: center;
-}
-.retained-file span {
-  overflow-wrap: anywhere;
 }
 .preview-heading h3 {
   margin: 0 0 12px;
@@ -348,21 +331,6 @@ async function submit() {
   gap: 16px;
 }
 .markdown-source,
-.markdown-preview {
-  min-width: 0;
-}
-.markdown-preview {
-  padding: 18px;
-  border: 1px solid var(--border);
-  border-radius: 8px;
-  overflow-wrap: anywhere;
-  max-height: 600px;
-  overflow-y: auto;
-}
-.markdown-preview h2 {
-  font-size: 22px;
-  margin-top: 0;
-}
 .markdown-source :deep(textarea) {
   font-family: monospace;
   line-height: 1.6;

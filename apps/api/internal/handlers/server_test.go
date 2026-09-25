@@ -448,13 +448,13 @@ func TestCanCreateProblemsUsesIndependentAuthorFlag(t *testing.T) {
 }
 
 func TestProblemChangeTicketAttachmentIsOptionalButNonempty(t *testing.T) {
-	if err := validateProblemChangeTicketAttachment("", nil); err != nil {
+	if err := validateProblemChangeTicketAttachment("", 0); err != nil {
 		t.Fatal("a ticket without attachments must be accepted")
 	}
-	if err := validateProblemChangeTicketAttachment("corrected.zip", nil); err == nil {
+	if err := validateProblemChangeTicketAttachment("corrected.zip", 0); err == nil {
 		t.Fatal("an empty attachment must be rejected")
 	}
-	if err := validateProblemChangeTicketAttachment("corrected.zip", []byte("content")); err != nil {
+	if err := validateProblemChangeTicketAttachment("corrected.zip", 7); err != nil {
 		t.Fatalf("valid attachment rejected: %v", err)
 	}
 }

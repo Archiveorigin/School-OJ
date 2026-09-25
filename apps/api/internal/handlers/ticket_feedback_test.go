@@ -632,6 +632,15 @@ func TestTicketBrowserFixture(t *testing.T) {
 	if err := f.s.DB.Create(&models.TeamProblemSetProblem{ProblemSetID: set.ID, ProblemID: f.problem.ID, Label: "A"}).Error; err != nil {
 		t.Fatal(err)
 	}
+	for i := 1; i <= 25; i++ {
+		problem := models.Problem{OwnerID: f.teacher.ID, Slug: fmt.Sprintf("picker-%d", i), DisplayCode: fmt.Sprintf("QA%03d", i), Title: fmt.Sprintf("批量选题样例 %d", i), Difficulty: "基础", Tags: datatypes.JSONMap{"labels": []string{"模拟"}}, Statement: "## 题目描述\n输出 1"}
+		if i == 25 {
+			problem.TeamID = &team.ID
+		}
+		if err := f.s.DB.Create(&problem).Error; err != nil {
+			t.Fatal(err)
+		}
+	}
 	for _, user := range []models.User{f.student, f.peer} {
 		for _, public := range []bool{false, true} {
 			sub := models.Submission{UserID: user.ID, ProblemID: f.problem.ID, ProblemVersionID: f.version.ID, Language: "python", SourceCode: "print(3)", Status: models.StatusAccepted, IsPublic: public}

@@ -60,6 +60,7 @@ export interface TeamProblemSet {
   team_id: number
   title: string
   description?: string
+  icon_url?: string
   created_by: number
   problem_count?: number
   can_edit?: boolean

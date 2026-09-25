@@ -10,6 +10,7 @@
         </div>
       </header>
 
+      <div class="set-identity"><img :src="detail.problem_set.icon_url || detail.team.icon_url || '/logo1.png'" alt="题单图标" /><div><h1>{{ detail.problem_set.title }}</h1><p>{{ detail.problem_set.description || detail.team.name }}</p></div></div>
       <nav class="set-tabs">
         <button type="button" :class="{ active: activeTab === 'problems' }" @click="openProblemList">题目列表</button>
         <button type="button" :class="{ active: activeTab === 'submissions' }" @click="openSubmissions">提交状态</button>
@@ -147,17 +148,11 @@
     </div>
     <el-skeleton v-else :rows="10" animated class="problem-set-container" />
 
-    <el-dialog v-model="addVisible" title="添加已有题目" width="min(480px, calc(100vw - 24px))">
-      <p class="dialog-hint">输入公共题目或本团队私有题目的题号，例如 T001。</p>
-      <el-input v-model="problemCode" placeholder="题目编号" @keyup.enter="addProblem" />
-      <template #footer>
-        <el-button @click="addVisible = false">取消</el-button>
-        <el-button type="primary" :loading="adding" @click="addProblem">添加</el-button>
-      </template>
-    </el-dialog>
+    <ProblemSelectionDialog v-if="detail" v-model="addVisible" :team-i-d="teamID" :set-i-d="problemSetID" :existing-i-ds="links.map(link => link.problem_id)" @added="load" />
 
     <el-dialog v-model="editVisible" title="编辑题单信息" width="min(520px, calc(100vw - 24px))">
       <el-form label-position="top">
+        <el-form-item label="题单图标"><TeamIconUpload v-model="editForm.icon_url" :fallback="detail?.team.icon_url" label="题单图标" show-help /></el-form-item>
         <el-form-item label="题单标题"><el-input v-model="editForm.title" maxlength="200" /></el-form-item>
         <el-form-item label="题单说明"><el-input v-model="editForm.description" type="textarea" :rows="5" /></el-form-item>
       </el-form>
@@ -192,6 +187,8 @@ import { ElMessage, ElMessageBox } from 'element-plus'
 import { computed, onBeforeUnmount, reactive, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { generatedApi, getLatestSubmissions, openEventStream, type AuthenticatedEventSource, type Submission } from '../../api/client'
+import TeamIconUpload from '../../components/TeamIconUpload.vue'
+import ProblemSelectionDialog from '../../components/ProblemSelectionDialog.vue'
 import ListPagination from '../../components/ListPagination.vue'
 import TicketDialog from '../../components/tickets/TicketDialog.vue'
 import MarkdownRenderer from '../../components/MarkdownRenderer.vue'
@@ -224,12 +221,10 @@ const discussionContent = ref('')
 const posting = ref(false)
 const addVisible = ref(false)
 const ticketVisible = ref(false)
-const adding = ref(false)
-const problemCode = ref('')
 const editVisible = ref(false)
 const editing = ref(false)
 const deleting = ref(false)
-const editForm = reactive({ title: '', description: '' })
+const editForm = reactive({ title: '', description: '', icon_url: '' })
 const submitVisible = ref(false)
 const submitting = ref(false)
 const language = ref('cpp')
@@ -318,7 +313,7 @@ function resetSubmissionFilters() {
 function openEditSet() {
   const set = detail.value?.problem_set
   if (!set) return
-  Object.assign(editForm, { title: set.title, description: set.description || '' })
+  Object.assign(editForm, { title: set.title, description: set.description || '', icon_url: set.icon_url || '' })
   editVisible.value = true
 }
 
@@ -357,25 +352,6 @@ async function deleteSet() {
     if (err !== 'cancel' && err !== 'close') ElMessage.error(err.response?.data?.error || err.message)
   } finally {
     deleting.value = false
-  }
-}
-
-async function addProblem() {
-  if (!problemCode.value.trim()) {
-    ElMessage.warning('请输入题目编号')
-    return
-  }
-  adding.value = true
-  try {
-    await generatedApi.addTeamProblemSetProblemViaProblemSetsSetIdProblems<any>({ path: { "set_id": problemSetID.value }, body: { problem_code: problemCode.value.trim() } })
-    problemCode.value = ''
-    addVisible.value = false
-    ElMessage.success('题目已加入题单')
-    await load()
-  } catch (err: any) {
-    ElMessage.error(err.response?.data?.error || err.message)
-  } finally {
-    adding.value = false
   }
 }
 
@@ -532,6 +508,11 @@ onBeforeUnmount(() => { for (const stream of liveStreams) stream.close() })
 </script>
 
 <style scoped>
+.set-identity { display: flex; align-items: center; gap: 16px; margin: 18px 0; min-width: 0; }
+.set-identity img { width: 60px; height: 60px; flex: 0 0 auto; object-fit: contain; object-position: center; background: var(--color-surface-solid); border: 1px solid var(--border); border-radius: 12px; }
+.set-identity h1 { margin: 0 0 6px; font-size: 24px; overflow-wrap: anywhere; }
+.set-identity p { margin: 0; color: var(--muted); overflow-wrap: anywhere; }
+
 .statement-heading { display: flex; align-items: center; justify-content: space-between; gap: 16px; margin-bottom: 20px; }
 .statement-heading h2 { min-width: 0; margin: 0; font-size: 22px; overflow-wrap: anywhere; }
 .statement-heading .el-button { flex-shrink: 0; }

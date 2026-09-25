@@ -12,7 +12,8 @@
     "api:check": "node scripts/check-openapi-routes.mjs && node scripts/generate-openapi-client.mjs --check && node scripts/check-architecture.mjs",
     "qa:tickets": "node tests/e2e/ticket-feedback-qa.mjs",
     "qa:design": "node tests/e2e/plan-qa.mjs",
-    "format": "prettier --write src"
+    "format": "prettier --write src",
+    "qa:ticket-import": "node tests/e2e/ticket-import-team-qa.mjs"
   },
   "dependencies": {
     "@element-plus/icons-vue": "^2.3.2",

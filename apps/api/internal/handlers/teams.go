@@ -1248,10 +1248,15 @@ func (s Server) createTeamProblemSet(c *gin.Context) {
 		return
 	}
 	var req struct {
-		Title       string `json:"title" binding:"required"`
-		Description string `json:"description"`
+		Title       string  `json:"title" binding:"required"`
+		Description string  `json:"description"`
+		IconURL     *string `json:"icon_url"`
 	}
 	if !bind(c, &req) {
+		return
+	}
+	if req.IconURL != nil && !validTeamIconURL(*req.IconURL) {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "题单图标格式无效或超过 2 MiB"})
 		return
 	}
 	req.Title = strings.TrimSpace(req.Title)
@@ -1260,6 +1265,9 @@ func (s Server) createTeamProblemSet(c *gin.Context) {
 		return
 	}
 	item := models.TeamProblemSet{TeamID: team.ID, Title: req.Title, Description: strings.TrimSpace(req.Description), CreatedBy: user.ID}
+	if req.IconURL != nil {
+		item.IconURL = strings.TrimSpace(*req.IconURL)
+	}
 	if err := s.DB.Create(&item).Error; err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 		return
@@ -1275,10 +1283,15 @@ func (s Server) updateTeamProblemSet(c *gin.Context) {
 		return
 	}
 	var req struct {
-		Title       string `json:"title" binding:"required"`
-		Description string `json:"description"`
+		Title       string  `json:"title" binding:"required"`
+		Description string  `json:"description"`
+		IconURL     *string `json:"icon_url"`
 	}
 	if !bind(c, &req) {
+		return
+	}
+	if req.IconURL != nil && !validTeamIconURL(*req.IconURL) {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "题单图标格式无效或超过 2 MiB"})
 		return
 	}
 	req.Title = strings.TrimSpace(req.Title)
@@ -1286,9 +1299,13 @@ func (s Server) updateTeamProblemSet(c *gin.Context) {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "题单标题不能为空"})
 		return
 	}
+	updates := map[string]any{"title": req.Title, "description": strings.TrimSpace(req.Description)}
+	if req.IconURL != nil {
+		updates["icon_url"] = strings.TrimSpace(*req.IconURL)
+	}
 	result := s.DB.Model(&models.TeamProblemSet{}).
 		Where("id = ? AND team_id = ? AND deleted_at IS NULL", set.ID, team.ID).
-		Updates(map[string]any{"title": req.Title, "description": strings.TrimSpace(req.Description)})
+		Updates(updates)
 	if result.Error != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": result.Error.Error()})
 		return
@@ -1385,12 +1402,21 @@ func (s Server) addTeamProblemSetProblem(c *gin.Context) {
 		return
 	}
 	var req struct {
+		ProblemIDs  []uint `json:"problem_ids"`
 		ProblemID   uint   `json:"problem_id"`
 		ProblemCode string `json:"problem_code"`
 		Label       string `json:"label"`
 		SortOrder   int    `json:"sort_order"`
 	}
 	if !bind(c, &req) {
+		return
+	}
+	if req.ProblemIDs != nil {
+		if req.ProblemID != 0 || req.ProblemCode != "" {
+			c.JSON(http.StatusBadRequest, gin.H{"error": "批量添加请仅提供 problem_ids"})
+			return
+		}
+		s.addTeamProblemSetBatch(c, user, set, team, req.ProblemIDs)
 		return
 	}
 	var problem models.Problem

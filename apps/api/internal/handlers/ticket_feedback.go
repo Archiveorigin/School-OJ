@@ -12,6 +12,7 @@ import (
 	_ "image/png"
 	"io"
 	"mime"
+	"mime/multipart"
 	"net/http"
 	"path/filepath"
 	"strconv"
@@ -20,6 +21,7 @@ import (
 
 	"github.com/gin-gonic/gin"
 	"github.com/minio/minio-go/v7"
+	"golang.org/x/sync/errgroup"
 	"gorm.io/datatypes"
 	"gorm.io/gorm"
 	"school-oj/apps/api/internal/middleware"
@@ -53,7 +55,8 @@ type problemChangeTicketInput struct {
 
 type ticketUpload struct {
 	name, contentType string
-	body              []byte
+	header            *multipart.FileHeader
+	size              int64
 }
 type ticketScope struct{ problemID, examID, contestID *uint }
 
@@ -253,7 +256,6 @@ func parseTicketInput(c *gin.Context) (problemChangeTicketInput, []ticketUpload,
 	if err := c.Request.ParseMultipartForm(4 << 20); err != nil {
 		return req, nil, err
 	}
-	defer c.Request.MultipartForm.RemoveAll()
 	if draft := c.PostForm("draft"); draft != "" {
 		if err := json.Unmarshal([]byte(draft), &req); err != nil {
 			return req, nil, err
@@ -285,7 +287,8 @@ func parseTicketInput(c *gin.Context) (problemChangeTicketInput, []ticketUpload,
 	if limit := ticketFileLimit(req.Action); len(files) > limit {
 		return req, nil, fmt.Errorf("最多上传 %d 个附件", limit)
 	}
-	var total int64
+	var total, expanded int64
+	names := map[string]bool{}
 	for _, file := range files {
 		if file.Size <= 0 || file.Size > problemTicketAttachmentLimit || total+file.Size > ticketTotalAttachmentLimit {
 			return req, nil, errors.New("附件必须非空，单个不超过 32 MiB，总计不超过 96 MiB")
@@ -294,39 +297,54 @@ func parseTicketInput(c *gin.Context) (problemChangeTicketInput, []ticketUpload,
 		if err != nil {
 			return req, nil, err
 		}
-		body, err := services.ReadLimited(stream, problemTicketAttachmentLimit, "工单附件")
-		stream.Close()
-		if err != nil {
-			return req, nil, err
-		}
 		name := filepath.Base(strings.ReplaceAll(file.Filename, "\\", "/"))
-		if err = validateProblemChangeTicketAttachment(name, body); err != nil {
+		if err = validateProblemChangeTicketAttachment(name, file.Size); err != nil {
+			stream.Close()
 			return req, nil, err
 		}
-		total += int64(len(body))
+		if names[name] {
+			stream.Close()
+			return req, nil, errors.New("请为附件使用不同文件名")
+		}
+		names[name] = true
+		total += file.Size
 		if total > ticketTotalAttachmentLimit {
+			stream.Close()
 			return req, nil, errors.New("附件总计超过 96 MiB")
 		}
 		contentType := "application/octet-stream"
-		if config, format, err := image.DecodeConfig(bytes.NewReader(body)); err == nil && config.Width > 0 && config.Height > 0 && int64(config.Width)*int64(config.Height) <= 40000000 {
+		if config, format, err := image.DecodeConfig(io.LimitReader(stream, 1<<20)); err == nil && config.Width > 0 && config.Height > 0 && int64(config.Width)*int64(config.Height) <= 40000000 {
 			switch format {
 			case "png", "jpeg", "gif":
 				contentType = "image/" + format
 			}
 		}
-		uploads = append(uploads, ticketUpload{name: name, contentType: contentType, body: body})
+		expandedSize := file.Size
+		if req.Action == models.ProblemChangeCreate && strings.EqualFold(filepath.Ext(name), ".zip") {
+			expandedSize, err = inspectTicketZIP(c.Request.Context(), stream, file.Size)
+			contentType = "application/zip"
+		}
+		stream.Close()
+		if err != nil {
+			return req, nil, fmt.Errorf("%s: %w", name, err)
+		}
+		expanded += expandedSize
+		if expanded > ticketTotalAttachmentLimit {
+			return req, nil, errors.New("测试包解压后与其他附件总计不能超过 96 MiB")
+		}
+		uploads = append(uploads, ticketUpload{name: name, contentType: contentType, header: file, size: file.Size})
 	}
 	return req, uploads, nil
 }
 
-func validateProblemChangeTicketAttachment(name string, body []byte) error {
-	if name == "" && len(body) == 0 {
+func validateProblemChangeTicketAttachment(name string, size int64) error {
+	if name == "" && size == 0 {
 		return nil
 	}
-	if strings.TrimSpace(name) == "" || len([]rune(name)) > 255 || strings.ContainsAny(name, "\r\n\x00") || len(body) == 0 {
+	if strings.TrimSpace(name) == "" || len([]rune(name)) > 255 || strings.ContainsAny(name, "\r\n\x00") || size <= 0 {
 		return errors.New("附件名称无效或文件为空")
 	}
-	if int64(len(body)) > problemTicketAttachmentLimit {
+	if size > problemTicketAttachmentLimit {
 		return errors.New("单个附件不能超过 32 MiB")
 	}
 	return nil
@@ -429,17 +447,30 @@ func (s Server) prepareTicket(c *gin.Context, user models.User, req problemChang
 }
 
 func (s Server) storeTicketUploads(c *gin.Context, uploads []ticketUpload) ([]models.ProblemTicketAttachment, error) {
-	records := make([]models.ProblemTicketAttachment, 0, len(uploads))
+	records := make([]models.ProblemTicketAttachment, len(uploads))
 	if len(uploads) > 0 && s.MinIO == nil {
 		return records, errors.New("附件服务暂不可用")
 	}
+	group, ctx := errgroup.WithContext(c.Request.Context())
+	group.SetLimit(3)
 	for i, file := range uploads {
-		object := fmt.Sprintf("ticket-files/%d-%d", time.Now().UnixNano(), i)
-		if _, err := s.MinIO.PutObject(c.Request.Context(), s.Cfg.MinIOBucket, object, bytes.NewReader(file.body), int64(len(file.body)), minio.PutObjectOptions{ContentType: file.contentType}); err != nil {
-			s.cleanupTicketUploads(append(records, models.ProblemTicketAttachment{Object: object}))
-			return nil, err
-		}
-		records = append(records, models.ProblemTicketAttachment{Name: file.name, Object: object, ContentType: file.contentType, Size: int64(len(file.body))})
+		records[i] = models.ProblemTicketAttachment{Name: file.name, Object: fmt.Sprintf("ticket-files/%d-%d", time.Now().UnixNano(), i), ContentType: file.contentType, Size: file.size}
+		group.Go(func() error {
+			if err := ctx.Err(); err != nil {
+				return err
+			}
+			stream, err := file.header.Open()
+			if err != nil {
+				return err
+			}
+			defer stream.Close()
+			_, err = s.MinIO.PutObject(ctx, s.Cfg.MinIOBucket, records[i].Object, stream, file.size, minio.PutObjectOptions{ContentType: file.contentType, NumThreads: 1, DisableMultipart: true})
+			return err
+		})
+	}
+	if err := group.Wait(); err != nil {
+		s.cleanupTicketUploads(records)
+		return nil, err
 	}
 	return records, nil
 }
@@ -456,6 +487,7 @@ func (s Server) cleanupTicketUploads(records []models.ProblemTicketAttachment) {
 }
 
 func (s Server) createProblemChangeTicket(c *gin.Context) {
+	defer cleanupTicketMultipart(c)
 	user, _ := middleware.CurrentUser(c)
 	req, uploads, err := parseTicketInput(c)
 	if err != nil {
@@ -475,7 +507,7 @@ func (s Server) createProblemChangeTicket(c *gin.Context) {
 		c.JSON(503, gin.H{"error": "附件上传失败，请重试"})
 		return
 	}
-	err = s.DB.Transaction(func(tx *gorm.DB) error {
+	err = s.DB.WithContext(c.Request.Context()).Transaction(func(tx *gorm.DB) error {
 		if err := tx.Create(&ticket).Error; err != nil {
 			return err
 		}
@@ -690,6 +722,7 @@ func (s Server) downloadProblemChangeTicketAttachment(c *gin.Context) {
 }
 
 func (s Server) updateProblemChangeTicket(c *gin.Context) {
+	defer cleanupTicketMultipart(c)
 	ticket, _, ok := s.authorizedTicket(c)
 	if !ok {
 		return
@@ -745,7 +778,7 @@ func (s Server) updateProblemChangeTicket(c *gin.Context) {
 		}
 	}
 	for _, u := range uploads {
-		size += int64(len(u.body))
+		size += u.size
 	}
 	if len(keep)+len(uploads) > ticketFileLimit(ticket.Action) || size > ticketTotalAttachmentLimit {
 		c.JSON(400, gin.H{"error": "附件超过数量或总大小限制"})
@@ -761,7 +794,7 @@ func (s Server) updateProblemChangeTicket(c *gin.Context) {
 		return
 	}
 	removed := []models.ProblemTicketAttachment{}
-	err = s.DB.Transaction(func(tx *gorm.DB) error {
+	err = s.DB.WithContext(c.Request.Context()).Transaction(func(tx *gorm.DB) error {
 		result := tx.Model(&models.ProblemChangeTicket{}).Where("id = ? AND revision = ? AND status = ? AND deleted_at IS NULL", ticket.ID, req.Revision, models.ProblemChangePending).Updates(map[string]any{"description": strings.TrimSpace(req.Description), "draft_title": strings.TrimSpace(req.DraftTitle), "draft_statement": req.DraftStatement, "revision": gorm.Expr("revision + 1"), "attachment_name": "", "attachment_object": ""})
 		if result.Error != nil {
 			return result.Error

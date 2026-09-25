@@ -6,7 +6,7 @@
     </div>
     <div v-loading="loading" class="problem-set-grid">
       <article v-for="item in items" :key="item.id" class="panel problem-set-card" @click="openSet(item)">
-        <div class="set-symbol">题</div>
+        <div class="set-symbol"><img :src="item.icon_url || team.icon_url || '/logo1.png'" alt="题单图标" /></div>
         <div>
           <h4>{{ item.title }}</h4>
           <p>{{ item.description || '暂无题单说明' }}</p>
@@ -29,6 +29,7 @@
 
     <el-dialog v-model="createVisible" title="创建团队题单" width="min(520px, calc(100vw - 24px))">
       <el-form label-position="top">
+        <el-form-item label="题单图标"><TeamIconUpload v-model="form.icon_url" :fallback="team.icon_url" label="题单图标" show-help /></el-form-item>
         <el-form-item label="题单标题"><el-input v-model="form.title" maxlength="200" /></el-form-item>
         <el-form-item label="题单说明"><el-input v-model="form.description" type="textarea" :rows="5" /></el-form-item>
       </el-form>
@@ -40,6 +41,7 @@
 
     <el-dialog v-model="editVisible" title="编辑题单信息" width="min(520px, calc(100vw - 24px))">
       <el-form label-position="top">
+        <el-form-item label="题单图标"><TeamIconUpload v-model="editForm.icon_url" :fallback="team.icon_url" label="题单图标" show-help /></el-form-item>
         <el-form-item label="题单标题"><el-input v-model="editForm.title" maxlength="200" /></el-form-item>
         <el-form-item label="题单说明"><el-input v-model="editForm.description" type="textarea" :rows="5" /></el-form-item>
       </el-form>
@@ -52,6 +54,7 @@
 </template>
 
 <script setup lang="ts">
+import TeamIconUpload from '../../components/TeamIconUpload.vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { computed, onMounted, reactive, ref } from 'vue'
 import { useRouter } from 'vue-router'
@@ -67,8 +70,8 @@ const editVisible = ref(false)
 const editing = ref(false)
 const editingItem = ref<TeamProblemSet | null>(null)
 const deletingID = ref<number | null>(null)
-const form = reactive({ title: '', description: '' })
-const editForm = reactive({ title: '', description: '' })
+const form = reactive({ title: '', description: '', icon_url: '' })
+const editForm = reactive({ title: '', description: '', icon_url: '' })
 const canOrganize = computed(() => {
   if (props.team.my_role === 'owner') return true
   if (props.team.contest_permission === 'all') return Boolean(props.team.my_role)
@@ -88,7 +91,7 @@ async function load() {
 
 function openEdit(item: TeamProblemSet) {
   editingItem.value = item
-  Object.assign(editForm, { title: item.title, description: item.description || '' })
+  Object.assign(editForm, { title: item.title, description: item.description || '', icon_url: item.icon_url || '' })
   editVisible.value = true
 }
 
@@ -137,7 +140,7 @@ async function createSet() {
   creating.value = true
   try {
     const { data } = await generatedApi.createTeamProblemSet<TeamProblemSet>({ path: { "id": props.team.id }, body: form })
-    Object.assign(form, { title: '', description: '' })
+    Object.assign(form, { title: '', description: '', icon_url: '' })
     createVisible.value = false
     ElMessage.success('团队题单已创建')
     await router.push(`/problem-set/${data.id}#problems`)
@@ -156,6 +159,7 @@ onMounted(load)
 </script>
 
 <style scoped>
+.set-symbol img { display: block; width: 100%; height: 100%; object-fit: contain; object-position: center; border-radius: inherit; background: var(--color-surface-solid); }
 .workspace-view { padding: 28px 34px 54px; }
 .view-heading { display: flex; align-items: end; justify-content: space-between; gap: 18px; margin-bottom: 18px; }
 .view-heading h3 { margin: 0 0 5px; font-size: 22px; }

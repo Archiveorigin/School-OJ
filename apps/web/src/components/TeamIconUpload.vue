@@ -5,14 +5,14 @@
       class="team-icon-button"
       :class="{ editable }"
       :disabled="!editable || loading"
-      :aria-label="editable ? '点击上传团队图标' : '团队图标'"
+      :aria-label="editable ? `点击上传${label}` : label"
       @click.stop="inputRef?.click()"
     >
-      <img :src="modelValue || '/logo1.png'" alt="" />
+      <img :src="modelValue || fallback || '/logo1.png'" alt="" />
       <span v-if="editable" class="upload-hint">{{ loading ? '处理中' : '上传图标' }}</span>
     </button>
     <input ref="inputRef" class="hidden-input" type="file" accept="image/png,image/jpeg,image/webp" @change="selectIcon" />
-    <small v-if="showHelp">点击图片上传，支持 PNG / JPG / WebP，最大 2MB；未上传时使用学院图标。</small>
+    <small v-if="showHelp">点击图片上传，支持 PNG / JPG / WebP，最大 2MB；未上传时使用团队或学院图标。</small>
   </div>
 </template>
 
@@ -20,8 +20,10 @@
 import { ElMessage } from 'element-plus'
 import { onBeforeUnmount, ref } from 'vue'
 
-withDefaults(defineProps<{ modelValue?: string; editable?: boolean; showHelp?: boolean }>(), {
+withDefaults(defineProps<{ modelValue?: string; editable?: boolean; showHelp?: boolean; fallback?: string; label?: string }>(), {
   modelValue: '',
+  fallback: '',
+  label: '团队图标',
   editable: true,
   showHelp: false
 })
@@ -76,11 +78,11 @@ function readFile(file: File) {
 </script>
 
 <style scoped>
-.team-icon-control { display: grid; gap: 8px; justify-items: start; }
-.team-icon-button { position: relative; width: 88px; height: 88px; padding: 0; overflow: hidden; border: 1px solid var(--border); border-radius: 16px; background: #fff; box-shadow: 0 10px 24px rgba(10, 94, 166, .12); }
+.team-icon-control { display: grid; gap: 8px; justify-items: center; width: 100%; text-align: center; }
+.team-icon-button { position: relative; display: grid; place-items: center; width: 88px; height: 88px; padding: 0; overflow: hidden; border: 1px solid var(--border); border-radius: 16px; background: #fff; box-shadow: 0 10px 24px rgba(10, 94, 166, .12); }
 .team-icon-button.editable { cursor: pointer; }
 .team-icon-button:disabled { cursor: default; opacity: 1; }
-.team-icon-button img { width: 100%; height: 100%; object-fit: cover; }
+.team-icon-button img { width: 100%; height: 100%; object-fit: contain; object-position: center; display: block; }
 .upload-hint { position: absolute; inset: auto 0 0; padding: 6px 3px; color: #fff; background: rgba(15, 23, 42, .78); font-size: 11px; }
 .hidden-input { display: none; }
 small { max-width: 360px; color: var(--muted); line-height: 1.55; }

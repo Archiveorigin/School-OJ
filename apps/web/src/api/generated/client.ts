@@ -242,6 +242,7 @@ export interface components {
     "problem_count"?: number
     "can_edit"?: boolean
     "can_delete"?: boolean
+    "icon_url"?: string
   }
     "AuthorApplication": {
     "id": number
@@ -391,6 +392,18 @@ export interface components {
     "total": number
     "page": number
     "page_size": number
+  }
+    "TeamProblemSetInput": {
+    "title": string
+    "description"?: string
+    "icon_url"?: string
+  }
+    "TeamProblemSelectionRequest": {
+    "problem_ids"?: Array<number>
+    "problem_id"?: number
+    "problem_code"?: string
+    "label"?: string
+    "sort_order"?: number
   }
   }
 }
@@ -745,16 +758,16 @@ export const generatedApi = {
     requestOperation<TResponse, never>("teamContestRankingViaContestsContestIdRanking", options),
   "listTeamProblemSets": <TResponse = Array<components['schemas']["TeamProblemSet"]>>(options: ApiRequestOptions<never> = {}) =>
     requestOperation<TResponse, never>("listTeamProblemSets", options),
-  "createTeamProblemSet": <TResponse = components['schemas']["JsonObject"]>(options: ApiRequestOptions<components['schemas']["JsonObject"]> = {}) =>
-    requestOperation<TResponse, components['schemas']["JsonObject"]>("createTeamProblemSet", options),
+  "createTeamProblemSet": <TResponse = components['schemas']["JsonObject"]>(options: ApiRequestOptions<components['schemas']["TeamProblemSetInput"]> = {}) =>
+    requestOperation<TResponse, components['schemas']["TeamProblemSetInput"]>("createTeamProblemSet", options),
   "getTeamProblemSet": <TResponse = components['schemas']["TeamProblemSet"]>(options: ApiRequestOptions<never> = {}) =>
     requestOperation<TResponse, never>("getTeamProblemSet", options),
-  "updateTeamProblemSet": <TResponse = components['schemas']["TeamProblemSet"]>(options: ApiRequestOptions<components['schemas']["JsonObject"]> = {}) =>
-    requestOperation<TResponse, components['schemas']["JsonObject"]>("updateTeamProblemSet", options),
+  "updateTeamProblemSet": <TResponse = components['schemas']["TeamProblemSet"]>(options: ApiRequestOptions<components['schemas']["TeamProblemSetInput"]> = {}) =>
+    requestOperation<TResponse, components['schemas']["TeamProblemSetInput"]>("updateTeamProblemSet", options),
   "deleteTeamProblemSet": <TResponse = components['schemas']["TeamProblemSet"]>(options: ApiRequestOptions<never> = {}) =>
     requestOperation<TResponse, never>("deleteTeamProblemSet", options),
-  "addTeamProblemSetProblem": <TResponse = components['schemas']["JsonObject"]>(options: ApiRequestOptions<components['schemas']["JsonObject"]> = {}) =>
-    requestOperation<TResponse, components['schemas']["JsonObject"]>("addTeamProblemSetProblem", options),
+  "addTeamProblemSetProblem": <TResponse = components['schemas']["JsonObject"]>(options: ApiRequestOptions<components['schemas']["TeamProblemSelectionRequest"]> = {}) =>
+    requestOperation<TResponse, components['schemas']["TeamProblemSelectionRequest"]>("addTeamProblemSetProblem", options),
   "removeTeamProblemSetProblem": <TResponse = components['schemas']["JsonObject"]>(options: ApiRequestOptions<never> = {}) =>
     requestOperation<TResponse, never>("removeTeamProblemSetProblem", options),
   "listTeamProblemSetSubmissions": <TResponse = components['schemas']["JsonObject"]>(options: ApiRequestOptions<never> = {}) =>
@@ -767,12 +780,12 @@ export const generatedApi = {
     requestOperation<TResponse, components['schemas']["JsonObject"]>("createTeamDiscussion", options),
   "getTeamProblemSetViaProblemSetsSetId": <TResponse = components['schemas']["TeamProblemSet"]>(options: ApiRequestOptions<never> = {}) =>
     requestOperation<TResponse, never>("getTeamProblemSetViaProblemSetsSetId", options),
-  "updateTeamProblemSetViaProblemSetsSetId": <TResponse = components['schemas']["TeamProblemSet"]>(options: ApiRequestOptions<components['schemas']["JsonObject"]> = {}) =>
-    requestOperation<TResponse, components['schemas']["JsonObject"]>("updateTeamProblemSetViaProblemSetsSetId", options),
+  "updateTeamProblemSetViaProblemSetsSetId": <TResponse = components['schemas']["TeamProblemSet"]>(options: ApiRequestOptions<components['schemas']["TeamProblemSetInput"]> = {}) =>
+    requestOperation<TResponse, components['schemas']["TeamProblemSetInput"]>("updateTeamProblemSetViaProblemSetsSetId", options),
   "deleteTeamProblemSetViaProblemSetsSetId": <TResponse = components['schemas']["TeamProblemSet"]>(options: ApiRequestOptions<never> = {}) =>
     requestOperation<TResponse, never>("deleteTeamProblemSetViaProblemSetsSetId", options),
-  "addTeamProblemSetProblemViaProblemSetsSetIdProblems": <TResponse = components['schemas']["JsonObject"]>(options: ApiRequestOptions<components['schemas']["JsonObject"]> = {}) =>
-    requestOperation<TResponse, components['schemas']["JsonObject"]>("addTeamProblemSetProblemViaProblemSetsSetIdProblems", options),
+  "addTeamProblemSetProblemViaProblemSetsSetIdProblems": <TResponse = components['schemas']["JsonObject"]>(options: ApiRequestOptions<components['schemas']["TeamProblemSelectionRequest"]> = {}) =>
+    requestOperation<TResponse, components['schemas']["TeamProblemSelectionRequest"]>("addTeamProblemSetProblemViaProblemSetsSetIdProblems", options),
   "removeTeamProblemSetProblemViaProblemSetsSetIdProblemsProblemId": <TResponse = components['schemas']["JsonObject"]>(options: ApiRequestOptions<never> = {}) =>
     requestOperation<TResponse, never>("removeTeamProblemSetProblemViaProblemSetsSetIdProblemsProblemId", options),
   "listTeamProblemSetSubmissionsViaProblemSetsSetIdSubmissions": <TResponse = components['schemas']["JsonObject"]>(options: ApiRequestOptions<never> = {}) =>

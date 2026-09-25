@@ -179,7 +179,7 @@ onMounted(load)
 .team-card:hover { border-color: color-mix(in srgb, var(--accent) 50%, var(--border)); transform: translateY(-2px); }
 .team-card-main { display: grid; grid-template-columns: 88px minmax(0, 1fr); gap: 17px; min-height: 132px; padding: 20px 20px 16px; }
 .team-icon { width: 88px; height: 88px; display: grid; place-items: center; overflow: hidden; color: var(--color-on-emphasis); border: 1px solid var(--border); border-radius: 9px; background: var(--accent); font-size: 30px; font-weight: 900; }
-.team-icon img { width: 100%; height: 100%; object-fit: cover; background: var(--color-surface-solid); }
+.team-icon img { width: 100%; height: 100%; object-fit: contain; object-position: center; background: var(--color-surface-solid); }
 .team-name-row { display: flex; align-items: center; flex-wrap: wrap; gap: 10px; }
 .team-name-row h2 { margin: 0; font-size: 20px; }
 .team-copy p { display: -webkit-box; margin: 10px 0 0; overflow: hidden; color: var(--muted); line-height: 1.65; -webkit-box-orient: vertical; -webkit-line-clamp: 2; }

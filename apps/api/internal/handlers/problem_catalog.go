@@ -22,6 +22,27 @@ type problemCatalogItem struct {
 
 func (s Server) listProblemCatalog(c *gin.Context) {
 	user, authed := middleware.CurrentUser(c)
+	var teamID uint64
+	if raw := c.Query("team_id"); raw != "" {
+		var err error
+		teamID, err = strconv.ParseUint(raw, 10, 64)
+		if err != nil || teamID == 0 {
+			c.JSON(http.StatusBadRequest, gin.H{"error": "团队编号无效"})
+			return
+		}
+		if !authed {
+			c.JSON(http.StatusUnauthorized, gin.H{"error": "请先登录"})
+			return
+		}
+		var team models.Team
+		if err := s.DB.First(&team, teamID).Error; err != nil {
+			c.JSON(http.StatusNotFound, gin.H{"error": "团队不存在"})
+			return
+		}
+		if !s.requireTeamContentPermission(c, user, team) {
+			return
+		}
+	}
 	page := catalogInt(c.Query("page"), 1)
 	pageSize := catalogInt(c.Query("page_size"), 20)
 	if pageSize > 100 {
@@ -33,8 +54,12 @@ func (s Server) listProblemCatalog(c *gin.Context) {
 
 	q := s.DB.Model(&models.Problem{}).
 		Where("problems.deleted_at IS NULL").
-		Where("problems.archived_at IS NULL").
-		Where(publicProblemSQL())
+		Where("problems.archived_at IS NULL")
+	if teamID > 0 {
+		q = q.Where("("+publicProblemSQL()+") OR problems.team_id = ?", teamID)
+	} else {
+		q = q.Where(publicProblemSQL())
+	}
 	if keyword := strings.ToLower(strings.TrimSpace(c.Query("q"))); keyword != "" {
 		like := "%" + keyword + "%"
 		q = q.Where("lower(problems.title) LIKE ? OR lower(problems.display_code) LIKE ? OR lower(problems.slug) LIKE ?", like, like, like)

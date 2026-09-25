@@ -1,0 +1,1 @@
+ALTER TABLE team_problem_sets ADD COLUMN IF NOT EXISTS icon_url TEXT NOT NULL DEFAULT '';

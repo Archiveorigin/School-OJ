@@ -53,13 +53,7 @@
       <el-button link @click="previewUrl = ''">关闭图片预览</el-button
       ><img :src="previewUrl" alt="工单附件预览" />
     </div>
-    <section v-if="ticket.action === 'create' && ticket.draft_statement" class="draft-preview">
-      <h3>新题目预览 · {{ ticket.draft_title }}</h3>
-      <MarkdownRenderer
-        :source="ticket.draft_statement"
-        :asset-urls="imageUrls"
-      />
-    </section>
+    <ProblemDraftPreview v-if="ticket.action === 'create' && ticket.draft_statement" class="draft-preview" :title="ticket.draft_title || ''" :source="ticket.draft_statement" :asset-urls="imageUrls" />
     <section
       v-if="ticket.can_apply && ticket.impact_summary"
       class="impact-panel"
@@ -163,7 +157,7 @@ import {
 } from "../../features/problems/changeTicket";
 import { problemDifficultyOptions } from "../../features/problems/problemMeta";
 import { formatDateTime } from "../../features/time";
-import MarkdownRenderer from "../MarkdownRenderer.vue";
+import ProblemDraftPreview from "./ProblemDraftPreview.vue";
 const props = defineProps<{
   ticket: ProblemChangeTicket;
   context: TicketContext;
