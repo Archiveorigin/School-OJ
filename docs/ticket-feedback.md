@@ -127,3 +127,19 @@ npm run build
 - 迁移 028 仅为 `team_problem_sets` 添加可选图标列，兼容旧版本读取；不修改已有迁移。
 
 回归命令：`npm run qa:tickets` 与 `npm run qa:ticket-import`。两者依次连接新建的 `TestTicketBrowserFixture`，仅允许回环隔离地址，不在生产创建测试工单。截图分别保存在 `tmp/ticket-feedback-qa/`、`tmp/ticket-import-team-qa/`。
+
+## 本轮发布验收（2026-09-25）
+
+应用提交 `764a9b84beac1abefbbfdcc1263093e91a7512f3` 已上线。API、Worker、Web 镜像均重新构建并替换容器；迁移 028 已执行，数据库、Redis、MinIO 容器和数据卷保持不变。后续验收归档提交仅修改文档和浏览器测试，不改变运行时代码。
+
+| 检查 | 结果 |
+| --- | --- |
+| API / Worker | 服务器 PostgreSQL 16、Redis 隔离环境完整测试分别 143 / 36 项通过，无失败；两个按需 fixture 和单测阶段跳过的 Docker 测试不计入通过数 |
+| Web | 34 个文件、132 项单测通过；195 个接口操作契约、客户端生成一致性、架构、类型检查及生产构建通过，保留现有大型 chunk 提示 |
+| 真实镜像浏览器 | 1440×1100、390×844 共 50 项通过，错误列表为空；覆盖原有工单流程、30 文件弹窗、Markdown 公式导入、可选提示、展开预览、图标保存和跨页批量选题 |
+| 上传压力场景 | 100 对 `.in/.out` ZIP 与 5 MiB 零散文件同时上传；浏览器限速 128 KiB/s，持续超过 30 秒后仍创建成功并进入我的工单 |
+| 判题链路 | Docker 沙箱测试单独执行通过；真实 MinIO 题包导入及 Worker 判题结果为 accepted、100 分 |
+| 生产验收 | 管理员／学生只读接口、迁移校验、健康及镜像检查通过；两个视口公开页面 10 项通过，无 HTTP 5xx 或 panic，线上未创建测试工单 |
+| 清理 | 最终版本移除 8 个隔离测试容器、4 个测试镜像、13 个无用构建层；前序候选版本测试容器亦已移除，仅剩 6 个正式服务容器，保留备份和回滚镜像 |
+
+发布证据及数据库、私有对象备份位于服务器 `/opt/School-OJ-backups/release-ticket-fixes-764a9b84beac/`。`release.json` 记录运行时提交、镜像、数据容器及清理结果；`browser-report.json`、`import-team-browser-report.json`、`production-browser-report.json` 分别记录 33 项基础交互、17 项新增交互和 10 项线上只读检查。截图来自隔离的真实应用镜像，使用合成测试数据。

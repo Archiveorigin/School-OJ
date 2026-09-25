@@ -15,7 +15,8 @@ const pairs = Array.from({ length: 15 }, (_, i) => [
 ]).flat()
 const icon = { name: 'team-icon.png', mimeType: 'image/png', buffer: await readFile('public/logo1.png') }
 async function shot(page, name) {
-  await page.screenshot({ path: path.join(output, `${name}.png`), fullPage: true, animations: 'disabled', style: '.el-message{visibility:hidden!important}' })
+  await page.waitForFunction(() => !document.querySelector('[class*="enter-active"], [class*="leave-active"]'))
+  await page.screenshot({ path: path.join(output, `${name}.png`), fullPage: !(await page.locator('.el-overlay-dialog:visible').count()), animations: 'disabled', style: '.el-message{visibility:hidden!important}' })
   assert(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth + 1), `${name}: overflow`)
   checks.push(name); console.log('PASS ' + name)
 }
@@ -53,7 +54,7 @@ try {
     const grid = await files.locator('.file-grid').boundingBox(); assert(grid.height <= viewport.height * .6)
     await shot(page, `${size}-attachment-manager`)
     await files.getByRole('button', { name: '清空待上传', exact: true }).click()
-    await files.getByRole('button', { name: '完成', exact: true }).click()
+    await files.getByRole('button', { name: '完成', exact: true }).click(); await files.waitFor({ state: 'hidden' })
     if (size === 390) await page.locator('.mobile-tabs').getByText('预览', { exact: true }).click()
     const preview = page.locator('.problem-draft-preview').first()
     await preview.locator('.katex').first().waitFor()
@@ -64,7 +65,7 @@ try {
     const expanded = page.getByRole('dialog', { name: '题目预览', exact: true })
     await expanded.locator('.katex').first().waitFor()
     await shot(page, `${size}-expanded-preview`)
-    await expanded.locator('.el-dialog__headerbtn').click()
+    await expanded.locator('.el-dialog__headerbtn').click(); await expanded.waitFor({ state: 'hidden' })
     const zip = { name: 'cases.zip', mimeType: 'application/zip', buffer: await readFile('tests/fixtures/ticket-cases.zip') }
     const upload = size === 1440 ? [zip, { name: 'large.in', mimeType: 'text/plain', buffer: Buffer.alloc(5 * 1024 * 1024, '1') }, { name: 'large.out', mimeType: 'text/plain', buffer: Buffer.from('1') }] : [zip]
     await page.locator('input[data-ticket-files]').setInputFiles(upload)
@@ -93,7 +94,7 @@ try {
     await page.getByRole('button', { name: '添加题目', exact: true }).click()
     const picker = page.getByRole('dialog', { name: '添加题目', exact: true })
     await picker.getByPlaceholder('搜索题号或题目名称').fill('QA')
-    await picker.getByRole('combobox', { name: '题目难度', exact: true }).click()
+    await picker.locator('.el-select').click()
     await page.getByRole('option', { name: '基础', exact: true }).click()
     await picker.getByRole('button', { name: '选择算法标签', exact: true }).click()
     const tags = page.getByRole('dialog', { name: '选择算法标签', exact: true })
