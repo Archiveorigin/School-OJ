@@ -165,6 +165,21 @@ func TestTicketRetargetAndFinalRejectionPostgres(t *testing.T) {
 	assertStatus(t, f.request("POST", base+"/reject", &f.admin, gin.H{"revision": 2, "note": "最终不予采纳"}), 200)
 	req["revision"] = 3
 	assertStatus(t, f.request("PATCH", base, &f.student, req), 409)
+	// An administrator editing their own draft must immediately retain a usable review form.
+	adminDraft := workflowDraft()
+	r = f.request("POST", "/api/problem-change-tickets", &f.admin, adminDraft)
+	assertStatus(t, r, 201)
+	adminTicket := readTicket(t, r)
+	adminDraft["revision"] = 1
+	r = f.request("PATCH", fmt.Sprintf("/api/problem-change-tickets/%d", adminTicket.ID), &f.admin, adminDraft)
+	assertStatus(t, r, 200)
+	var refreshed struct {
+		Review ticketPackageReview `json:"review"`
+	}
+	_ = json.Unmarshal(r.Body.Bytes(), &refreshed)
+	if refreshed.Review.Revision != 2 {
+		t.Fatal("admin cannot review after saving their own ticket")
+	}
 }
 
 func TestTicketMaterialPairingAndImages(t *testing.T) {

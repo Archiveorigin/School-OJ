@@ -430,6 +430,7 @@ export interface components {
   }
     "replace_tests": boolean
     "attachment_ids": Array<number>
+    "tags"?: (Array<string>) | null
   }
     "TicketPackagePreview": {
     "title": string

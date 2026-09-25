@@ -249,6 +249,13 @@ func (s Server) ticketProjection(user models.User, ticket models.ProblemChangeTi
 	if user.Role == models.RoleAdmin && detail {
 		s.loadProblemChangeTicketImpact(&ticket)
 		view["impact_summary"] = ticket.ImpactSummary
+		if ticket.Status == models.ProblemChangePending && (ticket.Action == models.ProblemChangeCreate || ticket.Action == models.ProblemChangeReplace && ticket.ProblemID != nil) {
+			if review, err := s.ticketReviewDefaults(ticket); err == nil {
+				view["review"] = review
+			} else {
+				view["review_error"] = err.Error()
+			}
+		}
 	}
 	return view
 }
@@ -661,15 +668,7 @@ func (s Server) getProblemChangeTicket(c *gin.Context) {
 		return
 	}
 	user, _ := middleware.CurrentUser(c)
-	view := s.ticketView(user, ticket)
-	if user.Role == models.RoleAdmin && ticket.Status == models.ProblemChangePending && (ticket.Action == models.ProblemChangeCreate || ticket.Action == models.ProblemChangeReplace && ticket.ProblemID != nil) {
-		if review, err := s.ticketReviewDefaults(ticket); err == nil {
-			view["review"] = review
-		} else {
-			view["review_error"] = err.Error()
-		}
-	}
-	c.JSON(200, view)
+	c.JSON(200, s.ticketView(user, ticket))
 }
 
 func (s Server) downloadProblemChangeTicketAttachment(c *gin.Context) {
@@ -1041,6 +1040,9 @@ func (s Server) applyProblemChangeTicket(c *gin.Context) {
 			return
 		}
 		tags := tagsJSONMap(parseTagFields(c.PostFormArray("tags"), c.PostForm("tags")))
+		if _, supplied := c.Request.MultipartForm.Value["tags"]; supplied && len(tags) == 0 {
+			tags = datatypes.JSONMap{"labels": []string{}}
+		}
 		err = s.applyProblemPackageTicket(c, ticket, admin, body, pkg, tags, strings.TrimSpace(c.PostForm("difficulty")), note)
 	}
 	if err != nil {

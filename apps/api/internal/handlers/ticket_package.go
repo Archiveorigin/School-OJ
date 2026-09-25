@@ -33,6 +33,7 @@ type ticketPackageReview struct {
 	Checker           services.CheckerManifest `json:"checker"`
 	ReplaceTests      bool                     `json:"replace_tests"`
 	AttachmentIDs     []uint                   `json:"attachment_ids"`
+	Tags              []string                 `json:"tags"`
 }
 
 // Bound concurrent package assembly, which reuses the existing ZIP builder.
@@ -55,6 +56,7 @@ func (s Server) ticketReviewDefaults(ticket models.ProblemChangeTicket) (ticketP
 			return review, errors.New("题目不存在或已归档，不能执行题库变更")
 		}
 		review.ExpectedVersionID = p.CurrentVersionID
+		review.Tags = collectProblemTags([]models.Problem{p})
 		review.Title, review.Statement = p.Title, p.Statement
 		review.TimeLimitMS, review.MemoryLimitMB, review.OutputLimitKB = p.TimeLimitMS, p.MemoryLimitMB, p.OutputLimitKB
 		b, _ := json.Marshal(p.Manifest)

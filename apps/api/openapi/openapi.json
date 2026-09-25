@@ -13518,6 +13518,13 @@
             "items": {
               "type": "integer"
             }
+          },
+          "tags": {
+            "type": "array",
+            "nullable": true,
+            "items": {
+              "type": "string"
+            }
           }
         }
       },

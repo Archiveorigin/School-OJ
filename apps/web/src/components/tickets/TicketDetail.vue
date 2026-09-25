@@ -111,6 +111,7 @@
               :label="value"
               :value="value" /></el-select
         ></el-form-item>
+        <el-form-item label="算法标签"><ProblemTagSelector v-model="tags" /></el-form-item>
       </template>
       <el-alert v-if="ticket.can_resolve && (ticket.exam_id || ticket.contest_id)" type="info" :closable="false" title="填写处置结果后可直接结单，不更改题库、不更新当前场次版本，也不触发重判。题库修正需单独执行。" />
       <el-form-item label="处理说明"
@@ -169,6 +170,7 @@ import { formatDateTime } from "../../features/time";
 import { mapConcurrent } from "../../features/async";
 import ProblemDraftPreview from "./ProblemDraftPreview.vue";
 import TicketPackageReview from "./TicketPackageReview.vue";
+import ProblemTagSelector from "../ProblemTagSelector.vue";
 const props = defineProps<{
   ticket: ProblemChangeTicket;
   context: TicketContext;
@@ -176,6 +178,7 @@ const props = defineProps<{
 const emit = defineEmits<{ changed: [] }>();
 const packageMode = ref<'materials' | 'zip'>('materials');
 const packageReview = ref<InstanceType<typeof TicketPackageReview>>();
+const tags = ref<string[]>([...(props.ticket.review?.tags || [])]);
 const historyLabels: Record<string, string> = { return: '退回补充', resubmit: '补充后重新提交', update: '修改材料', reject: '驳回', resolve: '记录处置并完成', apply: '执行题库变更', cancel: '撤回' };
 const note = ref(""),
   difficulty = ref(props.ticket.problem?.difficulty || ""),
@@ -315,6 +318,7 @@ async function apply() {
     );
     data.append("resolution_note", note.value.trim());
     data.append("difficulty", difficulty.value);
+    data.append("tags", tags.value.join(','));
     if (packageMode.value === 'zip' && packageFile.value) data.append("package", packageFile.value);
     await generatedApi.applyProblemChangeTicket({
       path: { id: props.ticket.id },
