@@ -450,7 +450,7 @@ onMounted(load)
 .ticket-entry-panel { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 12px; padding: 20px; margin: 20px 0; }
 .ticket-entry-panel h2 { margin-top: 0; }
 .ticket-entry-panel p { color: var(--muted); }
-.profile-page { max-width: 1220px; margin: 0 auto; padding: 38px 28px 68px; }
+.profile-page { grid-template-columns: minmax(0, 1fr); max-width: 1220px; margin: 0 auto; padding: 38px 28px 68px; }
 .identity-panel { display: flex; align-items: center; justify-content: space-between; gap: 34px; padding: 34px 38px; overflow: hidden; background: radial-gradient(circle at 92% 8%, rgba(56,189,248,.12), transparent 30%), var(--surface); }
 .identity-main { display: flex; align-items: center; gap: 22px; min-width: 0; }
 .profile-avatar { width: 104px; height: 104px; font-size: 38px; }
