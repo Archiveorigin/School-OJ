@@ -32,9 +32,14 @@ async function response(page, method, ending, act, expected) {
   assert.equal(r.status(), expected, await r.text()); return r.json()
 }
 async function shot(page, name) {
-  for (const image of await page.locator('.problem-draft-preview img').all()) {
-    await image.scrollIntoViewIfNeeded()
-    await page.waitForFunction(img => img.complete && img.naturalWidth > 0, await image.elementHandle())
+  const images = page.locator('.problem-draft-preview img')
+  for (let index = 0; index < await images.count(); index++) {
+    await images.nth(index).scrollIntoViewIfNeeded()
+    // The private asset request can replace the Markdown DOM while it loads.
+    await page.waitForFunction(index => {
+      const img = document.querySelectorAll('.problem-draft-preview img')[index]
+      return img?.complete && img.naturalWidth > 0
+    }, index)
   }
   await page.evaluate(() => scrollTo(0, 0))
   await page.waitForFunction(() => !document.querySelector('[class*="enter-active"], [class*="leave-active"]'))
