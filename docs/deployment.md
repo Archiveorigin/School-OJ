@@ -186,6 +186,8 @@ curl -fsS http://127.0.0.1:${WEB_PORT:-25565}/healthz
 
 API 和 Worker 必须部署同一 Git 版本，避免新数据库结构或提交上下文被旧 Worker 错误消费。
 
+发布镜像必须从 Linux Git checkout 或 `git archive <commit>` 的原始提交内容构建，不可把 Windows 工作区直接打包后作为候选镜像。SQL 迁移校验和依赖文件字节，CRLF 与 LF 不同；`.gitattributes` 固定迁移为 LF。发布前须用生产数据库副本执行真实 API 镜像启动与重启，不能仅凭使用同一换行符建立的测试 schema 判断历史迁移兼容。
+
 迁移 026 前执行只读预检：确认 `team_memberships.role` 没有 `owner/admin/member` 以外的值、每个团队没有多个 `owner`。发现异常应停止部署并人工核对，不自动降级用户或删除关系。迁移失败会阻止 API 启动；不要通过改写已执行 SQL 的方式绕过检查。
 
 ## 7. 回滚与清理
