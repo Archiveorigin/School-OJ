@@ -1,3 +1,4 @@
+*.sh text eol=lf
 # SQL migration checksums are computed from embedded bytes. Keep identical bytes
 # on Windows and Linux without changing any already-applied migration content.
 apps/api/migrations/*.sql text eol=lf

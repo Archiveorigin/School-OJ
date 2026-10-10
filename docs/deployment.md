@@ -144,6 +144,24 @@ Worker 的恢复测试也使用上述数据库/Redis 变量，在 `apps/worker` 
 
 已清理本次 8 个测试容器、4 个测试镜像和 13 个无用构建层，保留 6 个正式服务、回滚镜像、数据库及附件备份。证据目录为 `/opt/School-OJ-backups/release-ticket-update-3986614b4ad4/`，完整说明见 [工单反馈与发布验收](ticket-feedback.md)。
 
+### 4.5 性能与安全优化发布（2026-10-10）
+
+应用版本 `ed51d699fcf0` 已从 `a8fdc6a` 发布，API、Worker、Web 使用服务器 Git 原始提交导出后构建的同一版本镜像。后续文档与换行符规则记录不改变应用二进制。详细优化见 [性能与安全联合复核](component-performance.md)。
+
+首次候选由 Windows 临时源码包构建，SQL 的 CRLF 与生产 LF 校验和不同，API 启动保护拒绝迁移，发布脚本随即恢复旧镜像及配置。改用 `git archive` 原始提交字节重建后，在生产数据库副本上启动、重启均通过；迁移校验和、用户、提交和题目版本计数一致。历史迁移文件与生产迁移台账均未改写。
+
+| 检查 | 结果 |
+| --- | --- |
+| 依赖 | npm audit 0；Go 可达/导入包告警 0，未导入 openpgp 的模块提示单独记录 |
+| 自动验收 | API 154、Worker 36、Web 133 项通过；真实 Docker 判题沙箱通过；工单/导入/审核双视口共 64 项通过 |
+| 线上浏览器 | 桌面 1440×1100、手机 390×844 的首页、登录、题库共 6 项检查通过；无运行时异常或整页横向溢出；HTTP 来源的既有 COOP 告警已记录 |
+| 性能样本 | 同一生产回环地址顺序 20 次题库请求，中位 TTFB 5.97 ms → 2.16 ms，仅为小样本，不等同于压测 SLA；线上首页 JS 压缩体积 428,898 → 180,822 字节 |
+| 容器 | API/Worker 健康，Web 正常，外部 healthz 正常；三个应用容器已替换，PostgreSQL/Redis/MinIO 的原容器 ID 不变 |
+| 配置 | 已备份并轮换原短 JWT 密钥，旧令牌失效；`SEED_DATA=false` 已核验；HTTP 入口仍为原端口 |
+| 清理 | 6 个临时验收容器、临时网络、验收镜像引用、失败候选引用及本次可确认无用的构建层已清理；仅余 6 个正式容器。保留所有数据卷、回滚镜像和备份，未执行全局 prune；磁盘可用约 7.7 GB |
+
+发布备份及镜像/容器记录：`/opt/School-OJ-backups/release-performance-ed51d699fcf0/`，含 PostgreSQL dump、附件 tar、旧配置、校验和与 `release.json`；配置及容器 inspect 含密钥，目录限定 root 访问。测试与回滚诊断：`/opt/School-OJ-backups/performance-audit-20261010/`。此前失败尝试备份保留供审计。
+
 ## 5. 关键环境变量
 
 | 变量 | 用途 |
