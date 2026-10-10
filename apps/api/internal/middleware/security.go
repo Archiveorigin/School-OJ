@@ -55,6 +55,9 @@ func SecurityHeaders() gin.HandlerFunc {
 		c.Header("Referrer-Policy", "no-referrer")
 		c.Header("Permissions-Policy", "camera=(), microphone=(), geolocation=()")
 		c.Header("Cross-Origin-Resource-Policy", "same-site")
+		// JSON often contains credentials, private code or exam state. A handler
+		// may explicitly opt a public/static resource into a different policy.
+		c.Header("Cache-Control", "private, no-store")
 		c.Next()
 	}
 }

@@ -43,6 +43,37 @@ func TestAuthRejectsUnexpectedSigningMethod(t *testing.T) {
 	}
 }
 
+func TestAuthRejectsUnboundedOrIncompleteTokens(t *testing.T) {
+	for name, claims := range map[string]Claims{
+		"missing expiration": {UserID: 1},
+		"missing user":       {RegisteredClaims: jwt.RegisteredClaims{ExpiresAt: jwt.NewNumericDate(time.Now().Add(time.Hour))}},
+	} {
+		t.Run(name, func(t *testing.T) {
+			token, err := jwt.NewWithClaims(jwt.SigningMethodHS256, claims).SignedString([]byte("secret"))
+			if err != nil {
+				t.Fatal(err)
+			}
+			assertRejectedToken(t, token)
+		})
+	}
+	t.Run("oversized", func(t *testing.T) { assertRejectedToken(t, strings.Repeat(".", 8193)) })
+}
+
+func assertRejectedToken(t *testing.T, token string) {
+	t.Helper()
+	router := gin.New()
+	// nil DB ensures rejected input never reaches the database.
+	router.Use(Auth(nil, "secret"))
+	router.GET("/protected", func(c *gin.Context) { c.Status(http.StatusOK) })
+	req := httptest.NewRequest(http.MethodGet, "/protected", nil)
+	req.Header.Set("Authorization", "Bearer "+token)
+	response := httptest.NewRecorder()
+	router.ServeHTTP(response, req)
+	if response.Code != http.StatusUnauthorized {
+		t.Fatalf("expected 401, got %d", response.Code)
+	}
+}
+
 func TestOptionalAuthAllowsMissingToken(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 	router := gin.New()

@@ -1,5 +1,4 @@
-import ElementPlus, { ElMessage } from 'element-plus'
-import 'element-plus/dist/index.css'
+import { ElMessage } from 'element-plus'
 import 'element-plus/theme-chalk/dark/css-vars.css'
 import { createPinia } from 'pinia'
 import { createApp } from 'vue'
@@ -12,7 +11,7 @@ import './styles/tokens.css'
 import './style.css'
 
 const pinia = createPinia()
-const app = createApp(App).use(pinia).use(router).use(ElementPlus)
+const app = createApp(App).use(pinia).use(router)
 
 client.interceptors.response.use(
   (response) => response,

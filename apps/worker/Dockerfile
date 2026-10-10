@@ -1,8 +1,10 @@
-FROM golang:1.24-alpine AS build
+FROM golang:1.26.9-alpine AS build
 ENV GOPROXY=https://goproxy.cn,direct GOSUMDB=sum.golang.google.cn
 WORKDIR /src
+COPY go.mod go.sum ./
+RUN go mod download
 COPY . .
-RUN CGO_ENABLED=0 GOOS=linux go build -mod=mod -o /out/worker ./cmd/worker
+RUN CGO_ENABLED=0 GOOS=linux go build -mod=readonly -trimpath -o /out/worker ./cmd/worker
 
 FROM build AS integration-build
 RUN CGO_ENABLED=0 GOOS=linux go test -c -o /out/runner-integration ./internal/runner

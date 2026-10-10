@@ -44,6 +44,10 @@ func OptionalAuth(db *gorm.DB, secret string) gin.HandlerFunc {
 func authenticate(db *gorm.DB, secret string, required bool) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		header := c.GetHeader("Authorization")
+		if len(header) > 8192 {
+			c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{"error": "invalid token"})
+			return
+		}
 		tokenString := ""
 		if strings.HasPrefix(header, "Bearer ") {
 			tokenString = strings.TrimPrefix(header, "Bearer ")
@@ -61,13 +65,13 @@ func authenticate(db *gorm.DB, secret string, required bool) gin.HandlerFunc {
 				return nil, jwt.ErrTokenSignatureInvalid
 			}
 			return []byte(secret), nil
-		})
+		}, jwt.WithExpirationRequired(), jwt.WithValidMethods([]string{"HS256"}))
 		if err != nil || !token.Valid {
 			c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{"error": "invalid token"})
 			return
 		}
 		claims, ok := token.Claims.(*Claims)
-		if !ok {
+		if !ok || claims.UserID == 0 {
 			c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{"error": "invalid token claims"})
 			return
 		}

@@ -53,6 +53,34 @@ Monaco 仅加载现有 C/C++、Java、Python 语法定义，并通过 Vite `?wor
 
 ## 后续性能边界
 
-全量榜单 DOM、超大源码行号和测试文件全文仍随数据量增长；本轮未人为截断展示、修改分页协议或省略内容。若真实负载出现长任务，应记录设备、行数、文件字节数与交互耗时，再选择榜单虚拟化、服务端测试文件预览范围或后台格式化。Element Plus 全量注册和 KaTeX 分包仍存在，须另行评估按需导入对全站样式及功能的影响。
+全量榜单 DOM、超大源码行号和测试文件全文仍随数据量增长；未人为截断展示、修改分页协议或省略内容。若真实负载出现长任务，应记录设备、行数、文件字节数与交互耗时，再选择榜单虚拟化、服务端测试文件预览范围或后台格式化。Element Plus 全量注册已在下述优化中移除，KaTeX 和 Monaco 保持按需加载。
 
 设计参考：[Vue 性能指南](https://vuejs.org/guide/best-practices/performance.html)、[Monaco ESM 与 Vite Worker 集成](https://github.com/microsoft/monaco-editor/blob/main/docs/integrate-esm.md)。实现以仓库当前安装版本及浏览器验证为准。
+
+## 网站性能与安全联合复核（2026-10-10）
+
+基线为服务器已发布源码 `a8fdc6a`。使用现有 Vue 3/Vite、Gin/GORM/PostgreSQL、Redis 和 Nginx 技术完成以下优化；附件上传、题目版本及权限治理沿用线上最新实现。
+
+| 定位 | 修改与验证 |
+| --- | --- |
+| 首屏全量加载 Element Plus | 模板组件、指令、消息与确认框样式按需导入，移除整包注册和整套 CSS；独立 runtime 分包防止共享 helper 将 Monaco 提前拉入首屏。桌面与手机实际镜像交互复核。 |
+| 题库统计 N+1 | 每题两次 COUNT 合为当前页 ID 的一次聚合。真实 PostgreSQL 的 20 题回归：匿名列表查询从 43 次降至 4 次，六种判题状态的统计和通过率口径一致。 |
+| 静态资源压缩与缓存 | 构建预生成 gzip；成功的哈希资源使用一年 immutable，404 不长期缓存；HTML 继续 no-cache。浏览器验证压缩、缓存及安全头继承。 |
+| API 防护 | 默认 private/no-store；限制页码、标签数、关键词长度；题库数据库错误不向客户端回显；查询随请求取消。JWT 必须带期限和非零用户 ID，限制令牌长度。HTTP 头读取和空闲连接设置超时，保留 SSE。 |
+| 依赖及构建漂移 | Go 1.26.9 与安全依赖升级；npm 锁文件修复；镜像使用 npm ci、Go readonly module 构建，Nginx 固定已验证镜像摘要。npm audit 原有 10 项（High 6）降至 0；API 可达 Go 漏洞 20 降至 0。 |
+
+以下字节数来自相同 Chromium、全新浏览器上下文的桌面/手机加载。基线为旧生产镜像，新值为同机独立候选镜像；网络路径不同，不将两者的 LCP/TTFB 差值作为提速结论。单位 KB 为十进制，压缩体积采用 Resource Timing encodedBodySize。
+
+| 页面 | JS 解码大小：原 → 新 | JS 压缩体积：原 → 新 |
+| --- | --- | --- |
+| 首页 | 1,284 KB → 521 KB | 429 KB → 181 KB（减少约 58%） |
+| 登录 | 1,280 KB → 465 KB | 427 KB → 161 KB（减少约 62%） |
+| 题库 | 1,294 KB → 626 KB | 434 KB → 221 KB（减少约 49%） |
+
+构建入口的静态 JS 依赖合计 413,421 字节，gzip 142,978 字节；新增 250 KiB gzip 构建预算，发现 Monaco/KaTeX 被提前引入即失败。更多小请求替代整包，收益主要为减少下载与解析。候选页面 CLS 为 0–0.051，无整页横向溢出；这些实验室记录不等于真实用户 P75 INP/FPS 或 Lighthouse 评分。原 Go 扫描采用本机原工具链 1.26.5，20 项为源码可达分析，不是旧生产 Go 1.24 二进制的完整漏洞数量；新构建与复扫统一为 1.26.9。
+
+验收：API 154 项通过，两个驻留浏览器 fixture 在常规测试中跳过，其中工单 fixture 单独启动；Worker 36 项通过，真实 Docker 沙箱正常执行/CPU 超时/OOM/运行错误另行通过；Web 34 文件、133 项通过；200 项接口契约、类型检查及生产构建通过。公开页面两种视口共 6 项检查；工单 33 项、导入/团队 17 项、审核 14 项在隔离 PostgreSQL 16、Redis 7 和实际 Web 镜像下全部通过。服务端证据在 `/opt/School-OJ-backups/performance-audit-20261010/`，本地截图与 JSON 在忽略提交的 `tmp/performance-*`、`tmp/ticket-*-qa/`。
+
+安全边界见 [安全设计](security.md)。全量旧版 `/problems` 接口、全量榜单和 900 KB 原始 PNG 校徽仍有后续优化空间，需保持计数和显示语义再分页/裁剪资源。本轮未进行高并发压力、堆内存持续增长、完整 ZAP 或容器操作系统 CVE 扫描，不宣称零安全风险。
+
+依据：[Element Plus 按需导入](https://element-plus.org/en-US/guide/quickstart)、[Nginx gzip_static](https://nginx.org/en/docs/http/ngx_http_gzip_static_module.html)、[Nginx 响应头继承](https://nginx.org/en/docs/http/ngx_http_headers_module.html)、[Go 安全更新](https://pkg.go.dev/vuln/GO-2026-6617)。

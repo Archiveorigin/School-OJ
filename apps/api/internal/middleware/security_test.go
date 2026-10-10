@@ -29,6 +29,9 @@ func TestSecurityHeaders(t *testing.T) {
 	router.GET("/test", func(c *gin.Context) { c.Status(http.StatusNoContent) })
 	response := httptest.NewRecorder()
 	router.ServeHTTP(response, httptest.NewRequest(http.MethodGet, "/test", nil))
+	if response.Header().Get("Cache-Control") != "private, no-store" {
+		t.Fatal("API responses must not be cached by default")
+	}
 	for _, header := range []string{
 		"X-Content-Type-Options",
 		"X-Frame-Options",

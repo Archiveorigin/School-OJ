@@ -5,7 +5,7 @@
 ## 1. 环境要求
 
 - Docker Engine 与 Docker Compose 2.20 或更高版本
-- 本地直接开发时需要 Go 1.24、Node.js 和 npm
+- 本地直接开发时需要 Go 1.26.9、Node.js 24 LTS 和 npm
 - 判题宿主机需要能够运行 Docker，并预先准备 C/C++、Python、Java 沙箱镜像
 - 生产环境必须使用强随机 `JWT_SECRET`，并替换数据库与 MinIO 默认凭据
 
@@ -31,7 +31,7 @@ docker compose restart worker
 - PostgreSQL：仅绑定 `127.0.0.1:15432`
 - Redis、MinIO 和 API 默认只在 Compose 网络中提供服务
 
-本地种子数据由 `SEED_DATA` 控制。开发环境可保留管理员、教师和学生测试账号；生产环境必须更换初始凭据或关闭种子数据。
+本地种子数据由 `SEED_DATA` 控制，默认关闭。只有隔离开发环境才设置 `SEED_DATA=true`；生产已有账号不受关闭种子数据影响。API 启动时拒绝短于 32 字节或以 `dev-secret` 开头的 JWT 密钥；更换签名密钥会使现有登录令牌失效，用户需重新登录。
 
 ## 3. 本地直接开发
 

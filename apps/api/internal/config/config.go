@@ -1,6 +1,7 @@
 package config
 
 import (
+	"errors"
 	"os"
 	"strconv"
 	"strings"
@@ -46,7 +47,7 @@ func Load() Config {
 		MinIOSecretKey: env("MINIO_SECRET_KEY", "minioadmin"),
 		MinIOBucket:    env("MINIO_BUCKET", "oj-artifacts"),
 		MinIOUseSSL:    envBool("MINIO_USE_SSL", false),
-		JWTSecret:      env("JWT_SECRET", "dev-secret"),
+		JWTSecret:      env("JWT_SECRET", ""),
 		SMTPHost:       env("SMTP_HOST", ""),
 		SMTPPort:       envInt("SMTP_PORT", 1025),
 		SMTPUsername:   env("SMTP_USERNAME", ""),
@@ -61,6 +62,14 @@ func Load() Config {
 		CORSOrigins:    envList("CORS_ALLOWED_ORIGINS", "http://localhost:3000,http://localhost:5173"),
 		TrustedProxies: envList("TRUSTED_PROXIES", "127.0.0.1/32,::1/128,172.16.0.0/12"),
 	}
+}
+
+// Validate prevents a missing/default signing key from reaching the HTTP server.
+func (c Config) Validate() error {
+	if len(c.JWTSecret) < 32 || strings.HasPrefix(strings.ToLower(c.JWTSecret), "dev-secret") {
+		return errors.New("JWT_SECRET must contain at least 32 bytes of a randomly generated secret")
+	}
+	return nil
 }
 
 func env(key, fallback string) string {

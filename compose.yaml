@@ -63,7 +63,7 @@ services:
       MAIL_FROM: "${MAIL_FROM:-no-reply@huanghailuoj.local}"
       MAIL_FROM_NAME: "${MAIL_FROM_NAME:-黄海在线}"
       AUTO_MIGRATE: "true"
-      SEED_DATA: "true"
+      SEED_DATA: "${SEED_DATA:-false}"
       JPLAG_WORK_DIR: "/tmp/jplag"
     depends_on:
       postgres:

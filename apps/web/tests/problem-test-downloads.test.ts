@@ -3,7 +3,8 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
 import ProblemTestDownloads from '../src/components/ProblemTestDownloads.vue'
 import { generatedApi } from '../src/api/client'
 
-vi.mock('element-plus', () => ({
+vi.mock('element-plus', async (importOriginal) => ({
+  ...await importOriginal<typeof import('element-plus')>(),
   ElMessage: {
     error: vi.fn(),
     success: vi.fn()

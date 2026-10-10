@@ -75,3 +75,14 @@ Compose Worker 需要访问宿主机 `/var/run/docker.sock`，因此应把它视
 客户端队列每账号/考试/标签页最多保留 200 项，每批最多 30 项，失败时使用同一事件标识重试；接口限制为 16 KB、每用户每分钟 120 次。服务器只接受有限事件类型和标识，允许客户端时钟偏差，客户端时间不作为处罚依据。交卷后允许补报先前事件，但时间不能无限超出考试窗口。访问拦截日志按接口和分钟去重。教师仅可查询自己管理课程的日志，系统管理员可查询全部。日志随 PostgreSQL 常规备份保留，本轮不自动删除。
 
 边界：该机制不是操作系统级监考。保留匿名题库意味着退出登录、无痕窗口、其他账号或其他设备仍可访问公开内容；前端也无法彻底禁用开发者工具。仅监听页面焦点、可见性和指定快捷键，不采集屏幕、键入内容或其他应用信息，不强制全屏、不自动扣分或交卷。
+
+## 2026-10-10 安全复核与部署边界
+
+- API 启动拒绝缺失、少于 32 字节或以 `dev-secret` 开头的签名密钥。生产原密钥长度低于要求，部署时备份旧配置并生成随机长密钥；旧令牌失效，用户需要重新登录。默认 `SEED_DATA=false`，重启不再创建演示账号。
+- API 默认 `private, no-store`，明确的资源/SSE 缓存策略可覆盖。公开边缘 Nginx 覆盖客户端提交的 X-Forwarded-For；将来加 CDN 时须单独配置受信节点和真实来源 IP。点号隐藏路径返回 404，避免暴露构建清单等内部文件。
+- JWT 必须有期限及非零用户 ID，仅接受 HS256，超过 8 KiB 的 Authorization 被拒绝。请求头读取超时 10 秒、空闲连接 60 秒、最大头 32 KiB；不设会截断 SSE/附件的全局写入超时。
+- npm audit 为 0。API/Worker 的 govulncheck 可达和导入包告警均为 0；整个 x/crypto 模块仍包含未维护的 openpgp（GO-2026-5932），本项目不导入该包，不能表述为模块告警清零。
+- 维护者确认没有正式 HTTPS 域名/证书，公开入口保持 HTTP。本次未配置 HSTS，不宣称 SSL Labs 等级或传输加密已完成；浏览器忽略 HTTP 非可信源上的 COOP，验收记录该已知告警。Bearer Token 仍存在 localStorage，后续应结合 HTTPS 和刷新令牌设计会话迁移。CSP 禁止内联脚本/eval，组件样式仍需 `style-src 'unsafe-inline'`。
+- Nginx 可用 80/443 对外，把应用端口留在内部网络；独立网站域名可代替源站名称。同机反向代理不能隐藏公网 IP，隐藏源站需独立代理/CDN 并限制源站允许来源，DNS 历史或其他直连服务也可能泄漏 IP。本次不更改公开地址、DNS 或防火墙。参见 [Nginx 代理模块](https://nginx.org/en/docs/http/ngx_http_proxy_module.html) 和 [Cloudflare 代理 DNS](https://developers.cloudflare.com/dns/proxy-status/)。
+
+变更、指标和验收口径见 [性能复核](component-performance.md)。

@@ -2,8 +2,8 @@
 
 学校可部署 OJ 系统，固定目录：
 
-- `apps/api`: Go 1.24 + Gin + GORM + PostgreSQL + Redis Streams + MinIO
-- `apps/worker`: Go 1.24 judge-worker，Redis Streams consumer，Docker 沙箱
+- `apps/api`: Go 1.26.9 + Gin + GORM + PostgreSQL + Redis Streams + MinIO
+- `apps/worker`: Go 1.26.9 judge-worker，Redis Streams consumer，Docker 沙箱
 - `apps/web`: Vue3 + Vite + TypeScript + Element Plus + Monaco
 - `deploy/compose`: 引用根目录规范编排的兼容入口
 - `deploy/k8s`: Kubernetes 参考清单
@@ -32,7 +32,7 @@ docker compose restart worker
 - MinIO: http://localhost:9001
 - Mailpit 邮件捕获: http://localhost:8025
 
-本地启动会创建管理员、教师、学生种子账号用于功能验证；生产环境请替换初始凭据或关闭 `SEED_DATA`。
+默认不创建演示账号；仅在隔离开发环境中设置 `SEED_DATA=true` 才会创建管理员、教师、学生种子账号。生产环境必须保持关闭并使用已有管理账号。
 本地验证码邮件不会投递到真实邮箱，而是进入 Mailpit：打开 http://localhost:8025 查看。生产部署需把 `SMTP_HOST`、`SMTP_PORT`、`SMTP_USERNAME`、`SMTP_PASSWORD`、`MAIL_FROM` 配置为学校或云邮件服务。
 
 ## 功能范围

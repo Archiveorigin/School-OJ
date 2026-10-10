@@ -3,6 +3,8 @@ package main
 import (
 	"context"
 	"log"
+	"net/http"
+	"time"
 
 	"school-oj/apps/api/internal/config"
 	"school-oj/apps/api/internal/db"
@@ -17,6 +19,9 @@ import (
 func main() {
 	ctx := context.Background()
 	cfg := config.Load()
+	if err := cfg.Validate(); err != nil {
+		log.Fatalf("configuration: %v", err)
+	}
 
 	gdb, err := db.Connect(ctx, cfg)
 	if err != nil {
@@ -49,7 +54,15 @@ func main() {
 	outboxDispatcher := services.SubmissionOutboxDispatcher{DB: gdb, Redis: redisClient}
 	go outboxDispatcher.Run(ctx)
 	server := handlers.Server{DB: gdb, Redis: redisClient, MinIO: minioClient, Cfg: cfg}
-	if err := server.Router().Run(cfg.Addr); err != nil {
+	// Bound slow headers and idle keep-alives without imposing a write deadline
+	// on long-lived submission SSE or legitimate large multipart uploads.
+	httpServer := &http.Server{
+		Addr: cfg.Addr, Handler: server.Router(),
+		ReadHeaderTimeout: 10 * time.Second,
+		IdleTimeout:       60 * time.Second,
+		MaxHeaderBytes:    32 << 10,
+	}
+	if err := httpServer.ListenAndServe(); err != nil {
 		log.Fatalf("server: %v", err)
 	}
 }
