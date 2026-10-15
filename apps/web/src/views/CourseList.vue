@@ -159,6 +159,7 @@
 </template>
 
 <script setup lang="ts">
+import { apiErrorMessage } from '../api/errors'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { computed, onMounted, reactive, ref, watch } from 'vue'
 import { useRouter } from 'vue-router'
@@ -245,7 +246,7 @@ async function load() {
     courses.value = list(coursesRes.data)
     clampPage()
   } catch (err: any) {
-    ElMessage.error(err.response?.data?.error || err.message)
+    ElMessage.error(apiErrorMessage(err))
   } finally {
     loading.value = false
   }
@@ -307,7 +308,7 @@ async function submitCourse() {
     courseDialogVisible.value = false
     await load()
   } catch (err: any) {
-    ElMessage.error(err.response?.data?.error || err.message)
+    ElMessage.error(apiErrorMessage(err))
   } finally {
     savingCourse.value = false
   }
@@ -328,7 +329,7 @@ async function setCourseArchived(course: Course, archived: boolean) {
     ElMessage.success(archived ? '课程已归档' : '课程已恢复')
     await load()
   } catch (err: any) {
-    ElMessage.error(err.response?.data?.error || err.message)
+    ElMessage.error(apiErrorMessage(err))
   }
 }
 
@@ -344,7 +345,7 @@ async function submitClass() {
     classDialogVisible.value = false
     await load()
   } catch (err: any) {
-    ElMessage.error(err.response?.data?.error || err.message)
+    ElMessage.error(apiErrorMessage(err))
   } finally {
     savingClass.value = false
   }
@@ -366,7 +367,7 @@ async function loadMembers() {
     const { data } = await generatedApi.listCourseMembers<any>({ path: { "id": memberCourse.value.id } })
     members.value = list(data)
   } catch (err: any) {
-    ElMessage.error(err.response?.data?.error || err.message)
+    ElMessage.error(apiErrorMessage(err))
   } finally {
     loadingMembers.value = false
   }
@@ -389,7 +390,7 @@ async function submitMember() {
     await loadMembers()
     await load()
   } catch (err: any) {
-    ElMessage.error(err.response?.data?.error || err.message)
+    ElMessage.error(apiErrorMessage(err))
   } finally {
     savingMember.value = false
   }
@@ -412,7 +413,7 @@ async function removeMember(member: CourseMember) {
     await loadMembers()
     await load()
   } catch (err: any) {
-    ElMessage.error(err.response?.data?.error || err.message)
+    ElMessage.error(apiErrorMessage(err))
   }
 }
 

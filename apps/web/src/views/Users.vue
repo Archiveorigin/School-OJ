@@ -106,6 +106,7 @@
 </template>
 
 <script setup lang="ts">
+import { apiErrorMessage } from '../api/errors'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { computed, onMounted, reactive, ref, watch } from 'vue'
 import { generatedApi, type Role, type User } from '../api/client'
@@ -285,7 +286,7 @@ function errorText(err: any) {
   if (err.response?.status === 403) {
     return '当前请求没有管理员权限，请退出后使用管理员账号重新登录'
   }
-  return err.response?.data?.error || err.message
+  return apiErrorMessage(err)
 }
 
 function roleText(role: string) {

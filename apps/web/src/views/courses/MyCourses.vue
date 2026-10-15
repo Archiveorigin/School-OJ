@@ -45,6 +45,7 @@
 </template>
 
 <script setup lang="ts">
+import { apiErrorMessage } from '../../api/errors'
 import { ElMessage } from 'element-plus'
 import { computed, onMounted, ref, watch } from 'vue'
 import { useRouter } from 'vue-router'
@@ -78,7 +79,7 @@ async function load() {
   try {
     courses.value = (await generatedApi.listCourses<any>()).data || []
   } catch (err: any) {
-    ElMessage.error(err.response?.data?.error || err.message)
+    ElMessage.error(apiErrorMessage(err))
   } finally {
     loading.value = false
   }

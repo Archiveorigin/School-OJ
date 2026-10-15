@@ -47,6 +47,7 @@
 </template>
 
 <script setup lang="ts">
+import { apiErrorMessage } from '../../api/errors'
 import { computed, onMounted, onBeforeUnmount, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { ElMessage } from 'element-plus'
@@ -79,7 +80,7 @@ async function load() {
   catch (err: any) {
     if (ticket === generation) {
       team.value = null
-      error.value = err.response?.status === 404 ? '团队不存在，请核对申请链接' : err.response?.data?.error || '加载失败'
+      error.value = err.response?.status === 404 ? '团队不存在，请核对申请链接' : apiErrorMessage(err, '加载失败')
     }
   } finally { if (ticket === generation) loading.value = false }
 }
@@ -102,7 +103,7 @@ async function resolveEntry() {
     codeResolved.value = true
     await acceptPreview(data, ticket)
   } catch (err: any) {
-    if (ticket === generation) error.value = err.response?.data?.error || '邀请码查询失败'
+    if (ticket === generation) error.value = apiErrorMessage(err, '邀请码查询失败')
   } finally { if (ticket === generation) loading.value = false }
 }
 
@@ -127,7 +128,7 @@ async function join() {
       ElMessage.success('加入申请已提交')
     }
   } catch (err: any) {
-    if (ticket === generation) { codeResolved.value = false; error.value = err.response?.data?.error || '加入失败' }
+    if (ticket === generation) { codeResolved.value = false; error.value = apiErrorMessage(err, '加入失败') }
   } finally { joining.value = false }
 }
 

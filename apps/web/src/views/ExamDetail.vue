@@ -47,13 +47,15 @@
 </template>
 
 <script setup lang="ts">
+import { useSubmissionStreams } from "../features/submissions/live"
+import { apiErrorMessage } from '../api/errors'
 import TicketDialog from '../components/tickets/TicketDialog.vue'
 
 import { submissionLanguage } from '../features/submissions/presentation'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
-import { generatedApi, getLatestSubmissions, openEventStream, type AuthenticatedEventSource, type Submission } from '../api/client'
+import { generatedApi, getLatestSubmissions, type AuthenticatedEventSource, type Submission } from '../api/client'
 import EventWorkspaceHeader from '../components/EventWorkspaceHeader.vue'
 import EventProblemList from '../components/EventProblemList.vue'
 import EventProblemPanel from '../components/EventProblemPanel.vue'
@@ -69,6 +71,7 @@ import { useExamEnvironment } from '../features/exams/useExamEnvironment'
 import { useAuthStore } from '../stores/auth'
 import { useExamLockStore } from '../stores/examLock'
 
+const submissionStreams = useSubmissionStreams()
 const route = useRoute(), router = useRouter(), auth = useAuthStore(), examLock = useExamLockStore()
 const examID = computed(() => Number(route.params.id))
 const base = computed(() => `/exams/${examID.value}`)
@@ -119,7 +122,7 @@ async function initialize() {
     }
     if (section.value === 'scoreboard' && !showRanking.value) await router.replace(`${base.value}/description`)
   } catch (err: any) {
-    error.value = err.response?.data?.error || err.message
+    error.value = apiErrorMessage(err)
     if (auth.role === 'student' && [403, 404].includes(err.response?.status) && err.response?.data?.code !== 'EXAM_SCOPE_REQUIRED') {
       const state = await examLock.syncActiveExam().catch(() => null)
       if (state && !state.active) { await exitExam(error.value); return }
@@ -140,7 +143,7 @@ async function loadHistory() {
   try {
     const [rows, recent] = await Promise.all([generatedApi.listSubmissions<any>({ query: { exam_id: examID.value } }), getLatestSubmissions({ exam_id: examID.value })])
     history.value = rows.data; latest.value = recent as Submission[]
-  } catch (err: any) { ElMessage.error(err.response?.data?.error || '提交记录加载失败') }
+  } catch (err: any) { ElMessage.error(apiErrorMessage(err, '提交记录加载失败')) }
 }
 async function checkState() {
   if (!active.value) return
@@ -168,20 +171,15 @@ async function submitSolution() {
     liveStatus.value = data.status
     stream?.close()
     if (['queued', 'running'].includes(data.status)) {
-      stream = openEventStream(`/submissions/${data.id}/events`)
-      stream.addEventListener('status', event => {
-        const state = JSON.parse((event as MessageEvent).data)
-        liveStatus.value = state.status
-        if (!['queued', 'running'].includes(state.status)) { stream?.close(); void loadHistory() }
-      })
+      stream = submissionStreams.watch(data.id, state => { liveStatus.value = state.status }, loadHistory)
     }
     await loadHistory()
-  } catch (err: any) { ElMessage.error(err.response?.data?.error || '提交失败'); await checkState() }
+  } catch (err: any) { ElMessage.error(apiErrorMessage(err, '提交失败')); await checkState() }
   finally { submitting.value = false }
 }
 async function viewSubmission(id: number) {
   try { submissionDetail.value = (await generatedApi.getSubmission({ path: { id } })).data; submissionVisible.value = true }
-  catch (err: any) { ElMessage.error(err.response?.data?.error || '提交加载失败') }
+  catch (err: any) { ElMessage.error(apiErrorMessage(err, '提交加载失败')) }
 }
 const ticketVisible = ref(false), ticketProblemID = ref<number | undefined>()
 function openEventTicket() { ticketProblemID.value = undefined; ticketVisible.value = true }
@@ -194,7 +192,7 @@ async function finishExam() {
     await flush()
     await generatedApi.finishExam({ path: { id: examID.value } })
     await exitExam('已交卷')
-  } catch (err: any) { ElMessage.error(err.response?.data?.error || '交卷失败') }
+  } catch (err: any) { ElMessage.error(apiErrorMessage(err, '交卷失败')) }
   finally { finishing.value = false }
 }
 watch(() => route.params.label, () => { submitVisible.value = false; submissionVisible.value = false; stream?.close() })

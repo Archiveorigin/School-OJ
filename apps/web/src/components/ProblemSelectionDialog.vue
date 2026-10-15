@@ -27,6 +27,7 @@
   </el-dialog>
 </template>
 <script setup lang="ts">
+import { apiErrorMessage } from '../api/errors'
 import { onBeforeUnmount, reactive, ref, watch } from 'vue'
 import { ElMessage } from 'element-plus'
 import { generatedApi, type ProblemCatalogItem, type ProblemCatalogResponse } from '../api/client'
@@ -45,7 +46,7 @@ async function load() {
     const { data } = await generatedApi.listProblemCatalog<ProblemCatalogResponse>({ signal, query: { q: query.value.q, difficulty: query.value.difficulty, tags: query.value.tags.join(','), team_id: props.teamID, page: page.value, page_size: 20 } })
     if (current !== sequence) return
     items.value = data.items; total.value = data.total
-  } catch (err: any) { if (!signal.aborted) error.value = err.response?.data?.error || '题目加载失败，请重新检索' }
+  } catch (err: any) { if (!signal.aborted) error.value = apiErrorMessage(err, '题目加载失败，请重新检索') }
   finally { if (current === sequence) loading.value = false }
 }
 function search() { query.value = { ...filters, tags: [...filters.tags] }; page.value = 1; void load() }
@@ -63,7 +64,7 @@ async function add() {
     const { data } = await generatedApi.addTeamProblemSetProblemViaProblemSetsSetIdProblems<{ added: number; skipped: number }>({ path: { set_id: props.setID }, body: { problem_ids: [...selected.value.keys()] } })
     ElMessage.success(`已添加 ${data.added} 道题目${data.skipped ? `，${data.skipped} 道已在题单` : ''}`)
     selected.value = new Map(); emit('added'); emit('update:modelValue', false)
-  } catch (err: any) { ElMessage.error(err.response?.data?.error || '添加失败，已选题目已保留，请重试') }
+  } catch (err: any) { ElMessage.error(apiErrorMessage(err, '添加失败，已选题目已保留，请重试')) }
   finally { saving.value = false }
 }
 watch(() => props.modelValue, value => { if (value) { for (const id of props.existingIDs) selected.value.delete(id); void load() } else { controller?.abort(); sequence++; loading.value = false } })

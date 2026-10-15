@@ -14,26 +14,26 @@
 
 ```bash
 cp .env.example .env
-# 在 .env 中设置强随机 JWT_SECRET（例如 openssl rand -hex 32）
-docker compose up -d --build
+# 在 .env 中分别设置 JWT_SECRET、POSTGRES_PASSWORD、REDIS_PASSWORD、MINIO_ROOT_PASSWORD
+# 每个值独立生成：openssl rand -hex 32；MINIO_ROOT_USER 不使用 minioadmin
+make up  # 构建、启动依赖、显式迁移，再启动应用
 ```
 
-首次判题前先拉取沙箱镜像：
+Worker 启动时会检查并预热固定 digest 的沙箱镜像；也可提前执行：
 
 ```bash
-./scripts/pull_sandbox_images.sh
+./scripts/warm_sandbox_images.sh
 docker compose restart worker
 ```
 
 访问：
 
-- Web: http://localhost:3000
-- API: http://localhost:8080/healthz
-- MinIO: http://localhost:9001
-- Mailpit 邮件捕获: http://localhost:8025
+- Web: http://localhost:25565
+- 健康检查: http://localhost:25565/healthz
+- API、Redis、MinIO 只在容器网络内提供服务。
 
 默认不创建演示账号；仅在隔离开发环境中设置 `SEED_DATA=true` 才会创建管理员、教师、学生种子账号。生产环境必须保持关闭并使用已有管理账号。
-本地验证码邮件不会投递到真实邮箱，而是进入 Mailpit：打开 http://localhost:8025 查看。生产部署需把 `SMTP_HOST`、`SMTP_PORT`、`SMTP_USERNAME`、`SMTP_PASSWORD`、`MAIL_FROM` 配置为学校或云邮件服务。
+默认未配置 SMTP，发送验证码会明确失败且不会在日志打印验证码。开发时可自行配置 Mailpit；生产部署需把 `SMTP_HOST`、`SMTP_PORT`、`SMTP_USERNAME`、`SMTP_PASSWORD`、`MAIL_FROM` 配置为学校或云邮件服务。
 
 ## 功能范围
 
@@ -99,4 +99,6 @@ make test
 ## 生产注意事项
 
 `docker compose` 版本会挂载 Docker socket 给 worker，以便启动沙箱容器。生产环境建议将 worker 放在隔离节点，限制它只能访问专用 Docker daemon，并替换默认密钥、数据库密码和 MinIO 凭据。
-默认 compose 只把 PostgreSQL 绑定到 `127.0.0.1`；如确需外部数据库访问，应显式设置 `POSTGRES_BIND` 并配置防火墙。首次判题前必须运行 `./scripts/pull_sandbox_images.sh`，确认 `gcc:14-bookworm`、`python:3.12-slim`、`eclipse-temurin:21-jdk` 已在宿主 Docker daemon 中可用。
+默认 compose 只把 PostgreSQL 绑定到 `127.0.0.1`；如确需外部数据库访问，应显式设置 `POSTGRES_BIND` 并配置防火墙。镜像版本以 `apps/worker/internal/runner/lifecycle.go` 中固定 digest 为准，worker 完成预热后才消费任务。
+
+本轮审查逐项结论、备份恢复、监测与发布步骤见 [审查修复说明](docs/audit-remediation-20261015.md)。

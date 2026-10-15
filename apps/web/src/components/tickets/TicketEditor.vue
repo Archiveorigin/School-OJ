@@ -98,6 +98,7 @@
   </el-form>
 </template>
 <script setup lang="ts">
+import { apiErrorMessage } from '../../api/errors'
 import { computed, onBeforeUnmount, reactive, ref, watch } from "vue";
 import { ElMessage } from "element-plus";
 import ProblemStatementEditor from "./ProblemStatementEditor.vue";
@@ -291,7 +292,7 @@ async function submit() {
     ElMessage.success(props.ticket?.status === 'awaiting_changes' ? '已补充材料并重新提交' : props.ticket ? "工单已更新" : "工单已提交");
     emit("saved", response.data);
   } catch (error: any) {
-    ElMessage.error(error.response?.data?.error || "无法确认保存结果，请先查看我的工单后再重试");
+    ElMessage.error(apiErrorMessage(error, "无法确认保存结果，请先查看我的工单后再重试"));
   } finally {
     saving.value = false;
   }

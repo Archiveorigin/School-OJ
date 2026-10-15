@@ -38,6 +38,7 @@
   </section>
 </template>
 <script setup lang="ts">
+import { apiErrorMessage } from '../../api/errors'
 import { computed, onBeforeUnmount, ref, watch } from 'vue'
 import { ElMessage } from 'element-plus'
 import { generatedApi, type components, type ProblemChangeTicket } from '../../api/client'
@@ -66,7 +67,7 @@ async function check() {
   try {
     const { data } = await generatedApi.previewProblemChangeTicket({ path: { id: props.ticket.id }, body: JSON.parse(key), signal: current.signal, timeout: 600000 })
     if (!current.signal.aborted && key === JSON.stringify(form.value)) { preview.value = data; validated = key }
-  } catch (e: any) { if (!current.signal.aborted) error.value = e.response?.data?.error || '材料校验失败，请重试' }
+  } catch (e: any) { if (!current.signal.aborted) error.value = apiErrorMessage(e, '材料校验失败，请重试') }
   finally { if (controller === current) checking.value = false }
 }
 function appendTo(data: FormData) {

@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"flag"
 	"log"
 	"net/http"
 	"time"
@@ -9,6 +10,7 @@ import (
 	"school-oj/apps/api/internal/config"
 	"school-oj/apps/api/internal/db"
 	"school-oj/apps/api/internal/handlers"
+	"school-oj/apps/api/internal/middleware"
 	"school-oj/apps/api/internal/services"
 	"school-oj/apps/api/internal/streams"
 
@@ -17,6 +19,8 @@ import (
 )
 
 func main() {
+	migrateOnly := flag.Bool("migrate-only", false, "apply database migrations and exit")
+	flag.Parse()
 	ctx := context.Background()
 	cfg := config.Load()
 	if err := cfg.Validate(); err != nil {
@@ -27,10 +31,14 @@ func main() {
 	if err != nil {
 		log.Fatalf("database: %v", err)
 	}
-	if cfg.AutoMigrate {
+	if cfg.AutoMigrate || *migrateOnly {
 		if err := db.Migrate(gdb); err != nil {
 			log.Fatalf("migrate: %v", err)
 		}
+	}
+	if *migrateOnly {
+		log.Print("database migrations complete")
+		return
 	}
 	redisClient, err := streams.Connect(ctx, cfg)
 	if err != nil {
@@ -53,6 +61,7 @@ func main() {
 	}
 	outboxDispatcher := services.SubmissionOutboxDispatcher{DB: gdb, Redis: redisClient}
 	go outboxDispatcher.Run(ctx)
+	go middleware.ObserveAPICoverage(ctx, redisClient)
 	server := handlers.Server{DB: gdb, Redis: redisClient, MinIO: minioClient, Cfg: cfg}
 	// Bound slow headers and idle keep-alives without imposing a write deadline
 	// on long-lived submission SSE or legitimate large multipart uploads.

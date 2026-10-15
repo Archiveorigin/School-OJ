@@ -152,6 +152,7 @@
   </div>
 </template>
 <script setup lang="ts">
+import { apiErrorMessage } from '../../api/errors'
 import { computed, onBeforeUnmount, ref, watch } from "vue";
 import { ElMessage, ElMessageBox, type UploadFile } from "element-plus";
 import {
@@ -277,7 +278,7 @@ async function decide(action: "reject" | "resolve" | "return") {
     ElMessage.success(action === "return" ? "已退回作者补充" : action === "reject" ? "工单已驳回" : "工单已完成");
     emit("changed");
   } catch (error: any) {
-    ElMessage.error(error.response?.data?.error || "处理失败");
+    ElMessage.error(apiErrorMessage(error, "处理失败"));
   } finally {
     working.value = false;
   }
@@ -328,7 +329,7 @@ async function apply() {
     ElMessage.success("工单已执行");
     emit("changed");
   } catch (error: any) {
-    ElMessage.error(error.response?.data?.error || "执行失败");
+    ElMessage.error(apiErrorMessage(error, "执行失败"));
   } finally {
     working.value = false;
   }

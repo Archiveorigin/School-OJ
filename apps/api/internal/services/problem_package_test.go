@@ -63,6 +63,26 @@ func TestBuildProblemPackage(t *testing.T) {
 	}
 }
 
+func TestBuildCaseBudgetAndDefaultWeights(t *testing.T) {
+	for _, count := range []int{200, 201} {
+		_, pkg, err := BuildProblemPackage(ProblemPackageDraft{Slug: "limits", Title: "Limits", Cases: make([]ProblemCaseDraft, count)})
+		if count == 201 {
+			if err == nil {
+				t.Fatal("accepted oversized case list")
+			}
+			continue
+		}
+		if err != nil {
+			t.Fatal(err)
+		}
+		for _, tc := range pkg.Manifest.Cases {
+			if tc.Weight <= 0 {
+				t.Fatal("zero default weight")
+			}
+		}
+	}
+}
+
 func TestBuildProblemPackageNormalizesChecker(t *testing.T) {
 	_, parsed, err := BuildProblemPackage(ProblemPackageDraft{
 		Slug:    "float-checker",

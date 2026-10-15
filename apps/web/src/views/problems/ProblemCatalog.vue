@@ -72,6 +72,7 @@
 </template>
 
 <script setup lang="ts">
+import { apiErrorMessage } from '../../api/errors'
 import { ElMessage } from 'element-plus'
 import { CircleCheckFilled, Clock, Minus } from '@element-plus/icons-vue'
 import { computed, onBeforeUnmount, onMounted, reactive, ref, watch } from 'vue'
@@ -100,7 +101,7 @@ async function load() {
     items.value = data.items || []
     total.value = data.total || 0
   } catch (error: any) {
-    ElMessage.error(error.response?.data?.error || error.message)
+    ElMessage.error(apiErrorMessage(error))
   } finally {
     loading.value = false
   }

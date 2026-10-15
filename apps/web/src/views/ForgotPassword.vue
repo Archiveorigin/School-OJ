@@ -34,6 +34,7 @@
 </template>
 
 <script setup lang="ts">
+import { apiErrorMessage } from '../api/errors'
 import { ElMessage } from 'element-plus'
 import { computed, onBeforeUnmount, reactive, ref } from 'vue'
 import { useRouter } from 'vue-router'
@@ -61,7 +62,7 @@ async function sendCode() {
     ElMessage.success('验证码已发送；本地 Docker 环境请打开 http://localhost:8025 查看邮件')
     startCountdown()
   } catch (err: any) {
-    ElMessage.error(err.response?.data?.error || err.message)
+    ElMessage.error(apiErrorMessage(err))
   } finally {
     sending.value = false
   }
@@ -78,7 +79,7 @@ async function submit() {
     ElMessage.success('密码已重置，请重新登录')
     router.push('/login')
   } catch (err: any) {
-    ElMessage.error(err.response?.data?.error || err.message)
+    ElMessage.error(apiErrorMessage(err))
   } finally {
     submitting.value = false
   }

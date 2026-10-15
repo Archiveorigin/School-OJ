@@ -63,6 +63,7 @@
 </template>
 
 <script setup lang="ts">
+import { apiErrorMessage } from '../api/errors'
 import { computed, onBeforeUnmount, onMounted, reactive, ref, watch } from 'vue'
 import { ElMessage } from 'element-plus'
 import { generatedApi, type Submission } from '../api/client'
@@ -98,7 +99,7 @@ async function load() {
     items.value = data
     page.value = 1
   } catch (err: any) {
-    if (!request.signal.aborted) ElMessage.error(err.response?.data?.error || err.message)
+    if (!request.signal.aborted) ElMessage.error(apiErrorMessage(err))
   } finally {
     if (pending === request) loading.value = false
   }

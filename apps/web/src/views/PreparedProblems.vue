@@ -315,6 +315,7 @@
 </template>
 
 <script setup lang="ts">
+import { apiErrorMessage } from '../api/errors'
 import { ElMessage } from 'element-plus'
 import { computed, onMounted, reactive, ref, watch } from 'vue'
 import { useRouter } from 'vue-router'
@@ -452,7 +453,7 @@ async function createFromForm() {
     await load()
     selected.value = data
   } catch (err: any) {
-    ElMessage.error(err.response?.data?.error || err.message)
+    ElMessage.error(apiErrorMessage(err))
   } finally {
     saving.value = false
   }
@@ -474,7 +475,7 @@ async function uploadZip(options: any) {
     await load()
     selected.value = data
   } catch (err: any) {
-    ElMessage.error(err.response?.data?.error || err.message)
+    ElMessage.error(apiErrorMessage(err))
   } finally {
     saving.value = false
   }
@@ -495,7 +496,7 @@ async function saveEdit() {
     await load()
     selected.value = data
   } catch (err: any) {
-    ElMessage.error(err.response?.data?.error || err.message)
+    ElMessage.error(apiErrorMessage(err))
   } finally {
     saving.value = false
   }
@@ -514,7 +515,7 @@ async function toggleArchive(row: PreparedProblem) {
     ElMessage.success(row.archived ? '已恢复' : '已归档')
     await load()
   } catch (err: any) {
-    ElMessage.error(err.response?.data?.error || err.message)
+    ElMessage.error(apiErrorMessage(err))
   }
 }
 
@@ -527,7 +528,7 @@ async function publish() {
     publishVisible.value = false
     await load()
   } catch (err: any) {
-    ElMessage.error(err.response?.data?.error || err.message)
+    ElMessage.error(apiErrorMessage(err))
   } finally {
     saving.value = false
   }

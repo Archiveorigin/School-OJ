@@ -182,11 +182,13 @@
 </template>
 
 <script setup lang="ts">
+import { useSubmissionStreams } from "../../features/submissions/live"
+import { apiErrorMessage } from '../../api/errors'
 import { submissionLanguage } from '../../features/submissions/presentation'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { computed, onBeforeUnmount, reactive, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
-import { generatedApi, getLatestSubmissions, openEventStream, type AuthenticatedEventSource, type Submission } from '../../api/client'
+import { generatedApi, getLatestSubmissions, type Submission } from '../../api/client'
 import TeamIconUpload from '../../components/TeamIconUpload.vue'
 import ProblemSelectionDialog from '../../components/ProblemSelectionDialog.vue'
 import ListPagination from '../../components/ListPagination.vue'
@@ -201,6 +203,7 @@ import { formatDateTime } from '../../features/time'
 import { loadSubmissionDraft } from '../../features/submissions/drafts'
 import { useAuthStore } from '../../stores/auth'
 
+const submissionStreams = useSubmissionStreams()
 const route = useRoute()
 const router = useRouter()
 const { visible: submissionVisible, detail: submissionDetail, open: openSubmission } = useSubmissionDetail()
@@ -231,7 +234,6 @@ const language = ref('cpp')
 const source = ref('')
 const liveStatus = ref<any>(null)
 const composerRef = ref<{ clearDraft: () => void } | null>(null)
-const liveStreams = new Set<AuthenticatedEventSource>()
 const teamID = computed(() => Number(detail.value?.team?.id))
 const problemSetID = computed(() => Number(route.params.setId))
 const selectedLink = computed(() => links.value[selectedIndex.value])
@@ -269,7 +271,7 @@ async function load() {
     await loadSubmissions()
     if (activeTab.value === 'discussions') await openDiscussions()
   } catch (err: any) {
-    ElMessage.error(err.response?.data?.error || err.message)
+    ElMessage.error(apiErrorMessage(err))
     await router.replace('/teams')
   }
 }
@@ -299,7 +301,7 @@ async function loadSubmissions() {
   try {
     submissions.value = (await generatedApi.listTeamProblemSetSubmissionsViaProblemSetsSetIdSubmissions<any>({ path: { "set_id": problemSetID.value } })).data || []
   } catch (err: any) {
-    ElMessage.error(err.response?.data?.error || err.message)
+    ElMessage.error(apiErrorMessage(err))
   } finally {
     loadingSubmissions.value = false
   }
@@ -329,7 +331,7 @@ async function saveSet() {
     ElMessage.success('题单信息已更新')
     await load()
   } catch (err: any) {
-    ElMessage.error(err.response?.data?.error || err.message)
+    ElMessage.error(apiErrorMessage(err))
   } finally {
     editing.value = false
   }
@@ -349,7 +351,7 @@ async function deleteSet() {
     ElMessage.success('团队题单已删除')
     await router.replace(detail.value?.team?.slug ? `/teams/${detail.value.team.slug}/problem-sets` : '/teams')
   } catch (err: any) {
-    if (err !== 'cancel' && err !== 'close') ElMessage.error(err.response?.data?.error || err.message)
+    if (err !== 'cancel' && err !== 'close') ElMessage.error(apiErrorMessage(err))
   } finally {
     deleting.value = false
   }
@@ -362,7 +364,7 @@ async function removeProblem(link: any) {
     ElMessage.success('题目已移出题单')
     await load()
   } catch (err: any) {
-    if (err !== 'cancel' && err !== 'close') ElMessage.error(err.response?.data?.error || err.message)
+    if (err !== 'cancel' && err !== 'close') ElMessage.error(apiErrorMessage(err))
   }
 }
 
@@ -389,20 +391,13 @@ async function submitSolution() {
     } })
     composerRef.value?.clearDraft()
     liveStatus.value = data
-    const stream = openEventStream(`/submissions/${data.id}/events`)
-    liveStreams.add(stream)
-    stream.addEventListener('status', async (event) => {
-      liveStatus.value = JSON.parse((event as MessageEvent).data)
-      if (!['queued', 'running'].includes(liveStatus.value.status)) {
-        stream.close()
-        liveStreams.delete(stream)
-        await load()
-        if (activeTab.value === 'submissions') await loadSubmissions()
-      }
+    submissionStreams.watch(data.id, state => { liveStatus.value = state }, async () => {
+      await load()
+      if (activeTab.value === 'submissions') await loadSubmissions()
     })
     ElMessage.success('代码已提交评测')
   } catch (err: any) {
-    ElMessage.error(err.response?.data?.error || err.message)
+    ElMessage.error(apiErrorMessage(err))
   } finally {
     submitting.value = false
   }
@@ -419,7 +414,7 @@ async function openDiscussions() {
   try {
     discussions.value = (await generatedApi.listTeamDiscussionsViaProblemSetsSetIdDiscussions<any>({ path: { "set_id": problemSetID.value } })).data || []
   } catch (err: any) {
-    ElMessage.error(err.response?.data?.error || err.message)
+    ElMessage.error(apiErrorMessage(err))
   }
 }
 
@@ -438,7 +433,7 @@ async function postDiscussion() {
     ElMessage.success('讨论已发布')
     await openDiscussions()
   } catch (err: any) {
-    ElMessage.error(err.response?.data?.error || err.message)
+    ElMessage.error(apiErrorMessage(err))
   } finally {
     posting.value = false
   }
@@ -504,7 +499,7 @@ watch(
   () => [submissionFilters.username, submissionFilters.problemID, submissionFilters.status, submissionFilters.language, submissionPageSize.value],
   () => { submissionPage.value = 1 }
 )
-onBeforeUnmount(() => { for (const stream of liveStreams) stream.close() })
+onBeforeUnmount(() => { submissionStreams.closeAll() })
 </script>
 
 <style scoped>

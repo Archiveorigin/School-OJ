@@ -46,14 +46,25 @@ type CaseResult struct {
 }
 
 type DockerRunner struct {
-	Cfg config.Config
+	Cfg         config.Config
+	prepareOnce sync.Once
+	prepareErr  error
 }
 
 const bundledSeccompProfile = "/etc/oj-seccomp.json"
 
-func (r DockerRunner) Judge(ctx context.Context, req JudgeRequest) JudgeResult {
+func (r *DockerRunner) Judge(ctx context.Context, req JudgeRequest) JudgeResult {
 	if err := r.Prepare(); err != nil {
 		return systemError(err)
+	}
+	budget := r.Cfg.SubmissionTimeout
+	if budget <= 0 {
+		budget = 5 * time.Minute
+	}
+	ctx, cancel := context.WithTimeout(ctx, budget)
+	defer cancel()
+	if len(req.Package.Manifest.Cases) > MaxProblemCases {
+		return systemError(fmt.Errorf("too many test cases"))
 	}
 	workDir, err := os.MkdirTemp(r.Cfg.SandboxWorkRoot, fmt.Sprintf("oj-%d-", req.SubmissionID))
 	if err != nil {
@@ -94,6 +105,9 @@ func (r DockerRunner) Judge(ctx context.Context, req JudgeRequest) JudgeResult {
 			return r.runContainer(ctx, workDir, spec.Image, runtimeCommand(spec.Run, limit), input, limit)
 		},
 	)
+	if ctx.Err() == context.DeadlineExceeded {
+		return JudgeResult{Status: models.StatusTimeLimit, Score: totalScore, TimeMS: maxTime, MemoryKB: maxMemory, Message: "submission total time budget exceeded", Trace: trace(limit), Cases: cases}
+	}
 	message := "accepted"
 	if finalStatus != models.StatusAccepted {
 		message = "some test cases failed"
@@ -231,13 +245,13 @@ type spec struct {
 func languageSpec(language string) (spec, error) {
 	switch language {
 	case "c":
-		return spec{Source: "main.c", Image: "gcc:14-bookworm", Compile: "gcc /work/main.c -O2 -pipe -static -s -o /work/main", Run: "/work/main"}, nil
+		return spec{Source: "main.c", Image: GCCImage, Compile: "gcc /work/main.c -O2 -pipe -static -s -o /work/main", Run: "/work/main"}, nil
 	case "cpp":
-		return spec{Source: "main.cpp", Image: "gcc:14-bookworm", Compile: "g++ /work/main.cpp -std=c++17 -O2 -pipe -static -s -o /work/main", Run: "/work/main"}, nil
+		return spec{Source: "main.cpp", Image: GCCImage, Compile: "g++ /work/main.cpp -std=c++17 -O2 -pipe -static -s -o /work/main", Run: "/work/main"}, nil
 	case "python":
-		return spec{Source: "main.py", Image: "python:3.12-slim", Run: "python3 /work/main.py"}, nil
+		return spec{Source: "main.py", Image: PythonImage, Run: "python3 /work/main.py"}, nil
 	case "java":
-		return spec{Source: "Main.java", Image: "eclipse-temurin:21-jdk", Compile: "javac /work/Main.java", Run: "java -Xmx{{JAVA_XMX_MB}}m -cp /work Main"}, nil
+		return spec{Source: "Main.java", Image: JavaImage, Compile: "javac /work/Main.java", Run: "java -Xmx{{JAVA_XMX_MB}}m -cp /work Main"}, nil
 	default:
 		return spec{}, fmt.Errorf("unsupported language: %s", language)
 	}
@@ -307,19 +321,26 @@ type executionMetrics struct {
 	OOMKilled  bool
 }
 
-func (r DockerRunner) runContainer(ctx context.Context, workDir, image, command, input string, limit sandboxLimits) (string, models.SubmissionStatus, int, int) {
+func (r *DockerRunner) runContainer(ctx context.Context, workDir, image, command, input string, limit sandboxLimits) (string, models.SubmissionStatus, int, int) {
+	if ctx.Err() != nil {
+		return "judge cancelled", models.StatusSystemError, 0, 0
+	}
 	timeout := time.Duration(limit.TimeLimitMS+1000) * time.Millisecond
 	timeoutCtx, cancelTimeout := context.WithTimeout(ctx, timeout)
 	defer cancelTimeout()
 	runCtx, cancelRun := context.WithCancel(timeoutCtx)
 	defer cancelRun()
 	containerName := fmt.Sprintf("school-oj-%s-%d", filepath.Base(workDir), time.Now().UnixNano())
+	defer r.cleanupContainer(containerName)
 	workMode := "rw"
 	if limit.WorkDirReadOnly {
 		workMode = "ro"
 	}
 	args := []string{
 		"run",
+		"--pull", "never",
+		"--label", "school-oj.sandbox=true",
+		"--label", "school-oj.work-root=" + r.Cfg.SandboxWorkRoot,
 		"--name", containerName,
 		"--log-driver", "none",
 		"--network", "none",
@@ -358,8 +379,12 @@ func (r DockerRunner) runContainer(ctx context.Context, workDir, image, command,
 	err := cmd.Run()
 	elapsed := int(time.Since(start).Milliseconds())
 	stateOOMKilled := inspectContainerOOM(containerName)
-	snapshot := inspectContainerMetrics(containerName)
-	r.cleanupContainer(containerName)
+	// A cancelled Docker CLI can leave the container running. Only then can
+	// docker exec still read cgroup counters; normal exits use stderr metrics.
+	snapshot := executionMetrics{}
+	if runCtx.Err() != nil {
+		snapshot = inspectContainerMetrics(containerName)
+	}
 	cleanErr, metrics := parseExecutionMetrics(errOut.String())
 	metrics = mergeExecutionMetrics(metrics, snapshot)
 	if metrics.TimeMS <= 0 {
@@ -537,13 +562,13 @@ func isExplicitMemoryLimitError(output string) bool {
 	return false
 }
 
-func (r DockerRunner) cleanupContainer(name string) {
+func (r *DockerRunner) cleanupContainer(name string) {
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
 	_ = exec.CommandContext(ctx, "docker", "rm", "-f", name).Run()
 }
 
-func (r DockerRunner) applyLimits(limit sandboxLimits) sandboxLimits {
+func (r *DockerRunner) applyLimits(limit sandboxLimits) sandboxLimits {
 	if limit.CPU == "" {
 		limit.CPU = r.Cfg.SandboxCPU
 	}
@@ -702,11 +727,12 @@ func systemError(err error) JudgeResult {
 }
 
 // Prepare creates the host-visible sandbox root and installs the seccomp profile.
-func (r DockerRunner) Prepare() error {
-	return r.prepareHostVisibleRoot(bundledSeccompProfile)
+func (r *DockerRunner) Prepare() error {
+	r.prepareOnce.Do(func() { r.prepareErr = r.prepareHostVisibleRoot(bundledSeccompProfile) })
+	return r.prepareErr
 }
 
-func (r DockerRunner) prepareHostVisibleRoot(seccompSource string) error {
+func (r *DockerRunner) prepareHostVisibleRoot(seccompSource string) error {
 	workRoot := filepath.Clean(r.Cfg.SandboxWorkRoot)
 	if !filepath.IsAbs(workRoot) {
 		return fmt.Errorf("sandbox work root must be absolute: %s", r.Cfg.SandboxWorkRoot)

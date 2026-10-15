@@ -38,6 +38,7 @@ if tokens >= 1 then
   tokens = tokens - 1
 else
   retry_after_ms = math.ceil((1 - tokens) / refill_per_ms)
+  redis.call("HINCRBY", "oj:metrics:api", "rate_limit:" .. (ARGV[3] or "unknown"), 1)
 end
 redis.call("HSET", KEYS[1], "tokens", tokens, "updated_at", now_ms)
 redis.call("PEXPIRE", KEYS[1], math.ceil(window_ms * 2))
@@ -116,7 +117,11 @@ func redisRateLimit(client redis.Scripter, name string, capacity int, window tim
 }
 
 func takeToken(ctx context.Context, client redis.Scripter, key string, capacity int, window time.Duration) (bool, int, time.Duration, error) {
-	values, err := tokenBucket.Run(ctx, client, []string{key}, capacity, window.Milliseconds()).Slice()
+	name := key
+	if i := strings.LastIndex(key, ":"); i >= 0 {
+		name = strings.TrimPrefix(key[:i], "oj:rate:")
+	}
+	values, err := tokenBucket.Run(ctx, client, []string{key}, capacity, window.Milliseconds(), name).Slice()
 	if err != nil {
 		return false, 0, 0, err
 	}

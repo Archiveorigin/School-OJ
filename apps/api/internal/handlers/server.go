@@ -43,15 +43,6 @@ type Server struct {
 	Cfg   config.Config
 }
 
-type leaderboardRow struct {
-	UserID         uint       `json:"user_id"`
-	Name           string     `json:"name"`
-	Solved         int        `json:"solved"`
-	Score          int        `json:"score"`
-	LastSubmission *time.Time `json:"last_submission"`
-	Rank           int        `json:"rank"`
-}
-
 type courseClassFields struct {
 	CourseCode string `json:"course_code"`
 	CourseName string `json:"course_name"`
@@ -4897,81 +4888,6 @@ func (s Server) getSubmission(c *gin.Context) {
 		submission[0].StudentNo = ""
 	}
 	c.JSON(http.StatusOK, gin.H{"submission": submission[0], "results": results, "case_summary": caseSummary})
-}
-
-func (s Server) leaderboard(c *gin.Context) {
-	user, _ := middleware.CurrentUser(c)
-	hiddenExamIDs := []uint{}
-	if user.Role == models.RoleStudent {
-		hiddenExamIDs = s.activeExamIDsForStudent(user.ID)
-	}
-	type group struct {
-		ClassID    uint             `json:"class_id"`
-		ClassName  string           `json:"class_name"`
-		CourseID   uint             `json:"course_id"`
-		CourseCode string           `json:"course_code"`
-		CourseName string           `json:"course_name"`
-		Rows       []leaderboardRow `json:"rows"`
-	}
-	if classID, ok := queryUint(c, "class_id"); ok {
-		if !s.canAccessClass(user, classID) {
-			c.JSON(http.StatusForbidden, gin.H{"error": "forbidden"})
-			return
-		}
-		rows := s.classLeaderboardRows(classID, hiddenExamIDs)
-		c.JSON(http.StatusOK, rows)
-		return
-	}
-	classIDs := s.visibleClassIDs(user)
-	groups := make([]group, 0, len(classIDs))
-	for _, classID := range classIDs {
-		var info struct {
-			ClassID    uint
-			ClassName  string
-			CourseID   uint
-			CourseCode string
-			CourseName string
-		}
-		if err := s.DB.Table("classes").
-			Select("classes.id as class_id, classes.name as class_name, courses.id as course_id, courses.code as course_code, courses.name as course_name").
-			Joins("join courses on courses.id = classes.course_id").
-			Where("classes.id = ?", classID).
-			Scan(&info).Error; err != nil || info.ClassID == 0 {
-			continue
-		}
-		groups = append(groups, group{
-			ClassID:    info.ClassID,
-			ClassName:  info.ClassName,
-			CourseID:   info.CourseID,
-			CourseCode: info.CourseCode,
-			CourseName: info.CourseName,
-			Rows:       s.classLeaderboardRows(classID, hiddenExamIDs),
-		})
-	}
-	c.JSON(http.StatusOK, groups)
-}
-
-func (s Server) classLeaderboardRows(classID uint, hiddenExamIDs []uint) []leaderboardRow {
-	var rows []leaderboardRow
-	submissionsJoin := "left join submissions on submissions.user_id = users.id and submissions.problem_id = class_problems.problem_id"
-	submissionsArgs := []any{}
-	if len(hiddenExamIDs) > 0 {
-		submissionsJoin += " and (submissions.exam_id IS NULL OR submissions.exam_id NOT IN ?)"
-		submissionsArgs = append(submissionsArgs, hiddenExamIDs)
-	}
-	s.DB.Table("class_memberships").
-		Select("users.id as user_id, users.name as name, count(distinct case when submissions.status = ? then submissions.problem_id end) as solved, count(distinct case when submissions.status = ? then submissions.problem_id end) as score, max(submissions.created_at) as last_submission", models.StatusAccepted, models.StatusAccepted).
-		Joins("join users on users.id = class_memberships.user_id and users.role = ?", models.RoleStudent).
-		Joins("left join class_problems on class_problems.class_id = class_memberships.class_id and "+releasedClassProblemSQL(), time.Now()).
-		Joins(submissionsJoin, submissionsArgs...).
-		Where("class_memberships.class_id = ? AND users.account_deleted = false", classID).
-		Group("users.id, users.name").
-		Order("score desc, solved desc, last_submission asc nulls last, users.id asc").
-		Scan(&rows)
-	for i := range rows {
-		rows[i].Rank = i + 1
-	}
-	return rows
 }
 
 func (s Server) createPlagiarismJob(c *gin.Context) {

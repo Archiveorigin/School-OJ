@@ -28,6 +28,7 @@
 </template>
 
 <script setup lang="ts">
+import { apiErrorMessage } from '../api/errors'
 import { ElMessage } from 'element-plus'
 import { reactive, ref } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
@@ -56,7 +57,7 @@ async function submit() {
     router.push(redirect)
   } catch (err: any) {
     resetAvailable.value = Boolean(err.response?.data?.password_reset_available)
-    ElMessage.error(err.response?.data?.error || err.message)
+    ElMessage.error(apiErrorMessage(err))
   } finally {
     loading.value = false
   }

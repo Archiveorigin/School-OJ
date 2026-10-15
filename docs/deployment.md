@@ -187,6 +187,7 @@ Worker 的恢复测试也使用上述数据库/Redis 变量，在 `apps/worker` 
 git pull --ff-only
 docker compose config --quiet
 docker compose build api worker web
+docker compose run --rm --no-deps api --migrate-only
 docker compose up -d --no-deps api worker web
 docker compose ps
 curl -fsS http://127.0.0.1:${WEB_PORT:-25565}/healthz
@@ -214,10 +215,14 @@ API 和 Worker 必须部署同一 Git 版本，避免新数据库结构或提交
 
 清理前查看 `docker system df`，按 `com.docker.compose.project=school-oj` 标签、应用服务和镜像引用核对归属，只删除确认无用的停止容器及悬空镜像，并保留回滚镜像。构建缓存只有能确认属于本项目或使用专用 Builder 时才清理，不能确认归属就保留；任何情况下不清理数据卷。
 
-注意：当前 `scripts/cleanup_docker.sh` 包含宿主机级 `prune`，没有项目过滤。它虽不删除卷，也可能影响其他项目；多项目服务器不要直接执行，应使用核实后的资源 ID 或项目过滤操作。`DOCKER_CACHE_MAX_AGE` 只限制缓存年龄，不限制项目归属。
+`make cleanup` 仅回收本工作根的过期沙箱与本 Compose 项目已退出的一次性容器，不执行全局 prune，不删除卷、回滚镜像或共享构建缓存。
 
 ## 8. Kubernetes 与 JPlag
 
 Kubernetes 参考清单位于 `deploy/k8s/school-oj.yaml`。使用前需要构建并推送三个应用镜像、配置 PostgreSQL/Redis/MinIO，并替换清单中的密钥。
 
 原生 JPlag 通过 `JPLAG_JAR_PATH` 配置。未挂载 JAR 时，API 会生成基于轻量令牌重叠算法的可测试报告，保证业务流程可验证，但正式查重应配置受控版本的 JPlag。
+
+## 2026-10-15 配置升级
+
+新版本拒绝默认 PostgreSQL/MinIO 凭据和空 Redis 密码。已有数据库必须先备份，再修改数据库角色密码并同步 `.env`；仅改环境变量不会修改已有 PostgreSQL 角色密码。本轮需要重新创建 Redis/MinIO/数据库服务容器以应用认证与日志限制，保留原命名卷。具体操作与验收记录见 [审查修复说明](audit-remediation-20261015.md)。

@@ -1,3 +1,4 @@
+import { apiErrorMessage } from '../../api/errors'
 import { onBeforeUnmount, ref, shallowRef } from 'vue'
 import { ElMessage } from 'element-plus'
 import { generatedApi, type components } from '../../api/client'
@@ -19,7 +20,7 @@ export function useSubmissionDetail() {
       detail.value = data
       visible.value = true
     } catch (error: any) {
-      if (request === sequence) ElMessage.error(error.response?.data?.error || '提交详情加载失败')
+      if (request === sequence) ElMessage.error(apiErrorMessage(error, '提交详情加载失败'))
     }
   }
   onBeforeUnmount(() => { sequence++; controller?.abort() })

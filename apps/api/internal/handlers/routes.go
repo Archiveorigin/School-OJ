@@ -15,7 +15,7 @@ import (
 
 func (s Server) Router() *gin.Engine {
 	router := gin.New()
-	router.Use(gin.Logger(), gin.Recovery(), middleware.SecurityHeaders(), middleware.ObserveAPIVersion())
+	router.Use(gin.Logger(), gin.Recovery(), middleware.SecurityHeaders(), middleware.ObserveAPIVersion(s.Redis))
 	if err := router.SetTrustedProxies(s.Cfg.TrustedProxies); err != nil {
 		panic(fmt.Errorf("configure trusted proxies: %w", err))
 	}
@@ -39,6 +39,7 @@ func (s Server) Router() *gin.Engine {
 	}))
 
 	router.GET("/healthz", s.health)
+	router.GET("/metrics", middleware.APIMetrics(s.Redis))
 	router.GET("/openapi.json", func(c *gin.Context) {
 		c.Data(200, "application/json; charset=utf-8", openapi.Document())
 	})

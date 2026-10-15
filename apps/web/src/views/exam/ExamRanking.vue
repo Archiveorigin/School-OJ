@@ -14,6 +14,7 @@
 </template>
 
 <script setup lang="ts">
+import { apiErrorMessage } from '../../api/errors'
 defineOptions({ inheritAttrs: false })
 
 import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
@@ -73,10 +74,10 @@ async function loadRanking() {
     lastLoadedAt.value = new Date()
   } catch (err: any) {
     ranking.value = null
-    const apiError = err.response?.data?.error
+    const apiError = apiErrorMessage(err)
     error.value = err.response?.status === 403
       ? (apiError === 'exam has not started' ? '考试尚未开始，开始后可查看榜单。' : '创建者未向考生开放该榜单。')
-      : (apiError || err.message)
+      : apiError
   } finally {
     loading.value = false
     scheduleRefresh()

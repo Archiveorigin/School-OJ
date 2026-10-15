@@ -200,18 +200,38 @@ func (s Server) teamViews(teams []models.Team, userID uint) []teamView {
 	views := make([]teamView, 0, len(teams))
 	var user models.User
 	_ = s.DB.Select("id", "role").First(&user, userID).Error
+	if len(teams) == 0 {
+		return views
+	}
+	ids, ownerIDs := make([]uint, 0, len(teams)), make([]uint, 0, len(teams))
 	for _, team := range teams {
-		var owner models.User
-		_ = s.DB.Select("id", "name").First(&owner, team.OwnerID).Error
-		var memberCount int64
-		s.DB.Model(&models.TeamMembership{}).Where("team_id = ?", team.ID).Count(&memberCount)
-		membership, joined := s.teamMembership(team.ID, userID)
+		ids = append(ids, team.ID)
+		ownerIDs = append(ownerIDs, team.OwnerID)
+	}
+	var owners []models.User
+	s.DB.Select("id", "name").Where("id IN ?", dedupeUint(ownerIDs)).Find(&owners)
+	ownerNames := map[uint]string{}
+	for _, owner := range owners {
+		ownerNames[owner.ID] = owner.Name
+	}
+	counts := s.countByParent("team_memberships", "team_id", ids)
+	var memberships []models.TeamMembership
+	s.DB.Where("team_id IN ? AND user_id = ?", ids, userID).Find(&memberships)
+	membershipsByTeam := map[uint]models.TeamMembership{}
+	for _, membership := range memberships {
+		membershipsByTeam[membership.TeamID] = membership
+	}
+	var applications []models.TeamJoinApplication
+	s.DB.Select("DISTINCT ON (team_id) team_id, status").Where("team_id IN ? AND user_id = ?", ids, userID).Order("team_id, id DESC").Find(&applications)
+	states := map[uint]string{}
+	for _, application := range applications {
+		states[application.TeamID] = application.Status
+	}
+	for _, team := range teams {
+		membership, joined := membershipsByTeam[team.ID]
 		applicationState := ""
 		if !joined {
-			var application models.TeamJoinApplication
-			if err := s.DB.Where("team_id = ? AND user_id = ?", team.ID, userID).Order("id desc").First(&application).Error; err == nil {
-				applicationState = application.Status
-			}
+			applicationState = states[team.ID]
 		}
 		canManage := hasTeamManagerPermission(user.Role, membership.Role, joined)
 		code := ""
@@ -228,8 +248,8 @@ func (s Server) teamViews(teams []models.Team, userID uint) []teamView {
 			Description: team.Description, Announcement: announcement, IconURL: team.IconURL,
 			CreatedAt: team.CreatedAt, UpdatedAt: team.UpdatedAt, JoinCode: code,
 			CanManage: canManage, CanEditPermissions: user.Role == models.RoleAdmin || membership.Role == models.TeamRoleOwner,
-			OwnerName:        owner.Name,
-			MemberCount:      memberCount,
+			OwnerName:        ownerNames[team.OwnerID],
+			MemberCount:      counts[team.ID],
 			MyRole:           membership.Role,
 			Joined:           joined,
 			ApplicationState: applicationState,
@@ -564,9 +584,13 @@ func (s Server) listTeamContests(c *gin.Context) {
 	var items []models.TeamContest
 	s.DB.Where("team_id = ? AND deleted_at IS NULL", team.ID).Order("starts_at desc nulls last, id desc").Find(&items)
 	views := make([]teamContestView, 0, len(items))
+	ids := make([]uint, 0, len(items))
 	for _, item := range items {
-		var count int64
-		s.DB.Model(&models.TeamContestProblem{}).Where("contest_id = ?", item.ID).Count(&count)
+		ids = append(ids, item.ID)
+	}
+	counts := s.countByParent("team_contest_problems", "contest_id", ids)
+	for _, item := range items {
+		count := counts[item.ID]
 		endsAt, status := teamContestWindow(item, time.Now())
 		views = append(views, teamContestView{
 			TeamContest:  item,
@@ -1233,9 +1257,13 @@ func (s Server) listTeamProblemSets(c *gin.Context) {
 	var items []models.TeamProblemSet
 	s.DB.Where("team_id = ? AND deleted_at IS NULL", team.ID).Order("updated_at desc").Find(&items)
 	views := make([]teamProblemSetView, 0, len(items))
+	ids := make([]uint, 0, len(items))
 	for _, item := range items {
-		var count int64
-		s.DB.Model(&models.TeamProblemSetProblem{}).Where("problem_set_id = ?", item.ID).Count(&count)
+		ids = append(ids, item.ID)
+	}
+	counts := s.countByParent("team_problem_set_problems", "problem_set_id", ids)
+	for _, item := range items {
+		count := counts[item.ID]
 		views = append(views, teamProblemSetView{TeamProblemSet: item, ProblemCount: count, CanEdit: canManage, CanDelete: canManage})
 	}
 	c.JSON(http.StatusOK, views)
@@ -2144,4 +2172,21 @@ func filterActiveTeamContestProblemLinks(links []models.TeamContestProblem) []mo
 		}
 	}
 	return active
+}
+
+// table and column are internal constants, never request parameters.
+func (s Server) countByParent(table, column string, ids []uint) map[uint]int64 {
+	counts := map[uint]int64{}
+	if len(ids) == 0 {
+		return counts
+	}
+	var rows []struct {
+		ParentID uint
+		Count    int64
+	}
+	s.DB.Table(table).Select(column+" AS parent_id, count(*) AS count").Where(column+" IN ?", ids).Group(column).Scan(&rows)
+	for _, row := range rows {
+		counts[row.ParentID] = row.Count
+	}
+	return counts
 }

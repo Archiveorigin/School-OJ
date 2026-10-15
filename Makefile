@@ -1,17 +1,19 @@
 SHELL := /bin/sh
 COMPOSE ?= docker compose
 
-.PHONY: up down restart logs ps test smoke sandbox-images api-test web-test worker-test fmt
+.PHONY: up down restart logs ps test smoke sandbox-images api-test web-test worker-test fmt migrate backup restore cleanup legacy-report
 
 up:
-	$(COMPOSE) up -d --build
+	$(COMPOSE) build api worker web
+	$(COMPOSE) up -d --wait postgres redis minio
+	$(COMPOSE) run --rm --no-deps api --migrate-only
+	$(COMPOSE) up -d --wait api worker web
 
 down:
 	$(COMPOSE) down
 
 restart:
-	$(COMPOSE) down
-	$(COMPOSE) up -d --build
+	$(COMPOSE) restart
 
 logs:
 	$(COMPOSE) logs -f --tail=200
@@ -39,4 +41,19 @@ smoke:
 	./scripts/smoke.sh
 
 sandbox-images:
-	./scripts/pull_sandbox_images.sh
+	./scripts/warm_sandbox_images.sh
+
+migrate:
+	$(COMPOSE) run --rm --no-deps api --migrate-only
+
+backup:
+	./scripts/backup.sh
+
+restore:
+	./scripts/restore.sh "$(BACKUP)"
+
+cleanup:
+	./scripts/cleanup_docker.sh
+
+legacy-report:
+	./scripts/legacy_api_report.sh

@@ -111,6 +111,8 @@ type TestPointUploadFile struct {
 	Path string
 }
 
+const MaxProblemCases = 200
+
 const (
 	MaxProblemAssetSize     = 5 << 20
 	MaxProblemAssetsSize    = 20 << 20
@@ -344,6 +346,9 @@ func BuildProblemPackage(draft ProblemPackageDraft) ([]byte, ParsedProblemPackag
 	if strings.TrimSpace(draft.Slug) == "" {
 		draft.Slug = "auto"
 	}
+	if len(draft.Cases) > MaxProblemCases {
+		return nil, ParsedProblemPackage{}, fmt.Errorf("at most %d test cases are allowed", MaxProblemCases)
+	}
 	if len(draft.Cases) == 0 {
 		return nil, ParsedProblemPackage{}, fmt.Errorf("at least one test case is required")
 	}
@@ -379,7 +384,7 @@ func BuildProblemPackage(draft ProblemPackageDraft) ([]byte, ParsedProblemPackag
 		}
 		weight := tc.Weight
 		if weight <= 0 {
-			weight = 100 / len(draft.Cases)
+			weight = max(1, 100/len(draft.Cases))
 		}
 		inputPath := fmt.Sprintf("tests/%02d.in", i+1)
 		outputPath := fmt.Sprintf("tests/%02d.out", i+1)
@@ -485,6 +490,9 @@ func RebuildProblemPackage(base []byte, manifest ProblemManifest, replacementCas
 		manifest.Assets = append(kept, AssetManifest{Name: asset.Name, Path: assetPath, ContentType: asset.ContentType, Size: int64(len(asset.Body))})
 	}
 	if replacementCases != nil {
+		if len(replacementCases) > MaxProblemCases {
+			return nil, ParsedProblemPackage{}, fmt.Errorf("at most %d test cases are allowed", MaxProblemCases)
+		}
 		if len(replacementCases) == 0 {
 			return nil, ParsedProblemPackage{}, fmt.Errorf("at least one test case is required")
 		}
@@ -501,7 +509,7 @@ func RebuildProblemPackage(base []byte, manifest ProblemManifest, replacementCas
 			}
 			weight := tc.Weight
 			if weight <= 0 {
-				weight = 100 / len(replacementCases)
+				weight = max(1, 100/len(replacementCases))
 			}
 			inputPath := fmt.Sprintf("tests/%02d.in", i+1)
 			outputPath := fmt.Sprintf("tests/%02d.out", i+1)
@@ -717,6 +725,9 @@ func ParseProblemPackage(body []byte) (ParsedProblemPackage, error) {
 	if err != nil {
 		return ParsedProblemPackage{}, err
 	}
+	if len(manifest.Cases) > MaxProblemCases {
+		return ParsedProblemPackage{}, fmt.Errorf("at most %d test cases are allowed", MaxProblemCases)
+	}
 	if len(manifest.Cases) == 0 {
 		return ParsedProblemPackage{}, fmt.Errorf("at least one test case is required")
 	}
@@ -753,7 +764,7 @@ func ParseProblemPackage(body []byte) (ParsedProblemPackage, error) {
 			tc.Name = fmt.Sprintf("case-%02d", i+1)
 		}
 		if tc.Weight <= 0 {
-			tc.Weight = 100 / len(manifest.Cases)
+			tc.Weight = max(1, 100/len(manifest.Cases))
 		}
 		input, err := normalizePackageTestPath(tc.Input, ".in")
 		if err != nil {

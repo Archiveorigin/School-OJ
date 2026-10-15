@@ -157,6 +157,7 @@
 </template>
 
 <script setup lang="ts">
+import { apiErrorMessage } from '../api/errors'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { computed, onMounted, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
@@ -233,7 +234,7 @@ async function exportReport() {
     const ext = exportFormat.value === 'markdown' ? 'md' : 'xlsx'
     downloadBlob(response.data, 'exam-' + report.value.exam.id + '-report.' + ext)
   } catch (err: any) {
-    ElMessage.error(err.response?.data?.error || err.message)
+    ElMessage.error(apiErrorMessage(err))
   } finally {
     exporting.value = false
   }
@@ -246,7 +247,7 @@ async function removeExam(row: any) {
     ElMessage.success('考试已删除')
     await load()
   } catch (err: any) {
-    if (err !== 'cancel') ElMessage.error(err.response?.data?.error || err.message)
+    if (err !== 'cancel') ElMessage.error(apiErrorMessage(err))
   }
 }
 
@@ -271,7 +272,7 @@ async function runReferenceJudge() {
     await generatedApi.judgeManualExamSubmission<any>({ path: { "id": report.value.exam.id, "submission_id": gradeSubmission.value.submission.id } })
     ElMessage.success('已加入参考判题队列')
   } catch (err: any) {
-    ElMessage.error(err.response?.data?.error || err.message)
+    ElMessage.error(apiErrorMessage(err))
   } finally {
     grading.value = false
   }
@@ -286,7 +287,7 @@ async function saveManualGrade() {
     gradeVisible.value = false
     await openReport(report.value.exam)
   } catch (err: any) {
-    ElMessage.error(err.response?.data?.error || err.message)
+    ElMessage.error(apiErrorMessage(err))
   } finally {
     grading.value = false
   }

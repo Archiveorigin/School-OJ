@@ -1,18 +1,13 @@
 #!/usr/bin/env bash
 set -euo pipefail
-
-# Safe host cleanup for low-disk deployments. Volumes are deliberately never
-# removed because they contain PostgreSQL, Redis and object-storage data.
-max_age="${DOCKER_CACHE_MAX_AGE:-168h}"
-
-echo "Disk usage before cleanup:"
-df -h .
-docker system df
-
-docker container prune --force
-docker image prune --force
-docker builder prune --force --filter "until=${max_age}"
-
-echo "Disk usage after cleanup:"
-df -h .
+cd "$(dirname "$0")/.."
+project=$(docker compose config --format json | python3 -c 'import json,sys; print(json.load(sys.stdin)["name"])')
+echo "Cleaning expired judge sandboxes for $project"
+docker compose exec -T worker worker --cleanup
+# Remove only this project's stopped one-off containers, never service/data
+# containers, volumes, rollback images, or another project's build cache.
+mapfile -t containers < <(docker ps -aq \
+  --filter "label=com.docker.compose.project=$project" \
+  --filter 'label=com.docker.compose.oneoff=True' --filter status=exited)
+if [ "${#containers[@]}" -gt 0 ]; then docker rm "${containers[@]}"; fi
 docker system df

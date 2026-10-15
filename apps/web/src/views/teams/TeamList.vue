@@ -91,6 +91,7 @@
 </template>
 
 <script setup lang="ts">
+import { apiErrorMessage } from '../../api/errors'
 import { ElMessage } from 'element-plus'
 import { onMounted, reactive, ref, watch } from 'vue'
 import { useRouter } from 'vue-router'
@@ -120,7 +121,7 @@ async function load() {
     const { data } = await generatedApi.listTeams<Team[]>({ query: { scope: activeTab.value } })
     teams.value = data || []
   } catch (err: any) {
-    ElMessage.error(err.response?.data?.error || err.message)
+    ElMessage.error(apiErrorMessage(err))
   } finally {
     loading.value = false
   }
@@ -143,7 +144,7 @@ async function createTeam() {
     ElMessage.success('团队创建成功')
     await router.push(`/teams/${data.slug}/contests`)
   } catch (err: any) {
-    ElMessage.error(err.response?.data?.error || err.message)
+    ElMessage.error(apiErrorMessage(err))
   } finally {
     creating.value = false
   }

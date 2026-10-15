@@ -65,6 +65,7 @@
 </template>
 
 <script setup lang="ts">
+import { apiErrorMessage } from '../../api/errors'
 import { ElMessage } from 'element-plus'
 import { onBeforeUnmount, onMounted, reactive, ref, computed, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
@@ -116,7 +117,7 @@ async function search() {
     items.value = data
     page.value = 1
   } catch (err: any) {
-    if (!request.signal.aborted) ElMessage.error(err.response?.data?.error || err.message)
+    if (!request.signal.aborted) ElMessage.error(apiErrorMessage(err))
   } finally {
     if (pending === request) loading.value = false
   }
@@ -134,7 +135,7 @@ async function openDetail(row: Submission) {
     detail.value = (await generatedApi.getSubmission<any>({ path: { "id": row.id } })).data
     detailVisible.value = true
   } catch (err: any) {
-    ElMessage.error(err.response?.data?.error || err.message)
+    ElMessage.error(apiErrorMessage(err))
   }
 }
 
@@ -152,7 +153,7 @@ onMounted(async () => {
     await loadProblem()
     await search()
   } catch (err: any) {
-    ElMessage.error(err.response?.data?.error || err.message)
+    ElMessage.error(apiErrorMessage(err))
   }
 })
 </script>

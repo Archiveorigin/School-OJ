@@ -151,6 +151,7 @@
 </template>
 
 <script setup lang="ts">
+import { apiErrorMessage } from '../api/errors'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { computed, onMounted, reactive, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
@@ -281,7 +282,7 @@ async function load() {
     }
     clampPage()
   } catch (err: any) {
-    ElMessage.error(err.response?.data?.error || err.message)
+    ElMessage.error(apiErrorMessage(err))
   } finally {
     loading.value = false
   }
@@ -320,7 +321,7 @@ async function submitClass() {
     classDialogVisible.value = false
     await load()
   } catch (err: any) {
-    ElMessage.error(err.response?.data?.error || err.message)
+    ElMessage.error(apiErrorMessage(err))
   } finally {
     savingClass.value = false
   }
@@ -341,7 +342,7 @@ async function setClassArchived(row: ClassRow, archived: boolean) {
     ElMessage.success(archived ? '班级已归档' : '班级已恢复')
     await load()
   } catch (err: any) {
-    ElMessage.error(err.response?.data?.error || err.message)
+    ElMessage.error(apiErrorMessage(err))
   }
 }
 
@@ -356,7 +357,7 @@ async function previewClass() {
     joinPreview.value = data
   } catch (err: any) {
     joinPreview.value = undefined
-    ElMessage.error(err.response?.data?.error || err.message)
+    ElMessage.error(apiErrorMessage(err))
   } finally {
     previewing.value = false
   }
@@ -376,7 +377,7 @@ async function joinClass() {
     joinPreview.value = undefined
     await load()
   } catch (err: any) {
-    ElMessage.error(err.response?.data?.error || err.message)
+    ElMessage.error(apiErrorMessage(err))
   } finally {
     joining.value = false
   }
@@ -398,7 +399,7 @@ async function leaveClass(row: ClassContext) {
     ElMessage.success('已退出班级')
     await load()
   } catch (err: any) {
-    ElMessage.error(err.response?.data?.error || err.message)
+    ElMessage.error(apiErrorMessage(err))
   } finally {
     leavingClassId.value = undefined
   }
@@ -426,7 +427,7 @@ async function loadStudents() {
     const { data } = await generatedApi.listClassStudents<any>({ path: { "id": selectedClass.value.class_id } })
     students.value = list(data)
   } catch (err: any) {
-    ElMessage.error(err.response?.data?.error || err.message)
+    ElMessage.error(apiErrorMessage(err))
   } finally {
     loadingStudents.value = false
   }
@@ -449,7 +450,7 @@ async function removeStudent(row: StudentRow) {
     await loadStudents()
     await load()
   } catch (err: any) {
-    ElMessage.error(err.response?.data?.error || err.message)
+    ElMessage.error(apiErrorMessage(err))
   }
 }
 
@@ -486,7 +487,7 @@ async function submitImport() {
     await loadStudents()
     await load()
   } catch (err: any) {
-    ElMessage.error(err.response?.data?.error || err.message)
+    ElMessage.error(apiErrorMessage(err))
   } finally {
     importing.value = false
   }

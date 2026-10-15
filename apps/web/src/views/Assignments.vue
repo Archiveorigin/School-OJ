@@ -164,6 +164,7 @@
 </template>
 
 <script setup lang="ts">
+import { apiErrorMessage } from '../api/errors'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { computed, onMounted, reactive, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
@@ -343,7 +344,7 @@ async function submitCreate() {
     dialogVisible.value = false
     await load()
   } catch (err: any) {
-    ElMessage.error(err.response?.data?.error || err.message)
+    ElMessage.error(apiErrorMessage(err))
   } finally {
     saving.value = false
   }
@@ -365,7 +366,7 @@ async function removeAssignment(row: any) {
     ElMessage.success('作业已删除')
     await load()
   } catch (err: any) {
-    if (err !== 'cancel') ElMessage.error(err.response?.data?.error || err.message)
+    if (err !== 'cancel') ElMessage.error(apiErrorMessage(err))
   }
 }
 

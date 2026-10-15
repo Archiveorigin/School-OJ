@@ -175,6 +175,7 @@
 </template>
 
 <script setup lang="ts">
+import { apiErrorMessage } from '../api/errors'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { computed, onMounted, reactive, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
@@ -283,7 +284,7 @@ async function load() {
     profileForm.name = data.user.name
     auth.updateUser(data.user)
   } catch (err: any) {
-    ElMessage.error(err.response?.data?.error || err.message)
+    ElMessage.error(apiErrorMessage(err))
   }
 }
 
@@ -338,7 +339,7 @@ async function saveAll() {
     editVisible.value = false
     ElMessage.success('个人资料已更新')
   } catch (err: any) {
-    const text = err.response?.data?.error || err.message
+    const text = apiErrorMessage(err)
     ElMessage.error(text === 'current password is incorrect' ? '当前密码不正确' : text)
   } finally {
     savingProfile.value = false
@@ -361,7 +362,7 @@ async function uploadAvatar(event: Event) {
     await load()
     ElMessage.success('头像已更新')
   } catch (err: any) {
-    ElMessage.error(err.response?.data?.error || err.message)
+    ElMessage.error(apiErrorMessage(err))
   } finally {
     input.value = ''
   }
@@ -377,7 +378,7 @@ async function sendEmailCode() {
     await generatedApi.sendProfileEmailCode<any>({ body: { email: emailForm.email.trim() } })
     ElMessage.success('验证码已发送')
   } catch (err: any) {
-    ElMessage.error(err.response?.data?.error || err.message)
+    ElMessage.error(apiErrorMessage(err))
   } finally {
     sendingCode.value = false
   }
@@ -395,7 +396,7 @@ async function deleteAccount() {
     auth.logout()
     router.push('/login')
   } catch (err: any) {
-    if (err !== 'cancel' && err !== 'close') ElMessage.error(err.response?.data?.error || err.message)
+    if (err !== 'cancel' && err !== 'close') ElMessage.error(apiErrorMessage(err))
   }
 }
 

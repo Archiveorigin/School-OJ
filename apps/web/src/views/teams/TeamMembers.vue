@@ -60,6 +60,7 @@
 </template>
 
 <script setup lang="ts">
+import { apiErrorMessage } from '../../api/errors'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { computed, onMounted, ref } from 'vue'
 import { generatedApi, type Role, type Team, type TeamRole } from '../../api/client'
@@ -78,7 +79,7 @@ async function load() {
     members.value = (await generatedApi.listTeamMembers<any>({ path: { "id": props.team.id } })).data || []
     applications.value = canManage.value ? (await generatedApi.listTeamApplications<any>({ path: { "id": props.team.id } })).data || [] : []
   } catch (err: any) {
-    ElMessage.error(err.response?.data?.error || err.message)
+    ElMessage.error(apiErrorMessage(err))
   } finally {
     loading.value = false
   }
@@ -90,7 +91,7 @@ async function review(item: any, action: 'approve' | 'reject') {
     ElMessage.success(action === 'approve' ? '已同意加入申请' : '已拒绝加入申请')
     await load()
   } catch (err: any) {
-    ElMessage.error(err.response?.data?.error || err.message)
+    ElMessage.error(apiErrorMessage(err))
   }
 }
 
@@ -110,7 +111,7 @@ async function changeRole(row: any, role: string) {
     ElMessage.success('成员职级已更新')
     await load()
   } catch (err: any) {
-    ElMessage.error(err.response?.data?.error || err.message)
+    ElMessage.error(apiErrorMessage(err))
   }
 }
 
@@ -121,7 +122,7 @@ async function removeMember(row: any) {
     ElMessage.success('成员已移除')
     await load()
   } catch (err: any) {
-    if (err !== 'cancel' && err !== 'close') ElMessage.error(err.response?.data?.error || err.message)
+    if (err !== 'cancel' && err !== 'close') ElMessage.error(apiErrorMessage(err))
   }
 }
 

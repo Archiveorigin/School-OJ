@@ -77,11 +77,13 @@
 </template>
 
 <script setup lang="ts">
+import { useSubmissionStreams } from "../features/submissions/live"
+import { apiErrorMessage } from '../api/errors'
 import { submissionLanguage } from '../features/submissions/presentation'
 import { ElMessage } from 'element-plus'
 import { computed, onMounted, reactive, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
-import { generatedApi, getLatestSubmissions, openEventStream, type Problem, type Submission } from '../api/client'
+import { generatedApi, getLatestSubmissions, type Problem, type Submission } from '../api/client'
 import ListPagination from '../components/ListPagination.vue'
 import ProblemStatementView from '../components/ProblemStatementView.vue'
 import ProblemTestDownloads from '../components/ProblemTestDownloads.vue'
@@ -97,6 +99,7 @@ import { useAuthStore } from '../stores/auth'
 type DetailProblem = { problem: Problem; score: number; problem_id: number }
 type EditorState = { language: string; source: string; live: any; dirty: boolean }
 
+const submissionStreams = useSubmissionStreams()
 const route = useRoute()
 const router = useRouter()
 const { visible: submissionVisible, detail: submissionDetail, open: openSubmission } = useSubmissionDetail()
@@ -151,7 +154,7 @@ async function loadDetail() {
     if (activeProblem.value) ensureEditorState(activeProblem.value.id)
     await loadHistory()
   } catch (err: any) {
-    ElMessage.error(err.response?.data?.error || err.message)
+    ElMessage.error(apiErrorMessage(err))
     router.push(assignmentListPath.value)
   }
 }
@@ -180,21 +183,16 @@ async function submitSolution() {
     watchSubmission(data.id, problemID)
     await loadHistory()
   } catch (err: any) {
-    ElMessage.error(err.response?.data?.error || err.message)
+    ElMessage.error(apiErrorMessage(err))
   } finally {
     submitting.value = false
   }
 }
 
 function watchSubmission(id: number, problemID: number) {
-  const es = openEventStream(`/submissions/${id}/events`)
-  es.addEventListener('status', async (event) => {
-    ensureEditorState(problemID).live = JSON.parse((event as MessageEvent).data)
-    if (!['queued', 'running'].includes(ensureEditorState(problemID).live.status)) {
-      es.close()
-      await refreshDetail()
-      await loadHistory()
-    }
+  submissionStreams.watch(id, state => { ensureEditorState(problemID).live = state }, async () => {
+    await refreshDetail()
+    await loadHistory()
   })
 }
 
@@ -264,7 +262,7 @@ function problemTitle(problemID: number) {
   return entry ? `${problemDisplayCode(entry.problem)} · ${entry.problem.title}` : '未知题目'
 }
 
-watch(() => route.params.id, loadDetail)
+watch(() => route.params.id, () => { submissionStreams.closeAll(); void loadDetail() })
 watch(historyPageSize, clampHistoryPage)
 
 function clampHistoryPage() {

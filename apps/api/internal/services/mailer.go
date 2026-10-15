@@ -42,8 +42,8 @@ func (m Mailer) SendVerificationCode(to, purpose, code string) error {
 
 func (m Mailer) Send(to, subject, body string) error {
 	if strings.TrimSpace(m.Cfg.SMTPHost) == "" {
-		log.Printf("mail disabled: to=%s subject=%s body=%s", to, subject, body)
-		return nil
+		log.Printf("mail skipped: SMTP is not configured; bytes=%d", len(body))
+		return fmt.Errorf("邮件服务未配置，请联系管理员")
 	}
 	addr := net.JoinHostPort(m.Cfg.SMTPHost, fmt.Sprintf("%d", m.Cfg.SMTPPort))
 	fromName := mime.QEncoding.Encode("utf-8", m.Cfg.MailFromName)

@@ -43,11 +43,12 @@ return 0
 )
 
 type Consumer struct {
-	DB     *gorm.DB
-	Redis  *redis.Client
-	MinIO  *minio.Client
-	Cfg    config.Config
-	Runner runner.DockerRunner
+	progress int64
+	DB       *gorm.DB
+	Redis    *redis.Client
+	MinIO    *minio.Client
+	Cfg      config.Config
+	Runner   *runner.DockerRunner
 }
 
 type retryableHandleError struct {
@@ -96,7 +97,7 @@ func Redis(ctx context.Context, cfg config.Config) (*redis.Client, error) {
 	return nil, fmt.Errorf("connect redis: %w", lastErr)
 }
 
-func (c Consumer) EnsureGroup(ctx context.Context) error {
+func (c *Consumer) EnsureGroup(ctx context.Context) error {
 	err := c.Redis.XGroupCreateMkStream(ctx, c.Cfg.Stream, c.Cfg.Group, "0").Err()
 	if err != nil && !strings.Contains(err.Error(), "BUSYGROUP") {
 		return err
@@ -104,11 +105,15 @@ func (c Consumer) EnsureGroup(ctx context.Context) error {
 	return nil
 }
 
-func (c Consumer) Run(ctx context.Context) error {
+func (c *Consumer) Run(ctx context.Context) error {
 	if err := c.EnsureGroup(ctx); err != nil {
 		return err
 	}
 	for {
+		if ctx.Err() != nil {
+			return ctx.Err()
+		}
+		atomic.StoreInt64(&c.progress, time.Now().Unix())
 		if err := c.reclaimPending(ctx); err != nil && !errors.Is(err, redis.Nil) {
 			log.Printf("reclaim pending submissions failed: %v", err)
 		}
@@ -133,7 +138,7 @@ func (c Consumer) Run(ctx context.Context) error {
 	}
 }
 
-func (c Consumer) reclaimPending(ctx context.Context) error {
+func (c *Consumer) reclaimPending(ctx context.Context) error {
 	idle := c.retryIdle()
 	pending, err := c.Redis.XPendingExt(ctx, &redis.XPendingExtArgs{
 		Stream: c.Cfg.Stream,
@@ -161,14 +166,19 @@ func (c Consumer) reclaimPending(ctx context.Context) error {
 			continue
 		}
 		for _, msg := range messages {
+			c.metric("reclaimed")
 			c.processMessage(ctx, msg)
 		}
 	}
 	return nil
 }
 
-func (c Consumer) processMessage(ctx context.Context, msg redis.XMessage) {
+func (c *Consumer) processMessage(ctx context.Context, msg redis.XMessage) {
+	atomic.StoreInt64(&c.progress, time.Now().Unix())
 	err := c.handle(ctx, msg)
+	if ctx.Err() != nil {
+		return
+	}
 	if err != nil {
 		log.Printf("submission message %s failed: %v", msg.ID, err)
 	}
@@ -200,11 +210,12 @@ func (c Consumer) processMessage(ctx context.Context, msg redis.XMessage) {
 	}
 }
 
-func (c Consumer) requeue(ctx context.Context, msg redis.XMessage) (string, error) {
+func (c *Consumer) requeue(ctx context.Context, msg redis.XMessage) (string, error) {
 	subID, err := submissionIDFromMessage(msg)
 	if err != nil {
 		return "", err
 	}
+	c.metric("retries")
 	nextRetry := c.messageRetryCount(msg) + 1
 	if err := c.DB.Model(&models.Submission{}).Where("id = ? AND status IN ?", subID, []models.SubmissionStatus{
 		models.StatusQueued,
@@ -229,7 +240,7 @@ func (c Consumer) requeue(ctx context.Context, msg redis.XMessage) (string, erro
 	return retryID, nil
 }
 
-func (c Consumer) markMessageSystemError(msg redis.XMessage, err error) error {
+func (c *Consumer) markMessageSystemError(msg redis.XMessage, err error) error {
 	subID, parseErr := submissionIDFromMessage(msg)
 	if parseErr != nil {
 		return parseErr
@@ -241,7 +252,7 @@ func (c Consumer) markMessageSystemError(msg redis.XMessage, err error) error {
 	return c.markSystemError(&sub, err)
 }
 
-func (c Consumer) handle(ctx context.Context, msg redis.XMessage) error {
+func (c *Consumer) handle(ctx context.Context, msg redis.XMessage) error {
 	subID, err := submissionIDFromMessage(msg)
 	if err != nil {
 		return err
@@ -305,6 +316,7 @@ func (c Consumer) handle(ctx context.Context, msg redis.XMessage) error {
 		case <-judgeCtx.Done():
 		}
 	}()
+	started := time.Now()
 	result := c.Runner.Judge(judgeCtx, runner.JudgeRequest{
 		SubmissionID: sub.ID,
 		Language:     sub.Language,
@@ -312,7 +324,12 @@ func (c Consumer) handle(ctx context.Context, msg redis.XMessage) error {
 		Problem:      judgeProblem,
 		Package:      pkg,
 	})
+	c.observeJudge(result, time.Since(started))
+	if ctx.Err() != nil {
+		return ctx.Err()
+	}
 	if lease.IsLost() {
+		c.metric("lease_lost")
 		return retryable(errors.New("judge lease was lost while the sandbox was running"))
 	}
 	if result.Status == models.StatusSystemError && isRetryableSystemMessage(result.Message) {
@@ -347,7 +364,7 @@ func problemSnapshotForSubmission(sub models.Submission) models.Problem {
 	return problem
 }
 
-func (c Consumer) markSystemError(sub *models.Submission, err error) error {
+func (c *Consumer) markSystemError(sub *models.Submission, err error) error {
 	if updateErr := c.DB.Transaction(func(tx *gorm.DB) error {
 		result := tx.Model(&models.Submission{}).
 			Where("id = ? AND status IN ?", sub.ID, []models.SubmissionStatus{models.StatusQueued, models.StatusRunning}).
@@ -364,7 +381,7 @@ func (c Consumer) markSystemError(sub *models.Submission, err error) error {
 	return nil
 }
 
-func (c Consumer) persistJudgeResult(ctx context.Context, sub *models.Submission, result runner.JudgeResult) error {
+func (c *Consumer) persistJudgeResult(ctx context.Context, sub *models.Submission, result runner.JudgeResult) error {
 	return c.DB.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
 		update := tx.Model(&models.Submission{}).
 			Where("id = ? AND status = ?", sub.ID, models.StatusRunning).
@@ -405,7 +422,7 @@ func (c Consumer) persistJudgeResult(ctx context.Context, sub *models.Submission
 	})
 }
 
-func (c Consumer) acquireJudgeLease(ctx context.Context, submissionID uint, messageID string) (*judgeLease, bool, error) {
+func (c *Consumer) acquireJudgeLease(ctx context.Context, submissionID uint, messageID string) (*judgeLease, bool, error) {
 	tokenBytes := make([]byte, 16)
 	if _, err := rand.Read(tokenBytes); err != nil {
 		return nil, false, err
@@ -428,7 +445,7 @@ func (c Consumer) acquireJudgeLease(ctx context.Context, submissionID uint, mess
 	return lease, true, nil
 }
 
-func (c Consumer) judgeLeaseTTL() time.Duration {
+func (c *Consumer) judgeLeaseTTL() time.Duration {
 	ttl := c.retryIdle() * 2
 	if ttl < 2*time.Minute {
 		return 2 * time.Minute
@@ -442,6 +459,7 @@ func (l *judgeLease) renew() {
 	if interval < time.Second {
 		interval = time.Second
 	}
+	lastRenewed := time.Now()
 	ticker := time.NewTicker(interval)
 	defer ticker.Stop()
 	for {
@@ -454,7 +472,13 @@ func (l *judgeLease) renew() {
 			cancel()
 			if err != nil {
 				log.Printf("renew judge lease %s failed: %v", l.key, err)
-				continue
+				if time.Since(lastRenewed) < l.ttl-interval {
+					continue
+				}
+				renewed = 0
+			}
+			if renewed != 0 {
+				lastRenewed = time.Now()
 			}
 			if renewed == 0 {
 				if l.ended.CompareAndSwap(false, true) {
@@ -488,7 +512,7 @@ func (l *judgeLease) Release() {
 	}
 }
 
-func (c Consumer) publishSubmission(submissionID uint) {
+func (c *Consumer) publishSubmission(submissionID uint) {
 	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
 	defer cancel()
 	channel := fmt.Sprintf("%s%d", submissionChannelPrefix, submissionID)
@@ -509,7 +533,7 @@ func submissionIDFromMessage(msg redis.XMessage) (uint, error) {
 	return uint(id64), nil
 }
 
-func (c Consumer) messageRetryCount(msg redis.XMessage) int {
+func (c *Consumer) messageRetryCount(msg redis.XMessage) int {
 	raw, ok := msg.Values["retry_count"]
 	if !ok {
 		return 0
@@ -521,14 +545,14 @@ func (c Consumer) messageRetryCount(msg redis.XMessage) int {
 	return retries
 }
 
-func (c Consumer) maxRetries() int {
+func (c *Consumer) maxRetries() int {
 	if c.Cfg.MaxRetries <= 0 {
 		return 0
 	}
 	return c.Cfg.MaxRetries
 }
 
-func (c Consumer) retryIdle() time.Duration {
+func (c *Consumer) retryIdle() time.Duration {
 	if c.Cfg.RetryIdleSeconds <= 0 {
 		return 60 * time.Second
 	}

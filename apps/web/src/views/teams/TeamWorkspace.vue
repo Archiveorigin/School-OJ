@@ -82,6 +82,7 @@
 </template>
 
 <script setup lang="ts">
+import { apiErrorMessage } from '../../api/errors'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { computed, reactive, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
@@ -134,7 +135,7 @@ async function loadTeam() {
     })
   } catch (err: any) {
     if (err.response?.status === 404) { await router.replace(`${basePath.value}/join`); return }
-    ElMessage.error(err.response?.status === 404 ? '团队不存在或无权访问' : err.response?.data?.error || err.message)
+    ElMessage.error(err.response?.status === 404 ? '团队不存在或无权访问' : apiErrorMessage(err))
     await router.replace('/teams')
   }
 }
@@ -148,7 +149,7 @@ async function saveSettings() {
     ElMessage.success('团队设置已更新')
     await loadTeam()
   } catch (err: any) {
-    ElMessage.error(err.response?.data?.error || err.message)
+    ElMessage.error(apiErrorMessage(err))
   } finally {
     saving.value = false
   }
@@ -162,7 +163,7 @@ async function saveTeamIcon(iconURL: string) {
     ElMessage.success('团队图标已更新')
     await loadTeam()
   } catch (err: any) {
-    ElMessage.error(err.response?.data?.error || err.message)
+    ElMessage.error(apiErrorMessage(err))
     await loadTeam()
   }
 }
@@ -175,7 +176,7 @@ async function leaveTeam() {
     ElMessage.success('已退出团队')
     await router.push('/teams')
   } catch (err: any) {
-    if (err !== 'cancel' && err !== 'close') ElMessage.error(err.response?.data?.error || err.message)
+    if (err !== 'cancel' && err !== 'close') ElMessage.error(apiErrorMessage(err))
   }
 }
 

@@ -6,6 +6,8 @@ import (
 	"strconv"
 	"strings"
 	"time"
+
+	"github.com/jackc/pgx/v5"
 )
 
 type Config struct {
@@ -54,8 +56,8 @@ func Load() Config {
 		SMTPPassword:   env("SMTP_PASSWORD", ""),
 		MailFrom:       env("MAIL_FROM", "no-reply@huanghailuoj.local"),
 		MailFromName:   env("MAIL_FROM_NAME", "黄海在线"),
-		AutoMigrate:    envBool("AUTO_MIGRATE", true),
-		SeedData:       envBool("SEED_DATA", true),
+		AutoMigrate:    envBool("AUTO_MIGRATE", false),
+		SeedData:       envBool("SEED_DATA", false),
 		JPlagJarPath:   env("JPLAG_JAR_PATH", ""),
 		JPlagWorkDir:   env("JPLAG_WORK_DIR", os.TempDir()+"/jplag"),
 		RequestTimeout: time.Duration(envInt("REQUEST_TIMEOUT_SECONDS", 30)) * time.Second,
@@ -68,6 +70,19 @@ func Load() Config {
 func (c Config) Validate() error {
 	if len(c.JWTSecret) < 32 || strings.HasPrefix(strings.ToLower(c.JWTSecret), "dev-secret") {
 		return errors.New("JWT_SECRET must contain at least 32 bytes of a randomly generated secret")
+	}
+	database, err := pgx.ParseConfig(c.DatabaseURL)
+	if err != nil || strings.TrimSpace(c.DatabaseURL) == "" {
+		return errors.New("DATABASE_URL must be a valid PostgreSQL connection string")
+	}
+	if database.Password == "" || database.Password == "ojpass" {
+		return errors.New("DATABASE_URL must use a non-default database password")
+	}
+	if c.MinIOAccessKey == "" || c.MinIOAccessKey == "minioadmin" || c.MinIOSecretKey == "" || c.MinIOSecretKey == "minioadmin" {
+		return errors.New("MinIO credentials must be set and must not use minioadmin")
+	}
+	if strings.TrimSpace(c.RedisPassword) == "" {
+		return errors.New("REDIS_PASSWORD must be set")
 	}
 	return nil
 }

@@ -12,6 +12,8 @@ import (
 	"gopkg.in/yaml.v3"
 )
 
+const MaxProblemCases = 200
+
 const utf8BOM = "\ufeff"
 
 const maxProblemPackageSize = 128 << 20
@@ -100,6 +102,9 @@ func ParsePackage(body []byte) (ProblemPackage, error) {
 	if err != nil {
 		return ProblemPackage{}, err
 	}
+	if len(manifest.Cases) > MaxProblemCases {
+		return ProblemPackage{}, fmt.Errorf("at most %d test cases are allowed", MaxProblemCases)
+	}
 	if len(manifest.Cases) == 0 {
 		return ProblemPackage{}, fmt.Errorf("at least one test case is required")
 	}
@@ -108,7 +113,7 @@ func ParsePackage(body []byte) (ProblemPackage, error) {
 			manifest.Cases[i].Name = fmt.Sprintf("case-%02d", i+1)
 		}
 		if manifest.Cases[i].Weight <= 0 {
-			manifest.Cases[i].Weight = 100 / len(manifest.Cases)
+			manifest.Cases[i].Weight = max(1, 100/len(manifest.Cases))
 		}
 		input, err := normalizePackageTestPath(manifest.Cases[i].Input, ".in")
 		if err != nil {

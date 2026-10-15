@@ -174,6 +174,7 @@
   </section>
 </template>
 <script setup lang="ts">
+import { apiErrorMessage } from '../../api/errors'
 import { computed, onBeforeUnmount, reactive, ref, watch } from "vue";
 import { ElMessage, ElMessageBox } from "element-plus";
 import { useRoute, useRouter } from "vue-router";
@@ -247,7 +248,7 @@ async function load() {
   } catch (error: any) {
     if (generation === sequence)
       loadError.value =
-        error.response?.data?.error || "工单加载失败，请刷新重试";
+        apiErrorMessage(error, "工单加载失败，请刷新重试");
   } finally {
     if (generation === sequence) loading.value = false;
   }
@@ -266,7 +267,7 @@ async function open(ticket: ProblemChangeTicket) {
     }
   } catch (error: any) {
     if (generation === sequence)
-      loadError.value = error.response?.data?.error || "工单详情加载失败";
+      loadError.value = apiErrorMessage(error, "工单详情加载失败");
   } finally {
     if (generation === sequence) loading.value = false;
   }
@@ -344,7 +345,7 @@ async function remove() {
     ElMessage.success("工单已删除");
     back();
   } catch (error: any) {
-    ElMessage.error(error.response?.data?.error || "删除失败");
+    ElMessage.error(apiErrorMessage(error, "删除失败"));
   }
 }
 watch(

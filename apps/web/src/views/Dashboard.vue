@@ -105,6 +105,7 @@
 </template>
 
 <script setup lang="ts">
+import { apiErrorMessage } from '../api/errors'
 import { computed, onMounted, ref } from 'vue'
 import { useRouter } from 'vue-router'
 import { generatedApi, type Problem } from '../api/client'
@@ -126,7 +127,7 @@ async function load() {
     problems.value = (await generatedApi.listProblems<any>()).data || []
     if (auth.isAuthed) courses.value = (await generatedApi.listCourses<any>()).data || []
   } catch (err: any) {
-    loadError.value = err.response?.data?.error || err.message || '概览加载失败'
+    loadError.value = apiErrorMessage(err, '概览加载失败')
   }
 }
 

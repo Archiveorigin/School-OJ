@@ -112,6 +112,7 @@
 </template>
 
 <script setup lang="ts">
+import { apiErrorMessage } from '../api/errors'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { computed, onMounted, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
@@ -191,7 +192,7 @@ async function load() {
     course.value = (courseRes.data as any[]).find((c: any) => c.id === courseId.value) || null
     students.value = Array.isArray(studentsRes.data) ? studentsRes.data : []
   } catch (err: any) {
-    ElMessage.error(err.response?.data?.error || err.message)
+    ElMessage.error(apiErrorMessage(err))
   } finally {
     loading.value = false
   }
@@ -213,7 +214,7 @@ async function removeStudent(row: CourseStudent) {
     ElMessage.success('学生已移除')
     students.value = students.value.filter((s) => s.user_id !== row.user_id)
   } catch (err: any) {
-    ElMessage.error(err.response?.data?.error || err.message)
+    ElMessage.error(apiErrorMessage(err))
   } finally {
     removingId.value = null
   }

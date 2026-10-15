@@ -54,6 +54,7 @@
 </template>
 
 <script setup lang="ts">
+import { apiErrorMessage } from '../../api/errors'
 import TeamIconUpload from '../../components/TeamIconUpload.vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { computed, onMounted, reactive, ref } from 'vue'
@@ -83,7 +84,7 @@ async function load() {
   try {
     items.value = (await generatedApi.listTeamProblemSets<any>({ path: { "id": props.team.id } })).data || []
   } catch (err: any) {
-    ElMessage.error(err.response?.data?.error || err.message)
+    ElMessage.error(apiErrorMessage(err))
   } finally {
     loading.value = false
   }
@@ -108,7 +109,7 @@ async function saveSet() {
     ElMessage.success('题单信息已更新')
     await load()
   } catch (err: any) {
-    ElMessage.error(err.response?.data?.error || err.message)
+    ElMessage.error(apiErrorMessage(err))
   } finally {
     editing.value = false
   }
@@ -126,7 +127,7 @@ async function deleteSet(item: TeamProblemSet) {
     ElMessage.success('团队题单已删除')
     await load()
   } catch (err: any) {
-    if (err !== 'cancel' && err !== 'close') ElMessage.error(err.response?.data?.error || err.message)
+    if (err !== 'cancel' && err !== 'close') ElMessage.error(apiErrorMessage(err))
   } finally {
     deletingID.value = null
   }
@@ -145,7 +146,7 @@ async function createSet() {
     ElMessage.success('团队题单已创建')
     await router.push(`/problem-set/${data.id}#problems`)
   } catch (err: any) {
-    ElMessage.error(err.response?.data?.error || err.message)
+    ElMessage.error(apiErrorMessage(err))
   } finally {
     creating.value = false
   }

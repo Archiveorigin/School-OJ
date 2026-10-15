@@ -53,6 +53,7 @@
 </template>
 
 <script setup lang="ts">
+import { apiErrorMessage } from '../api/errors'
 import { ElMessage } from 'element-plus'
 import { onBeforeUnmount, ref, shallowRef, watch } from 'vue'
 import { mapConcurrent } from '../features/async'
@@ -119,7 +120,7 @@ async function loadTests() {
     if (!request.signal.aborted) {
       request.abort()
       tests.value = []
-      ElMessage.error(err.response?.data?.error || err.message || '测试数据加载失败')
+      ElMessage.error(apiErrorMessage(err, '测试数据加载失败'))
     }
   } finally {
     if (controller === request) loading.value = false
@@ -142,7 +143,7 @@ async function downloadAll() {
     const { data } = await generatedApi.downloadProblemTests<Blob>({ responseType: 'blob', path: { id: problemId }, signal: request.signal })
     if (!request.signal.aborted) downloadBlob(data, filename)
   } catch (err: any) {
-    if (!request.signal.aborted) ElMessage.error(err.response?.data?.error || err.message)
+    if (!request.signal.aborted) ElMessage.error(apiErrorMessage(err))
   } finally {
     if (downloadController === request) downloadingAll.value = false
   }

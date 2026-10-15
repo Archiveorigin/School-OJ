@@ -141,6 +141,7 @@
 </template>
 
 <script setup lang="ts">
+import { apiErrorMessage } from '../../api/errors'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { computed, onMounted, ref } from 'vue'
 import AdminPageHeader from '../../components/admin/AdminPageHeader.vue'
@@ -192,7 +193,7 @@ async function load() {
     applications.value = applicationResponse.data || []
     definitions.value = permissionResponse.data || []
   } catch (error: any) {
-    ElMessage.error(error.response?.data?.error || error.message)
+    ElMessage.error(apiErrorMessage(error))
   } finally {
     loading.value = false
   }
@@ -218,7 +219,7 @@ async function reviewApplication(application: AuthorApplication, status: 'approv
     await load()
   } catch (error: any) {
     if (error !== 'cancel' && error !== 'close')
-      ElMessage.error(error.response?.data?.error || error.message)
+      ElMessage.error(apiErrorMessage(error))
   }
 }
 
@@ -242,7 +243,7 @@ async function updateAuthorPermission(user: User, enabled: boolean) {
     await load()
   } catch (error: any) {
     if (error !== 'cancel' && error !== 'close')
-      ElMessage.error(error.response?.data?.error || error.message)
+      ElMessage.error(apiErrorMessage(error))
   } finally {
     updatingUserID.value = 0
   }

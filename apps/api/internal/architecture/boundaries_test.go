@@ -11,40 +11,47 @@ import (
 	"testing"
 )
 
-func TestTeamApplicationDependencyDirection(t *testing.T) {
-	cases := []struct {
-		path      string
-		forbidden []string
-	}{
-		{"../domain/team", []string{"gin-gonic", "gorm.io", "redis", "/handlers", "/repositories", "/services", "net/http"}},
-		{"../services/team_access.go", []string{"gin-gonic", "gorm.io", "redis", "/handlers", "/repositories", "net/http"}},
-		{"../repositories", []string{"gin-gonic", "/handlers", "/services", "net/http"}},
+// Scan entire layers, including future subdirectories. Exceptions document the
+// two existing adapter imports, never exempt an entire file or directory.
+func TestApplicationDependencyDirection(t *testing.T) {
+	exceptions := map[string]string{
+		"services/audit.go:github.com/gin-gonic/gin": "legacy audit adapter takes request identity; migrate to an explicit actor DTO",
+		"services/problem_package.go:net/http":       "DetectContentType only, no HTTP transport",
 	}
-	for _, item := range cases {
-		err := filepath.WalkDir(item.path, func(path string, entry os.DirEntry, err error) error {
-			if err != nil {
-				return err
-			}
-			if entry.IsDir() || !strings.HasSuffix(path, ".go") || strings.HasSuffix(path, "_test.go") {
-				return nil
-			}
-			file, err := parser.ParseFile(token.NewFileSet(), path, nil, parser.ImportsOnly)
-			if err != nil {
-				return err
-			}
-			for _, spec := range file.Imports {
-				dependency, _ := strconv.Unquote(spec.Path.Value)
-				for _, forbidden := range item.forbidden {
-					if strings.Contains(dependency, forbidden) {
-						t.Errorf("%s imports forbidden dependency %s", path, dependency)
-					}
+	err := filepath.WalkDir("..", func(path string, entry os.DirEntry, err error) error {
+		if err != nil {
+			return err
+		}
+		if entry.IsDir() || !strings.HasSuffix(path, ".go") || strings.HasSuffix(path, "_test.go") {
+			return nil
+		}
+		rel, _ := filepath.Rel("..", path)
+		rel = filepath.ToSlash(rel)
+		var forbidden []string
+		switch {
+		case strings.HasPrefix(rel, "domain/"):
+			forbidden = []string{"gin-gonic", "gorm.io", "redis", "/handlers", "/repositories", "/services", "net/http"}
+		case strings.HasPrefix(rel, "services/"):
+			forbidden = []string{"gin-gonic", "/handlers", "net/http"}
+		case strings.HasPrefix(rel, "repositories/"):
+			forbidden = []string{"gin-gonic", "/handlers", "/services", "net/http"}
+		}
+		file, err := parser.ParseFile(token.NewFileSet(), path, nil, parser.ImportsOnly)
+		if err != nil {
+			return err
+		}
+		for _, spec := range file.Imports {
+			dependency, _ := strconv.Unquote(spec.Path.Value)
+			for _, rule := range forbidden {
+				if strings.Contains(dependency, rule) && exceptions[rel+":"+dependency] == "" {
+					t.Errorf("%s imports forbidden dependency %s", rel, dependency)
 				}
 			}
-			return nil
-		})
-		if err != nil {
-			t.Fatal(err)
 		}
+		return nil
+	})
+	if err != nil {
+		t.Fatal(err)
 	}
 }
 

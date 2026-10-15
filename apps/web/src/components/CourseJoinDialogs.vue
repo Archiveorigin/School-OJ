@@ -37,6 +37,7 @@
 </template>
 
 <script setup lang="ts">
+import { apiErrorMessage } from '../api/errors'
 import { ElMessage } from 'element-plus'
 import { ref } from 'vue'
 import { generatedApi } from '../api/client'
@@ -71,7 +72,7 @@ async function joinInvitedCourse() {
     ElMessage.success('已加入课程')
     emit('joined', Number.isInteger(courseID) && courseID > 0 ? courseID : 0)
   } catch (err: any) {
-    ElMessage.error(err.response?.data?.error || '课程邀请码无效')
+    ElMessage.error(apiErrorMessage(err, '课程邀请码无效'))
   } finally {
     joining.value = false
   }

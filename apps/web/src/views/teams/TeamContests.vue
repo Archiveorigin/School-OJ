@@ -79,6 +79,7 @@
 </template>
 
 <script setup lang="ts">
+import { apiErrorMessage } from '../../api/errors'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { computed, onMounted, reactive, ref } from 'vue'
 import { useRouter } from 'vue-router'
@@ -116,7 +117,7 @@ async function load() {
   try {
     contests.value = (await generatedApi.listTeamContests<any>({ path: { "id": props.team.id } })).data || []
   } catch (err: any) {
-    ElMessage.error(err.response?.data?.error || err.message)
+    ElMessage.error(apiErrorMessage(err))
   } finally {
     loading.value = false
   }
@@ -145,7 +146,7 @@ async function createContest() {
     await load()
     await router.push(`/contest/${data.id}/description`)
   } catch (err: any) {
-    ElMessage.error(err.response?.data?.error || err.message)
+    ElMessage.error(apiErrorMessage(err))
   } finally {
     creating.value = false
   }
@@ -167,7 +168,7 @@ async function deleteContest(row: TeamContest) {
     ElMessage.success('团队比赛已删除')
     await load()
   } catch (err: any) {
-    if (err !== 'cancel' && err !== 'close') ElMessage.error(err.response?.data?.error || err.message)
+    if (err !== 'cancel' && err !== 'close') ElMessage.error(apiErrorMessage(err))
   } finally {
     deletingID.value = null
   }

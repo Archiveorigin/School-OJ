@@ -156,6 +156,8 @@
 </template>
 
 <script setup lang="ts">
+import { useSubmissionStreams } from "../../features/submissions/live"
+import { apiErrorMessage } from '../../api/errors'
 import TicketDialog from '../../components/tickets/TicketDialog.vue'
 
 import { submissionLanguage } from '../../features/submissions/presentation'
@@ -163,7 +165,6 @@ import { ElMessage } from 'element-plus'
 import { computed, onBeforeUnmount, onMounted, reactive, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { generatedApi, getLatestSubmissions,
-  openEventStream,
   type AuthenticatedEventSource,
   type ScoringRule,
   type Submission
@@ -179,6 +180,7 @@ import { adaptTeamContestRanking } from '../../features/leaderboard/adapters'
 import { loadSubmissionDraft } from '../../features/submissions/drafts'
 import { formatDateTime } from '../../features/time'
 import { useAuthStore } from '../../stores/auth'
+const submissionStreams = useSubmissionStreams()
 const route = useRoute(),
   router = useRouter(),
   auth = useAuthStore()
@@ -243,7 +245,7 @@ const problemItems = computed(() => (detail.value?.problems || []).map((link: an
 const submissionVisible = ref(false), submissionDetail = ref<any>(null)
 async function viewSubmission(id: number) {
   try { submissionDetail.value = (await generatedApi.getSubmission<any>({ path: { "id": id } })).data; submissionVisible.value = true }
-  catch (err: any) { ElMessage.error(err.response?.data?.error || '提交加载失败') }
+  catch (err: any) { ElMessage.error(apiErrorMessage(err, '提交加载失败')) }
 }
 const problemRecords = computed(() =>
   records.value.filter((i) => i.problem_id === selectedLink.value?.problem_id)
@@ -275,7 +277,7 @@ async function loadDetail() {
     }
     await loadRecords()
   } catch (e: any) {
-    ElMessage.error(e.response?.data?.error || e.message)
+    ElMessage.error(apiErrorMessage(e))
     await router.replace('/teams')
   }
 }
@@ -299,7 +301,7 @@ async function loadRanking() {
     rankingLoadedAt.value = new Date()
   } catch (e: any) {
     ranking.value = { rows: [], problems: [] }
-    rankingError.value = e.response?.data?.error || e.message
+    rankingError.value = apiErrorMessage(e)
   } finally {
     rankingLoading.value = false
     scheduleRankingRefresh()
@@ -359,18 +361,12 @@ async function submitSolution() {
     composer.value?.clearDraft()
     liveStatus.value = data
     stream?.close()
-    stream = openEventStream(`/submissions/${data.id}/events`)
-    stream.addEventListener('status', async (event: MessageEvent<string>) => {
-      liveStatus.value = JSON.parse(event.data)
-      if (!['queued', 'running'].includes(liveStatus.value.status)) {
-        stream?.close()
-        stream = null
-        await Promise.all([loadDetail(), loadRanking()])
-      }
+    stream = submissionStreams.watch(data.id, state => { liveStatus.value = state }, async () => {
+      await Promise.all([loadDetail(), loadRanking()])
     })
     ElMessage.success('代码已提交')
   } catch (e: any) {
-    ElMessage.error(e.response?.data?.error || e.message)
+    ElMessage.error(apiErrorMessage(e))
   } finally {
     submitting.value = false
   }
@@ -387,7 +383,7 @@ async function addProblem() {
     await loadDetail()
     ElMessage.success('题目已加入比赛')
   } catch (e: any) {
-    ElMessage.error(e.response?.data?.error || e.message)
+    ElMessage.error(apiErrorMessage(e))
   } finally {
     adding.value = false
   }
@@ -401,7 +397,7 @@ async function saveContest() {
     await loadDetail()
     ElMessage.success('设置已保存')
   } catch (e: any) {
-    ElMessage.error(e.response?.data?.error || e.message)
+    ElMessage.error(apiErrorMessage(e))
   } finally {
     editing.value = false
   }
@@ -413,7 +409,7 @@ async function publishContest() {
     await loadDetail()
     ElMessage.success('比赛已发布')
   } catch (e: any) {
-    ElMessage.error(e.response?.data?.error || e.message)
+    ElMessage.error(apiErrorMessage(e))
   } finally {
     publishing.value = false
   }

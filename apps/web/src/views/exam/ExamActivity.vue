@@ -29,6 +29,7 @@
   </section>
 </template>
 <script setup lang="ts">
+import { apiErrorMessage } from '../../api/errors'
 import { onMounted, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { generatedApi, type components } from '../../api/client'
@@ -44,7 +45,7 @@ async function load() {
   try {
     const { data } = await generatedApi.listExamActivity({ path: { id: String(route.params.id) }, query: { page: page.value, page_size: pageSize.value, user_id: userID.value || undefined, event: event.value || undefined, from: range.value?.[0].toISOString(), to: range.value?.[1].toISOString() } })
     items.value = data.items; total.value = data.total; title.value = data.exam_title
-  } catch (err: any) { items.value = []; total.value = 0; error.value = err.response?.data?.error || '日志加载失败' }
+  } catch (err: any) { items.value = []; total.value = 0; error.value = apiErrorMessage(err, '日志加载失败') }
   finally { loading.value = false }
 }
 function search() { if (page.value !== 1) page.value = 1; else void load() }

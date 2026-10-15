@@ -85,13 +85,15 @@
 </template>
 
 <script setup lang="ts">
+import { useSubmissionStreams } from "../../features/submissions/live"
+import { apiErrorMessage } from '../../api/errors'
 import TicketDialog from '../../components/tickets/TicketDialog.vue'
 
 import { submissionLanguage } from '../../features/submissions/presentation'
 import { ElMessage } from 'element-plus'
 import { computed, onBeforeUnmount, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
-import { generatedApi, AuthenticatedEventSource, getLatestSubmissions, openEventStream, type Problem } from '../../api/client'
+import { generatedApi, AuthenticatedEventSource, getLatestSubmissions, type Problem } from '../../api/client'
 import MarkdownRenderer from '../../components/MarkdownRenderer.vue'
 import ProblemMetaCard from '../../components/ProblemMetaCard.vue'
 import ProblemTestDownloads from '../../components/ProblemTestDownloads.vue'
@@ -101,6 +103,7 @@ import { loadSubmissionDraft, saveSubmissionDraft } from '../../features/submiss
 import { useAuthStore } from '../../stores/auth'
 
 const auth = useAuthStore()
+const submissionStreams = useSubmissionStreams()
 const route = useRoute()
 const router = useRouter()
 const problem = ref<Problem | null>(null)
@@ -131,7 +134,7 @@ async function loadProblem() {
     isPublic.value = !data.team_id
     await loadLastSubmission()
   } catch (err: any) {
-    loadError.value = err.response?.status === 404 ? '该题目不存在或尚未公开' : err.response?.data?.error || err.message
+    loadError.value = err.response?.status === 404 ? '该题目不存在或尚未公开' : apiErrorMessage(err)
   } finally {
     loading.value = false
   }
@@ -174,7 +177,7 @@ async function submit() {
     ElMessage.success('提交已进入评测队列')
     watchSubmission(data.id)
   } catch (err: any) {
-    ElMessage.error(err.response?.data?.error || err.message)
+    ElMessage.error(apiErrorMessage(err))
   } finally {
     submitting.value = false
   }
@@ -182,15 +185,7 @@ async function submit() {
 
 function watchSubmission(id: number) {
   submissionEvents?.close()
-  submissionEvents = openEventStream(`/submissions/${id}/events`)
-  submissionEvents.addEventListener('status', (event) => {
-    live.value = JSON.parse((event as MessageEvent).data)
-    if (!['queued', 'running'].includes(live.value.status)) {
-      submissionEvents?.close()
-      submissionEvents = null
-      void loadLastSubmission()
-    }
-  })
+  submissionEvents = submissionStreams.watch(id, state => { live.value = state }, loadLastSubmission)
 }
 
 async function loadLastSubmission() {

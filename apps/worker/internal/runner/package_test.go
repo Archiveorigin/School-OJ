@@ -42,6 +42,27 @@ func TestParsePackageRejectsEmptyCases(t *testing.T) {
 	}
 }
 
+func TestPackageCaseBudgetAndDefaultWeights(t *testing.T) {
+	for _, count := range []int{200, 201} {
+		manifest := "slug: p\ntitle: P\ncases:\n" + strings.Repeat("  - input: tests/a.in\n    output: tests/a.out\n", count)
+		pkg, err := ParsePackage(testZip(t, map[string]string{"problem.yaml": manifest, "tests/a.in": "", "tests/a.out": ""}))
+		if count == 201 {
+			if err == nil {
+				t.Fatal("accepted oversized case list")
+			}
+			continue
+		}
+		if err != nil {
+			t.Fatal(err)
+		}
+		for _, tc := range pkg.Manifest.Cases {
+			if tc.Weight <= 0 {
+				t.Fatal("zero default weight")
+			}
+		}
+	}
+}
+
 func TestParsePackageRejectsUnsupportedExtraFile(t *testing.T) {
 	body := testZip(t, map[string]string{
 		"problem.yaml": "slug: p\ntitle: P\ncases:\n  - name: a\n    input: tests/a.in\n    output: tests/a.out\n    weight: 100\n",
