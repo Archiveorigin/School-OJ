@@ -20,19 +20,19 @@ services:
     ports: !reset []
 YAML
 compose=(docker compose --env-file "$restore_dir/.env" -p "$project" -f compose.yaml -f "$restore_dir/override.yaml")
-"${compose[@]} config --quiet
+"${compose[@]}" config --quiet
 # No application service or host port is started during restoration.
-"${compose[@]} up -d --wait postgres
-"${compose[@]} create --no-deps minio redis
-helper=$(docker inspect --format '{{.Image}}' "$("${compose[@]} ps -aq postgres)")
-"${compose[@]} exec -T postgres sh -ec 'pg_restore --exit-on-error --single-transaction --no-owner --no-privileges -U "$POSTGRES_USER" -d "$POSTGRES_DB"' < "$backup_dir/postgres.dump"
+"${compose[@]}" up -d --wait postgres
+"${compose[@]}" create --no-deps minio redis
+helper=$(docker inspect --format '{{.Image}}' "$("${compose[@]}" ps -aq postgres)")
+"${compose[@]}" exec -T postgres sh -ec 'pg_restore --exit-on-error --single-transaction --no-owner --no-privileges -U "$POSTGRES_USER" -d "$POSTGRES_DB"' < "$backup_dir/postgres.dump"
 for service in minio redis; do
-  container=$("${compose[@]} ps -aq "$service")
+  container=$("${compose[@]}" ps -aq "$service")
   test -n "$container"
   docker run --rm --network none --read-only --user 0 --volumes-from "$container" \
     --mount "type=bind,src=$backup_dir,dst=/backup,readonly" --entrypoint sh "$helper" \
     -ec "test -z \"\$(ls -A /data)\"; tar -xzf /backup/$service.tar.gz -C /data; cd /data; sha256sum -c /backup/$service.files.sha256"
 done
-"${compose[@]} up -d --wait minio redis
-"${compose[@]} exec -T postgres sh -ec 'psql -v ON_ERROR_STOP=1 -U "$POSTGRES_USER" -d "$POSTGRES_DB" -c "SELECT count(*) AS migrations FROM schema_migrations"'
+"${compose[@]}" up -d --wait minio redis
+"${compose[@]}" exec -T postgres sh -ec 'psql -v ON_ERROR_STOP=1 -U "$POSTGRES_USER" -d "$POSTGRES_DB" -c "SELECT count(*) AS migrations FROM schema_migrations"'
 printf 'Isolated restore verified. Project: %s\nConfig: %s\nProduction was not modified.\n' "$project" "$restore_dir"
