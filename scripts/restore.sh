@@ -11,7 +11,9 @@ if [ -n "$(docker ps -aq --filter "label=com.docker.compose.project=$project")$(
   echo 'Target already contains containers or volumes; refusing to overwrite it.' >&2; exit 1
 fi
 restore_dir=$(mktemp -d "${TMPDIR:-/tmp}/$project.XXXXXX")
-cp "$backup_dir/source.env" "$restore_dir/.env"
+# An older backup may predate required credentials (for example Redis auth).
+# Allow an explicit, private replacement config for the isolated target.
+cp "${RESTORE_ENV_FILE:-$backup_dir/source.env}" "$restore_dir/.env"
 cat > "$restore_dir/override.yaml" <<'YAML'
 services:
   postgres:

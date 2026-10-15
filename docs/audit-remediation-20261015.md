@@ -10,6 +10,7 @@
 | 不安全默认配置 | Go 默认 `SEED_DATA=false`、`AUTO_MIGRATE=false`；API/Worker 拒绝默认数据库、MinIO 凭据和空 Redis 密码；Compose 必填密码；K8s 明确关闭种子和自动迁移 |
 | 启动时迁移 | `api --migrate-only`、`make migrate`；`make up` 先构建和启动数据依赖，再执行一次迁移，最后启动应用 |
 | 查询索引 | 030 增加 `submission_results(submission_id,id)` 与 `team_join_applications(user_id,team_id,id DESC)`，分别服务提交详情与批量加载最新入队申请 |
+| 全新安装与示例题目 | 031 将旧 SQL 唯一约束转换为模型兼容的唯一索引，全程保留唯一性；种子数据在事务中创建题目版本并绑定考试题目，避免首次提交缺少 `current_version_id` |
 | 沙箱浮动镜像与隐式下载 | 固定生产现用三个 repo digest；worker 启动检查、缺失时在 15 分钟启动预算内拉取；判题 `docker run --pull never` |
 | Worker 退出和遗留源码 | SIGTERM 取消判题，保留未 ACK 消息等待恢复；每次运行 defer 清理容器；启动及每 30 分钟清理本工作根下过期容器/目录，跳过近期资源、其他目录和符号链接 |
 | 重复 Prepare | 同一个 runner 用 `sync.Once` 准备 seccomp，使用指针共享初始化状态 |
@@ -34,6 +35,7 @@
 - **发布**：先备份、校验生产数据副本；轮换既有弱密码并同步服务配置；使用 Git 原始提交字节构建；显式迁移；应用健康后验证判题、认证和前端。数据卷保持原卷，回滚镜像与备份保留。
 - **备份**：`BACKUP_ROOT=/opt/School-OJ-backups make backup`。它会短暂停止 Web/API/Worker/MinIO/Redis，完成或失败时恢复原先运行的服务。备份含私有源码和密钥，目录/文件受 umask 077 保护；应复制到受控异地存储。脚本不默认删除旧备份。
 - **恢复演练**：`make restore BACKUP=/absolute/path`。只创建 `school-oj-restore-*` 的新卷和容器，数据服务不发布宿主端口；不会启动副本 API/Worker 消费任务。验证后保留恢复项目供检查，清理时仅指定演练项目，不执行全局卷清理。正式切换需要维护窗口和数据写入冻结，禁止直接覆盖在线库。
+- **旧版备份凭据**：若备份早于 Redis 认证等必填配置，可设置 `RESTORE_ENV_FILE=/absolute/private.env`，向隔离恢复项目提供完整的新凭据配置；备份原文件和校验清单保持不变。该文件须受权限保护，并保留与备份匹配的数据库名、用户和对象桶名。
 - **指标**：只在内部容器网络访问 `api:8080/metrics`、`worker:9091/metrics`；Nginx 外部 `/metrics` 返回 404。Redis 计数是集群总量，抓取多副本时不能重复求和。指标服务支持 Prometheus 文本协议，但本轮未安装 Prometheus/Grafana 或对外告警系统。
 - **旧接口**：本轮保留 `/api`。必须从新观测部署后累计完整 30 天；Redis 数据丢失、缺日或分钟缺口均不能认定为零调用。
 - **沙箱**：`make sandbox-images` 使用与 worker 同源的 digest。`SANDBOX_MEMORY_MB` 主要是回退限制，题目内存限额仍适用于运行，编译维持既有至少 1 GiB 上限；宿主机需为实际沙箱容器预留资源，worker 自身上限不约束其启动的同级容器。
