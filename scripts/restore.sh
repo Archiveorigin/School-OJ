@@ -25,7 +25,7 @@ compose=(docker compose --env-file "$restore_dir/.env" -p "$project" -f compose.
 "${compose[@]}" config --quiet
 # No application service or host port is started during restoration.
 "${compose[@]}" up -d --wait postgres
-"${compose[@]}" create --no-deps minio redis
+"${compose[@]}" create minio redis
 helper=$(docker inspect --format '{{.Image}}' "$("${compose[@]}" ps -aq postgres)")
 "${compose[@]}" exec -T postgres sh -ec 'pg_restore --exit-on-error --single-transaction --no-owner --no-privileges -U "$POSTGRES_USER" -d "$POSTGRES_DB"' < "$backup_dir/postgres.dump"
 for service in minio redis; do
