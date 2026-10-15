@@ -15,7 +15,25 @@ import (
 	"gorm.io/driver/postgres"
 	"gorm.io/gorm"
 	"gorm.io/gorm/logger"
+	"school-oj/apps/api/internal/models"
 )
+
+func TestFreshSQLInstallationAndRestartPostgres(t *testing.T) {
+	database := migrationTestDB(t)
+	for i := 0; i < 2; i++ {
+		if err := Migrate(database); err != nil {
+			t.Fatal(err)
+		}
+	}
+	user := models.User{Email: "fresh@example.test", Name: "Fresh", Role: models.RoleStudent, PasswordHash: "test"}
+	if err := database.Create(&user).Error; err != nil {
+		t.Fatal(err)
+	}
+	user.ID = 0
+	if err := database.Create(&user).Error; err == nil {
+		t.Fatal("email uniqueness lost")
+	}
+}
 
 func TestMigrationLockReleasedAfterCancellationPostgres(t *testing.T) {
 	database := migrationTestDB(t)
