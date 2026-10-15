@@ -93,6 +93,9 @@ func (r *DockerRunner) Judge(ctx context.Context, req JudgeRequest) JudgeResult 
 		compileLimit := r.applyLimits(compileLimits(req, r.Cfg))
 		out, status, ms, memoryKB := r.runContainer(ctx, workDir, spec.Image, spec.Compile, "", compileLimit)
 		if status != models.StatusAccepted {
+			if ctx.Err() == context.DeadlineExceeded {
+				return JudgeResult{Status: models.StatusTimeLimit, TimeMS: ms, MemoryKB: memoryKB, Message: "submission total time budget exceeded"}
+			}
 			return compileFailure(status, out, ms, memoryKB, compileLimit)
 		}
 	}
@@ -111,6 +114,9 @@ func (r *DockerRunner) Judge(ctx context.Context, req JudgeRequest) JudgeResult 
 	message := "accepted"
 	if finalStatus != models.StatusAccepted {
 		message = "some test cases failed"
+	}
+	if finalStatus == models.StatusSystemError && len(cases) > 0 {
+		message = cases[len(cases)-1].Message
 	}
 	return JudgeResult{Status: finalStatus, Score: totalScore, TimeMS: maxTime, MemoryKB: maxMemory, Message: message, Trace: trace(limit), Cases: cases}
 }
