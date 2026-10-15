@@ -40,6 +40,10 @@ func EnsureBucket(ctx context.Context, client *minio.Client, cfg config.Config) 
 }
 
 func Seed(ctx context.Context, db *gorm.DB, client *minio.Client, cfg config.Config) error {
+	return db.WithContext(ctx).Transaction(func(tx *gorm.DB) error { return seed(ctx, tx, client, cfg) })
+}
+
+func seed(ctx context.Context, db *gorm.DB, client *minio.Client, cfg config.Config) error {
 	var count int64
 	if err := db.Model(&models.User{}).Count(&count).Error; err != nil {
 		return err
@@ -73,9 +77,15 @@ func Seed(ctx context.Context, db *gorm.DB, client *minio.Client, cfg config.Con
 	if err := db.Model(&models.Class{}).Where("id = ?", class.ID).Update("join_code", class.JoinCode).Error; err != nil {
 		return err
 	}
-	_ = db.Create(&models.CourseMembership{CourseID: course.ID, UserID: teacher.ID, Role: models.RoleTeacher}).Error
-	_ = db.Create(&models.CourseMembership{CourseID: course.ID, UserID: student.ID, Role: models.RoleStudent}).Error
-	_ = db.Create(&models.ClassMembership{ClassID: class.ID, UserID: student.ID}).Error
+	if err := db.Create(&models.CourseMembership{CourseID: course.ID, UserID: teacher.ID, Role: models.RoleTeacher}).Error; err != nil {
+		return err
+	}
+	if err := db.Create(&models.CourseMembership{CourseID: course.ID, UserID: student.ID, Role: models.RoleStudent}).Error; err != nil {
+		return err
+	}
+	if err := db.Create(&models.ClassMembership{ClassID: class.ID, UserID: student.ID}).Error; err != nil {
+		return err
+	}
 
 	pkgBytes, err := samplePackage()
 	if err != nil {
@@ -110,20 +120,39 @@ func Seed(ctx context.Context, db *gorm.DB, client *minio.Client, cfg config.Con
 	if err := db.Create(&problem).Error; err != nil {
 		return err
 	}
-	_ = db.Create(&models.ClassProblem{ClassID: class.ID, ProblemID: problem.ID}).Error
+	version := models.ProblemVersion{
+		ProblemID: problem.ID, Version: 1, Title: problem.Title, Statement: problem.Statement,
+		Tags: problem.Tags, Difficulty: problem.Difficulty, TimeLimitMS: problem.TimeLimitMS,
+		MemoryLimitMB: problem.MemoryLimitMB, OutputLimitKB: problem.OutputLimitKB,
+		PackageObject: problem.PackageObject, PackageChecksum: problem.PackageChecksum,
+		Manifest: problem.Manifest, CreatedBy: teacher.ID,
+	}
+	if err := db.Create(&version).Error; err != nil {
+		return err
+	}
+	if err := db.Model(&problem).Update("current_version_id", version.ID).Error; err != nil {
+		return err
+	}
+	if err := db.Create(&models.ClassProblem{ClassID: class.ID, ProblemID: problem.ID}).Error; err != nil {
+		return err
+	}
 	now := time.Now()
 	due := now.Add(7 * 24 * time.Hour)
 	assignment := models.Assignment{CourseID: course.ID, ClassID: &class.ID, Title: "第一次作业", Description: "基础输入输出练习", StartsAt: &now, DueAt: &due}
 	if err := db.Create(&assignment).Error; err != nil {
 		return err
 	}
-	_ = db.Create(&models.AssignmentProblem{AssignmentID: assignment.ID, ProblemID: problem.ID, Score: 100}).Error
+	if err := db.Create(&models.AssignmentProblem{AssignmentID: assignment.ID, ProblemID: problem.ID, Score: 100}).Error; err != nil {
+		return err
+	}
 	examEnd := now.Add(2 * time.Hour)
 	exam := models.Exam{CourseID: course.ID, ClassID: &class.ID, Title: "期中考试", Description: "自动判题考试流程", StartsAt: &now, EndsAt: &examEnd}
 	if err := db.Create(&exam).Error; err != nil {
 		return err
 	}
-	_ = db.Create(&models.ExamProblem{ExamID: exam.ID, ProblemID: problem.ID, Score: 100}).Error
+	if err := db.Create(&models.ExamProblem{ExamID: exam.ID, ProblemID: problem.ID, ProblemVersionID: version.ID, Score: 100}).Error; err != nil {
+		return err
+	}
 	return backfillClassScope(db)
 }
 
