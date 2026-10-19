@@ -10,16 +10,7 @@
             <section class="panel description-panel">
               <div class="section-heading">
                 <h2>比赛说明</h2>
-                <div v-if="detail.can_edit">
-                  <el-button
-                    v-if="detail.can_publish"
-                    type="success"
-                    :loading="publishing"
-                    @click="publishContest"
-                    >发布比赛</el-button
-                  ><el-button @click="editVisible = true">编辑设置</el-button
-                  ><el-button @click="addVisible = true">添加题目</el-button>
-                </div>
+                <el-button v-if="detail.can_edit" @click="editVisible = true">计分与比赛设置</el-button>
               </div>
               <div class="description-copy">
                 {{ detail.contest.description || '本场比赛暂未填写说明。' }}
@@ -57,13 +48,15 @@
               </dl>
             </aside>
           </div>
+          <EventReviewPanel v-if="detail.can_organize" :key="detail.contest.review_revision" kind="contest" :event-id="contestID" @changed="loadDetail" />
+          <EventAttachments v-else kind="contest" :event-id="contestID" />
         </template>
 
         <EventProblemList v-else-if="section === 'problems'" :items="problemItems" :base="`/contest/${contestID}`">
-          <template #actions><el-button v-if="detail.can_edit" type="primary" @click="addVisible = true">添加题目</el-button></template>
+          <template #actions><el-button v-if="detail.can_edit" type="primary" @click="router.push(`/contest/${contestID}/description`)">组题与审核</el-button></template>
         </EventProblemList>
         <EventProblemPanel v-else-if="section === 'problem' && selectedLink" :selected="{ ...selectedLink, score: 100 }" :items="problemItems"
-          :records="problemRecords" :base="`/contest/${contestID}`" @refresh="loadRecords" @view-submission="viewSubmission">
+          :records="problemRecords" :base="`/contest/${contestID}`" :asset-base="`/event-papers/contest/${contestID}/problems/${selectedLink.problem_id}/assets`" @refresh="loadRecords" @view-submission="viewSubmission">
           <template #actions><el-button @click="openProblemTicket">工单修改</el-button><el-button type="primary" :disabled="!detail.can_submit" @click="openSubmit">提交代码</el-button></template>
         </EventProblemPanel>
 
@@ -101,19 +94,6 @@
           @submit="submitSolution"
         /><template #footer
           ><el-button @click="submitVisible = false">关闭</el-button></template
-        ></el-dialog
-      >
-      <el-dialog v-model="addVisible" title="添加比赛题目" width="460px"
-        ><p class="muted">输入公共题目或本团队私有题目的题号。</p>
-        <el-input
-          v-model="problemCode"
-          placeholder="例如 T001"
-          @keyup.enter="addProblem"
-        /><template #footer
-          ><el-button @click="addVisible = false">取消</el-button
-          ><el-button type="primary" :loading="adding" @click="addProblem"
-            >添加</el-button
-          ></template
         ></el-dialog
       >
       <el-dialog v-model="editVisible" title="比赛设置" width="min(620px, calc(100vw - 24px))"
@@ -158,6 +138,8 @@
 <script setup lang="ts">
 import { useSubmissionStreams } from "../../features/submissions/live"
 import { apiErrorMessage } from '../../api/errors'
+import EventReviewPanel from '../../components/events/EventReviewPanel.vue'
+import EventAttachments from '../../components/events/EventAttachments.vue'
 import TicketDialog from '../../components/tickets/TicketDialog.vue'
 
 import { submissionLanguage } from '../../features/submissions/presentation'
@@ -197,12 +179,8 @@ const detail = ref<any>(null),
   source = ref(''),
   liveStatus = ref<any>(null),
   composer = ref<any>(null),
-  addVisible = ref(false),
-  adding = ref(false),
-  problemCode = ref(''),
   editVisible = ref(false),
-  editing = ref(false),
-  publishing = ref(false)
+  editing = ref(false)
 let stream: AuthenticatedEventSource | null = null
 let rankingTimer: number | undefined
 const ticketVisible = ref(false), ticketProblemID = ref<number | undefined>()
@@ -371,28 +349,11 @@ async function submitSolution() {
     submitting.value = false
   }
 }
-async function addProblem() {
-  if (!problemCode.value.trim()) return
-  adding.value = true
-  try {
-    await generatedApi.addTeamContestProblemViaContestsContestIdProblems<any>({ path: { "contest_id": contestID.value }, body: {
-      problem_code: problemCode.value.trim()
-    } })
-    problemCode.value = ''
-    addVisible.value = false
-    await loadDetail()
-    ElMessage.success('题目已加入比赛')
-  } catch (e: any) {
-    ElMessage.error(apiErrorMessage(e))
-  } finally {
-    adding.value = false
-  }
-}
 async function saveContest() {
   if (editForm.scoring_rule === 'oi') editForm.freeze_enabled = false
   editing.value = true
   try {
-    await generatedApi.updateTeamContestViaContestsContestId<any>({ path: { "contest_id": contestID.value }, body: editForm })
+    await generatedApi.updateTeamContestViaContestsContestId<any>({ path: { "contest_id": contestID.value }, body: { ...editForm, revision: detail.value?.contest.review_revision } })
     editVisible.value = false
     await loadDetail()
     ElMessage.success('设置已保存')
@@ -400,18 +361,6 @@ async function saveContest() {
     ElMessage.error(apiErrorMessage(e))
   } finally {
     editing.value = false
-  }
-}
-async function publishContest() {
-  publishing.value = true
-  try {
-    await generatedApi.publishTeamContestViaContestsContestIdPublish<any>({ path: { "contest_id": contestID.value } })
-    await loadDetail()
-    ElMessage.success('比赛已发布')
-  } catch (e: any) {
-    ElMessage.error(apiErrorMessage(e))
-  } finally {
-    publishing.value = false
   }
 }
 watch(autoRefresh, scheduleRankingRefresh)

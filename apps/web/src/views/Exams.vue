@@ -49,6 +49,7 @@
           <el-table-column label="结束" min-width="170">
             <template #default="{ row }">{{ formatDateTime(row.ends_at) }}</template>
           </el-table-column>
+          <el-table-column v-if="canManage" label="审核" width="110"><template #default="{ row }"><el-tag>{{ reviewLabels[row.review_status as ReviewStatus] || '已批准' }}</el-tag></template></el-table-column>
           <el-table-column v-if="canManage" label="模式" width="130">
             <template #default="{ row }">
               <el-tag v-if="row.settings?.manual_review" type="warning" effect="light">人工阅卷</el-tag>
@@ -60,9 +61,10 @@
           <el-table-column v-if="!canManage" label="分数" width="120">
             <template #default="{ row }">{{ scoreText(row) }}</template>
           </el-table-column>
-          <el-table-column label="操作" width="330">
+          <el-table-column label="操作" width="380">
             <template #default="{ row }">
-              <el-button size="small" type="primary" :disabled="!canManage && examWindowStatus(row) !== 'running'" @click="openDetail(row)">
+              <el-button v-if="isArchived(row)" size="small" type="primary" @click="router.push(`/competitions/exam/${row.id}`)">查看归档</el-button>
+              <el-button v-if="!isArchived(row)" size="small" type="primary" :disabled="!canManage && examWindowStatus(row) !== 'running'" @click="openDetail(row)">
                 {{ !canManage && examWindowStatus(row) === 'not_started' ? '未开始' : !canManage && examWindowStatus(row) === 'closed' ? '已结束' : '进入' }}
               </el-button>
               <el-button v-if="canManage || (row.settings?.ranking_visible && scoringRule(row) !== 'oi')" size="small" @click="router.push(`/exams/${row.id}/ranking`)">榜单</el-button>
@@ -157,6 +159,7 @@
 </template>
 
 <script setup lang="ts">
+import { reviewLabels, type ReviewStatus } from '../api/modules/events'
 import { apiErrorMessage } from '../api/errors'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { computed, onMounted, ref, watch } from 'vue'
@@ -320,7 +323,10 @@ function examStatusType(row: any): 'success' | 'warning' | 'info' {
   return workStatusType(row.work_status)
 }
 
+function isArchived(row: any) { return (!row.review_status || row.review_status === 'approved') && row.ends_at && Date.parse(row.ends_at) <= Date.now() }
+
 function examWindowStatus(row: any): 'not_started' | 'running' | 'closed' {
+  if (row.review_status && row.review_status !== 'approved') return 'not_started'
   const now = Date.now()
   if (row.finished_at) return 'closed'
   if (row.starts_at && new Date(row.starts_at).getTime() > now) return 'not_started'

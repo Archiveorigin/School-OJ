@@ -87,6 +87,8 @@ export interface components {
     "progress_status"?: "unattempted" | "attempted" | "accepted"
     "points"?: number
     "points_awarded"?: boolean
+    "event_kind"?: string
+    "event_id"?: (number) | null
   }
     "ProblemCatalogItem": components['schemas']["Problem"] & {
     "pass_rate": number
@@ -241,6 +243,9 @@ export interface components {
     "freeze_duration_minutes"?: number
     "state"?: "draft" | "published" | "running" | "closed"
     "created_by": number
+    "review_status"?: "draft" | "pending" | "approved" | "rejected"
+    "review_revision"?: number
+    "review_note"?: string
   }
     "TeamProblemSet": {
     "id": number
@@ -299,6 +304,9 @@ export interface components {
     "freeze_enabled": boolean
     "freeze_duration_minutes": number
     "settings": components['schemas']["JsonObject"]
+    "review_status"?: "draft" | "pending" | "approved" | "rejected"
+    "review_revision"?: number
+    "review_note"?: string
   }
     "ExamProblem": {
     "problem_id": number
@@ -431,6 +439,7 @@ export interface components {
     "replace_tests": boolean
     "attachment_ids": Array<number>
     "tags"?: (Array<string>) | null
+    "test_mode"?: "preserve" | "merge" | "replace"
   }
     "TicketPackagePreview": {
     "title": string
@@ -648,6 +657,22 @@ export const apiOperations = {
   "returnExamFeedbackTicket": { method: "POST", path: "/exams/{id}/change-tickets/{ticket_id}/return", segments: [] },
   "returnContestFeedbackTicket": { method: "POST", path: "/contests/{contest_id}/change-tickets/{ticket_id}/return", segments: [] },
   "previewProblemChangeTicket": { method: "POST", path: "/problem-change-tickets/{id}/preview", segments: [] },
+  "listEventArchives": { method: "GET", path: "/event-archives", segments: [] },
+  "listEventReviews": { method: "GET", path: "/event-reviews", segments: [] },
+  "getEventPaper": { method: "GET", path: "/event-papers/{kind}/{event_id}", segments: [] },
+  "updateEventSettings": { method: "PUT", path: "/event-papers/{kind}/{event_id}/settings", segments: [] },
+  "reviewEventPaper": { method: "POST", path: "/event-papers/{kind}/{event_id}/review", segments: [] },
+  "getEventArchive": { method: "GET", path: "/event-papers/{kind}/{event_id}/archive", segments: [] },
+  "createEventProblem": { method: "POST", path: "/event-papers/{kind}/{event_id}/problems", segments: [] },
+  "updateEventProblemSelection": { method: "PUT", path: "/event-papers/{kind}/{event_id}/problems", segments: [] },
+  "updateEventProblem": { method: "PUT", path: "/event-papers/{kind}/{event_id}/problems/{problem_id}", segments: [] },
+  "downloadEventProblemPackage": { method: "GET", path: "/event-papers/{kind}/{event_id}/problems/{problem_id}/package", segments: [] },
+  "getEventProblemAsset": { method: "GET", path: "/event-papers/{kind}/{event_id}/problems/{problem_id}/assets/{asset_path}", segments: ["asset_path"] },
+  "listEventAttachments": { method: "GET", path: "/event-papers/{kind}/{event_id}/attachments", segments: [] },
+  "uploadEventAttachment": { method: "POST", path: "/event-papers/{kind}/{event_id}/attachments", segments: [] },
+  "downloadEventAttachment": { method: "GET", path: "/event-papers/{kind}/{event_id}/attachments/{attachment_id}", segments: [] },
+  "deleteEventAttachment": { method: "DELETE", path: "/event-papers/{kind}/{event_id}/attachments/{attachment_id}", segments: [] },
+  "listEventProblemChoices": { method: "GET", path: "/event-papers/{kind}/{event_id}/choices", segments: [] },
 } as const
 
 export type ApiOperationId = keyof typeof apiOperations
@@ -770,8 +795,12 @@ export const generatedApi = {
     requestOperation<TResponse, components['schemas']["JsonObject"]>("updateTeamContest", options),
   "deleteTeamContest": <TResponse = components['schemas']["TeamContest"]>(options: ApiRequestOptions<never> = {}) =>
     requestOperation<TResponse, never>("deleteTeamContest", options),
-  "publishTeamContest": <TResponse = components['schemas']["TeamContest"]>(options: ApiRequestOptions<components['schemas']["JsonObject"]> = {}) =>
-    requestOperation<TResponse, components['schemas']["JsonObject"]>("publishTeamContest", options),
+  "publishTeamContest": <TResponse = components['schemas']["TeamContest"]>(options: ApiRequestOptions<{
+    "revision": number
+  }> = {}) =>
+    requestOperation<TResponse, {
+    "revision": number
+  }>("publishTeamContest", options),
   "addTeamContestProblem": <TResponse = components['schemas']["JsonObject"]>(options: ApiRequestOptions<components['schemas']["JsonObject"]> = {}) =>
     requestOperation<TResponse, components['schemas']["JsonObject"]>("addTeamContestProblem", options),
   "removeTeamContestProblem": <TResponse = components['schemas']["JsonObject"]>(options: ApiRequestOptions<never> = {}) =>
@@ -788,8 +817,12 @@ export const generatedApi = {
     requestOperation<TResponse, components['schemas']["JsonObject"]>("updateTeamContestViaContestsContestId", options),
   "deleteTeamContestViaContestsContestId": <TResponse = components['schemas']["TeamContest"]>(options: ApiRequestOptions<never> = {}) =>
     requestOperation<TResponse, never>("deleteTeamContestViaContestsContestId", options),
-  "publishTeamContestViaContestsContestIdPublish": <TResponse = components['schemas']["TeamContest"]>(options: ApiRequestOptions<components['schemas']["JsonObject"]> = {}) =>
-    requestOperation<TResponse, components['schemas']["JsonObject"]>("publishTeamContestViaContestsContestIdPublish", options),
+  "publishTeamContestViaContestsContestIdPublish": <TResponse = components['schemas']["TeamContest"]>(options: ApiRequestOptions<{
+    "revision": number
+  }> = {}) =>
+    requestOperation<TResponse, {
+    "revision": number
+  }>("publishTeamContestViaContestsContestIdPublish", options),
   "addTeamContestProblemViaContestsContestIdProblems": <TResponse = components['schemas']["JsonObject"]>(options: ApiRequestOptions<components['schemas']["JsonObject"]> = {}) =>
     requestOperation<TResponse, components['schemas']["JsonObject"]>("addTeamContestProblemViaContestsContestIdProblems", options),
   "removeTeamContestProblemViaContestsContestIdProblemsProblemId": <TResponse = components['schemas']["JsonObject"]>(options: ApiRequestOptions<never> = {}) =>
@@ -1106,6 +1139,72 @@ export const generatedApi = {
     requestOperation<TResponse, components['schemas']["TicketDecision"]>("returnContestFeedbackTicket", options),
   "previewProblemChangeTicket": <TResponse = components['schemas']["TicketPackagePreview"]>(options: ApiRequestOptions<components['schemas']["TicketPackageReview"]> = {}) =>
     requestOperation<TResponse, components['schemas']["TicketPackageReview"]>("previewProblemChangeTicket", options),
+  "listEventArchives": <TResponse = components['schemas']["JsonObject"]>(options: ApiRequestOptions<never> = {}) =>
+    requestOperation<TResponse, never>("listEventArchives", options),
+  "listEventReviews": <TResponse = components['schemas']["JsonObject"]>(options: ApiRequestOptions<never> = {}) =>
+    requestOperation<TResponse, never>("listEventReviews", options),
+  "getEventPaper": <TResponse = components['schemas']["JsonObject"]>(options: ApiRequestOptions<never> = {}) =>
+    requestOperation<TResponse, never>("getEventPaper", options),
+  "updateEventSettings": <TResponse = components['schemas']["JsonObject"]>(options: ApiRequestOptions<{
+    [key: string]: unknown
+  }> = {}) =>
+    requestOperation<TResponse, {
+    [key: string]: unknown
+  }>("updateEventSettings", options),
+  "reviewEventPaper": <TResponse = components['schemas']["JsonObject"]>(options: ApiRequestOptions<{
+    "revision": number
+    "action": "submit" | "withdraw" | "approve" | "reject"
+    "note"?: string
+  }> = {}) =>
+    requestOperation<TResponse, {
+    "revision": number
+    "action": "submit" | "withdraw" | "approve" | "reject"
+    "note"?: string
+  }>("reviewEventPaper", options),
+  "getEventArchive": <TResponse = components['schemas']["JsonObject"]>(options: ApiRequestOptions<never> = {}) =>
+    requestOperation<TResponse, never>("getEventArchive", options),
+  "createEventProblem": <TResponse = components['schemas']["JsonObject"]>(options: ApiRequestOptions<{
+    [key: string]: unknown
+  }> = {}) =>
+    requestOperation<TResponse, {
+    [key: string]: unknown
+  }>("createEventProblem", options),
+  "updateEventProblemSelection": <TResponse = components['schemas']["JsonObject"]>(options: ApiRequestOptions<{
+    [key: string]: unknown
+  }> = {}) =>
+    requestOperation<TResponse, {
+    [key: string]: unknown
+  }>("updateEventProblemSelection", options),
+  "updateEventProblem": <TResponse = components['schemas']["JsonObject"]>(options: ApiRequestOptions<{
+    [key: string]: unknown
+  }> = {}) =>
+    requestOperation<TResponse, {
+    [key: string]: unknown
+  }>("updateEventProblem", options),
+  "downloadEventProblemPackage": <TResponse = unknown>(options: ApiRequestOptions<never> = {}) =>
+    requestOperation<TResponse, never>("downloadEventProblemPackage", options),
+  "getEventProblemAsset": <TResponse = unknown>(options: ApiRequestOptions<never> = {}) =>
+    requestOperation<TResponse, never>("getEventProblemAsset", options),
+  "listEventAttachments": <TResponse = components['schemas']["JsonObject"]>(options: ApiRequestOptions<never> = {}) =>
+    requestOperation<TResponse, never>("listEventAttachments", options),
+  "uploadEventAttachment": <TResponse = components['schemas']["JsonObject"]>(options: ApiRequestOptions<{
+    "file": string
+    "revision": number
+  }> = {}) =>
+    requestOperation<TResponse, {
+    "file": string
+    "revision": number
+  }>("uploadEventAttachment", options),
+  "downloadEventAttachment": <TResponse = unknown>(options: ApiRequestOptions<never> = {}) =>
+    requestOperation<TResponse, never>("downloadEventAttachment", options),
+  "deleteEventAttachment": <TResponse = components['schemas']["JsonObject"]>(options: ApiRequestOptions<{
+    [key: string]: unknown
+  }> = {}) =>
+    requestOperation<TResponse, {
+    [key: string]: unknown
+  }>("deleteEventAttachment", options),
+  "listEventProblemChoices": <TResponse = components['schemas']["JsonObject"]>(options: ApiRequestOptions<never> = {}) =>
+    requestOperation<TResponse, never>("listEventProblemChoices", options),
 }
 
 // 兼容现有页面的 Axios 调用；新代码优先使用 generatedApi 的 operationId 方法。

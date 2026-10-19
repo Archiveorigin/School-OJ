@@ -2550,6 +2550,13 @@ func (s Server) problemForTestDownload(c *gin.Context, user models.User) (models
 }
 
 func (s Server) canManageProblemData(user models.User, problem models.Problem) bool {
+	if problem.EventKind != "" {
+		if problem.EventID == nil {
+			return false
+		}
+		p, err := loadEventPaper(s.DB, problem.EventKind, *problem.EventID, false)
+		return err == nil && s.canManageEventPaper(user, p)
+	}
 	if user.Role == models.RoleAdmin {
 		return true
 	}
@@ -3199,6 +3206,9 @@ func (s Server) listExams(c *gin.Context) {
 	user, _ := middleware.CurrentUser(c)
 	var items []models.Exam
 	q := s.DB.Preload("Problems").Where("exams.deleted_at IS NULL").Order("id desc")
+	if user.Role == models.RoleStudent {
+		q = q.Where("exams.review_status='approved'")
+	}
 	if classID, ok := queryUint(c, "class_id"); ok {
 		if !s.canAccessClass(user, classID) {
 			c.JSON(http.StatusForbidden, gin.H{"error": "forbidden"})
@@ -3316,8 +3326,17 @@ func (s Server) createExam(c *gin.Context) {
 	if !prepareExamProblemLabels(c, problemItems, req.ClassID, req.EndsAt) {
 		return
 	}
-	prepared, ok := s.validateProblemSelection(c, user, problemIDs, req.ClassID, req.EndsAt, "exam")
-	if !ok {
+	if len(problemIDs) > 100 {
+		c.JSON(400, gin.H{"error": "每场最多 100 道题目"})
+		return
+	}
+	if len(problemIDs) > 0 {
+		if _, ok := s.validateProblemSelection(c, user, problemIDs, req.ClassID, req.EndsAt, "exam"); !ok {
+			return
+		}
+	}
+	if strings.TrimSpace(req.Title) == "" || len([]rune(req.Title)) > 200 {
+		c.JSON(400, gin.H{"error": "考试标题无效"})
 		return
 	}
 	settings := datatypes.JSONMap{}
@@ -3331,6 +3350,7 @@ func (s Server) createExam(c *gin.Context) {
 		settings["ranking_visible"] = true
 	}
 	item := models.Exam{CourseID: req.CourseID, ClassID: req.ClassID, Title: req.Title, Description: req.Description, StartsAt: req.StartsAt, EndsAt: req.EndsAt, ScoringRule: scoringRule, FreezeEnabled: req.FreezeEnabled, FreezeDurationMinutes: req.FreezeDurationMinutes, Settings: settings}
+	item.EventReview = models.EventReview{ReviewStatus: "draft", ReviewRevision: 1}
 	if err := s.DB.Transaction(func(tx *gorm.DB) error {
 		if err := tx.Create(&item).Error; err != nil {
 			return err
@@ -3343,16 +3363,8 @@ func (s Server) createExam(c *gin.Context) {
 			if err := tx.Create(&models.ExamProblem{ExamID: item.ID, ProblemID: problemItem.ProblemID, ProblemVersionID: *selected.CurrentVersionID, Label: problemItem.Label, Score: problemItem.Score, SortOrder: i}).Error; err != nil {
 				return err
 			}
-			if _, isPrepared := prepared[problemItem.ProblemID]; isPrepared && req.ClassID != nil {
-				if err := s.linkProblemToClass(tx, *req.ClassID, problemItem.ProblemID, req.EndsAt); err != nil {
-					return err
-				}
-			}
-			if problemItem.ReleaseAfterExam && req.ClassID != nil {
-				if err := s.linkProblemToClass(tx, *req.ClassID, problemItem.ProblemID, req.EndsAt); err != nil {
-					return err
-				}
-			}
+			// A deadline alone never publishes event material into the question bank.
+			// Valid completed papers remain available through the permissioned archive.
 		}
 		return nil
 	}); err != nil {
@@ -3423,7 +3435,7 @@ func (s Server) getExam(c *gin.Context) {
 		"now":             now,
 		"closed":          closed,
 		"not_started":     notStarted,
-		"can_submit":      user.Role != models.RoleStudent || (!closed && !notStarted && finishedAt == nil),
+		"can_submit":      item.Approved() && !closed && !notStarted && finishedAt == nil,
 		"manual_review":   examManualReview(item),
 		"lock_exit":       examLockExit(item),
 		"ranking_visible": examRankingVisible(item),
@@ -3439,6 +3451,9 @@ func (s Server) getExam(c *gin.Context) {
 }
 
 func studentExamEntryDecision(exam models.Exam, now time.Time, finishedAt *time.Time) (string, bool) {
+	if !exam.Approved() {
+		return "考试尚未通过整场审核", false
+	}
 	if finishedAt != nil {
 		return "exam has been finished", false
 	}
@@ -4436,6 +4451,11 @@ func (s Server) createSubmission(c *gin.Context) {
 		c.JSON(http.StatusNotFound, gin.H{"error": "problem not found"})
 		return
 	}
+	if problem.EventKind != "" && (problem.EventKind != "exam" || problem.EventID == nil || req.ExamID == nil || *req.ExamID != *problem.EventID) {
+		c.JSON(403, gin.H{"error": "本场专属题目只能在所属场次中提交"})
+		return
+	}
+
 	if problem.TeamID != nil && !s.canAccessTeamProblem(user, problem) {
 		c.JSON(http.StatusForbidden, gin.H{"error": "仅该团队成员可以提交此题"})
 		return
@@ -4545,6 +4565,16 @@ func (s Server) createSubmission(c *gin.Context) {
 			}
 			if err == nil && (sub.ExamID == nil || *sub.ExamID != active.ID) {
 				return &teamContentMutationError{403, "考试中仅可提交当前考试"}
+			}
+		}
+		if sub.ExamID != nil {
+			var locked models.Exam
+			if err := tx.Clauses(clause.Locking{Strength: "SHARE"}).Where("deleted_at IS NULL").First(&locked, *sub.ExamID).Error; err != nil {
+				return &teamContentMutationError{404, "考试已删除"}
+			}
+			now := time.Now()
+			if !locked.Approved() || locked.StartsAt != nil && now.Before(*locked.StartsAt) || locked.EndsAt != nil && !now.Before(*locked.EndsAt) {
+				return &teamContentMutationError{403, "考试未审核开始或已结束"}
 			}
 		}
 		if assignmentAttempt != nil {
@@ -5210,6 +5240,9 @@ func problemAssetObject(manifest datatypes.JSONMap, assetPath string) (string, s
 }
 
 func (s Server) canReadProblemAsset(user models.User, problem models.Problem, assetPath string) bool {
+	if problem.EventKind != "" {
+		return s.canManageProblemData(user, problem)
+	}
 	if object, _ := problemAssetObject(problem.Manifest, assetPath); object == "" {
 		return false
 	}
@@ -5235,7 +5268,7 @@ func (s Server) canReadProblemAsset(user models.User, problem models.Problem, as
 }
 
 func publicProblemSQL() string {
-	return `problems.archived_at IS NULL AND problems.team_id IS NULL AND NOT EXISTS (
+	return `problems.event_kind = '' AND problems.archived_at IS NULL AND problems.team_id IS NULL AND NOT EXISTS (
 		SELECT 1 FROM problem_reviews
 		WHERE problem_reviews.problem_id = problems.id
 		  AND problem_reviews.status <> 'approved'
@@ -5368,6 +5401,9 @@ func (s Server) canStudentSubmitExam(userID uint, examID uint, problemID uint) (
 	if err := s.DB.Where("deleted_at IS NULL").First(&exam, examID).Error; err != nil {
 		return false, "exam not found"
 	}
+	if !exam.Approved() {
+		return false, "考试尚未通过整场审核"
+	}
 	if exam.ClassID != nil && !s.studentInClass(userID, *exam.ClassID) {
 		return false, "exam is not available in your class"
 	}
@@ -5432,11 +5468,17 @@ func (s Server) canAccessCourse(user models.User, courseID uint) bool {
 }
 
 func (s Server) canAccessExam(user models.User, exam models.Exam) bool {
+	if exam.DeletedAt != nil {
+		return false
+	}
 	if user.Role == models.RoleAdmin {
 		return true
 	}
 	if user.Role == models.RoleTeacher {
 		return s.canManageCourse(user, exam.CourseID)
+	}
+	if !exam.Approved() {
+		return false
 	}
 	if exam.ClassID != nil {
 		return s.studentInClass(user.ID, *exam.ClassID)
@@ -5965,6 +6007,11 @@ func (s Server) courseStudents(courseID uint) []models.User {
 }
 
 func (s Server) examStudents(item models.Exam) []models.User {
+	if item.ParticipantsFrozen {
+		students := []models.User{}
+		s.DB.Where("id IN (?) AND account_deleted = false", s.DB.Model(&models.ExamParticipant{}).Select("user_id").Where("exam_id=?", item.ID)).Order("id").Find(&students)
+		return students
+	}
 	if item.ClassID != nil {
 		return s.classStudents(item.ClassID)
 	}
@@ -6204,6 +6251,10 @@ func (s Server) validateProblemSelection(c *gin.Context, user models.User, probl
 		}
 	}
 	for _, problem := range problems {
+		if problem.EventKind != "" {
+			c.JSON(403, gin.H{"error": "场次专属题目只能在所属场次中使用"})
+			return nil, false
+		}
 		if _, isPrepared := prepared[problem.ID]; isPrepared || user.Role == models.RoleAdmin || problem.OwnerID == user.ID {
 			continue
 		}

@@ -81,6 +81,8 @@ type ClassProblem struct {
 }
 
 type Problem struct {
+	EventKind        string            `json:"event_kind,omitempty" gorm:"size:16;not null;default:'';index:idx_problem_event"`
+	EventID          *uint             `json:"event_id,omitempty" gorm:"index:idx_problem_event"`
 	ID               uint              `json:"id" gorm:"primaryKey"`
 	OwnerID          uint              `json:"owner_id" gorm:"index;not null"`
 	TeamID           *uint             `json:"team_id,omitempty" gorm:"index"`
@@ -194,6 +196,8 @@ type AssignmentAttempt struct {
 }
 
 type Exam struct {
+	ParticipantsFrozen bool `json:"participants_frozen" gorm:"not null;default:false"`
+	EventReview
 	ID                    uint              `json:"id" gorm:"primaryKey"`
 	CourseID              uint              `json:"course_id" gorm:"index;not null"`
 	ClassID               *uint             `json:"class_id" gorm:"index"`
@@ -550,6 +554,7 @@ type TeamJoinApplication struct {
 }
 
 type TeamContest struct {
+	EventReview
 	ID                    uint       `json:"id" gorm:"primaryKey"`
 	TeamID                uint       `json:"team_id" gorm:"index;not null"`
 	Title                 string     `json:"title" gorm:"size:200;not null"`
@@ -644,6 +649,9 @@ func AllModels() []any {
 		&AssignmentProblem{},
 		&AssignmentAttempt{},
 		&Exam{},
+		&EventReviewLog{},
+		&EventAttachment{},
+		&ExamParticipant{},
 		&ExamProblem{},
 		&ExamAttempt{},
 		&ExamActivity{},

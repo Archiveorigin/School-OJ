@@ -1,6 +1,8 @@
 import { createRouter, createWebHistory } from 'vue-router'
 import { useAuthStore } from '../stores/auth'
 
+const CompetitionList = () => import('../views/events/CompetitionList.vue')
+const CompetitionDetail = () => import('../views/events/CompetitionDetail.vue')
 const AdminHome = () => import('../views/admin/AdminHome.vue')
 const AdminLayout = () => import('../views/admin/AdminLayout.vue')
 const AssignmentDetail = () => import('../views/AssignmentDetail.vue')
@@ -66,6 +68,8 @@ const router = createRouter({
     },
     { path: '/problem-changes', component: ProblemChangeTickets, meta: { title: '我的工单', activeMenu: '/problem-changes' } },
     { path: '/problem-changes/new', component: ProblemChangeTickets, meta: { title: '发起工单', activeMenu: '/problem-changes' } },
+    { path: '/competitions', component: CompetitionList, meta: { title: '比赛', activeMenu: '/competitions' } },
+    { path: '/competitions/:kind/:eventId', component: CompetitionDetail, meta: { title: '比赛归档', activeMenu: '/competitions' } },
     { path: '/profile', component: Profile, meta: { title: '个人中心' } },
     { path: '/teams', component: TeamList, meta: { title: '团队', activeMenu: '/teams' } },
     { path: '/teams/join', component: TeamJoin, meta: { title: '加入团队', activeMenu: '/teams' } },
@@ -139,6 +143,8 @@ const router = createRouter({
         { path: 'exams', component: Exams, meta: { title: '考试管理', adminMenu: '/admin/exams' } },
         { path: 'exams/new', component: ExamCreate, meta: { title: '新建考试', adminMenu: '/admin/exams' } },
         { path: 'exams/:id/activity', component: ExamActivity, meta: { title: '考试行为日志', adminMenu: '/admin/exams' } },
+        { path: 'competitions', component: CompetitionList, props: { reviewMode: true }, meta: { roles: ['admin'], title: '考试与比赛审核', adminMenu: '/admin/competitions' } },
+        { path: 'competitions/:kind/:eventId', component: CompetitionDetail, props: { reviewMode: true }, meta: { roles: ['admin'], title: '整场审核', adminMenu: '/admin/competitions' } },
         { path: 'prepared-problems', component: PreparedProblems, meta: { title: '预备题库', adminMenu: '/admin/prepared-problems' } },
         { path: 'problem-authors', component: ProblemTicketManagement, meta: { roles: ['admin'], title: '工单管理', adminMenu: '/admin/problem-authors' } },
         { path: 'author-permissions', redirect: '/admin/users/permissions' },

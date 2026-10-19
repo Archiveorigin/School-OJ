@@ -214,6 +214,9 @@ func expandTestPointUploadFiles(files []TestPointUploadFile) ([]rawTestPointFile
 	var expanded []rawTestPointFile
 	totalSize := 0
 	for _, file := range files {
+		if len(expanded) >= MaxProblemCases*2 {
+			return nil, fmt.Errorf("too many test files")
+		}
 		name := strings.TrimSpace(file.Name)
 		if name == "" {
 			return nil, fmt.Errorf("test file name is required")
@@ -238,6 +241,9 @@ func expandTestPointUploadFiles(files []TestPointUploadFile) ([]rawTestPointFile
 		if closer != nil {
 			defer closer.Close()
 		}
+		if len(reader.File) > 1024 {
+			return nil, fmt.Errorf("too many ZIP entries")
+		}
 		for _, item := range reader.File {
 			rawPath := filepath.ToSlash(item.Name)
 			if unsafeZipPath(rawPath) {
@@ -245,6 +251,12 @@ func expandTestPointUploadFiles(files []TestPointUploadFile) ([]rawTestPointFile
 			}
 			if item.FileInfo().IsDir() {
 				continue
+			}
+			if !item.Mode().IsRegular() {
+				return nil, fmt.Errorf("test ZIP contains a link or special file")
+			}
+			if len(expanded) >= MaxProblemCases*2 {
+				return nil, fmt.Errorf("too many test files")
 			}
 			clean := filepath.ToSlash(filepath.Clean(rawPath))
 			ext := strings.ToLower(filepath.Ext(clean))

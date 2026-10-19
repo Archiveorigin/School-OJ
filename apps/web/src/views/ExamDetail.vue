@@ -11,7 +11,7 @@
       </EventWorkspaceHeader>
       <main class="exam-content">
         <div v-if="section === 'description'" class="description-layout">
-          <section class="panel description-panel"><h2>考试说明</h2><MarkdownRenderer :source="detail.exam.description || '暂无说明'" /></section>
+          <section class="panel description-panel"><h2>考试说明</h2><MarkdownRenderer :source="detail.exam.description || '暂无说明'" /><EventAttachments v-if="!canManage" kind="exam" :event-id="examID" /></section>
           <aside class="panel exam-info"><h3>考试信息</h3><dl>
             <div><dt>开始时间</dt><dd>{{ formatDateTime(detail.exam.starts_at) }}</dd></div>
             <div><dt>结束时间</dt><dd>{{ formatDateTime(detail.exam.ends_at) }}</dd></div>
@@ -19,6 +19,7 @@
             <div><dt>评阅方式</dt><dd>{{ detail.manual_review ? '人工评阅' : '自动评测' }}</dd></div>
             <div><dt>封榜</dt><dd>{{ detail.exam.freeze_enabled ? `结束前 ${detail.exam.freeze_duration_minutes} 分钟` : '未启用' }}</dd></div>
           </dl></aside>
+          <EventReviewPanel v-if="canManage" :key="detail.exam.review_revision" kind="exam" :event-id="examID" class="paper-full-width" @changed="loadDetail" />
         </div>
         <EventProblemList v-else-if="section === 'problems'" :items="items" :base="base" />
         <EventProblemPanel v-else-if="section === 'problem' && selected" :selected="selected" :items="items" :records="problemRecords" :base="base"
@@ -49,6 +50,8 @@
 <script setup lang="ts">
 import { useSubmissionStreams } from "../features/submissions/live"
 import { apiErrorMessage } from '../api/errors'
+import EventReviewPanel from '../components/events/EventReviewPanel.vue'
+import EventAttachments from '../components/events/EventAttachments.vue'
 import TicketDialog from '../components/tickets/TicketDialog.vue'
 
 import { submissionLanguage } from '../features/submissions/presentation'
@@ -202,6 +205,7 @@ onBeforeUnmount(() => { if (poller) window.clearInterval(poller); if (deadline) 
 </script>
 
 <style scoped>
+.paper-full-width { grid-column: 1 / -1; }
 .exam-page { min-height: 100%; padding: 24px 20px 58px; background: color-mix(in srgb, var(--surface) 74%, #edf2f7); }
 .exam-shell { width: min(1320px, 100%); margin: 0 auto; }
 .exam-content { padding-top: 16px; min-width: 0; }

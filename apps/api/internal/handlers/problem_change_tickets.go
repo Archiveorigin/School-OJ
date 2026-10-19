@@ -28,6 +28,9 @@ func (s Server) applyArchiveProblemTicket(ticket models.ProblemChangeTicket, adm
 	}
 	now := time.Now()
 	return s.DB.Transaction(func(tx *gorm.DB) error {
+		if err := lockTicketEventProblem(tx, ticket); err != nil {
+			return err
+		}
 		result := tx.Model(&models.ProblemChangeTicket{}).
 			Where("id = ? AND status = ? AND revision = ? AND deleted_at IS NULL", ticket.ID, models.ProblemChangePending, ticket.Revision).
 			Updates(map[string]any{"status": models.ProblemChangeProcessing, "revision": gorm.Expr("revision + 1")})
@@ -89,6 +92,9 @@ func (s Server) applyProblemPackageTicket(c *gin.Context, ticket models.ProblemC
 func (s Server) replaceProblemVersion(ticket models.ProblemChangeTicket, admin models.User, pkg services.ParsedProblemPackage, artifacts problemPackageArtifacts, tags datatypes.JSONMap, difficulty, note string) error {
 	now := time.Now()
 	return s.DB.Transaction(func(tx *gorm.DB) error {
+		if err := lockTicketEventProblem(tx, ticket); err != nil {
+			return err
+		}
 		result := tx.Model(&models.ProblemChangeTicket{}).
 			Where("id = ? AND status = ? AND revision = ? AND deleted_at IS NULL", ticket.ID, models.ProblemChangePending, ticket.Revision).
 			Updates(map[string]any{"status": models.ProblemChangeProcessing, "revision": gorm.Expr("revision + 1")})
@@ -140,16 +146,8 @@ func (s Server) replaceProblemVersion(ticket models.ProblemChangeTicket, admin m
 				return err
 			}
 		}
-		if err := tx.Model(&models.ExamProblem{}).
-			Where("problem_id = ? AND exam_id IN (?)", problem.ID, tx.Model(&models.Exam{}).Select("id").Where("deleted_at IS NULL AND (starts_at IS NULL OR starts_at > ?)", now)).
-			Update("problem_version_id", version.ID).Error; err != nil {
-			return err
-		}
-		if err := tx.Model(&models.TeamContestProblem{}).
-			Where("problem_id = ? AND contest_id IN (?)", problem.ID, tx.Model(&models.TeamContest{}).Select("id").Where("deleted_at IS NULL AND state IN ? AND (starts_at IS NULL OR starts_at > ?)", []string{models.TeamContestDraft, models.TeamContestPublished}, now)).
-			Update("problem_version_id", version.ID).Error; err != nil {
-			return err
-		}
+		// Event links and submissions retain their reviewed immutable version.
+		// A draft paper can explicitly adopt this version and be reviewed again.
 		return tx.Model(&models.ProblemChangeTicket{}).Where("id = ?", ticket.ID).Updates(map[string]any{
 			"status": models.ProblemChangeCompleted, "resolution_note": note,
 			"history":            ticketHistory(ticket, admin, "apply", note),
@@ -290,4 +288,29 @@ func (s Server) loadProblemChangeTicketImpact(ticket *models.ProblemChangeTicket
 		Count(&impact.PinnedContests)
 	s.DB.Model(&models.Submission{}).Where("problem_id = ?", *ticket.ProblemID).Count(&impact.HistoricalSubmits)
 	ticket.ImpactSummary = impact
+}
+
+// Lock the parent before the problem, matching paper editing/review lock order.
+func lockTicketEventProblem(tx *gorm.DB, ticket models.ProblemChangeTicket) error {
+	if ticket.ProblemID == nil {
+		return nil
+	}
+	var problem models.Problem
+	if err := tx.First(&problem, *ticket.ProblemID).Error; err != nil {
+		return err
+	}
+	if problem.EventKind == "" {
+		return nil
+	}
+	if problem.EventID == nil {
+		return errors.New("题目场次已不存在")
+	}
+	paper, err := loadEventPaper(tx, problem.EventKind, *problem.EventID, true)
+	if err != nil {
+		return errors.New("场次已删除，不能执行题目变更")
+	}
+	if !paper.review().Editable() {
+		return errors.New("整场已送审或已开始；赛前请先撤回审核，进行中的场次只能登记处置结果")
+	}
+	return bumpEventRevision(tx, paper)
 }

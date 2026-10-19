@@ -414,8 +414,8 @@ func TestTicketApplyVersionsAndConcurrencyPostgres(t *testing.T) {
 	}
 	link = models.ExamProblem{}
 	f.s.DB.Where("exam_id = ?", f.other.ID).First(&link)
-	if link.ProblemVersionID != *problem.CurrentVersionID {
-		t.Fatal("future exam did not update")
+	if link.ProblemVersionID != f.version.ID {
+		t.Fatal("future exam silently switched its reviewed version")
 	}
 	var savedSub models.Submission
 	f.s.DB.First(&savedSub, sub.ID)

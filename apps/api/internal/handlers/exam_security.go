@@ -32,6 +32,7 @@ func activeExamInDB(db *gorm.DB, userID uint, now time.Time) (models.Exam, error
 	err := db.Model(&models.Exam{}).Select("exams.*").
 		Joins("JOIN exam_attempts ON exam_attempts.exam_id = exams.id").
 		Where("exam_attempts.user_id = ? AND exam_attempts.finished_at IS NULL AND exams.deleted_at IS NULL", userID).
+		Where("exams.review_status = 'approved'").
 		Where("(exams.starts_at IS NULL OR exams.starts_at <= ?) AND (exams.ends_at IS NULL OR exams.ends_at > ?)", now, now).
 		Order("exam_attempts.created_at, exam_attempts.id").First(&exam).Error
 	return exam, err
@@ -79,6 +80,12 @@ func (s Server) enforceExamScope(c *gin.Context) {
 
 func (s Server) examRequestAllowed(c *gin.Context, userID, examID uint) (bool, error) {
 	path, method := examAPIPath(c.FullPath()), c.Request.Method
+	if strings.HasPrefix(path, "/event-papers/:kind/:event_id/") {
+		if c.Param("kind") != "exam" || c.Param("event_id") != strconv.FormatUint(uint64(examID), 10) || method != http.MethodGet {
+			return false, nil
+		}
+		return path == "/event-papers/:kind/:event_id/attachments" || path == "/event-papers/:kind/:event_id/attachments/:attachment_id" || path == "/event-papers/:kind/:event_id/problems/:problem_id/assets/*asset_path", nil
+	}
 	if method == http.MethodGet && (path == "/me" || path == "/me/active-exam") {
 		return true, nil
 	}
@@ -214,6 +221,9 @@ func (s Server) enterExam(c *gin.Context) {
 			return err
 		}
 		attempt = models.ExamAttempt{ExamID: id, UserID: user.ID}
+		if err := tx.Clauses(clause.OnConflict{DoNothing: true}).Create(&models.ExamParticipant{ExamID: id, UserID: user.ID}).Error; err != nil {
+			return err
+		}
 		if err := tx.Create(&attempt).Error; err != nil {
 			return err
 		}

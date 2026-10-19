@@ -64,7 +64,7 @@
                 v-model="model.starts_at"
                 type="datetime"
                 format="YYYY-MM-DD HH:mm"
-                placeholder="留空则立即开始"
+                placeholder="请选择未来开始时间"
               />
             </el-form-item>
             <el-form-item label="结束时间">
@@ -72,7 +72,7 @@
                 v-model="model.ends_at"
                 type="datetime"
                 format="YYYY-MM-DD HH:mm"
-                placeholder="留空则手动结束"
+                placeholder="请选择结束时间"
               />
             </el-form-item>
           </div>
@@ -184,9 +184,9 @@ function normalizeScoring() {
 }
 
 const timeSummary = computed(() => {
-  if (!model.value.starts_at && !model.value.ends_at) return "创建后立即开始";
-  const start = formatExamDate(model.value.starts_at) || "立即开始";
-  const end = formatExamDate(model.value.ends_at) || "手动结束";
+  if (!model.value.starts_at && !model.value.ends_at) return "尚未设置";
+  const start = formatExamDate(model.value.starts_at) || "待设置";
+  const end = formatExamDate(model.value.ends_at) || "待设置";
   return `${start} — ${end}`;
 });
 </script>

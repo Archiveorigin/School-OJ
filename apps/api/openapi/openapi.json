@@ -2091,7 +2091,7 @@
         "tags": [
           "团队"
         ],
-        "summary": "POST /teams/:id/contests/:contest_id/publish",
+        "summary": "提交整场比赛审核（不直接发布）",
         "x-handler": "publishTeamContest",
         "x-auth": "bearer",
         "parameters": [
@@ -2113,16 +2113,19 @@
           }
         ],
         "requestBody": {
-          "required": false,
+          "required": true,
           "content": {
             "application/json": {
               "schema": {
-                "$ref": "#/components/schemas/JsonObject"
-              }
-            },
-            "multipart/form-data": {
-              "schema": {
-                "$ref": "#/components/schemas/JsonObject"
+                "type": "object",
+                "required": [
+                  "revision"
+                ],
+                "properties": {
+                  "revision": {
+                    "type": "integer"
+                  }
+                }
               }
             }
           }
@@ -2636,7 +2639,7 @@
         "tags": [
           "团队"
         ],
-        "summary": "POST /contests/:contest_id/publish",
+        "summary": "提交整场比赛审核（不直接发布）",
         "x-handler": "publishTeamContest",
         "x-auth": "bearer",
         "parameters": [
@@ -2650,16 +2653,19 @@
           }
         ],
         "requestBody": {
-          "required": false,
+          "required": true,
           "content": {
             "application/json": {
               "schema": {
-                "$ref": "#/components/schemas/JsonObject"
-              }
-            },
-            "multipart/form-data": {
-              "schema": {
-                "$ref": "#/components/schemas/JsonObject"
+                "type": "object",
+                "required": [
+                  "revision"
+                ],
+                "properties": {
+                  "revision": {
+                    "type": "integer"
+                  }
+                }
               }
             }
           }
@@ -11751,6 +11757,1146 @@
           "admin"
         ]
       }
+    },
+    "/event-archives": {
+      "get": {
+        "operationId": "listEventArchives",
+        "tags": [
+          "整场审核与归档"
+        ],
+        "summary": "listEventArchives",
+        "x-handler": "listEventArchives",
+        "x-auth": "bearer",
+        "parameters": [
+          {
+            "name": "kind",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "status",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "q",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "page",
+            "in": "query",
+            "schema": {
+              "type": "integer"
+            }
+          },
+          {
+            "name": "page_size",
+            "in": "query",
+            "schema": {
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "成功",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/JsonObject"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "404": {
+            "description": "场次或文件不存在"
+          },
+          "409": {
+            "description": "修订号或审核状态冲突"
+          }
+        }
+      }
+    },
+    "/event-reviews": {
+      "get": {
+        "operationId": "listEventReviews",
+        "tags": [
+          "整场审核与归档"
+        ],
+        "summary": "listEventReviews",
+        "x-handler": "listEventReviews",
+        "x-auth": "bearer",
+        "parameters": [
+          {
+            "name": "kind",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "status",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "q",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "page",
+            "in": "query",
+            "schema": {
+              "type": "integer"
+            }
+          },
+          {
+            "name": "page_size",
+            "in": "query",
+            "schema": {
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "成功",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/JsonObject"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "404": {
+            "description": "场次或文件不存在"
+          },
+          "409": {
+            "description": "修订号或审核状态冲突"
+          }
+        },
+        "x-roles": [
+          "admin"
+        ]
+      }
+    },
+    "/event-papers/{kind}/{event_id}": {
+      "get": {
+        "operationId": "getEventPaper",
+        "tags": [
+          "整场审核与归档"
+        ],
+        "summary": "getEventPaper",
+        "x-handler": "getEventPaper",
+        "x-auth": "bearer",
+        "parameters": [
+          {
+            "name": "kind",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "event_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "成功",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/JsonObject"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "404": {
+            "description": "场次或文件不存在"
+          },
+          "409": {
+            "description": "修订号或审核状态冲突"
+          }
+        }
+      }
+    },
+    "/event-papers/{kind}/{event_id}/settings": {
+      "put": {
+        "operationId": "updateEventSettings",
+        "tags": [
+          "整场审核与归档"
+        ],
+        "summary": "updateEventSettings",
+        "x-handler": "updateEventSettings",
+        "x-auth": "bearer",
+        "parameters": [
+          {
+            "name": "kind",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "event_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "成功",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/JsonObject"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "404": {
+            "description": "场次或文件不存在"
+          },
+          "409": {
+            "description": "修订号或审核状态冲突"
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "additionalProperties": true
+              }
+            }
+          }
+        }
+      }
+    },
+    "/event-papers/{kind}/{event_id}/review": {
+      "post": {
+        "operationId": "reviewEventPaper",
+        "tags": [
+          "整场审核与归档"
+        ],
+        "summary": "reviewEventPaper",
+        "x-handler": "reviewEventPaper",
+        "x-auth": "bearer",
+        "parameters": [
+          {
+            "name": "kind",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "event_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "成功",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/JsonObject"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "404": {
+            "description": "场次或文件不存在"
+          },
+          "409": {
+            "description": "修订号或审核状态冲突"
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "revision",
+                  "action"
+                ],
+                "properties": {
+                  "revision": {
+                    "type": "integer"
+                  },
+                  "action": {
+                    "type": "string",
+                    "enum": [
+                      "submit",
+                      "withdraw",
+                      "approve",
+                      "reject"
+                    ]
+                  },
+                  "note": {
+                    "type": "string",
+                    "maxLength": 2000
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/event-papers/{kind}/{event_id}/archive": {
+      "get": {
+        "operationId": "getEventArchive",
+        "tags": [
+          "整场审核与归档"
+        ],
+        "summary": "getEventArchive",
+        "x-handler": "getEventArchive",
+        "x-auth": "bearer",
+        "parameters": [
+          {
+            "name": "kind",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "event_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "成功",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/JsonObject"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "404": {
+            "description": "场次或文件不存在"
+          },
+          "409": {
+            "description": "修订号或审核状态冲突"
+          }
+        }
+      }
+    },
+    "/event-papers/{kind}/{event_id}/problems": {
+      "put": {
+        "operationId": "updateEventProblemSelection",
+        "tags": [
+          "整场审核与归档"
+        ],
+        "summary": "updateEventProblemSelection",
+        "x-handler": "updateEventProblemSelection",
+        "x-auth": "bearer",
+        "parameters": [
+          {
+            "name": "kind",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "event_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "成功",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/JsonObject"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "404": {
+            "description": "场次或文件不存在"
+          },
+          "409": {
+            "description": "修订号或审核状态冲突"
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "additionalProperties": true
+              }
+            }
+          }
+        }
+      },
+      "post": {
+        "operationId": "createEventProblem",
+        "tags": [
+          "整场审核与归档"
+        ],
+        "summary": "createEventProblem",
+        "x-handler": "saveEventProblem",
+        "x-auth": "bearer",
+        "parameters": [
+          {
+            "name": "kind",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "event_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "成功",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/JsonObject"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "404": {
+            "description": "场次或文件不存在"
+          },
+          "409": {
+            "description": "修订号或审核状态冲突"
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "additionalProperties": true
+              }
+            },
+            "multipart/form-data": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "draft"
+                ],
+                "properties": {
+                  "draft": {
+                    "type": "string"
+                  },
+                  "tests": {
+                    "type": "array",
+                    "items": {
+                      "type": "string",
+                      "format": "binary"
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/event-papers/{kind}/{event_id}/problems/{problem_id}": {
+      "put": {
+        "operationId": "updateEventProblem",
+        "tags": [
+          "整场审核与归档"
+        ],
+        "summary": "updateEventProblem",
+        "x-handler": "saveEventProblem",
+        "x-auth": "bearer",
+        "parameters": [
+          {
+            "name": "kind",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "event_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer"
+            }
+          },
+          {
+            "name": "problem_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "成功",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/JsonObject"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "404": {
+            "description": "场次或文件不存在"
+          },
+          "409": {
+            "description": "修订号或审核状态冲突"
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "additionalProperties": true
+              }
+            },
+            "multipart/form-data": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "draft"
+                ],
+                "properties": {
+                  "draft": {
+                    "type": "string"
+                  },
+                  "tests": {
+                    "type": "array",
+                    "items": {
+                      "type": "string",
+                      "format": "binary"
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/event-papers/{kind}/{event_id}/problems/{problem_id}/package": {
+      "get": {
+        "operationId": "downloadEventProblemPackage",
+        "tags": [
+          "整场审核与归档"
+        ],
+        "summary": "downloadEventProblemPackage",
+        "x-handler": "downloadEventProblemPackage",
+        "x-auth": "bearer",
+        "parameters": [
+          {
+            "name": "kind",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "event_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer"
+            }
+          },
+          {
+            "name": "problem_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "成功",
+            "content": {
+              "application/octet-stream": {
+                "schema": {
+                  "type": "string",
+                  "format": "binary"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "404": {
+            "description": "场次或文件不存在"
+          },
+          "409": {
+            "description": "修订号或审核状态冲突"
+          }
+        }
+      }
+    },
+    "/event-papers/{kind}/{event_id}/problems/{problem_id}/assets/{asset_path}": {
+      "get": {
+        "operationId": "getEventProblemAsset",
+        "tags": [
+          "整场审核与归档"
+        ],
+        "summary": "getEventProblemAsset",
+        "x-handler": "getEventProblemAsset",
+        "x-auth": "bearer",
+        "parameters": [
+          {
+            "name": "kind",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "event_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer"
+            }
+          },
+          {
+            "name": "problem_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer"
+            }
+          },
+          {
+            "name": "asset_path",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "x-path-segments": true
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "成功",
+            "content": {
+              "application/octet-stream": {
+                "schema": {
+                  "type": "string",
+                  "format": "binary"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "404": {
+            "description": "场次或文件不存在"
+          },
+          "409": {
+            "description": "修订号或审核状态冲突"
+          }
+        }
+      }
+    },
+    "/event-papers/{kind}/{event_id}/attachments": {
+      "get": {
+        "operationId": "listEventAttachments",
+        "tags": [
+          "整场审核与归档"
+        ],
+        "summary": "listEventAttachments",
+        "x-handler": "listEventAttachments",
+        "x-auth": "bearer",
+        "parameters": [
+          {
+            "name": "kind",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "event_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "成功",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/JsonObject"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "404": {
+            "description": "场次或文件不存在"
+          },
+          "409": {
+            "description": "修订号或审核状态冲突"
+          }
+        }
+      },
+      "post": {
+        "operationId": "uploadEventAttachment",
+        "tags": [
+          "整场审核与归档"
+        ],
+        "summary": "uploadEventAttachment",
+        "x-handler": "uploadEventAttachment",
+        "x-auth": "bearer",
+        "parameters": [
+          {
+            "name": "kind",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "event_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "成功",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/JsonObject"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "404": {
+            "description": "场次或文件不存在"
+          },
+          "409": {
+            "description": "修订号或审核状态冲突"
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "multipart/form-data": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "file",
+                  "revision"
+                ],
+                "properties": {
+                  "file": {
+                    "type": "string",
+                    "format": "binary"
+                  },
+                  "revision": {
+                    "type": "integer"
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/event-papers/{kind}/{event_id}/attachments/{attachment_id}": {
+      "delete": {
+        "operationId": "deleteEventAttachment",
+        "tags": [
+          "整场审核与归档"
+        ],
+        "summary": "deleteEventAttachment",
+        "x-handler": "deleteEventAttachment",
+        "x-auth": "bearer",
+        "parameters": [
+          {
+            "name": "kind",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "event_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer"
+            }
+          },
+          {
+            "name": "attachment_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "成功",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/JsonObject"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "404": {
+            "description": "场次或文件不存在"
+          },
+          "409": {
+            "description": "修订号或审核状态冲突"
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "additionalProperties": true
+              }
+            }
+          }
+        }
+      },
+      "get": {
+        "operationId": "downloadEventAttachment",
+        "tags": [
+          "整场审核与归档"
+        ],
+        "summary": "downloadEventAttachment",
+        "x-handler": "downloadEventAttachment",
+        "x-auth": "bearer",
+        "parameters": [
+          {
+            "name": "kind",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "event_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer"
+            }
+          },
+          {
+            "name": "attachment_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "成功",
+            "content": {
+              "application/octet-stream": {
+                "schema": {
+                  "type": "string",
+                  "format": "binary"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "404": {
+            "description": "场次或文件不存在"
+          },
+          "409": {
+            "description": "修订号或审核状态冲突"
+          }
+        }
+      }
+    },
+    "/event-papers/{kind}/{event_id}/choices": {
+      "get": {
+        "operationId": "listEventProblemChoices",
+        "tags": [
+          "整场审核与归档"
+        ],
+        "summary": "查询本场可选题目（最多 50 条）",
+        "x-handler": "listEventProblemChoices",
+        "x-auth": "bearer",
+        "parameters": [
+          {
+            "name": "kind",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "event_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer"
+            }
+          },
+          {
+            "name": "q",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "成功",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/JsonObject"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "404": {
+            "description": "场次或文件不存在"
+          },
+          "409": {
+            "description": "修订号或审核状态冲突"
+          }
+        }
+      }
     }
   },
   "components": {
@@ -12068,6 +13214,13 @@
           },
           "points_awarded": {
             "type": "boolean"
+          },
+          "event_kind": {
+            "type": "string"
+          },
+          "event_id": {
+            "type": "integer",
+            "nullable": true
           }
         }
       },
@@ -12734,6 +13887,21 @@
           },
           "created_by": {
             "type": "integer"
+          },
+          "review_status": {
+            "type": "string",
+            "enum": [
+              "draft",
+              "pending",
+              "approved",
+              "rejected"
+            ]
+          },
+          "review_revision": {
+            "type": "integer"
+          },
+          "review_note": {
+            "type": "string"
           }
         }
       },
@@ -12970,6 +14138,21 @@
           },
           "settings": {
             "$ref": "#/components/schemas/JsonObject"
+          },
+          "review_status": {
+            "type": "string",
+            "enum": [
+              "draft",
+              "pending",
+              "approved",
+              "rejected"
+            ]
+          },
+          "review_revision": {
+            "type": "integer"
+          },
+          "review_note": {
+            "type": "string"
           }
         }
       },
@@ -13525,6 +14708,15 @@
             "items": {
               "type": "string"
             }
+          },
+          "test_mode": {
+            "type": "string",
+            "enum": [
+              "preserve",
+              "merge",
+              "replace"
+            ],
+            "description": "保留、按名称合并（保留遗漏测试与原权重）、明确完整替换。省略时兼容 replace_tests。"
           }
         }
       },

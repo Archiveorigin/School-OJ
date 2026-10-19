@@ -12,6 +12,9 @@ export type UserPermissionDefinition = OpenApiComponents['schemas']['PermissionD
 
 export interface Problem {
   id: number
+  current_version_id?: number
+  event_kind?: 'exam' | 'contest' | ''
+  event_id?: number
   owner_id?: number
   team_id?: number
   display_code?: string
@@ -70,6 +73,8 @@ export interface TeamProblemSet {
 }
 
 export interface TeamContest {
+  review_status?: 'draft' | 'pending' | 'approved' | 'rejected'
+  review_revision?: number
   id: number
   team_id: number
   title: string

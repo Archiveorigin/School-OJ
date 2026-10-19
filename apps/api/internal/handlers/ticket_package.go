@@ -23,6 +23,7 @@ import (
 )
 
 type ticketPackageReview struct {
+	TestMode          string                   `json:"test_mode"`
 	Revision          int                      `json:"revision"`
 	ExpectedVersionID *uint                    `json:"expected_version_id"`
 	Title             string                   `json:"title"`
@@ -72,6 +73,11 @@ func (s Server) ticketReviewDefaults(ticket models.ProblemChangeTicket) (ticketP
 				review.AttachmentIDs = append(review.AttachmentIDs, a.ID)
 			}
 		}
+	}
+	if review.ReplaceTests {
+		review.TestMode = "replace"
+	} else {
+		review.TestMode = "preserve"
 	}
 	return review, nil
 }
@@ -143,7 +149,17 @@ func (s Server) assembleTicketPackage(c *gin.Context, ticket models.ProblemChang
 	if review.TimeLimitMS < 1 || review.TimeLimitMS > 60000 || review.MemoryLimitMB < 1 || review.MemoryLimitMB > 4096 || review.OutputLimitKB < 1 || review.OutputLimitKB > 65536 {
 		return nil, empty, errors.New("判题限制须为：时间 1–60000 ms，内存 1–4096 MiB，输出 1–65536 KiB")
 	}
-	if ticket.ProblemID == nil && !review.ReplaceTests {
+	mode := review.TestMode
+	if mode == "" {
+		mode = "preserve"
+		if review.ReplaceTests {
+			mode = "replace"
+		}
+	}
+	if mode != "preserve" && mode != "merge" && mode != "replace" {
+		return nil, empty, errors.New("测试点处理方式无效")
+	}
+	if ticket.ProblemID == nil && mode != "replace" {
 		return nil, empty, errors.New("新增题目必须提供至少一对测试点")
 	}
 	release, err := acquireTicketPackage(c.Request.Context())
@@ -172,9 +188,15 @@ func (s Server) assembleTicketPackage(c *gin.Context, ticket models.ProblemChang
 	if err != nil {
 		return nil, empty, err
 	}
-	cases, assets, aliases, err := ticketMaterialParts(materials, review.ReplaceTests)
+	cases, assets, aliases, err := ticketMaterialParts(materials, mode != "preserve")
 	if err != nil {
 		return nil, empty, err
+	}
+	if mode == "merge" {
+		cases, err = services.MergeProblemCases(base, cases)
+		if err != nil {
+			return nil, empty, err
+		}
 	}
 	for _, a := range manifest.Assets {
 		aliases[a.Path] = a.Path
@@ -292,7 +314,7 @@ func ticketMaterialParts(files []ticketMaterial, replaceTests bool) ([]services.
 		ext := strings.ToLower(path.Ext(f.name))
 		if ext == ".in" || ext == ".out" {
 			if !replaceTests {
-				return nil, nil, nil, errors.New("已选择测试文件；请明确勾选替换全部测试点，或取消这些附件")
+				return nil, nil, nil, errors.New("已选择测试文件；请选择按名称合并或完整替换，或取消这些附件")
 			}
 			key := strings.ToLower(strings.TrimSuffix(f.name, path.Ext(f.name)))
 			p := pairs[key]

@@ -20,7 +20,7 @@
           <template #default="{ row }">{{ String(row.scoring_rule || 'acm').toUpperCase() }}</template>
         </el-table-column>
         <el-table-column label="状态" width="110">
-          <template #default="{ row }"><el-tag :type="statusType(row.status)">{{ statusLabel(row.status) }}</el-tag></template>
+          <template #default="{ row }"><el-tag :type="statusType(row.status)">{{ row.review_status && row.review_status !== 'approved' ? reviewLabels[row.review_status as ReviewStatus] : statusLabel(row.status) }}</el-tag></template>
         </el-table-column>
         <el-table-column label="操作" :width="hasManagementActions ? 224 : 90" align="right" fixed="right">
           <template #default="{ row }">
@@ -79,6 +79,7 @@
 </template>
 
 <script setup lang="ts">
+import { reviewLabels, type ReviewStatus } from '../../api/modules/events'
 import { apiErrorMessage } from '../../api/errors'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { computed, onMounted, reactive, ref } from 'vue'
@@ -175,6 +176,7 @@ async function deleteContest(row: TeamContest) {
 }
 
 function openContest(row: TeamContest) {
+  if (row.status === 'closed' && (!row.review_status || row.review_status === 'approved')) { void router.push(`/competitions/contest/${row.id}`); return }
   if ((row.status === 'draft' || row.status === 'published') && !canOrganize.value && !row.can_edit && !row.can_delete) {
     ElMessage.warning('比赛尚未开始')
     return

@@ -160,6 +160,7 @@ const navigationGroups: Array<{ label: string; items: NavigationItem[] }> = [
       { path: "/admin/courses", label: "课程管理", icon: Reading },
       { path: "/admin/classes", label: "班级管理", icon: User },
       { path: "/admin/exams", label: "考试管理", icon: Collection },
+      { path: "/admin/competitions", label: "考试与比赛审核", icon: Collection, roles: ["admin"] },
     ],
   },
   {

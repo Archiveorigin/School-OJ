@@ -21,7 +21,8 @@
           <el-form-item label="相对误差"><el-input-number v-model="form.checker.relative_tolerance" :min="0" :max="1" :step="0.000001" /></el-form-item>
         </template>
       </div>
-      <el-checkbox v-if="ticket.problem_id" v-model="form.replace_tests">用所选附件替换全部测试点</el-checkbox>
+      <el-form-item label="测试点处理"><el-select v-model="form.test_mode"><el-option v-if="ticket.problem_id" value="preserve" label="保留全部原测试点" /><el-option v-if="ticket.problem_id" value="merge" label="按名称合并，保留未上传的测试点及原权重" /><el-option value="replace" label="用所选附件完整替换全部测试点" /></el-select></el-form-item>
+      <el-alert v-if="ticket.problem_id && form.test_mode === 'replace'" title="完整替换会移除新版本中所有未上传的测试点，请核对预览清单。旧版本保留。" type="warning" :closable="false" />
       <p class="muted">勾选用于入库的附件。测试文件按同路径、同名 .in / .out 配对；新测试点按等权计分。图片单个最多 5 MiB、合计 20 MiB，其余文件可保留为参考附件。</p>
       <div class="review-attachments">
         <el-checkbox-group v-model="form.attachment_ids">
