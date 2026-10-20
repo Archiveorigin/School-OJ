@@ -243,6 +243,7 @@ type examRankingRow struct {
 	FinishedAt      *time.Time        `json:"finished_at"`
 	Problems        []examRankingCell `json:"problems"`
 	studentNo       string
+	lastAccepted    *time.Time
 }
 
 type examSubmissionLookup struct {
@@ -3588,7 +3589,11 @@ func (s Server) examRanking(c *gin.Context) {
 	if item.EndsAt != nil && now.After(*item.EndsAt) {
 		status = "已结束"
 	}
-	students := s.examStudents(item)
+	students, err := s.loadExamRankingStudents(item)
+	if err != nil {
+		eventError(c, err)
+		return
+	}
 	var rankingCutoff *time.Time
 	frozen := false
 	if !canManage && item.FreezeEnabled && item.EndsAt != nil && now.Before(*item.EndsAt) {
@@ -3598,7 +3603,11 @@ func (s Server) examRanking(c *gin.Context) {
 			frozen = true
 		}
 	}
-	rows, pendingRows, finishedRows := s.examRankingRows(item, students, scoringRule, rankingCutoff)
+	rows, pendingRows, finishedRows, err := s.examRankingRows(item, students, scoringRule, rankingCutoff)
+	if err != nil {
+		eventError(c, err)
+		return
+	}
 	c.JSON(http.StatusOK, gin.H{
 		"exam": gin.H{
 			"id":           item.ID,
@@ -3613,6 +3622,7 @@ func (s Server) examRanking(c *gin.Context) {
 			"scoring_rule": scoringRule,
 		},
 		"has_class":     item.ClassID != nil,
+		"lifecycle":     (eventPaper{kind: "exam", id: item.ID, exam: item}).lifecycle(now),
 		"manual_review": examManualReview(item),
 		"scoring_rule":  scoringRule,
 		"problems":      problems,
@@ -3643,7 +3653,7 @@ func examRankingAccessReason(item models.Exam, canManage bool, rankingVisible bo
 	return ""
 }
 
-func (s Server) examRankingRows(item models.Exam, students []models.User, scoringRule string, cutoff *time.Time) ([]examRankingRow, int, int) {
+func (s Server) examRankingRows(item models.Exam, students []models.User, scoringRule string, cutoff *time.Time) ([]examRankingRow, int, int, error) {
 	if normalized, valid := parseScoringRule(scoringRule); valid {
 		scoringRule = normalized
 	} else {
@@ -3651,8 +3661,14 @@ func (s Server) examRankingRows(item models.Exam, students []models.User, scorin
 	}
 	studentIDs := userIDs(students)
 	problemIDs := examProblemIDs(item)
-	submissions := s.examSubmissionsLookup(item.ID, studentIDs, problemIDs, false, cutoff)
-	attempts := s.examAttemptStates(item.ID, studentIDs)
+	submissions, err := s.examSubmissionsLookup(item, studentIDs, problemIDs, false, cutoff)
+	if err != nil {
+		return nil, 0, 0, err
+	}
+	attempts, err := s.examAttemptStates(item.ID, studentIDs)
+	if err != nil {
+		return nil, 0, 0, err
+	}
 	manualReview := examManualReview(item)
 	rankingStart := item.CreatedAt
 	if item.StartsAt != nil {
@@ -3679,7 +3695,7 @@ func (s Server) examRankingRows(item models.Exam, students []models.User, scorin
 			if problemScore.SubmissionID != nil {
 				row.Attempted++
 			}
-			if scoringRule == "ioi" && isExamFullScore(problemScore.BestScore, problemScore.Score) {
+			if (scoringRule == "ioi" || scoringRule == "oi") && isExamFullScore(problemScore.BestScore, problemScore.Score) {
 				row.Solved++
 			}
 			pending := problemScore.PendingReview
@@ -3705,7 +3721,14 @@ func (s Server) examRankingRows(item models.Exam, students []models.User, scorin
 				firstAccepted:  penaltyStats.FirstAccepted,
 			}
 			cell.Pending = examRankingCellPending(scoringRule, cell.Pending, cell.BestScore, cell.MaxScore)
+			if scoringRule == "oi" {
+				cell.firstAccepted = nil
+				if isExamFullScore(cell.BestScore, cell.MaxScore) && cell.ScoreReady {
+					cell.firstAccepted = cell.SubmittedAt
+				}
+			}
 			if penaltyStats.FirstAccepted != nil {
+				row.lastAccepted = laterTime(row.lastAccepted, penaltyStats.FirstAccepted)
 				row.PenaltyMinutes += penaltyStats.ElapsedMinutes + penaltyStats.WrongAttempts*20
 				if scoringRule == "acm" {
 					row.Solved++
@@ -3730,8 +3753,11 @@ func (s Server) examRankingRows(item models.Exam, students []models.User, scorin
 	sortExamRankingRows(rows, scoringRule)
 	for i := range rows {
 		rows[i].Rank = i + 1
+		if i > 0 && compareRankingKeys(rows[i-1].rankingKey(), rows[i].rankingKey(), scoringRule) == 0 {
+			rows[i].Rank = rows[i-1].Rank
+		}
 	}
-	return rows, pendingRows, finishedRows
+	return rows, pendingRows, finishedRows, nil
 }
 
 func examRankingCellPending(scoringRule string, pending bool, bestScore int, maxScore int) bool {
@@ -3777,18 +3803,25 @@ func workSummaryForExamLinksFromSubmissions(examLinks []models.ExamProblem, user
 	return summary
 }
 
-func (s Server) examSubmissionsLookup(examID uint, studentIDs []uint, problemIDs []uint, includeSource bool, cutoff *time.Time) examSubmissionLookup {
-	submissions, _ := s.examSubmissionsForUsers(examID, studentIDs, problemIDs, includeSource, "user_id asc, problem_id asc, id desc")
-	if cutoff != nil {
-		filtered := submissions[:0]
-		for _, submission := range submissions {
-			if submission.CreatedAt.Before(*cutoff) {
-				filtered = append(filtered, submission)
-			}
-		}
-		submissions = filtered
+func (s Server) examSubmissionsLookup(item models.Exam, studentIDs []uint, problemIDs []uint, includeSource bool, cutoff *time.Time) (examSubmissionLookup, error) {
+	submissions, err := s.examSubmissionsForUsers(item.ID, studentIDs, problemIDs, includeSource, "user_id asc, problem_id asc, id desc")
+	if err != nil {
+		return examSubmissionLookup{}, err
 	}
-	return newExamSubmissionLookup(submissions)
+	filtered := submissions[:0]
+	for _, submission := range submissions {
+		if item.StartsAt != nil && submission.CreatedAt.Before(*item.StartsAt) {
+			continue
+		}
+		if item.EndsAt != nil && !submission.CreatedAt.Before(*item.EndsAt) {
+			continue
+		}
+		if cutoff != nil && !submission.CreatedAt.Before(*cutoff) {
+			continue
+		}
+		filtered = append(filtered, submission)
+	}
+	return newExamSubmissionLookup(filtered), nil
 }
 
 func (s Server) examSubmissionsForUsers(examID uint, studentIDs []uint, problemIDs []uint, includeSource bool, order string) ([]models.Submission, error) {
@@ -3876,7 +3909,7 @@ func isExamPenaltyAccepted(submission models.Submission, manualReview bool, maxS
 
 func isCompletedPenaltyFailure(status models.SubmissionStatus) bool {
 	switch status {
-	case models.StatusQueued, models.StatusRunning, models.StatusPendingReview, models.StatusAccepted, models.StatusSystemError:
+	case models.StatusQueued, models.StatusRunning, models.StatusPendingReview, models.StatusAccepted, models.StatusSystemError, models.StatusCompileError:
 		return false
 	default:
 		return true
@@ -3912,31 +3945,9 @@ func sortExamRankingRows(rows []examRankingRow, scoringRule string) {
 		scoringRule = "acm"
 	}
 	sort.SliceStable(rows, func(i, j int) bool {
-		left := rows[i]
-		right := rows[j]
-		if scoringRule == "ioi" || scoringRule == "oi" {
-			if left.TotalScore != right.TotalScore {
-				return left.TotalScore > right.TotalScore
-			}
-			if left.Solved != right.Solved {
-				return left.Solved > right.Solved
-			}
-		} else {
-			if left.Solved != right.Solved {
-				return left.Solved > right.Solved
-			}
-			if left.PenaltyMinutes != right.PenaltyMinutes {
-				return left.PenaltyMinutes < right.PenaltyMinutes
-			}
-		}
-		if cmp := compareTimePtr(left.LastSubmission, right.LastSubmission); cmp != 0 {
+		left, right := rows[i], rows[j]
+		if cmp := compareRankingKeys(left.rankingKey(), right.rankingKey(), scoringRule); cmp != 0 {
 			return cmp < 0
-		}
-		if cmp := compareTimePtr(left.FinishedAt, right.FinishedAt); cmp != 0 {
-			return cmp < 0
-		}
-		if left.studentNo != right.studentNo {
-			return left.studentNo < right.studentNo
 		}
 		if left.Name != right.Name {
 			return left.Name < right.Name
@@ -3985,17 +3996,19 @@ func newExamSubmissionLookup(submissions []models.Submission) examSubmissionLook
 	return lookup
 }
 
-func (s Server) examAttemptStates(examID uint, studentIDs []uint) map[uint]examAttemptState {
+func (s Server) examAttemptStates(examID uint, studentIDs []uint) (map[uint]examAttemptState, error) {
 	states := make(map[uint]examAttemptState)
 	if len(studentIDs) == 0 {
-		return states
+		return states, nil
 	}
 	var attempts []models.ExamAttempt
-	s.DB.Where("exam_id = ? AND user_id IN ?", examID, studentIDs).Find(&attempts)
+	if err := s.DB.Where("exam_id = ? AND user_id IN ?", examID, studentIDs).Find(&attempts).Error; err != nil {
+		return nil, err
+	}
 	for _, attempt := range attempts {
 		states[attempt.UserID] = examAttemptState{Attempted: true, FinishedAt: attempt.FinishedAt}
 	}
-	return states
+	return states, nil
 }
 
 func examProblemIDs(item models.Exam) []uint {
@@ -4023,6 +4036,7 @@ func (s Server) exportExamReport(c *gin.Context) {
 	var item models.Exam
 	err := s.DB.Preload("Problems", func(db *gorm.DB) *gorm.DB { return db.Order("exam_problems.sort_order asc") }).
 		Preload("Problems.Problem").
+		Preload("Problems.ProblemVersion").
 		Where("exams.deleted_at IS NULL").First(&item, id).Error
 	if err != nil {
 		c.JSON(http.StatusNotFound, gin.H{"error": "exam not found"})
@@ -4040,6 +4054,11 @@ func (s Server) exportExamReport(c *gin.Context) {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "exam has not ended"})
 		return
 	}
+	hydrateExamProblemVersions(&item)
+	if err := s.rankingExportReady(eventPaper{kind: "exam", id: item.ID, exam: item}); err != nil {
+		eventError(c, err)
+		return
+	}
 	format := strings.ToLower(strings.TrimSpace(c.DefaultQuery("format", "xlsx")))
 	if format == "md" {
 		format = "markdown"
@@ -4050,9 +4069,8 @@ func (s Server) exportExamReport(c *gin.Context) {
 			return
 		}
 	}
-	students := s.examStudents(item)
 	if format == "markdown" {
-		body, err := s.buildExamMarkdownReport(item, students)
+		body, err := s.checkedExamMarkdownReport(eventPaper{kind: "exam", id: item.ID, exam: item})
 		if err != nil {
 			c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 			return
@@ -4061,27 +4079,26 @@ func (s Server) exportExamReport(c *gin.Context) {
 		c.Data(http.StatusOK, "text/markdown; charset=utf-8", []byte(body))
 		return
 	}
-	rows := [][]xlsxCell{{xlsxString("学生姓名"), xlsxString("学号"), xlsxString("通过题目数"), xlsxString("所得分数")}}
-	rankingRows, _, _ := s.examRankingRows(item, students, "ioi", nil)
-	for _, row := range rankingRows {
-		rows = append(rows, []xlsxCell{xlsxString(row.Name), xlsxString(row.studentNo), xlsxNumber(row.Solved), xlsxNumber(row.TotalScore)})
-	}
-	body, err := buildXLSX(rows)
-	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
-		return
-	}
-	c.Header("Content-Disposition", fmt.Sprintf("attachment; filename=\"exam-%d-report.xlsx\"", item.ID))
-	c.Data(http.StatusOK, "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", body)
+	s.exportEventRankingForPaper(c, eventPaper{kind: "exam", id: item.ID, exam: item}, "xlsx")
 }
 
 func (s Server) buildExamMarkdownReport(item models.Exam, students []models.User) (string, error) {
-	rankingRows, _, _ := s.examRankingRows(item, students, "ioi", nil)
+	rankingRows, _, _, err := s.examRankingRows(item, students, examScoringRule(item), nil)
+	if err != nil {
+		return "", err
+	}
 	submissions, err := s.examSubmissionsForUsers(item.ID, userIDs(students), examProblemIDs(item), true, "user_id asc, problem_id asc, created_at asc, id asc")
 	if err != nil {
 		return "", err
 	}
-	return renderExamMarkdownReport(item, students, rankingRows, submissions), nil
+	filtered := submissions[:0]
+	for _, submission := range submissions {
+		if item.StartsAt != nil && submission.CreatedAt.Before(*item.StartsAt) || item.EndsAt != nil && !submission.CreatedAt.Before(*item.EndsAt) {
+			continue
+		}
+		filtered = append(filtered, submission)
+	}
+	return renderExamMarkdownReport(item, students, rankingRows, filtered), nil
 }
 
 func renderExamMarkdownReport(item models.Exam, students []models.User, rankingRows []examRankingRow, submissions []models.Submission) string {
@@ -4103,6 +4120,7 @@ func renderExamMarkdownReport(item models.Exam, students []models.User, rankingR
 	fmt.Fprintf(&b, "- 开始时间：%s\n", formatTimePtr(item.StartsAt))
 	fmt.Fprintf(&b, "- 结束时间：%s\n", formatTimePtr(item.EndsAt))
 	fmt.Fprintf(&b, "- 学生人数：%d\n", len(students))
+	fmt.Fprintf(&b, "- 赛制：%s\n", strings.ToUpper(examScoringRule(item)))
 	fmt.Fprintf(&b, "- 题目数量：%d\n", len(item.Problems))
 	fmt.Fprintf(&b, "- 导出时间：%s\n\n", formatTimeValue(time.Now()))
 
@@ -4113,6 +4131,9 @@ func renderExamMarkdownReport(item models.Exam, students []models.User, rankingR
 	for _, row := range rankingRows {
 		fmt.Fprintf(&b, "%d. %s\n", row.Rank, markdownInlineText(studentDisplayName(studentByID[row.UserID], row)))
 		fmt.Fprintf(&b, "   - 总分：%d / %d\n", row.TotalScore, row.MaxScore)
+		if examScoringRule(item) == "acm" {
+			fmt.Fprintf(&b, "   - 罚时：%d 分钟\n", row.PenaltyMinutes)
+		}
 		fmt.Fprintf(&b, "   - 通过/尝试/提交：%d / %d / %d\n", row.Solved, row.Attempted, row.SubmissionCount)
 		fmt.Fprintf(&b, "   - 状态：%s\n", workStatusText(row.WorkStatus))
 		fmt.Fprintf(&b, "   - 最后提交：%s\n", formatTimePtr(row.LastSubmission))
@@ -5925,6 +5946,7 @@ func clamp(value int, minValue int, maxValue int) int {
 }
 
 type xlsxCell struct {
+	Style  int
 	Value  string
 	Number bool
 }
@@ -5938,6 +5960,10 @@ func xlsxNumber(value int) xlsxCell {
 }
 
 func buildXLSX(rows [][]xlsxCell) ([]byte, error) {
+	return buildWorkbookXLSX(buildSheetXML(rows), "")
+}
+
+func buildWorkbookXLSX(sheet, styles string) ([]byte, error) {
 	var out bytes.Buffer
 	zw := zip.NewWriter(&out)
 	files := map[string]string{
@@ -5960,7 +5986,13 @@ func buildXLSX(rows [][]xlsxCell) ([]byte, error) {
 			`<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">` +
 			`<Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/worksheet" Target="worksheets/sheet1.xml"/>` +
 			`</Relationships>`,
-		"xl/worksheets/sheet1.xml": buildSheetXML(rows),
+		"xl/worksheets/sheet1.xml": sheet,
+	}
+	if styles != "" {
+		files["xl/styles.xml"] = styles
+		files["[Content_Types].xml"] = strings.Replace(files["[Content_Types].xml"], "</Types>", `<Override PartName="/xl/styles.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.styles+xml"/></Types>`, 1)
+		files["xl/_rels/workbook.xml.rels"] = strings.Replace(files["xl/_rels/workbook.xml.rels"], "</Relationships>", `<Relationship Id="rId2" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/styles" Target="styles.xml"/></Relationships>`, 1)
+		files["xl/workbook.xml"] = strings.Replace(files["xl/workbook.xml"], "考试成绩", "场次排名", 1)
 	}
 	for name, body := range files {
 		w, err := zw.Create(name)
@@ -5985,11 +6017,15 @@ func buildSheetXML(rows [][]xlsxCell) string {
 		b.WriteString(fmt.Sprintf(`<row r="%d">`, rowIndex+1))
 		for colIndex, cell := range row {
 			ref := fmt.Sprintf("%s%d", xlsxColumnName(colIndex+1), rowIndex+1)
+			style := ""
+			if cell.Style > 0 {
+				style = fmt.Sprintf(` s="%d"`, cell.Style)
+			}
 			if cell.Number {
-				b.WriteString(fmt.Sprintf(`<c r="%s"><v>%s</v></c>`, ref, cell.Value))
+				b.WriteString(fmt.Sprintf(`<c r="%s"%s><v>%s</v></c>`, ref, style, cell.Value))
 				continue
 			}
-			b.WriteString(fmt.Sprintf(`<c r="%s" t="inlineStr"><is><t>%s</t></is></c>`, ref, xmlEscape(cell.Value)))
+			b.WriteString(fmt.Sprintf(`<c r="%s"%s t="inlineStr"><is><t xml:space="preserve">%s</t></is></c>`, ref, style, xmlEscape(cell.Value)))
 		}
 		b.WriteString(`</row>`)
 	}

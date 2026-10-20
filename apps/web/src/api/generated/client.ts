@@ -676,6 +676,8 @@ export const apiOperations = {
   "deleteEventAttachment": { method: "DELETE", path: "/event-papers/{kind}/{event_id}/attachments/{attachment_id}", segments: [] },
   "listEventProblemChoices": { method: "GET", path: "/event-papers/{kind}/{event_id}/choices", segments: [] },
   "uploadEventTestChunk": { method: "PUT", path: "/event-papers/{kind}/{event_id}/test-uploads/{upload_id}/{chunk_index}", segments: [] },
+  "getEventRanking": { method: "GET", path: "/event-papers/{kind}/{event_id}/ranking", segments: [] },
+  "exportEventRanking": { method: "GET", path: "/event-papers/{kind}/{event_id}/ranking/export", segments: [] },
 } as const
 
 export type ApiOperationId = keyof typeof apiOperations
@@ -1210,6 +1212,12 @@ export const generatedApi = {
     requestOperation<TResponse, never>("listEventProblemChoices", options),
   "uploadEventTestChunk": <TResponse = components['schemas']["JsonObject"]>(options: ApiRequestOptions<never> = {}) =>
     requestOperation<TResponse, never>("uploadEventTestChunk", options),
+  "getEventRanking": <TResponse = {
+    [key: string]: unknown
+  }>(options: ApiRequestOptions<never> = {}) =>
+    requestOperation<TResponse, never>("getEventRanking", options),
+  "exportEventRanking": <TResponse = unknown>(options: ApiRequestOptions<never> = {}) =>
+    requestOperation<TResponse, never>("exportEventRanking", options),
 }
 
 // 兼容现有页面的 Axios 调用；新代码优先使用 generatedApi 的 operationId 方法。

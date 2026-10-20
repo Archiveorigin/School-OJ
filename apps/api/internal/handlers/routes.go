@@ -65,6 +65,8 @@ func (s Server) registerAPIRoutes(api *gin.RouterGroup) {
 	auth.GET("/event-archives", s.listEventArchives)
 	auth.GET("/event-reviews", middleware.RequireRoles(models.RoleAdmin), s.listEventReviews)
 	auth.GET("/event-papers/:kind/:event_id", s.getEventPaper)
+	auth.GET("/event-papers/:kind/:event_id/ranking", s.getEventRanking)
+	auth.GET("/event-papers/:kind/:event_id/ranking/export", s.exportEventRanking)
 	auth.GET("/event-papers/:kind/:event_id/choices", s.listEventProblemChoices)
 	auth.PUT("/event-papers/:kind/:event_id/settings", s.updateEventSettings)
 	auth.POST("/event-papers/:kind/:event_id/review", s.reviewEventPaper)

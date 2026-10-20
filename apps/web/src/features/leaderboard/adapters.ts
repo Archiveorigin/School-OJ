@@ -136,7 +136,7 @@ export function adaptTeamContestRanking(source: UnknownRecord | null | undefined
     frozen: Boolean(source?.frozen),
     subtitle: rule === 'score' ? '总分优先 · 满分题数次序' : '题数优先 · 罚时排名',
     durationSeconds,
-    currentTimeSeconds: currentTimeFromRange(contest.starts_at, durationSeconds),
+    currentTimeSeconds: currentTimeFromRange(contest.starts_at, durationSeconds, source?.now),
     solvedLabel: rule === 'score' ? '满分' : '题数',
     metricLabel: rule === 'score' ? '总分' : '罚时',
     metricDirection: rule === 'score' ? 'descending' : 'ascending',

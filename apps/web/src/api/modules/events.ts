@@ -80,7 +80,7 @@ export type Paper = {
   problems: PaperProblem[];
   can_edit: boolean;
   lifecycle?: EventLifecycle;
-  completion_checks?: { judging: number; ungraded: number };
+  completion_checks?: { judging: number; ungraded: number; failed?: number };
   can_view_ranking?: boolean;
   history?: Array<{
     id: number;
@@ -160,7 +160,7 @@ export async function downloadPaperProblem(
   });
   saveDownload(data, `${link.label}-v${link.problem_version_id}.zip`);
 }
-function saveDownload(blob: Blob, name: string) {
+export function saveDownload(blob: Blob, name: string) {
   const url = URL.createObjectURL(blob),
     a = document.createElement("a");
   a.href = url;

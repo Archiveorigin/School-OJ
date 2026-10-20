@@ -32,6 +32,7 @@ const autoRefresh = ref(true)
 const error = ref('')
 const lastLoadedAt = ref<Date | null>(null)
 let refreshTimer: number | undefined
+let disposed = false
 
 const scoreboardData = computed(() => adaptExamRanking(ranking.value || { exam: props.detail?.exam }))
 const emptyText = computed(() => ranking.value?.has_class === false
@@ -39,12 +40,10 @@ const emptyText = computed(() => ranking.value?.has_class === false
   : '暂无考试记录')
 const updatedAtLabel = computed(() => lastLoadedAt.value ? formatDateTime(lastLoadedAt.value) : '')
 
+// The deadline closes submissions, not grading: late judge results and manual
+// scores must continue to refresh until the administrator finalizes the event.
 function rankingEnded() {
-  const exam = ranking.value?.exam || props.detail?.exam
-  if (!exam) return false
-  if (exam.status === '已结束' || exam.status === 'closed') return true
-  const end = exam.ends_at ? new Date(exam.ends_at).getTime() : Number.NaN
-  return Number.isFinite(end) && Date.now() >= end
+  return disposed || ranking.value?.lifecycle === 'completed' || props.detail?.lifecycle === 'completed'
 }
 
 function clearRefreshTimer() {
@@ -91,7 +90,7 @@ watch(() => route.params.id, () => {
   void loadRanking()
 })
 onMounted(loadRanking)
-onBeforeUnmount(clearRefreshTimer)
+onBeforeUnmount(() => { disposed = true; clearRefreshTimer() })
 </script>
 
 <style scoped>

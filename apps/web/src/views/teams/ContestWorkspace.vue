@@ -185,6 +185,7 @@ const detail = ref<any>(null),
   editing = ref(false)
 let stream: AuthenticatedEventSource | null = null
 let rankingTimer: number | undefined
+let rankingDisposed = false
 let detailTimer: number | undefined, deadlineTimer: number | undefined
 let detailLoading = false
 const ticketVisible = ref(false), ticketProblemID = ref<number | undefined>()
@@ -327,7 +328,7 @@ function scheduleRankingRefresh() {
   if (
     !autoRefresh.value ||
     section.value !== 'scoreboard' ||
-    ['ended', 'closed'].includes(detail.value?.contest?.state)
+    rankingDisposed || ranking.value?.lifecycle === 'completed' || detail.value?.lifecycle === 'completed'
   )
     return
   rankingTimer = window.setTimeout(() => void loadRanking(), 5000)
@@ -395,6 +396,7 @@ onMounted(async () => {
   if (section.value === 'scoreboard') await loadRanking()
 })
 onBeforeUnmount(() => {
+  rankingDisposed = true
   if (detailTimer) window.clearInterval(detailTimer)
   if (deadlineTimer) window.clearTimeout(deadlineTimer)
   stream?.close()

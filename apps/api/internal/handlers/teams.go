@@ -133,6 +133,7 @@ func (err *teamContentMutationError) Error() string {
 }
 
 type teamContestRankingCell struct {
+	Pending        bool       `json:"pending"`
 	ProblemID      uint       `json:"problem_id"`
 	Status         string     `json:"status"`
 	Attempts       int        `json:"attempts"`
@@ -145,6 +146,8 @@ type teamContestRankingCell struct {
 }
 
 type teamContestRankingRow struct {
+	Rank            int `json:"rank"`
+	lastAccepted    *time.Time
 	UserID          uint                     `json:"user_id"`
 	Name            string                   `json:"name"`
 	Solved          int                      `json:"solved"`
@@ -157,6 +160,8 @@ type teamContestRankingRow struct {
 }
 
 type teamContestCellAggregate struct {
+	Pending         bool
+	LastStatus      string
 	UserID          uint
 	ProblemID       uint
 	Attempts        int
@@ -1037,22 +1042,11 @@ func (s Server) teamContestRanking(c *gin.Context) {
 		c.JSON(http.StatusForbidden, gin.H{"error": "比赛尚未开始"})
 		return
 	}
-	var links []models.TeamContestProblem
-	s.DB.Preload("Problem").Preload("ProblemVersion").Where("contest_id = ?", contest.ID).Order("sort_order, id").Find(&links)
-	hydrateTeamContestProblemVersions(links)
-	links = filterActiveTeamContestProblemLinks(links)
-	normalizeTeamContestProblemLabels(links)
-	var userIDs []uint
-	if contest.State == models.TeamContestDraft {
-		s.DB.Model(&models.TeamMembership{}).Where("team_id = ?", team.ID).Pluck("user_id", &userIDs)
-	} else {
-		s.DB.Model(&models.TeamContestParticipant{}).Where("contest_id = ?", contest.ID).Pluck("user_id", &userIDs)
+	links, users, err := s.loadContestRankingParticipants(contest)
+	if err != nil {
+		eventError(c, err)
+		return
 	}
-	var users []models.User
-	if len(userIDs) > 0 {
-		s.DB.Where("id IN ? AND account_deleted = false", userIDs).Order("lower(name), id").Find(&users)
-	}
-	users = activeTeamContestUsers(users)
 	endsAt, _ := teamContestWindow(contest, time.Now())
 	cutoff := time.Date(9999, 12, 31, 23, 59, 59, 0, time.UTC)
 	frozen := false
@@ -1063,7 +1057,7 @@ func (s Server) teamContestRanking(c *gin.Context) {
 			frozen = true
 		}
 	}
-	aggregates, err := s.loadTeamContestCellAggregates(contest.ID, cutoff)
+	aggregates, err := s.loadTeamContestCellAggregates(contest, cutoff)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 		return
@@ -1080,6 +1074,8 @@ func (s Server) teamContestRanking(c *gin.Context) {
 	}
 	c.JSON(http.StatusOK, gin.H{
 		"contest":                 contest,
+		"lifecycle":               (eventPaper{kind: "contest", id: contest.ID, contest: contest}).lifecycle(time.Now()),
+		"now":                     time.Now(),
 		"scoring_rule":            contest.ScoringRule,
 		"participant_count":       len(rows),
 		"problems":                problems,
@@ -1089,13 +1085,20 @@ func (s Server) teamContestRanking(c *gin.Context) {
 	})
 }
 
-func (s Server) loadTeamContestCellAggregates(contestID uint, cutoff time.Time) ([]teamContestCellAggregate, error) {
+func (s Server) loadTeamContestCellAggregates(contest models.TeamContest, cutoff time.Time) ([]teamContestCellAggregate, error) {
 	var rows []teamContestCellAggregate
+	start := contest.CreatedAt
+	if contest.StartsAt != nil {
+		start = *contest.StartsAt
+	}
+	if end := contestEndAt(contest); end != nil && end.Before(cutoff) {
+		cutoff = *end
+	}
 	err := s.DB.Raw(`
 WITH scoped AS (
   SELECT user_id, problem_id, status, score, created_at, id
   FROM submissions
-  WHERE team_contest_id = ? AND created_at < ?
+  WHERE team_contest_id = ? AND created_at >= ? AND created_at < ?
 ), first_accept AS (
   SELECT DISTINCT ON (user_id, problem_id)
          user_id, problem_id, created_at AS solved_at, id AS solved_id
@@ -1120,19 +1123,22 @@ SELECT scoped.user_id,
        COUNT(*) FILTER (
          WHERE first_accept.solved_at IS NOT NULL
            AND (scoped.created_at, scoped.id) < (first_accept.solved_at, first_accept.solved_id)
-           AND scoped.status NOT IN (?, ?, ?, ?, ?)
+           AND scoped.status NOT IN (?, ?, ?, ?, ?, ?)
        )::integer AS wrong_attempts,
-       COALESCE(MAX(scoped.score), 0)::integer AS best_score,
+       COALESCE(MAX(scoped.score) FILTER (WHERE scoped.status NOT IN ('queued','running','pending_review','system_error')), 0)::integer AS best_score,
+       BOOL_OR(scoped.status IN ('queued','running','pending_review')) AS pending,
+       latest.status AS last_status,
 	   COALESCE((ARRAY_AGG(scoped.score ORDER BY scoped.created_at DESC, scoped.id DESC))[1], 0)::integer AS latest_score,
 	   first_accept.solved_at,
 	   MAX(scoped.created_at) AS last_submission,
-	   (ARRAY_AGG(scoped.created_at ORDER BY scoped.score DESC, scoped.created_at ASC, scoped.id ASC))[1] AS effective_at,
+	   (ARRAY_AGG(scoped.created_at ORDER BY scoped.score DESC, scoped.created_at ASC, scoped.id ASC) FILTER (WHERE scoped.status NOT IN ('queued','running','pending_review','system_error')))[1] AS effective_at,
 	   CASE WHEN first_accept.solved_at IS NOT NULL THEN ? ELSE latest.status END AS latest_status
 FROM scoped
 LEFT JOIN first_accept USING (user_id, problem_id)
 JOIN latest USING (user_id, problem_id)
 GROUP BY scoped.user_id, scoped.problem_id, first_accept.solved_at, first_accept.solved_id, latest.status`,
-		contestID,
+		contest.ID,
+		start,
 		cutoff,
 		models.StatusAccepted,
 		models.StatusSystemError,
@@ -1141,6 +1147,7 @@ GROUP BY scoped.user_id, scoped.problem_id, first_accept.solved_at, first_accept
 		models.StatusPendingReview,
 		models.StatusAccepted,
 		models.StatusSystemError,
+		models.StatusCompileError,
 		models.StatusAccepted,
 	).Scan(&rows).Error
 	return rows, err
@@ -1168,6 +1175,17 @@ func buildTeamContestRanking(users []models.User, links []models.TeamContestProb
 				cell.BestScore = aggregate.BestScore
 				if scoringRule == "oi" {
 					cell.BestScore = aggregate.LatestScore
+					cell.Status = aggregate.LastStatus
+					if cell.Status == "" {
+						cell.Status = aggregate.LatestStatus
+					}
+				}
+				cell.Pending = aggregate.Pending
+				if scoringRule == "oi" {
+					cell.Pending = cell.Status == "queued" || cell.Status == "running" || cell.Status == "pending_review"
+				}
+				if cell.Pending && scoringRule == "oi" {
+					cell.BestScore = 0
 				}
 				cell.SolvedAt = aggregate.SolvedAt
 				cell.ElapsedMinutes = elapsedContestMinutes(contestStart, aggregate.LastSubmission)
@@ -1181,8 +1199,26 @@ func buildTeamContestRanking(users []models.User, links []models.TeamContestProb
 				}
 				if aggregate.SolvedAt != nil {
 					cell.ElapsedMinutes = elapsedContestMinutes(contestStart, *aggregate.SolvedAt)
-					row.Solved++
+					row.lastAccepted = laterTime(row.lastAccepted, aggregate.SolvedAt)
+					if scoringRule == "acm" {
+						row.Solved++
+						cell.Pending = false
+					}
 					row.PenaltyMinutes += cell.ElapsedMinutes + cell.WrongAttempts*20
+				}
+				if scoringRule != "acm" {
+					if cell.BestScore >= cell.MaxScore {
+						row.Solved++
+						cell.Pending = false
+					}
+					cell.SolvedAt = nil
+					if cell.BestScore >= cell.MaxScore {
+						scoredAt := aggregate.EffectiveAt
+						if scoringRule == "oi" || scoredAt.IsZero() {
+							scoredAt = aggregate.LastSubmission
+						}
+						cell.SolvedAt = &scoredAt
+					}
 				}
 				row.TotalScore += cell.BestScore
 			}
@@ -1210,28 +1246,20 @@ func buildTeamContestRanking(users []models.User, links []models.TeamContestProb
 		}
 	}
 	sort.SliceStable(rows, func(i, j int) bool {
-		if scoringRule == "ioi" || scoringRule == "oi" {
-			if rows[i].TotalScore != rows[j].TotalScore {
-				return rows[i].TotalScore > rows[j].TotalScore
-			}
-			if rows[i].Solved != rows[j].Solved {
-				return rows[i].Solved > rows[j].Solved
-			}
-		} else {
-			if rows[i].Solved != rows[j].Solved {
-				return rows[i].Solved > rows[j].Solved
-			}
-			if rows[i].PenaltyMinutes != rows[j].PenaltyMinutes {
-				return rows[i].PenaltyMinutes < rows[j].PenaltyMinutes
-			}
+		if cmp := compareRankingKeys(rows[i].rankingKey(), rows[j].rankingKey(), scoringRule); cmp != 0 {
+			return cmp < 0
 		}
-		if scoringRule == "ioi" {
-			if cmp := compareTimePtr(rows[i].LastSubmission, rows[j].LastSubmission); cmp != 0 {
-				return cmp < 0
-			}
+		if rows[i].Name != rows[j].Name {
+			return rows[i].Name < rows[j].Name
 		}
-		return strings.ToLower(rows[i].Name) < strings.ToLower(rows[j].Name)
+		return rows[i].UserID < rows[j].UserID
 	})
+	for i := range rows {
+		rows[i].Rank = i + 1
+		if i > 0 && compareRankingKeys(rows[i-1].rankingKey(), rows[i].rankingKey(), scoringRule) == 0 {
+			rows[i].Rank = rows[i-1].Rank
+		}
+	}
 	return rows
 }
 

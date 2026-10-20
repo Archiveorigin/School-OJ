@@ -12992,6 +12992,121 @@
           }
         }
       }
+    },
+    "/event-papers/{kind}/{event_id}/ranking": {
+      "get": {
+        "operationId": "getEventRanking",
+        "tags": [
+          "整场审核与归档"
+        ],
+        "summary": "管理人员查看实际排名",
+        "x-handler": "getEventRanking",
+        "x-auth": "bearer",
+        "parameters": [
+          {
+            "name": "kind",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "event_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "排名结果",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "additionalProperties": true
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "仅本场管理人员可访问"
+          },
+          "409": {
+            "description": "场次未截止或仍有评分未完成"
+          }
+        }
+      }
+    },
+    "/event-papers/{kind}/{event_id}/ranking/export": {
+      "get": {
+        "operationId": "exportEventRanking",
+        "tags": [
+          "整场审核与归档"
+        ],
+        "summary": "导出截止后的完整排名",
+        "x-handler": "exportEventRanking",
+        "x-auth": "bearer",
+        "parameters": [
+          {
+            "name": "kind",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "event_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer"
+            }
+          },
+          {
+            "name": "format",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "enum": [
+                "xlsx",
+                "html"
+              ],
+              "default": "xlsx"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "排名结果",
+            "content": {
+              "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet": {
+                "schema": {
+                  "type": "string",
+                  "format": "binary"
+                }
+              },
+              "text/html": {
+                "schema": {
+                  "type": "string",
+                  "format": "binary"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "仅本场管理人员可访问"
+          },
+          "409": {
+            "description": "场次未截止或仍有评分未完成"
+          }
+        }
+      }
     }
   },
   "components": {

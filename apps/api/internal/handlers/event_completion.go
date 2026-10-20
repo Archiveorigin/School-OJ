@@ -16,6 +16,7 @@ func (p eventPaper) lifecycle(now time.Time) string {
 type eventCompletionChecks struct {
 	Judging  int64 `json:"judging"`
 	Ungraded int64 `json:"ungraded"`
+	Failed   int64 `json:"failed"`
 }
 
 func completionChecks(db *gorm.DB, p eventPaper) (eventCompletionChecks, error) {
@@ -25,6 +26,9 @@ func completionChecks(db *gorm.DB, p eventPaper) (eventCompletionChecks, error) 
 		column = "team_contest_id"
 	}
 	if err := db.Model(&models.Submission{}).Where(column+"=? AND status IN ?", p.id, []models.SubmissionStatus{models.StatusQueued, models.StatusRunning}).Count(&checks.Judging).Error; err != nil {
+		return checks, err
+	}
+	if err := db.Model(&models.Submission{}).Where(column+"=? AND status=?", p.id, models.StatusSystemError).Count(&checks.Failed).Error; err != nil {
 		return checks, err
 	}
 	if p.kind == "exam" && examManualReview(p.exam) {
@@ -50,6 +54,9 @@ func validateEventCompletion(db *gorm.DB, p eventPaper, now time.Time) error {
 	}
 	if checks.Ungraded > 0 {
 		return eventFail(409, "仍有人工评阅未完成，请完成评分后再确认完结")
+	}
+	if checks.Failed > 0 {
+		return eventFail(409, "仍有判题系统异常，请处理并重新评测后再确认完结")
 	}
 	return nil
 }

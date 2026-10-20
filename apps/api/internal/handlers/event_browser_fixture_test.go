@@ -27,9 +27,28 @@ func TestEventBrowserFixture(t *testing.T) {
 	_, contestID := eventTestPaper(t, f, "contest")
 	f.s.Cfg.CORSOrigins = []string{"http://127.0.0.1:4179"}
 	f.router = f.s.Router()
+	rankingCases := seedRankingBrowserCases(t, f)
 	server := &http.Server{Addr: addr, Handler: f.router, ReadHeaderTimeout: 10 * time.Second}
 	f.router.GET("/__qa/info", func(c *gin.Context) {
-		c.JSON(200, gin.H{"course_id": f.exam.CourseID, "contest_id": contestID, "team_slug": "review-qa"})
+		c.JSON(200, gin.H{"course_id": f.exam.CourseID, "contest_id": contestID, "team_slug": "review-qa", "rankings": rankingCases})
+	})
+	f.router.POST("/__qa/rankings/:kind/:id/resolve", func(c *gin.Context) {
+		id, ok := idParam(c, "id")
+		if !ok {
+			return
+		}
+		for _, item := range rankingCases {
+			if item.Kind == c.Param("kind") && item.ID == id {
+				err := f.s.DB.Model(&models.Submission{}).Where("id=?", item.Queued).Updates(map[string]any{"status": models.StatusAccepted, "score": 100}).Error
+				if err != nil {
+					eventError(c, err)
+					return
+				}
+				c.JSON(200, gin.H{"updated": true})
+				return
+			}
+		}
+		c.Status(404)
 	})
 	f.router.POST("/__qa/clock/:kind/:id/:phase", func(c *gin.Context) {
 		id, ok := idParam(c, "id")

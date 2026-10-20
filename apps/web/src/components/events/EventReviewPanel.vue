@@ -85,7 +85,8 @@
             :disabled="
               busy ||
               !!paper.completion_checks?.judging ||
-              !!paper.completion_checks?.ungraded
+              !!paper.completion_checks?.ungraded ||
+              !!paper.completion_checks?.failed
             "
             @click="review('complete')"
             >确认完结</el-button
@@ -96,15 +97,15 @@
         v-if="
           lifecycle === 'closed' &&
           (paper.completion_checks?.judging ||
-            paper.completion_checks?.ungraded)
+            paper.completion_checks?.ungraded || paper.completion_checks?.failed)
         "
         class="muted"
       >
         待判题 {{ paper.completion_checks?.judging }} 份 · 待人工评分
-        {{ paper.completion_checks?.ungraded }} 份；处理完成后刷新再确认完结。
+        {{ paper.completion_checks?.ungraded }} 份 · 判题异常 {{ paper.completion_checks?.failed || 0 }} 份；处理完成后刷新再确认完结。
       </p>
-      <div class="paper-layout" v-loading="busy">
-        <aside class="paper-rail">
+      <div class="paper-layout" :class="{ 'ranking-layout': tab === 'ranking' }" v-loading="busy">
+        <aside v-if="tab !== 'ranking'" class="paper-rail">
           <div class="rail-title">
             <h2>本场题目</h2>
             <el-button
@@ -200,7 +201,7 @@
                 label="本场附件"
                 name="attachments" /><el-tab-pane
                 label="说明与时间"
-                name="settings" /><el-tab-pane label="审核记录" name="history"
+                name="settings" /><el-tab-pane v-if="['running', 'closed', 'completed'].includes(lifecycle)" label="成绩与排名" name="ranking" /><el-tab-pane label="审核记录" name="history"
             /></el-tabs>
             <template v-if="tab === 'problems'"
               ><article v-if="selected" class="paper-problem">
@@ -303,6 +304,7 @@
                 >保存说明与时间</el-button
               ></el-form
             >
+            <EventRankingReview v-else-if="tab === 'ranking'" :key="`${kind}/${eventId}`" :kind="kind" :event-id="eventId" @updated="rankingUpdated" />
             <section v-else-if="tab === 'history'">
               <el-empty
                 v-if="!paper.history?.length"
@@ -352,6 +354,7 @@ import {
 import { useAuthStore } from "../../stores/auth";
 import { formatDateTime } from "../../features/time";
 import EventAttachments from "./EventAttachments.vue";
+import EventRankingReview from "./EventRankingReview.vue";
 import EventProblemEditor from "./EventProblemEditor.vue";
 import ProblemStatementView from "../ProblemStatementView.vue";
 import EventDocumentImport from "./EventDocumentImport.vue";
@@ -389,6 +392,9 @@ const selected = computed(
     paper.value?.problems.find((p) => p.problem_id === preview.value) ||
     paper.value?.problems[0],
 );
+function rankingUpdated(snapshot: { lifecycle: Paper["lifecycle"]; completion_checks: Paper["completion_checks"] }) {
+  if (paper.value) { paper.value.lifecycle = snapshot.lifecycle; paper.value.completion_checks = snapshot.completion_checks }
+}
 async function discard() {
   if (!dirty.value) return true;
   try {
@@ -718,6 +724,7 @@ async function download(link: PaperProblem) {
 watch(() => [props.kind, props.eventId], load, { immediate: true });
 </script>
 <style scoped>
+.paper-layout.ranking-layout { grid-template-columns: minmax(0, 1fr); }
 .import-trigger {
   width: 100%;
   margin: 4px 0 16px;

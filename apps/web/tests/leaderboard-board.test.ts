@@ -115,4 +115,13 @@ describe('LeaderboardBoard variants', () => {
     expect(sortLeaderboardRows(published, 'penalty', 'performance').map((item) => item.name)).toEqual(['甲', '乙'])
     expect(published.map((item) => item.name)).toEqual(['甲', '乙'])
   })
+
+  it('preserves shared competition ranks when switching display modes', async () => {
+    const board = data('penalty')
+    board.rows = [row({ id: 1, rank: 1 }), row({ id: 2, rank: 1 }), row({ id: 3, rank: 3, solved: 0 })]
+    const wrapper = mountBoard(board)
+    await wrapper.get('select[aria-label="排名模式"]').setValue('performance')
+    expect(wrapper.findComponent({ name: 'PenaltyLeaderboardTable' }).props('rankByID')).toEqual({ '1': 1, '2': 1, '3': 3 })
+    wrapper.unmount()
+  })
 })

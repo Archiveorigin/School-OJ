@@ -145,14 +145,14 @@ func TestExamPenaltyStatsUsesFirstAcceptedAndIgnoresPendingFailures(t *testing.T
 	}
 
 	stats := examPenaltyStats(submissions, start, false, 100)
-	if stats.Attempts != 6 || stats.WrongAttempts != 2 || stats.ElapsedMinutes != 35 {
-		t.Fatalf("penalty stats = %#v, want attempts=6 wrong=2 elapsed=35", stats)
+	if stats.Attempts != 6 || stats.WrongAttempts != 1 || stats.ElapsedMinutes != 35 {
+		t.Fatalf("penalty stats = %#v, want attempts=6 wrong=1 elapsed=35; compile errors must not penalize", stats)
 	}
 	if stats.FirstAccepted == nil || !stats.FirstAccepted.Equal(start.Add(35*time.Minute)) {
 		t.Fatalf("first accepted = %v", stats.FirstAccepted)
 	}
-	if got := stats.ElapsedMinutes + stats.WrongAttempts*20; got != 75 {
-		t.Fatalf("penalty = %d, want 75", got)
+	if got := stats.ElapsedMinutes + stats.WrongAttempts*20; got != 55 {
+		t.Fatalf("penalty = %d, want 55", got)
 	}
 }
 

@@ -169,7 +169,7 @@ const rankedRows = computed(() => sortLeaderboardRows(props.data.rows, props.dat
 const actualParticipantCount = computed(() => Math.max(props.data.rows.length, Number(props.data.participantCount) || 0))
 const awardPercents = computed(() => normalizeAwardPercents(props.data.awardPercents))
 const rankByID = computed<Record<string, number>>(() => Object.fromEntries(
-  rankedRows.value.map((row, index) => [String(row.id), mode.value === 'performance' ? index + 1 : row.rank])
+  rankedRows.value.map((row) => [String(row.id), row.rank])
 ))
 const awardByID = computed<Record<string, LeaderboardAwardTier>>(() => Object.fromEntries(
   rankedRows.value.map((row) => {
