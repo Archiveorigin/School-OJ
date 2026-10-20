@@ -43,3 +43,13 @@
 - 新接口已更新 OpenAPI 和生成客户端。没有新增数据库迁移。
 
 视觉参考：[2025 ICPC World Finals 官方榜单](https://worldfinals.icpc.global/scoreboard/2025/finals/)。ACM 排序与编译错误处理参考 [ICPC 官方区域赛规则](https://icpc.global/regionals/rules)，并由用户明确确认应用到本项目。
+
+## 发布记录（2026-10-21）
+
+- 功能提交：`a1795dcbd7f5aeb0aafbf54701a1723fdbae74db`，基于已部署的 HTTP UUID 修复版本 `8dea83e`。
+- 本地 PostgreSQL/Redis 下 `go test ./... -count=1` 通过；前端 153 项测试通过、1 项原有测试跳过，生产构建、类型检查与接口一致性检查通过。
+- 本地浏览器覆盖考试/团队比赛 × ACM/OI/IOI 的 6 条截止后自动刷新、下载及打印流程；Excel 文件通过独立读取校验，保留冻结表头、筛选、数值名次和学号格式。
+- 服务器隔离容器重复验证 6 种榜单、越权阻断、CE 罚时、截止边界、迟到评测及系统异常阻止完结；实际容器页面完成 6 条桌面/手机导出检查，浏览器无脚本错误。
+- 生产 API、Web 使用验收通过的镜像重新启动；公开站点桌面/手机检查和健康检查通过。Worker、数据库、Redis、MinIO 容器未重建，生产配置和数据卷保留，无数据库结构迁移。
+- 临时验收项目的 5 个容器、3 个独立数据卷、网络、工作树及本次构建的无引用中间镜像已清理；服务器磁盘可用约 6.2 GiB。
+- 服务端证据：`/opt/School-OJ-backups/ranking-20261021/`；回滚镜像：`school-oj-api:rollback-ranking-8dea83e`、`school-oj-web:rollback-ranking-8dea83e`。
