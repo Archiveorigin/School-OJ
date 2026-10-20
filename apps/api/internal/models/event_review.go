@@ -10,6 +10,7 @@ import (
 type EventReview struct {
 	ReviewStatus      string     `json:"review_status" gorm:"size:16;not null;default:'approved';index"`
 	ReviewRevision    int        `json:"review_revision" gorm:"not null;default:1"`
+	SubmissionVersion int        `json:"submission_version" gorm:"not null;default:0"`
 	ReviewNote        string     `json:"review_note" gorm:"type:text;not null;default:''"`
 	ReviewSubmittedAt *time.Time `json:"review_submitted_at"`
 	ReviewedAt        *time.Time `json:"reviewed_at"`
@@ -45,15 +46,16 @@ func (r EventReview) Editable() bool {
 // Snapshots preserve exactly which versions, attachments and schedule were
 // submitted/decided, even when a draft is subsequently revised or deleted.
 type EventReviewLog struct {
-	ID        uint           `json:"id" gorm:"primaryKey"`
-	EventKind string         `json:"event_kind" gorm:"size:16;not null;index:idx_event_review_log"`
-	EventID   uint           `json:"event_id" gorm:"not null;index:idx_event_review_log"`
-	Revision  int            `json:"revision" gorm:"not null"`
-	Action    string         `json:"action" gorm:"size:16;not null"`
-	ActorID   uint           `json:"actor_id" gorm:"not null"`
-	Note      string         `json:"note" gorm:"type:text;not null"`
-	Snapshot  datatypes.JSON `json:"snapshot" gorm:"type:jsonb;not null"`
-	CreatedAt time.Time      `json:"created_at"`
+	ID                uint           `json:"id" gorm:"primaryKey"`
+	EventKind         string         `json:"event_kind" gorm:"size:16;not null;index:idx_event_review_log"`
+	EventID           uint           `json:"event_id" gorm:"not null;index:idx_event_review_log"`
+	Revision          int            `json:"revision" gorm:"not null"`
+	SubmissionVersion int            `json:"submission_version" gorm:"not null;default:0"`
+	Action            string         `json:"action" gorm:"size:16;not null"`
+	ActorID           uint           `json:"actor_id" gorm:"not null"`
+	Note              string         `json:"note" gorm:"type:text;not null"`
+	Snapshot          datatypes.JSON `json:"snapshot" gorm:"type:jsonb;not null"`
+	CreatedAt         time.Time      `json:"created_at"`
 }
 
 type EventAttachment struct {

@@ -232,7 +232,11 @@ func recordEventReview(tx *gorm.DB, p eventPaper, userID uint, action, note stri
 	if err != nil {
 		return err
 	}
-	return tx.Create(&models.EventReviewLog{EventKind: p.kind, EventID: p.id, Revision: p.review().ReviewRevision, Action: action, ActorID: userID, Note: note, Snapshot: snapshot}).Error
+	version := p.review().SubmissionVersion
+	if action == "submit" {
+		version++
+	}
+	return tx.Create(&models.EventReviewLog{EventKind: p.kind, EventID: p.id, Revision: p.review().ReviewRevision, SubmissionVersion: version, Action: action, ActorID: userID, Note: note, Snapshot: snapshot}).Error
 }
 func (s Server) getEventPaper(c *gin.Context) {
 	p, ok := s.eventPaperByParams(c, true)
@@ -334,6 +338,7 @@ func (s Server) reviewEventPaper(c *gin.Context) {
 				}
 			}
 			updates["review_status"] = "pending"
+			updates["submission_version"] = r.SubmissionVersion + 1
 			updates["review_submitted_at"] = now
 			updates["review_note"] = ""
 			updates["reviewed_by"] = nil

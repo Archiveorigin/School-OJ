@@ -10,6 +10,12 @@
       :closable="false"
       title="题目仅属于本场，完整题面、测试点和附件将随整场送审。"
     />
+    <el-alert
+      v-if="initialDraft"
+      type="warning"
+      :closable="false"
+      title="题面已导入。请校对样例、数据范围与图片，再添加测试点并保存。"
+    />
     <div class="fields">
       <el-form-item label="题号"
         ><el-input v-model="form.label" maxlength="16" /></el-form-item
@@ -148,8 +154,20 @@
           <h3>题面预览</h3>
           <span class="muted">与发布题面一致</span>
         </div>
-        <h2>{{ form.title || "未命名题目" }}</h2>
+        <el-tabs v-if="sourcePDF" v-model="previewTab"
+          ><el-tab-pane label="题面预览" name="statement" /><el-tab-pane
+            label="PDF 原页"
+            name="pdf"
+        /></el-tabs>
+        <PDFSourcePreview
+          v-if="previewTab === 'pdf' && sourcePDF && initialDraft?.pages"
+          :session="sourcePDF"
+          :pages="initialDraft.pages"
+          @image="insertImage"
+        />
+        <h2 v-else>{{ form.title || "未命名题目" }}</h2>
         <MarkdownRenderer
+          v-if="previewTab !== 'pdf'"
           :source="statement"
           :asset-urls="imageUrls"
           :asset-base="
@@ -237,6 +255,9 @@
       "
     />
     <el-alert v-if="error" type="error" :title="error" :closable="false" />
+    <el-checkbox v-if="initialDraft" v-model="importConfirmed"
+      >已对照原文核对题面、公式、图片和样例</el-checkbox
+    >
     <div>
       <el-button type="primary" :loading="busy" @click="save"
         >保存题目</el-button
@@ -245,7 +266,14 @@
   </el-form>
 </template>
 <script setup lang="ts">
-import { computed, reactive, ref, onBeforeUnmount, watch } from "vue";
+import {
+  computed,
+  reactive,
+  ref,
+  onBeforeUnmount,
+  onMounted,
+  watch,
+} from "vue";
 import {
   emptyStatement,
   renderStatement,
@@ -268,16 +296,31 @@ import {
 } from "../../api/modules/events";
 import { tagList } from "../../features/problems/problemMeta";
 import MarkdownRenderer from "../MarkdownRenderer.vue";
+import type { ImportedProblem } from "../../features/events/documentImport";
+import type { PDFImportSession } from "../../features/events/pdfImport";
+import {
+  imageFileAsset,
+  attachImportedImage,
+} from "../../features/events/imageResources";
+import PDFSourcePreview from "./PDFSourcePreview.vue";
 const props = defineProps<{
   kind: EventKind;
   eventId: number;
   revision: number;
   link?: PaperProblem;
+  initialDraft?: ImportedProblem;
+  sourcePDF?: PDFImportSession;
   nextLabel: string;
 }>();
 const emit = defineEmits<{ saved: []; cancel: []; dirty: [boolean] }>();
 const problem = props.link?.problem;
-const persisted = props.link?.statement_sections;
+const persisted =
+  props.link?.statement_sections || props.initialDraft?.sections;
+const previewTab = ref("statement"),
+  importConfirmed = ref(false);
+onMounted(() => {
+  if (props.initialDraft) emit("dirty", true);
+});
 const sections = reactive<StatementSections>(
   persisted
     ? { ...emptyStatement(), ...JSON.parse(JSON.stringify(persisted)) }
@@ -296,10 +339,12 @@ onBeforeUnmount(() => controller?.abort());
 const form = reactive({
   label: props.link?.label || props.nextLabel,
   score: props.link?.score || 100,
-  title: problem?.title || "",
+  title: problem?.title || props.initialDraft?.title || "",
   statement: problem?.statement || "",
-  time_limit_ms: problem?.time_limit_ms || 1000,
-  memory_limit_mb: problem?.memory_limit_mb || 256,
+  time_limit_ms:
+    problem?.time_limit_ms || props.initialDraft?.time_limit_ms || 1000,
+  memory_limit_mb:
+    problem?.memory_limit_mb || props.initialDraft?.memory_limit_mb || 256,
   output_limit_kb: problem?.output_limit_kb || 1024,
   tags: problem ? tagList(problem.tags) : [],
   checker: {
@@ -308,7 +353,9 @@ const form = reactive({
     relative_tolerance: props.link?.checker.relative_tolerance ?? 0.000001,
   },
   test_mode: props.link ? "preserve" : "replace",
-  assets: [] as Array<{
+  assets: (props.initialDraft
+    ? JSON.parse(JSON.stringify(props.initialDraft.assets))
+    : []) as Array<{
     name: string;
     path: string;
     content_type: string;
@@ -330,29 +377,40 @@ async function addImages(e: Event) {
     return;
   }
   for (const file of files) {
-    if (
-      !/^image\/(png|jpeg|gif|webp)$/.test(file.type) ||
-      file.size > 5 * 1024 * 1024
-    ) {
-      error.value = "请选择 PNG、JPEG、GIF、WebP 图片，单张不能超过 5 MiB";
-      return;
-    }
-    const data = await new Promise<string>((resolve, reject) => {
-      const reader = new FileReader();
-      reader.onload = () => resolve(String(reader.result));
-      reader.onerror = reject;
-      reader.readAsDataURL(file);
-    });
-    const path = `assets/${crypto.randomUUID()}.${file.name.split(".").pop()?.toLowerCase()}`;
-    form.assets.push({ name: file.name, path, content_type: file.type, data });
-    const markdown = `\n\n![题面图片](${path})\n`;
+    if (!(await insertImage(file))) break;
+  }
+}
+async function insertImage(file: File) {
+  try {
+    const asset = await imageFileAsset(file);
+    // Reuse the same count/size limits and content-hash names as document import.
+    attachImportedImage(
+      {
+        key: "editor",
+        title: form.title,
+        sections: emptyStatement(),
+        assets: form.assets,
+        warnings: [],
+      },
+      "",
+      asset,
+    );
+    const markdown = `\n\n![题面图片](${asset.path})\n`;
     if (legacyMode.value) form.statement += markdown;
     else sections[imageTarget.value] += markdown;
+    return true;
+  } catch (e) {
+    error.value = (e as Error).message;
+    return false;
   }
 }
 async function save() {
   if (busy.value) return;
   error.value = "";
+  if (props.initialDraft && !importConfirmed.value) {
+    error.value = "请先确认已对照原文校对导入题面";
+    return;
+  }
   if (
     !form.title.trim() ||
     (legacyMode.value ? !form.statement.trim() : validateStatement(sections))

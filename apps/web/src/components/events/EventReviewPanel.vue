@@ -43,9 +43,15 @@
           <span v-if="kind === 'exam'"
             >·
             {{ paper.problems.reduce((sum, p) => sum + p.score, 0) }} 分</span
-          ><span class="muted"> · 修订 {{ paper.event.review_revision }}</span>
+          >
         </div>
         <div class="actions">
+          <el-button
+            v-if="paper.can_edit"
+            :disabled="busy"
+            @click="openImport('pdf')"
+            >导入 PDF 题册</el-button
+          >
           <el-button :disabled="busy || editorOpen" @click="refresh"
             >刷新</el-button
           >
@@ -122,6 +128,21 @@
               >新增题目</el-button
             >
           </div>
+          <el-button
+            v-if="paper.can_edit"
+            class="import-trigger"
+            :disabled="busy"
+            @click="openImport('markdown')"
+            >导入 Markdown 单题</el-button
+          >
+          <el-button
+            v-if="paper.can_edit && importPending"
+            link
+            class="queue-trigger"
+            :disabled="busy"
+            @click="openImport()"
+            >继续处理导入队列</el-button
+          >
           <div v-if="paper.can_edit" class="existing-picker">
             <el-select
               v-model="selectedID"
@@ -174,11 +195,13 @@
         <section class="paper-main panel">
           <EventProblemEditor
             v-if="editorOpen"
-            :key="editing?.problem_id || 'new'"
+            :key="editing?.problem_id || importedDraft?.key || 'new'"
             :kind="kind"
             :event-id="eventId"
             :revision="paper.event.review_revision"
             :link="editing"
+            :initial-draft="importedDraft"
+            :source-p-d-f="sourcePDF"
             :next-label="nextLabel()"
             @dirty="dirty = $event"
             @saved="problemSaved"
@@ -198,10 +221,7 @@
                   <div>
                     <span class="eyebrow">题目 {{ selected.label }}</span>
                     <h2>{{ selected.problem.title }}</h2>
-                    <p class="muted">
-                      {{ selected.case_count }} 组测试 · 固定版本
-                      {{ selected.problem_version_id }}
-                    </p>
+                    <p class="muted">{{ selected.case_count }} 组测试</p>
                   </div>
                   <el-button @click="download(selected)"
                     >下载审核题包</el-button
@@ -306,22 +326,36 @@
                   <strong>{{
                     actionLabels[entry.action] || entry.action
                   }}</strong
-                  ><small
-                    >{{ formatDateTime(entry.created_at) }} · 修订
-                    {{ entry.revision }}</small
-                  >
+                  ><small>{{ formatDateTime(entry.created_at) }}</small>
                   <p v-if="entry.note">{{ entry.note }}</p>
                 </li>
               </ol>
             </section>
           </template>
         </section>
-      </div> </template
+      </div>
+      <EventDocumentImport
+        v-if="paper.can_edit"
+        :key="`${kind}/${eventId}`"
+        ref="importer"
+        :kind="kind"
+        :event-id="eventId"
+        :revision="paper.event.review_revision"
+        @select="importSelected"
+        @pending="importPending = $event"
+      /> </template
     ><el-skeleton v-else-if="!error" :rows="8" animated />
   </section>
 </template>
 <script setup lang="ts">
-import { computed, reactive, ref, watch, onBeforeUnmount } from "vue";
+import {
+  computed,
+  reactive,
+  ref,
+  shallowRef,
+  watch,
+  onBeforeUnmount,
+} from "vue";
 import { onBeforeRouteLeave, onBeforeRouteUpdate } from "vue-router";
 import { ElMessageBox } from "element-plus";
 import { generatedApi, type Problem } from "../../api/client";
@@ -343,6 +377,13 @@ import { formatDateTime } from "../../features/time";
 import EventAttachments from "./EventAttachments.vue";
 import EventProblemEditor from "./EventProblemEditor.vue";
 import ProblemStatementView from "../ProblemStatementView.vue";
+import EventDocumentImport from "./EventDocumentImport.vue";
+import type { ImportedProblem } from "../../features/events/documentImport";
+import type { PDFImportSession } from "../../features/events/pdfImport";
+const importer = ref<InstanceType<typeof EventDocumentImport>>();
+const importedDraft = ref<ImportedProblem>();
+const sourcePDF = shallowRef<PDFImportSession>();
+const importPending = ref(false);
 const props = defineProps<{ kind: EventKind; eventId: number }>();
 const emit = defineEmits<{ changed: [] }>();
 const auth = useAuthStore(),
@@ -397,15 +438,29 @@ async function closeEditor() {
   if (await discard()) editorOpen.value = false;
 }
 function beforeUnload(event: BeforeUnloadEvent) {
-  if (dirty.value) {
+  if (dirty.value || importPending.value) {
     event.preventDefault();
     event.returnValue = "";
   }
 }
 window.addEventListener("beforeunload", beforeUnload);
 onBeforeUnmount(() => window.removeEventListener("beforeunload", beforeUnload));
-onBeforeRouteLeave(discard);
-onBeforeRouteUpdate(discard);
+async function leaveWorkspace() {
+  if (!(await discard())) return false;
+  if (!importPending.value) return true;
+  try {
+    await ElMessageBox.confirm(
+      "导入队列中还有未保存的题目，离开将清空队列。",
+      "离开组题",
+      { confirmButtonText: "离开", cancelButtonText: "继续组题" },
+    );
+    return true;
+  } catch {
+    return false;
+  }
+}
+onBeforeRouteLeave(leaveWorkspace);
+onBeforeRouteUpdate(leaveWorkspace);
 const actionLabels: Record<string, string> = {
   submit: "提交审核",
   approve: "批准",
@@ -431,6 +486,7 @@ async function load() {
     const result = await loadPaper(props.kind, props.eventId);
     if (sequence !== loadSequence) return;
     paper.value = result;
+    if (!result.can_edit) importPending.value = false;
     const e = result.event;
     Object.assign(settings, {
       title: e.title,
@@ -495,7 +551,9 @@ async function review(
             ? "请确认本场题面、测试点、时间和附件均已核对。批准后参与者将按开始时间获得访问权限。"
             : action === "withdraw"
               ? "撤回后参与者无法进入，修改完成后须重新审核。"
-              : "提交后题目、设置和附件将锁定，等待管理员整场审核。",
+              : importPending.value
+                ? "导入队列还有未保存的题目，它们不会包含在本次审核中，提交后队列将清空。确认仅提交已保存的题目、设置和附件？"
+                : "提交后题目、设置和附件将锁定，等待管理员整场审核。",
         actionLabels[action],
         { confirmButtonText: "确认", cancelButtonText: "取消" },
       );
@@ -651,14 +709,31 @@ async function changeScore(link: PaperProblem) {
     })),
   );
 }
+async function openImport(type?: "markdown" | "pdf") {
+  if (!(await discard())) return;
+  editorOpen.value = false;
+  importer.value?.open(type);
+}
+function importSelected(draft: ImportedProblem, source?: PDFImportSession) {
+  editing.value = undefined;
+  importedDraft.value = draft;
+  sourcePDF.value = source;
+  dirty.value = true;
+  editorOpen.value = true;
+}
 async function editProblem(link?: PaperProblem) {
   if (!(await discard())) return;
   tab.value = "problems";
   dirty.value = false;
+  importedDraft.value = undefined;
+  sourcePDF.value = undefined;
   editing.value = link;
   editorOpen.value = true;
 }
 async function problemSaved() {
+  if (importedDraft.value) importer.value?.markSaved(importedDraft.value.key);
+  importedDraft.value = undefined;
+  sourcePDF.value = undefined;
   dirty.value = false;
   editorOpen.value = false;
   await refresh();
@@ -673,6 +748,14 @@ async function download(link: PaperProblem) {
 watch(() => [props.kind, props.eventId], load, { immediate: true });
 </script>
 <style scoped>
+.import-trigger {
+  width: 100%;
+  margin: 4px 0 16px;
+}
+.queue-trigger {
+  width: 100%;
+  margin: -4px 0 16px !important;
+}
 .paper-workspace {
   display: grid;
   gap: 18px;

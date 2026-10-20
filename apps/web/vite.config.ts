@@ -3,9 +3,11 @@ import { defineConfig } from 'vitest/config'
 import Components from 'unplugin-vue-components/vite'
 import { ElementPlusResolver } from 'unplugin-vue-components/resolvers'
 import ElementPlus from 'unplugin-element-plus/vite'
+import { pdfAssetsPlugin } from './scripts/pdf-assets-plugin'
 
 export default defineConfig({
   plugins: [
+    pdfAssetsPlugin(),
     vue(),
     Components({ dirs: [], dts: false, resolvers: [ElementPlusResolver()] }),
     ElementPlus()

@@ -10,7 +10,7 @@
             <section class="panel description-panel">
               <div class="section-heading">
                 <h2>比赛说明</h2>
-                <el-button v-if="detail.can_edit" @click="editVisible = true">计分与比赛设置</el-button>
+                <div v-if="detail.can_organize" class="contest-management-actions"><el-button type="primary" @click="router.push(`/event-papers/contest/${contestID}/edit`)">{{detail.can_edit ? '组题' : '查看试卷与审核'}}</el-button><el-button v-if="detail.can_edit" @click="editVisible = true">比赛设置</el-button></div>
               </div>
               <div class="description-copy">
                 {{ detail.contest.description || '本场比赛暂未填写说明。' }}
@@ -48,8 +48,7 @@
               </dl>
             </aside>
           </div>
-          <EventManageCard v-if="detail.can_organize" kind="contest" :event-id="contestID" :editable="detail.can_edit" />
-          <EventAttachments v-else-if="detail.can_read_problems" kind="contest" :event-id="contestID" /><el-alert v-else :closable="false" type="info" :title="eventLifecycle(detail.contest)==='closed'?'本场已截止，题目、附件和排名将在管理员确认完结后开放。':'本场尚未开始或你不在参赛名单中。'" />
+          <EventAttachments v-if="detail.can_read_problems" kind="contest" :event-id="contestID" /><el-alert v-else-if="!detail.can_organize" :closable="false" type="info" :title="eventLifecycle(detail.contest)==='closed'?'本场已截止，题目、附件和排名将在管理员确认完结后开放。':'本场尚未开始或你不在参赛名单中。'" />
         </template>
 
         <EventProblemList v-else-if="section === 'problems' && detail.can_read_problems" :items="problemItems" :base="`/contest/${contestID}`">
@@ -140,7 +139,6 @@
 import {eventLifecycle,lifecycleLabels} from "../../api/modules/events"
 import { useSubmissionStreams } from "../../features/submissions/live"
 import { apiErrorMessage } from '../../api/errors'
-import EventManageCard from '../../components/events/EventManageCard.vue'
 import EventAttachments from '../../components/events/EventAttachments.vue'
 import TicketDialog from '../../components/tickets/TicketDialog.vue'
 
@@ -407,6 +405,8 @@ onBeforeUnmount(() => {
 .two-column { display: grid; grid-template-columns: minmax(0, 1fr) 320px; gap: 16px; }
 .description-panel, .meta-panel { padding: 20px; }
 .section-heading { display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 18px; }
+.contest-management-actions { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+.contest-management-actions .el-button { margin-left: 0; }
 .section-heading h2 { margin: 0; }
 .description-copy { min-height: 240px; margin-top: 18px; padding-top: 18px; white-space: pre-wrap; line-height: 1.8; border-top: 1px solid var(--border); }
 .meta-panel h3 { margin-top: 0; }

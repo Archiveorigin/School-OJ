@@ -12993,6 +12993,109 @@
           }
         }
       }
+    },
+    "/event-papers/{kind}/{event_id}/import-image": {
+      "post": {
+        "operationId": "importEventProblemImage",
+        "tags": [
+          "整场审核与归档"
+        ],
+        "summary": "获取公开 HTTPS 图片并转为题包资源预览（仅可编辑场次管理人）",
+        "x-handler": "importEventProblemImage",
+        "x-auth": "bearer",
+        "parameters": [
+          {
+            "name": "kind",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "event_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "成功",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "name",
+                    "path",
+                    "content_type",
+                    "data"
+                  ],
+                  "properties": {
+                    "name": {
+                      "type": "string"
+                    },
+                    "path": {
+                      "type": "string"
+                    },
+                    "content_type": {
+                      "type": "string"
+                    },
+                    "data": {
+                      "type": "string"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "404": {
+            "description": "场次或文件不存在"
+          },
+          "409": {
+            "description": "修订号或审核状态冲突"
+          },
+          "429": {
+            "description": "请求频率过高"
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "url",
+                  "revision"
+                ],
+                "properties": {
+                  "url": {
+                    "type": "string",
+                    "maxLength": 4096
+                  },
+                  "revision": {
+                    "type": "integer",
+                    "minimum": 1
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
     }
   },
   "components": {

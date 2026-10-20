@@ -676,6 +676,7 @@ export const apiOperations = {
   "deleteEventAttachment": { method: "DELETE", path: "/event-papers/{kind}/{event_id}/attachments/{attachment_id}", segments: [] },
   "listEventProblemChoices": { method: "GET", path: "/event-papers/{kind}/{event_id}/choices", segments: [] },
   "uploadEventTestChunk": { method: "PUT", path: "/event-papers/{kind}/{event_id}/test-uploads/{upload_id}/{chunk_index}", segments: [] },
+  "importEventProblemImage": { method: "POST", path: "/event-papers/{kind}/{event_id}/import-image", segments: [] },
 } as const
 
 export type ApiOperationId = keyof typeof apiOperations
@@ -1210,6 +1211,19 @@ export const generatedApi = {
     requestOperation<TResponse, never>("listEventProblemChoices", options),
   "uploadEventTestChunk": <TResponse = components['schemas']["JsonObject"]>(options: ApiRequestOptions<never> = {}) =>
     requestOperation<TResponse, never>("uploadEventTestChunk", options),
+  "importEventProblemImage": <TResponse = {
+    "name": string
+    "path": string
+    "content_type": string
+    "data": string
+  }>(options: ApiRequestOptions<{
+    "url": string
+    "revision": number
+  }> = {}) =>
+    requestOperation<TResponse, {
+    "url": string
+    "revision": number
+  }>("importEventProblemImage", options),
 }
 
 // 兼容现有页面的 Axios 调用；新代码优先使用 generatedApi 的 operationId 方法。
