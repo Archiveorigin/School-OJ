@@ -35,7 +35,7 @@
         v-if="lifecycle === 'closed'"
         type="warning"
         :closable="false"
-        title="本场已截止，答题已关闭。管理员确认完结后，题目、附件和原权限允许的排名才进入前台比赛归档。"
+        title="本场已截止，停止提交。参与者仍可查看题目、下载附件和查看原权限允许的排名；管理员确认完结后进入比赛归档。"
       />
       <div class="paper-toolbar">
         <div>
@@ -46,12 +46,6 @@
           >
         </div>
         <div class="actions">
-          <el-button
-            v-if="paper.can_edit"
-            :disabled="busy"
-            @click="openImport('pdf')"
-            >导入 PDF 题册</el-button
-          >
           <el-button :disabled="busy || editorOpen" @click="refresh"
             >刷新</el-button
           >
@@ -96,12 +90,6 @@
             @click="review('complete')"
             >确认完结</el-button
           >
-          <el-button
-            v-if="auth.role === 'admin' && lifecycle === 'completed'"
-            :disabled="busy"
-            @click="review('reopen')"
-            >撤销完结</el-button
-          >
         </div>
       </div>
       <p
@@ -132,7 +120,7 @@
             v-if="paper.can_edit"
             class="import-trigger"
             :disabled="busy"
-            @click="openImport('markdown')"
+            @click="openImport()"
             >导入 Markdown 单题</el-button
           >
           <el-button
@@ -141,7 +129,7 @@
             class="queue-trigger"
             :disabled="busy"
             @click="openImport()"
-            >继续处理导入队列</el-button
+            >继续导入此题</el-button
           >
           <div v-if="paper.can_edit" class="existing-picker">
             <el-select
@@ -201,7 +189,6 @@
             :revision="paper.event.review_revision"
             :link="editing"
             :initial-draft="importedDraft"
-            :source-p-d-f="sourcePDF"
             :next-label="nextLabel()"
             @dirty="dirty = $event"
             @saved="problemSaved"
@@ -338,9 +325,6 @@
         v-if="paper.can_edit"
         :key="`${kind}/${eventId}`"
         ref="importer"
-        :kind="kind"
-        :event-id="eventId"
-        :revision="paper.event.review_revision"
         @select="importSelected"
         @pending="importPending = $event"
       /> </template
@@ -348,15 +332,8 @@
   </section>
 </template>
 <script setup lang="ts">
-import {
-  computed,
-  reactive,
-  ref,
-  shallowRef,
-  watch,
-  onBeforeUnmount,
-} from "vue";
-import { onBeforeRouteLeave, onBeforeRouteUpdate } from "vue-router";
+import { computed, reactive, ref, watch, onBeforeUnmount } from "vue";
+import { onBeforeRouteLeave, onBeforeRouteUpdate, useRoute } from "vue-router";
 import { ElMessageBox } from "element-plus";
 import { generatedApi, type Problem } from "../../api/client";
 import { apiErrorMessage } from "../../api/errors";
@@ -379,10 +356,8 @@ import EventProblemEditor from "./EventProblemEditor.vue";
 import ProblemStatementView from "../ProblemStatementView.vue";
 import EventDocumentImport from "./EventDocumentImport.vue";
 import type { ImportedProblem } from "../../features/events/documentImport";
-import type { PDFImportSession } from "../../features/events/pdfImport";
 const importer = ref<InstanceType<typeof EventDocumentImport>>();
 const importedDraft = ref<ImportedProblem>();
-const sourcePDF = shallowRef<PDFImportSession>();
 const importPending = ref(false);
 const props = defineProps<{ kind: EventKind; eventId: number }>();
 const emit = defineEmits<{ changed: [] }>();
@@ -402,7 +377,7 @@ const settings = reactive({
   starts_at: "",
   ends_at: "",
 });
-const tab = ref("problems"),
+const tab = ref(useRoute().query.tab === "settings" ? "settings" : "problems"),
   dirty = ref(false);
 const lifecycle = computed(
   () =>
@@ -450,7 +425,7 @@ async function leaveWorkspace() {
   if (!importPending.value) return true;
   try {
     await ElMessageBox.confirm(
-      "导入队列中还有未保存的题目，离开将清空队列。",
+      "导入的题面尚未保存，离开将丢弃此题面。",
       "离开组题",
       { confirmButtonText: "离开", cancelButtonText: "继续组题" },
     );
@@ -525,16 +500,14 @@ async function mutate(action: () => Promise<unknown>) {
   }
 }
 async function review(
-  action: "submit" | "withdraw" | "approve" | "reject" | "complete" | "reopen",
+  action: "submit" | "withdraw" | "approve" | "reject" | "complete",
 ) {
   if (!paper.value) return;
   let note = "";
   try {
-    if (action === "reject" || action === "reopen") {
+    if (action === "reject") {
       const answer = await ElMessageBox.prompt(
-        action === "reopen"
-          ? "撤销后归档将隐藏，并恢复为已截止；不会重新开放答题。请填写原因。"
-          : "请填写整场退回原因",
+        "请填写整场退回原因",
         actionLabels[action],
         {
           confirmButtonText: actionLabels[action],
@@ -546,13 +519,13 @@ async function review(
     } else {
       await ElMessageBox.confirm(
         action === "complete"
-          ? "已核对题目、附件和最终成绩？确认后本场以已完结状态进入前台比赛归档，访问权限保持原范围。"
+          ? "已核对题目、附件和最终成绩？完结后不能撤销，题目与成绩将锁定，仅从比赛菜单查看归档，访问权限保持原范围。"
           : action === "approve"
             ? "请确认本场题面、测试点、时间和附件均已核对。批准后参与者将按开始时间获得访问权限。"
             : action === "withdraw"
               ? "撤回后参与者无法进入，修改完成后须重新审核。"
               : importPending.value
-                ? "导入队列还有未保存的题目，它们不会包含在本次审核中，提交后队列将清空。确认仅提交已保存的题目、设置和附件？"
+                ? "导入的题面尚未保存，不会包含在本次审核中，提交后将清空。确认仅提交已保存的题目、设置和附件？"
                 : "提交后题目、设置和附件将锁定，等待管理员整场审核。",
         actionLabels[action],
         { confirmButtonText: "确认", cancelButtonText: "取消" },
@@ -709,15 +682,14 @@ async function changeScore(link: PaperProblem) {
     })),
   );
 }
-async function openImport(type?: "markdown" | "pdf") {
+async function openImport() {
   if (!(await discard())) return;
   editorOpen.value = false;
-  importer.value?.open(type);
+  importer.value?.open();
 }
-function importSelected(draft: ImportedProblem, source?: PDFImportSession) {
+function importSelected(draft: ImportedProblem) {
   editing.value = undefined;
   importedDraft.value = draft;
-  sourcePDF.value = source;
   dirty.value = true;
   editorOpen.value = true;
 }
@@ -726,14 +698,12 @@ async function editProblem(link?: PaperProblem) {
   tab.value = "problems";
   dirty.value = false;
   importedDraft.value = undefined;
-  sourcePDF.value = undefined;
   editing.value = link;
   editorOpen.value = true;
 }
 async function problemSaved() {
   if (importedDraft.value) importer.value?.markSaved(importedDraft.value.key);
   importedDraft.value = undefined;
-  sourcePDF.value = undefined;
   dirty.value = false;
   editorOpen.value = false;
   await refresh();

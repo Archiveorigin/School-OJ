@@ -64,16 +64,3 @@ func TestEventSubmissionVersionIndependentOfDraftRevision(t *testing.T) {
 		})
 	}
 }
-func TestEventImageImportAuthorization(t *testing.T) {
-	f := newExamFixture(t)
-	base, id := eventTestPaper(t, f, "exam")
-	request := gin.H{"url": "https://127.0.0.1/private.png", "revision": 1}
-	assertStatus(t, f.request("POST", base+"/import-image", &f.student, request), 403)
-	assertStatus(t, f.request("POST", base+"/import-image", &f.teacher, request), 400)
-	if eventRevision(t, f, "exam", id) != 1 {
-		t.Fatal("preview changed draft")
-	}
-	assertStatus(t, eventReviewRequest(t, f, base, "exam", id, &f.teacher, "submit"), 200)
-	request["revision"] = eventRevision(t, f, "exam", id)
-	assertStatus(t, f.request("POST", base+"/import-image", &f.teacher, request), 409)
-}

@@ -1,5 +1,5 @@
 <template>
-  <div class="markdown-body" v-html="rendered" @click="onMarkdownClick"></div>
+  <div class="markdown-body" v-html="rendered" @click="onMarkdownClick" @error.capture="onImageError"></div>
 </template>
 
 <script setup lang="ts">
@@ -20,6 +20,14 @@ const rendered = computed(() => markdown.renderer.render(tokens.value, markdown.
 }))
 const copyTimers = new Map<HTMLButtonElement, ReturnType<typeof setTimeout>>()
 let disposed = false
+function onImageError(event: Event) {
+  const img = event.target
+  if (!(img instanceof HTMLImageElement)) return
+  const fallback = document.createElement('span')
+  fallback.className = 'markdown-image-unavailable'
+  fallback.textContent = `图片加载失败${img.alt ? `：${img.alt}` : ''}，请检查原图链接或稍后刷新`
+  img.replaceWith(fallback)
+}
 
 watch([() => props.problemId, () => props.assetBase, pathsKey], ([problemId, assetBase, paths], _previous, onCleanup) => {
   const controller = new AbortController()
@@ -160,6 +168,14 @@ onBeforeUnmount(() => {
   object-fit: contain;
   border: 1px solid var(--border);
   background: var(--surface-strong);
+}
+.markdown-body :deep(.markdown-image-unavailable) {
+  display: block;
+  padding: 10px 12px;
+  margin: 12px 0;
+  color: var(--muted);
+  border: 1px dashed var(--border);
+  border-radius: 6px;
 }
 
 .math-block {

@@ -16,6 +16,27 @@ beforeEach(() => {
 afterEach(() => vi.unstubAllGlobals())
 
 describe('Markdown resource lifecycle', () => {
+  it('renders HTTPS images, image links and bare URLs without a local upload', () => {
+    const url = 'https://cdn.luogu.com.cn/upload/image_hosting/lcdtefnp.png'
+    const wrapper = mount(MarkdownRenderer, { props: { source: `![矩阵](${url})\n\n[图片](${url})\n\n${url}\n\n\`![代码](${url})\`\n\n[来源](https://example.com/problem)` } })
+    expect(wrapper.findAll('img')).toHaveLength(3)
+    for (const img of wrapper.findAll('img')) {
+      expect(img.attributes('src')).toBe(url)
+      expect(img.attributes('referrerpolicy')).toBe('no-referrer')
+    }
+    expect(wrapper.get('code').text()).toContain('![代码]')
+    expect(wrapper.get('a').text()).toBe('来源')
+    expect(getStatementAsset).not.toHaveBeenCalled()
+    wrapper.unmount()
+  })
+  it('blocks local and insecure image URLs and reports failed remote images', async () => {
+    const wrapper = mount(MarkdownRenderer, { props: { source: '![a](http://example.com/a.png)\n\n![b](./local.png)\n\n![c](https://example.com/a.png)' } })
+    expect(wrapper.findAll('img')).toHaveLength(1)
+    await wrapper.get('img').trigger('error')
+    expect(wrapper.text()).toContain('图片加载失败')
+    expect(wrapper.findAll('img')).toHaveLength(0)
+    wrapper.unmount()
+  })
   it('resolves encoded image names without double-encoding attachment paths', async () => {
     vi.mocked(getStatementAsset).mockResolvedValue({ data: new Blob(['image']) } as any)
     const wrapper = mount(MarkdownRenderer, { props: { source: '![图](assets/%E5%9B%BE%201.png)', problemId: 1 } })

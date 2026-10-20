@@ -21,6 +21,24 @@ func TestEventCompletionRequiresDeadlineAndAdmin(t *testing.T) {
 			base, id := eventTestPaper(t, f, kind)
 			assertStatus(t, eventReviewRequest(t, f, base, kind, id, &f.admin, "complete"), 409)
 			assertStatus(t, eventReviewRequest(t, f, base, kind, id, &f.teacher, "submit"), 200)
+			listPath := "/api/exams"
+			if kind == "contest" {
+				p, _ := loadEventPaper(f.s.DB, kind, id, false)
+				listPath = fmt.Sprintf("/api/teams/%d/contests", p.contest.TeamID)
+			}
+			pendingList := f.request("GET", listPath, &f.student, nil)
+			assertStatus(t, pendingList, 200)
+			var pendingRows []struct {
+				ID uint `json:"id"`
+			}
+			if err := json.Unmarshal(pendingList.Body.Bytes(), &pendingRows); err != nil {
+				t.Fatal(err)
+			}
+			for _, row := range pendingRows {
+				if row.ID == id {
+					t.Fatal("participant can see pending event")
+				}
+			}
 			assertStatus(t, eventReviewRequest(t, f, base, kind, id, &f.admin, "approve"), 200)
 			assertStatus(t, eventReviewRequest(t, f, base, kind, id, &f.admin, "complete"), 409)
 			p, _ := loadEventPaper(f.s.DB, kind, id, false)
@@ -50,11 +68,22 @@ func TestEventCompletionRequiresDeadlineAndAdmin(t *testing.T) {
 			assertStatus(t, detail, 200)
 			var view map[string]json.RawMessage
 			_ = json.Unmarshal(detail.Body.Bytes(), &view)
-			if string(view["can_read_problems"]) != "false" || string(view["lifecycle"]) != "\"closed\"" {
+			if string(view["can_read_problems"]) != "true" || string(view["lifecycle"]) != "\"closed\"" {
 				t.Fatal(detail.Body.String())
 			}
-			if strings.Contains(detail.Body.String(), f.problem.Statement) && f.problem.Statement != "" {
-				t.Fatal("deadline description leaked problem statement")
+			if string(view["can_submit"]) != "false" {
+				t.Fatal("closed event still accepts submissions")
+			}
+			assertStatus(t, f.request("GET", base+"/attachments", &f.student, nil), 200)
+			submitPath := "/api/submissions"
+			body := gin.H{"problem_id": f.problem.ID, "language": "python", "source_code": "print(2)"}
+			if kind == "exam" {
+				body["exam_id"] = id
+			} else {
+				submitPath = fmt.Sprintf("/api/contests/%d/submissions", id)
+			}
+			for _, actor := range []*models.User{&f.student, &f.teacher, &f.admin} {
+				assertStatus(t, f.request("POST", submitPath, actor, body), 403)
 			}
 			list := f.request("GET", "/api/event-archives", &f.student, nil)
 			assertStatus(t, list, 200)
@@ -69,9 +98,10 @@ func TestEventCompletionRequiresDeadlineAndAdmin(t *testing.T) {
 			assertStatus(t, eventReviewRequest(t, f, base, kind, id, &f.admin, "complete"), 200)
 			assertStatus(t, f.request("GET", base+"/archive", &f.student, nil), 200)
 			assertStatus(t, eventReviewRequest(t, f, base, kind, id, &f.admin, "complete"), 409)
-			assertStatus(t, eventReviewRequest(t, f, base, kind, id, &f.admin, "reopen"), 200)
-			assertStatus(t, f.request("GET", base+"/archive", &f.student, nil), 403)
-			assertStatus(t, eventReviewRequest(t, f, base, kind, id, &f.admin, "complete"), 200)
+			assertStatus(t, eventReviewRequest(t, f, base, kind, id, &f.admin, "reopen"), 409)
+			assertStatus(t, f.request("GET", base+"/archive", &f.student, nil), 200)
+			assertStatus(t, f.request("GET", path, &f.student, nil), 410)
+			assertStatus(t, f.request("GET", path, &f.admin, nil), 410)
 			f.s.DB.Model(p.model()).Update("deleted_at", time.Now())
 			assertStatus(t, f.request("POST", base+"/review", &f.admin, gin.H{"action": "complete", "revision": 0}), 404)
 		})
@@ -160,6 +190,6 @@ func TestEventManualGradesMustSettleBeforeCompletion(t *testing.T) {
 	assertStatus(t, eventReviewRequest(t, f, base, "exam", id, &f.admin, "complete"), 200)
 	assertStatus(t, f.request("PUT", grade, &f.teacher, gin.H{"score": 25}), 409)
 	assertStatus(t, f.request("POST", fmt.Sprintf("/api/exams/%d/submissions/%d/judge", id, sub.ID), &f.teacher, nil), 409)
-	assertStatus(t, eventReviewRequest(t, f, base, "exam", id, &f.admin, "reopen"), 200)
-	assertStatus(t, f.request("PUT", grade, &f.teacher, gin.H{"score": 25}), 200)
+	assertStatus(t, eventReviewRequest(t, f, base, "exam", id, &f.admin, "reopen"), 409)
+	assertStatus(t, f.request("PUT", grade, &f.teacher, gin.H{"score": 25}), 409)
 }

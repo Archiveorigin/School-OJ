@@ -63,11 +63,11 @@
           </el-table-column>
           <el-table-column label="操作" width="380">
             <template #default="{ row }">
-              <el-button v-if="isArchived(row)" size="small" type="primary" @click="router.push(`/competitions/exam/${row.id}`)">查看归档</el-button>
+              <el-button v-if="isArchived(row)" size="small" disabled title="请从菜单「比赛」查看归档">已归档</el-button>
               <el-button v-if="!isArchived(row)" size="small" type="primary"  @click="openDetail(row)">
                 {{ eventLifecycle(row)==='running' && !row.finished_at ? '进入' : '查看说明' }}
               </el-button>
-              <el-button v-if="canManage || (row.settings?.ranking_visible && scoringRule(row) !== 'oi' && ['running','completed'].includes(eventLifecycle(row)))" size="small" @click="router.push(`/exams/${row.id}/ranking`)">榜单</el-button>
+              <el-button v-if="!isArchived(row) && (canManage || (row.settings?.ranking_visible && scoringRule(row) !== 'oi' && ['running','closed'].includes(eventLifecycle(row))))" size="small" @click="router.push(`/exams/${row.id}/ranking`)">榜单</el-button>
               <el-button v-if="canManage" size="small" @click="openReport(row)">完成情况</el-button>
               <el-button v-if="canManage" size="small" @click="router.push(`/admin/exams/${row.id}/activity`)">行为日志</el-button>
               <el-button v-if="canManage" size="small" type="danger" plain @click="removeExam(row)">删除</el-button>

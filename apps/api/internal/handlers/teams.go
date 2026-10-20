@@ -592,6 +592,9 @@ func (s Server) listTeamContests(c *gin.Context) {
 	}
 	counts := s.countByParent("team_contest_problems", "contest_id", ids)
 	for _, item := range items {
+		if !item.Approved() && !s.canManageEventPaper(user, eventPaper{kind: "contest", id: item.ID, contest: item}) {
+			continue
+		}
 		count := counts[item.ID]
 		endsAt, status := teamContestWindow(item, time.Now())
 		views = append(views, teamContestView{
@@ -803,6 +806,10 @@ func (s Server) getTeamContest(c *gin.Context) {
 		c.JSON(http.StatusForbidden, gin.H{"error": "比赛尚未通过整场审核"})
 		return
 	}
+	if contest.CompletedAt != nil {
+		c.JSON(http.StatusGone, gin.H{"error": "本场已完结，请从比赛菜单查看归档", "code": "EVENT_COMPLETED"})
+		return
+	}
 	var links []models.TeamContestProblem
 	if canRead {
 		s.DB.Preload("Problem").Preload("ProblemVersion").Where("contest_id = ?", contest.ID).Order("sort_order, id").Find(&links)
@@ -968,6 +975,10 @@ func (s Server) listTeamContestSubmissions(c *gin.Context) {
 	user, _ := middleware.CurrentUser(c)
 	contest, team, ok := s.teamContestByParams(c)
 	if !ok || !s.requireTeamMember(c, user, team) {
+		return
+	}
+	if !s.canReadEventPaper(user, eventPaper{kind: "contest", id: contest.ID, contest: contest}, time.Now()) {
+		c.JSON(403, gin.H{"error": "本场提交记录尚未开放"})
 		return
 	}
 	var items []models.Submission
@@ -2103,6 +2114,9 @@ func teamContestAwardPercentValue(value *int) int {
 func teamContestWindow(contest models.TeamContest, now time.Time) (*time.Time, string) {
 	if contest.DeletedAt != nil {
 		return contestEndAt(contest), "cancelled"
+	}
+	if contest.CompletedAt != nil {
+		return contestEndAt(contest), models.TeamContestClosed
 	}
 	if !contest.Approved() {
 		return contestEndAt(contest), models.TeamContestDraft

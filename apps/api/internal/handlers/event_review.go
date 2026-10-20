@@ -113,14 +113,11 @@ func (s Server) canReadEventPaper(user models.User, p eventPaper, now time.Time)
 	if !p.review().Approved() || p.starts() != nil && now.Before(*p.starts()) {
 		return false
 	}
-	if p.lifecycle(now) == "closed" {
-		return false
-	}
 	if p.kind == "exam" {
 		if !s.canAccessExam(user, p.exam) {
 			return false
 		}
-		if p.archived(now) {
+		if p.archived(now) || p.lifecycle(now) == "closed" {
 			return true
 		}
 		var count int64
@@ -296,6 +293,9 @@ func (s Server) reviewEventPaper(c *gin.Context) {
 			return eventFail(403, "场次管理权限已变化")
 		}
 		r := p.review()
+		if r.CompletedAt != nil {
+			return eventFail(409, "已完结为最终状态，不能撤销或修改")
+		}
 		if r.ReviewRevision != req.Revision {
 			return eventFail(409, "场次已变更，请刷新审核内容")
 		}
@@ -307,14 +307,6 @@ func (s Server) reviewEventPaper(c *gin.Context) {
 				return err
 			}
 			updates["completed_at"], updates["completed_by"], updates["completion_note"] = now, u.ID, req.Note
-		case "reopen":
-			if p.lifecycle(now) != "completed" {
-				return eventFail(409, "仅已完结场次可以撤销完结")
-			}
-			if req.Note == "" {
-				return eventFail(400, "请填写撤销完结的原因")
-			}
-			updates["completed_at"], updates["completed_by"], updates["completion_note"] = nil, nil, req.Note
 		case "submit":
 			if err = requireEventDraft(p, req.Revision); err != nil {
 				return err

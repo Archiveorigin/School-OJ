@@ -1,7 +1,7 @@
 <template>
   <section class="workspace-view">
     <div class="view-heading">
-      <div><h3>团队比赛</h3><p>比赛仅对团队成员开放</p></div>
+      <div><h3>团队比赛</h3><p>比赛仅对团队成员开放，已完结场次请从菜单「比赛」查看</p></div>
       <el-button v-if="canOrganize" type="primary" @click="createVisible = true">创建比赛</el-button>
     </div>
     <div v-loading="loading" class="panel list-panel">
@@ -33,7 +33,7 @@
                 :loading="deletingID === row.id"
                 @click.stop="deleteContest(row)"
               >删除</el-button>
-              <el-button type="primary" link @click.stop="openContest(row)">进入</el-button>
+              <el-button type="primary" link :disabled="eventLifecycle(row)==='completed'" @click.stop="openContest(row)">{{eventLifecycle(row)==='completed' ? '已归档' : '进入'}}</el-button>
             </div>
           </template>
         </el-table-column>
@@ -177,7 +177,7 @@ async function deleteContest(row: TeamContest) {
 }
 
 function openContest(row: TeamContest) {
-  if (eventLifecycle(row)==='completed') { void router.push(`/competitions/contest/${row.id}`); return }
+  if (eventLifecycle(row)==='completed') return
   if ((row.review_status==='draft' || row.review_status==='pending' || row.review_status==='rejected') && !canOrganize.value && !row.can_edit && !row.can_delete) {
     ElMessage.warning('比赛尚未开始')
     return

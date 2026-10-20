@@ -40,7 +40,7 @@ func (s Server) eventListQuery(user models.User, archive bool) *gorm.DB {
 			contests = contests.Where("EXISTS(SELECT 1 FROM team_memberships m WHERE m.team_id=e.team_id AND m.user_id=?)", user.ID)
 		}
 	}
-	union := s.DB.Table("(? UNION ALL ?) AS events", exams, contests).Select(`events.*, CASE WHEN review_status<>'approved' THEN review_status WHEN starts_at>NOW() THEN 'upcoming' WHEN ends_at<=NOW() THEN CASE WHEN completed_at IS NULL THEN 'closed' ELSE 'completed' END ELSE 'running' END AS lifecycle`)
+	union := s.DB.Table("(? UNION ALL ?) AS events", exams, contests).Select(`events.*, CASE WHEN completed_at IS NOT NULL THEN 'completed' WHEN review_status<>'approved' THEN review_status WHEN starts_at>NOW() THEN 'upcoming' WHEN ends_at<=NOW() THEN CASE WHEN completed_at IS NULL THEN 'closed' ELSE 'completed' END ELSE 'running' END AS lifecycle`)
 	return s.DB.Table("(?) AS event_states", union)
 }
 func (s Server) listEventArchives(c *gin.Context) { s.listEvents(c, true) }

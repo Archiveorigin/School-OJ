@@ -2,7 +2,7 @@
   <section class="contest-page">
     <div v-if="detail" class="contest-shell">
       <EventWorkspaceHeader :title="detail.contest.title" :subtitle="detail.team.name" :rule="detail.contest.scoring_rule" :status="lifecycleLabels[eventLifecycle(detail.contest)]"
-        kind="比赛" :base="`/contest/${contestID}`" :show-ranking="detail.can_read_problems" :show-problems="detail.can_read_problems" :show-records="true" back-label="返回团队比赛" @back="goBack"><template #actions><el-button @click="openEventTicket">比赛反馈</el-button></template></EventWorkspaceHeader>
+        kind="比赛" :base="`/contest/${contestID}`" :show-ranking="detail.can_read_problems" :show-problems="detail.can_read_problems" :show-records="canViewRecords" back-label="返回团队比赛" @back="goBack"><template #actions><el-button v-if="detail.can_submit" @click="openEventTicket">比赛反馈</el-button></template></EventWorkspaceHeader>
 
       <main class="contest-content">
         <template v-if="section === 'description'">
@@ -10,7 +10,7 @@
             <section class="panel description-panel">
               <div class="section-heading">
                 <h2>比赛说明</h2>
-                <div v-if="detail.can_organize" class="contest-management-actions"><el-button type="primary" @click="router.push(`/event-papers/contest/${contestID}/edit`)">{{detail.can_edit ? '组题' : '查看试卷与审核'}}</el-button><el-button v-if="detail.can_edit" @click="editVisible = true">比赛设置</el-button></div>
+                <div class="contest-management-actions"><el-button v-if="detail.can_read_problems" @click="attachmentsVisible = true">附件</el-button><el-button v-if="detail.can_organize" type="primary" @click="router.push(`/event-papers/contest/${contestID}/edit`)">{{detail.can_edit ? '组题' : '查看试卷与审核'}}</el-button><el-button v-if="detail.can_edit" @click="editVisible = true">比赛设置</el-button></div>
               </div>
               <div class="description-copy">
                 {{ detail.contest.description || '本场比赛暂未填写说明。' }}
@@ -48,7 +48,8 @@
               </dl>
             </aside>
           </div>
-          <EventAttachments v-if="detail.can_read_problems" kind="contest" :event-id="contestID" /><el-alert v-else-if="!detail.can_organize" :closable="false" type="info" :title="eventLifecycle(detail.contest)==='closed'?'本场已截止，题目、附件和排名将在管理员确认完结后开放。':'本场尚未开始或你不在参赛名单中。'" />
+          <el-alert v-if="detail.lifecycle==='closed'" :closable="false" type="info" title="本场已截止，现为只读状态。题目与附件仍可查看，等待管理员确认完结。" />
+          <el-alert v-else-if="!detail.can_read_problems && !detail.can_organize" :closable="false" type="info" title="本场尚未开始或你不在参赛名单中，目前仅开放比赛说明。" />
         </template>
 
         <EventProblemList v-else-if="section === 'problems' && detail.can_read_problems" :items="problemItems" :base="`/contest/${contestID}`">
@@ -56,7 +57,7 @@
         </EventProblemList>
         <EventProblemPanel v-else-if="section === 'problem' && selectedLink" :selected="{ ...selectedLink, score: 100 }" :items="problemItems"
           :records="problemRecords" :base="`/contest/${contestID}`" :asset-base="`/event-papers/contest/${contestID}/problems/${selectedLink.problem_id}/assets`" @refresh="loadRecords" @view-submission="viewSubmission">
-          <template #actions><el-button @click="openProblemTicket">工单修改</el-button><el-button type="primary" :disabled="!detail.can_submit" @click="openSubmit">提交代码</el-button></template>
+          <template #actions><el-button v-if="detail.can_submit" @click="openProblemTicket">工单修改</el-button><el-button type="primary" :disabled="!detail.can_submit" @click="openSubmit">提交代码</el-button></template>
         </EventProblemPanel>
 
         <template v-else-if="section === 'scoreboard' && detail.can_read_problems && detail.contest.scoring_rule !== 'oi'">
@@ -73,10 +74,11 @@
             />
           </section>
         </template>
-        <section v-else-if="section==='records'" class="panel own-records"><h2>本人提交</h2><el-table :data="records.filter((r:any)=>r.user_id===auth.user?.id)"><el-table-column prop="id" label="提交编号"/><el-table-column prop="status" label="状态"/><el-table-column label="时间"><template #default="{row}">{{ dateText(row.created_at) }}</template></el-table-column><el-table-column label="操作"><template #default="{row}"><el-button link @click="viewSubmission(row.id)">查看提交</el-button></template></el-table-column></el-table><el-button @click="loadRecords">刷新提交</el-button></section>
+        <section v-else-if="section==='records' && canViewRecords" class="panel own-records"><h2>本人提交</h2><el-table :data="records.filter((r:any)=>r.user_id===auth.user?.id)"><el-table-column prop="id" label="提交编号"/><el-table-column prop="status" label="状态"/><el-table-column label="时间"><template #default="{row}">{{ dateText(row.created_at) }}</template></el-table-column><el-table-column label="操作"><template #default="{row}"><el-button link @click="viewSubmission(row.id)">查看提交</el-button></template></el-table-column></el-table><el-button @click="loadRecords">刷新提交</el-button></section>
         <el-result v-else title="此页面暂未开放"><template #extra><el-button @click="router.replace(`/contest/${contestID}/description`)">返回比赛说明</el-button></template></el-result>
       </main>
 
+      <el-dialog v-model="attachmentsVisible" title="比赛附件" width="min(760px, calc(100vw - 24px))" destroy-on-close><EventAttachments v-if="detail.can_read_problems" kind="contest" :event-id="contestID" :editable="detail.can_edit" :revision="detail.contest.review_revision" @changed="loadDetail" /></el-dialog>
       <TicketDialog v-model="ticketVisible" :context="{ kind: 'contest', id: contestID, problemID: ticketProblemID }" />
       <SubmissionDetailDialog v-model="submissionVisible" :detail="submissionDetail" />
       <el-dialog
@@ -236,6 +238,8 @@ const draftContext = computed(() => ({
   resourceId: contestID.value,
   problemId: selectedLink.value?.problem_id || 0
 }))
+const attachmentsVisible = ref(false)
+const canViewRecords = computed(() => Boolean(detail.value?.can_read_problems))
 const scoreboardData = computed(() => {
   const data = adaptTeamContestRanking(ranking.value, {
     contest: detail.value?.contest
@@ -254,16 +258,15 @@ async function loadDetail() {
     if (detail.value.lifecycle === 'running' && detail.value.contest.ends_at) {
       const delay = Date.parse(detail.value.contest.ends_at) - Date.parse(detail.value.now)
       deadlineTimer = window.setTimeout(() => {
-        if (detail.value && !detail.value.can_organize) {
-          detail.value.can_read_problems = false; detail.value.can_submit = false; detail.value.problems = [];
-          ranking.value = {rows: [], problems: []}; submitVisible.value = false
+        if (detail.value) {
+          detail.value.can_submit = false; submitVisible.value = false
         }
         void loadDetail()
       }, Math.min(Math.max(100, delay + 100), 2147483647))
     }
     if (!detail.value.can_read_problems) {
       ranking.value = {rows: [], problems: []}; submitVisible.value = false
-      if (!['description', 'records'].includes(section.value)) await router.replace(`/contest/${contestID.value}/description`)
+      if (section.value !== 'description' && !(section.value === 'records' && canViewRecords.value)) await router.replace(`/contest/${contestID.value}/description`)
     }
     if (detail.value.contest.scoring_rule === 'oi' && section.value === 'scoreboard')
       await router.replace(`/contest/${contestID.value}/problems`)
@@ -274,12 +277,14 @@ async function loadDetail() {
     }
     await loadRecords()
   } catch (e: any) {
+    if (e.response?.data?.code === 'EVENT_COMPLETED') { await router.replace(`/competitions/contest/${contestID.value}`); return }
+    detail.value = null; attachmentsVisible.value = false; submitVisible.value = false
     ElMessage.error(apiErrorMessage(e))
     await router.replace('/teams')
   } finally { detailLoading = false }
 }
 async function loadRecords() {
-  if (!contestID.value) return
+  if (!contestID.value || !canViewRecords.value) { records.value = []; return }
   try {
     records.value = (await generatedApi.listTeamContestSubmissionsViaContestsContestIdSubmissions<any>({ path: { "contest_id": contestID.value } })).data || []
   } catch {
@@ -405,7 +410,7 @@ onBeforeUnmount(() => {
 .two-column { display: grid; grid-template-columns: minmax(0, 1fr) 320px; gap: 16px; }
 .description-panel, .meta-panel { padding: 20px; }
 .section-heading { display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 18px; }
-.contest-management-actions { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+.contest-management-actions { justify-content:flex-start; display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
 .contest-management-actions .el-button { margin-left: 0; }
 .section-heading h2 { margin: 0; }
 .description-copy { min-height: 240px; margin-top: 18px; padding-top: 18px; white-space: pre-wrap; line-height: 1.8; border-top: 1px solid var(--border); }

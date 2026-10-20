@@ -101,7 +101,7 @@ func TestEventReviewLifecycleAndArchive(t *testing.T) {
 				t.Fatal(err)
 			}
 			assertStatus(t, eventReviewRequest(t, f, base, kind, id, &f.teacher, "withdraw"), 409)
-			assertStatus(t, f.request("GET", base+"/archive", &f.student, nil), 403)
+			assertStatus(t, f.request("GET", base+"/archive", &f.student, nil), 404)
 			assertStatus(t, eventReviewRequest(t, f, base, kind, id, &f.teacher, "complete"), 403)
 			assertStatus(t, eventReviewRequest(t, f, base, kind, id, &f.admin, "complete"), 200)
 			assertStatus(t, f.request("GET", base+"/archive", &f.student, nil), 200)

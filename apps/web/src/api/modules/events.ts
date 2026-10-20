@@ -30,6 +30,7 @@ export function eventLifecycle(
   },
   now = Date.now(),
 ): EventLifecycle {
+  if (event.completed_at) return "completed";
   if (event.review_status && event.review_status !== "approved")
     return event.review_status as EventLifecycle;
   const start = event.starts_at ? Date.parse(event.starts_at) : 0;
@@ -39,7 +40,7 @@ export function eventLifecycle(
       ? start + event.duration_minutes * 60000
       : 0;
   if (start > now) return "upcoming";
-  if (end && end <= now) return event.completed_at ? "completed" : "closed";
+  if (end && end <= now) return "closed";
   return "running";
 }
 export type EventRecord = {

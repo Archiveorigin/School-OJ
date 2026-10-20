@@ -121,53 +121,17 @@
               maxlength="30000"
           /></el-form-item>
         </template>
-        <div class="image-toolbar">
-          <el-select
-            v-if="!legacyMode"
-            v-model="imageTarget"
-            aria-label="图片插入位置"
-            ><el-option label="插入题目描述" value="description" /><el-option
-              label="插入输入格式"
-              value="input_format" /><el-option
-              label="插入输出格式"
-              value="output_format" /><el-option
-              label="插入说明"
-              value="notes" /></el-select
-          ><label class="image-upload"
-            >添加图片<input
-              type="file"
-              accept="image/png,image/jpeg,image/gif,image/webp"
-              multiple
-              @change="addImages"
-          /></label>
-        </div>
-        <div v-if="form.assets.length" class="image-assets">
-          <span v-for="asset in form.assets" :key="asset.path"
-            ><img :src="asset.data" :alt="asset.name" /><small>{{
-              asset.name
-            }}</small></span
-          >
-        </div>
+        <p class="muted">
+          图片请在题面中填写 ![说明](https://图片地址)，右侧可直接预览。
+        </p>
       </section>
       <aside class="statement-preview">
         <div class="section-title">
           <h3>题面预览</h3>
           <span class="muted">与发布题面一致</span>
         </div>
-        <el-tabs v-if="sourcePDF" v-model="previewTab"
-          ><el-tab-pane label="题面预览" name="statement" /><el-tab-pane
-            label="PDF 原页"
-            name="pdf"
-        /></el-tabs>
-        <PDFSourcePreview
-          v-if="previewTab === 'pdf' && sourcePDF && initialDraft?.pages"
-          :session="sourcePDF"
-          :pages="initialDraft.pages"
-          @image="insertImage"
-        />
-        <h2 v-else>{{ form.title || "未命名题目" }}</h2>
+        <h2>{{ form.title || "未命名题目" }}</h2>
         <MarkdownRenderer
-          v-if="previewTab !== 'pdf'"
           :source="statement"
           :asset-urls="imageUrls"
           :asset-base="
@@ -297,27 +261,19 @@ import {
 import { tagList } from "../../features/problems/problemMeta";
 import MarkdownRenderer from "../MarkdownRenderer.vue";
 import type { ImportedProblem } from "../../features/events/documentImport";
-import type { PDFImportSession } from "../../features/events/pdfImport";
-import {
-  imageFileAsset,
-  attachImportedImage,
-} from "../../features/events/imageResources";
-import PDFSourcePreview from "./PDFSourcePreview.vue";
 const props = defineProps<{
   kind: EventKind;
   eventId: number;
   revision: number;
   link?: PaperProblem;
   initialDraft?: ImportedProblem;
-  sourcePDF?: PDFImportSession;
   nextLabel: string;
 }>();
 const emit = defineEmits<{ saved: []; cancel: []; dirty: [boolean] }>();
 const problem = props.link?.problem;
 const persisted =
   props.link?.statement_sections || props.initialDraft?.sections;
-const previewTab = ref("statement"),
-  importConfirmed = ref(false);
+const importConfirmed = ref(false);
 onMounted(() => {
   if (props.initialDraft) emit("dirty", true);
 });
@@ -327,9 +283,6 @@ const sections = reactive<StatementSections>(
     : emptyStatement(),
 );
 const legacyMode = ref(Boolean(props.link && !persisted));
-const imageTarget = ref<
-  "description" | "input_format" | "output_format" | "notes"
->("description");
 const statement = computed(() =>
   legacyMode.value ? form.statement : renderStatement(sections),
 );
@@ -368,42 +321,6 @@ const tests = ref<File[]>([]),
 const imageUrls = computed(() =>
   Object.fromEntries(form.assets.map((a) => [a.path, a.data])),
 );
-async function addImages(e: Event) {
-  const input = e.target as HTMLInputElement,
-    files = Array.from(input.files || []);
-  input.value = "";
-  if (form.assets.length + files.length > 30) {
-    error.value = "每题最多添加 30 张新图片";
-    return;
-  }
-  for (const file of files) {
-    if (!(await insertImage(file))) break;
-  }
-}
-async function insertImage(file: File) {
-  try {
-    const asset = await imageFileAsset(file);
-    // Reuse the same count/size limits and content-hash names as document import.
-    attachImportedImage(
-      {
-        key: "editor",
-        title: form.title,
-        sections: emptyStatement(),
-        assets: form.assets,
-        warnings: [],
-      },
-      "",
-      asset,
-    );
-    const markdown = `\n\n![题面图片](${asset.path})\n`;
-    if (legacyMode.value) form.statement += markdown;
-    else sections[imageTarget.value] += markdown;
-    return true;
-  } catch (e) {
-    error.value = (e as Error).message;
-    return false;
-  }
-}
 async function save() {
   if (busy.value) return;
   error.value = "";
@@ -498,36 +415,6 @@ watch([form, sections, tests], () => emit("dirty", true), { deep: true });
   gap: 28px;
   align-items: start;
 }
-.image-toolbar {
-  display: grid;
-  grid-template-columns: minmax(150px, 1fr) auto;
-  gap: 12px;
-  align-items: center;
-}
-.image-upload {
-  position: relative;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  padding: 8px 14px;
-  border: 1px solid var(--border);
-  border-radius: 6px;
-  cursor: pointer;
-  color: var(--accent);
-  white-space: nowrap;
-}
-.image-upload input {
-  position: absolute;
-  inset: 0;
-  width: 100%;
-  height: 100%;
-  opacity: 0;
-  cursor: pointer;
-}
-.image-upload:focus-within {
-  outline: 2px solid var(--accent);
-  outline-offset: 2px;
-}
 .statement-fields,
 .statement-preview {
   min-width: 0;
@@ -557,32 +444,6 @@ watch([form, sections, tests], () => emit("dirty", true), { deep: true });
 .sample-pair .fields > * {
   flex: 1;
   min-width: 0;
-}
-.image-toolbar .el-select {
-  width: 100%;
-}
-.image-upload {
-  cursor: pointer;
-  font-size: 13px;
-  color: var(--accent);
-}
-.image-assets {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 10px;
-  margin-top: 10px;
-}
-.image-assets span {
-  width: 80px;
-  display: grid;
-  gap: 4px;
-  overflow-wrap: anywhere;
-}
-.image-assets img {
-  width: 80px;
-  height: 60px;
-  object-fit: contain;
-  background: var(--surface-strong);
 }
 @media (max-width: 1000px) {
   .statement-workspace {

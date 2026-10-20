@@ -439,7 +439,11 @@ func (s Server) getExamProblemAsset(c *gin.Context) {
 		c.JSON(403, gin.H{"error": "forbidden"})
 		return
 	}
-	if user.Role == models.RoleStudent {
+	if !s.canReadEventPaper(user, eventPaper{kind: "exam", id: id, exam: exam}, time.Now()) {
+		c.JSON(403, gin.H{"error": "本场题目资源尚未开放"})
+		return
+	}
+	if user.Role == models.RoleStudent && exam.Lifecycle(exam.StartsAt, exam.EndsAt, time.Now()) == "running" {
 		active, err := activeExamInDB(s.DB, user.ID, time.Now())
 		if err != nil || active.ID != id {
 			c.JSON(403, gin.H{"error": "exam is not active"})

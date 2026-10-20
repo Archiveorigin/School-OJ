@@ -148,6 +148,9 @@ func (s Server) ticketContextAccess(user models.User, ticket models.ProblemChang
 		if status == models.TeamContestDraft || status == models.TeamContestPublished {
 			return false, false
 		}
+		if writing && status != models.TeamContestRunning {
+			return false, false
+		}
 		return true, false
 	}
 	if ticket.ProblemID == nil {

@@ -1,5 +1,5 @@
 import { importProblemMarkdown } from "../problems/importMarkdown";
-import { emptyStatement, type StatementSections } from "./statement";
+import { type StatementSections } from "./statement";
 
 export type ImportAsset = {
   name: string;
@@ -15,7 +15,6 @@ export type ImportedProblem = {
   warnings: string[];
   time_limit_ms?: number;
   memory_limit_mb?: number;
-  pages?: number[];
 };
 export function importEventMarkdown(source: string): ImportedProblem {
   const { title, draft, warnings } = importProblemMarkdown(source);
@@ -41,18 +40,5 @@ export function importEventMarkdown(source: string): ImportedProblem {
     },
     assets: [],
     warnings,
-  };
-}
-export function blankImportedProblem(
-  title: string,
-  pages?: number[],
-): ImportedProblem {
-  return {
-    key: crypto.randomUUID(),
-    title,
-    sections: emptyStatement(),
-    assets: [],
-    warnings: [],
-    pages,
   };
 }

@@ -3251,6 +3251,12 @@ func (s Server) listExams(c *gin.Context) {
 			if views[i].ID != item.ID {
 				continue
 			}
+			// Lists expose scheduling metadata; question IDs and pinned versions
+			// are released by the resource endpoint after its own access checks.
+			views[i].Problems = nil
+			if item.StartsAt != nil && time.Now().Before(*item.StartsAt) {
+				break
+			}
 			views[i].WorkStatus = summary.WorkStatus
 			views[i].TotalScore = summary.TotalScore
 			views[i].MaxScore = summary.MaxScore
@@ -3396,6 +3402,10 @@ func (s Server) getExam(c *gin.Context) {
 		c.JSON(http.StatusForbidden, gin.H{"error": "forbidden"})
 		return
 	}
+	if item.CompletedAt != nil {
+		c.JSON(http.StatusGone, gin.H{"error": "本场已完结，请从比赛菜单查看归档", "code": "EVENT_COMPLETED"})
+		return
+	}
 	now := time.Now()
 	closed := item.EndsAt != nil && !now.Before(*item.EndsAt)
 	notStarted := item.StartsAt != nil && now.Before(*item.StartsAt)
@@ -3406,7 +3416,7 @@ func (s Server) getExam(c *gin.Context) {
 	paper := eventPaper{kind: "exam", id: item.ID, exam: item}
 	canRead := s.canReadEventPaper(user, paper, now)
 	// Description and own submissions remain accessible around the test window.
-	// Test content is released only after entry or administrative completion.
+	// Test content requires entry while running; after the deadline it is read-only.
 	if !canRead {
 		item.Problems = nil
 	}
@@ -3621,9 +3631,6 @@ func (s Server) examRanking(c *gin.Context) {
 }
 
 func examRankingAccessReason(item models.Exam, canManage bool, rankingVisible bool, canAccess bool, now time.Time) string {
-	if !canManage && item.EventReview.Lifecycle(item.StartsAt, item.EndsAt, now) == "closed" {
-		return "场次已截止，排名将在管理员确认完结后开放"
-	}
 	if canManage {
 		return ""
 	}
@@ -4596,7 +4603,7 @@ func (s Server) createSubmission(c *gin.Context) {
 				return &teamContentMutationError{404, "考试已删除"}
 			}
 			now := time.Now()
-			if !locked.Approved() || locked.StartsAt != nil && now.Before(*locked.StartsAt) || locked.EndsAt != nil && !now.Before(*locked.EndsAt) {
+			if locked.CompletedAt != nil || !locked.Approved() || locked.StartsAt != nil && now.Before(*locked.StartsAt) || locked.EndsAt != nil && !now.Before(*locked.EndsAt) {
 				return &teamContentMutationError{403, "考试未审核开始或已结束"}
 			}
 		}

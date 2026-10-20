@@ -23,6 +23,9 @@ type EventReview struct {
 // Lifecycle is derived from approval, the clock, and explicit completion.
 // A deadline alone never publishes an archive.
 func (r EventReview) Lifecycle(start, end *time.Time, now time.Time) string {
+	if r.CompletedAt != nil {
+		return "completed"
+	}
 	if !r.Approved() {
 		return r.ReviewStatus
 	}
@@ -30,9 +33,6 @@ func (r EventReview) Lifecycle(start, end *time.Time, now time.Time) string {
 		return "upcoming"
 	}
 	if end != nil && !now.Before(*end) {
-		if r.CompletedAt != nil {
-			return "completed"
-		}
 		return "closed"
 	}
 	return "running"
@@ -40,7 +40,7 @@ func (r EventReview) Lifecycle(start, end *time.Time, now time.Time) string {
 
 func (r EventReview) Approved() bool { return r.ReviewStatus == "approved" || r.ReviewStatus == "" }
 func (r EventReview) Editable() bool {
-	return r.ReviewStatus == "draft" || r.ReviewStatus == "rejected"
+	return r.CompletedAt == nil && (r.ReviewStatus == "draft" || r.ReviewStatus == "rejected")
 }
 
 // Snapshots preserve exactly which versions, attachments and schedule were

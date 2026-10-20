@@ -2,9 +2,9 @@
   <section class="exam-page">
     <div v-if="detail" class="exam-shell">
       <EventWorkspaceHeader :title="detail.exam.title" :rule="detail.exam.scoring_rule" :status="lifecycleLabels[eventLifecycle(detail.exam)]"
-        kind="考试" :base="base" :show-ranking="showRanking" :show-problems="detail.can_read_problems" :show-records="!canManage" :back-label="canManage ? '返回考试管理' : ''" @back="leavePage">
+        kind="考试" :base="base" :show-ranking="showRanking" :show-problems="detail.can_read_problems" :show-records="canViewRecords" :back-label="canManage ? '返回考试管理' : ''" @back="leavePage">
         <template #actions>
-          <el-button @click="openEventTicket">考试反馈</el-button>
+          <el-button v-if="detail.can_submit" @click="openEventTicket">考试反馈</el-button>
           <el-button v-if="!canManage && detail.can_submit" type="danger" :loading="finishing" @click="finishExam">交卷</el-button>
           <el-button v-else-if="canManage" @click="router.push(`/admin/exams/${examID}/activity`)">行为日志</el-button>
           <el-button v-else-if="detail.lifecycle==='running' && !detail.finished_at" type="primary" @click="initialize">进入考试</el-button>
@@ -12,7 +12,7 @@
       </EventWorkspaceHeader>
       <main class="exam-content">
         <div v-if="section === 'description'" class="description-layout">
-          <section class="panel description-panel"><h2>考试说明</h2><MarkdownRenderer :source="detail.exam.description || '暂无说明'" /><EventAttachments v-if="!canManage && detail.can_read_problems" kind="exam" :event-id="examID" /></section>
+          <section class="panel description-panel"><div class="section-heading"><h2>考试说明</h2><div class="event-management-actions"><el-button v-if="detail.can_read_problems" @click="attachmentsVisible = true">附件</el-button><el-button v-if="canManage" type="primary" @click="router.push(`/event-papers/exam/${examID}/edit`)">{{editable ? '组题' : '查看试卷与审核'}}</el-button><el-button v-if="editable" @click="router.push({path:`/event-papers/exam/${examID}/edit`,query:{tab:'settings'}})">考试设置</el-button></div></div><MarkdownRenderer :source="detail.exam.description || '暂无说明'" /></section>
           <aside class="panel exam-info"><h3>考试信息</h3><dl>
             <div><dt>开始时间</dt><dd>{{ formatDateTime(detail.exam.starts_at) }}</dd></div>
             <div><dt>结束时间</dt><dd>{{ formatDateTime(detail.exam.ends_at) }}</dd></div>
@@ -20,24 +20,25 @@
             <div><dt>评阅方式</dt><dd>{{ detail.manual_review ? '人工评阅' : '自动评测' }}</dd></div>
             <div><dt>封榜</dt><dd>{{ detail.exam.freeze_enabled ? `结束前 ${detail.exam.freeze_duration_minutes} 分钟` : '未启用' }}</dd></div>
           </dl></aside>
-          <EventManageCard v-if="canManage" kind="exam" :event-id="examID" :editable="['draft','rejected'].includes(detail.exam.review_status)" class="paper-full-width" />
-          <el-alert v-else-if="!detail.can_read_problems" class="paper-full-width" :closable="false" type="info" :title="detail.closed?'本场已截止，题目、附件和排名将在管理员确认完结后开放。':detail.finished_at?'你已交卷，可查看本人提交记录。':'本场尚未开始，开始后可确认进入考试。'" />
+          <el-alert v-if="detail.lifecycle==='closed'" class="paper-full-width" :closable="false" type="info" title="本场已截止，现为只读状态。题目与附件仍可查看，等待管理员确认完结。" />
+          <el-alert v-else-if="!detail.can_read_problems" class="paper-full-width" :closable="false" type="info" :title="detail.finished_at?'你已交卷，可查看本人提交记录。':'本场尚未开始，开始后可确认进入考试。'" />
         </div>
         <EventProblemList v-else-if="section === 'problems' && detail.can_read_problems" :items="items" :base="base" />
         <EventProblemPanel v-else-if="section === 'problem' && selected" :selected="selected" :items="items" :records="problemRecords" :base="base"
           :asset-base="`/exams/${examID}/problems/${selected.problem_id}/assets`" @refresh="loadHistory" @view-submission="viewSubmission">
           <template #actions>
-            <el-button @click="openProblemTicket">工单修改</el-button>
+            <el-button v-if="detail.can_submit" @click="openProblemTicket">工单修改</el-button>
             <el-button type="primary" :disabled="!detail.can_submit" @click="openSubmit">提交代码</el-button>
           </template>
         </EventProblemPanel>
         <ExamRanking v-else-if="section === 'scoreboard' && showRanking" :detail="detail" />
-        <section v-else-if="section==='records'" class="panel own-records"><h2>本人提交</h2><el-table :data="history.filter(row=>row.user_id===auth.user?.id)"><el-table-column prop="id" label="提交编号"/><el-table-column prop="status" label="状态"/><el-table-column label="时间"><template #default="{row}">{{ formatDateTime(row.created_at) }}</template></el-table-column><el-table-column label="操作"><template #default="{row}"><el-button link @click="viewSubmission(row.id)">查看提交</el-button></template></el-table-column></el-table><el-button @click="loadHistory">刷新提交</el-button></section>
+        <section v-else-if="section==='records' && canViewRecords" class="panel own-records"><h2>本人提交</h2><el-table :data="history.filter(row=>row.user_id===auth.user?.id)"><el-table-column prop="id" label="提交编号"/><el-table-column prop="status" label="状态"/><el-table-column label="时间"><template #default="{row}">{{ formatDateTime(row.created_at) }}</template></el-table-column><el-table-column label="操作"><template #default="{row}"><el-button link @click="viewSubmission(row.id)">查看提交</el-button></template></el-table-column></el-table><el-button @click="loadHistory">刷新提交</el-button></section>
         <el-result v-else title="此页面暂未开放"><template #extra><el-button @click="router.replace(`${base}/description`)">返回考试说明</el-button></template></el-result>
       </main>
       <el-dialog v-model="submitVisible" :title="`提交 ${selected?.label || ''}.${selected?.problem.title || ''}`" width="min(940px, calc(100vw - 24px))" destroy-on-close>
         <SubmissionComposer v-model:language="language" v-model:source="source" :draft-context="draftContext" :status="liveStatus" :submitting="submitting" :disabled="!detail.can_submit" @submit="submitSolution" />
       </el-dialog>
+      <el-dialog v-model="attachmentsVisible" title="考试附件" width="min(760px, calc(100vw - 24px))" destroy-on-close><EventAttachments v-if="detail.can_read_problems" kind="exam" :event-id="examID" :editable="editable" :revision="detail.exam.review_revision" @changed="loadDetail" /></el-dialog>
       <TicketDialog v-model="ticketVisible" :context="{ kind: 'exam', id: examID, problemID: ticketProblemID }" />
       <SubmissionDetailDialog v-model="submissionVisible" :detail="submissionDetail" />
     </div>
@@ -54,7 +55,6 @@
 import {eventLifecycle,lifecycleLabels} from "../api/modules/events"
 import { useSubmissionStreams } from "../features/submissions/live"
 import { apiErrorMessage } from '../api/errors'
-import EventManageCard from '../components/events/EventManageCard.vue'
 import EventAttachments from '../components/events/EventAttachments.vue'
 import TicketDialog from '../components/tickets/TicketDialog.vue'
 
@@ -84,6 +84,9 @@ const examID = computed(() => Number(route.params.id))
 const base = computed(() => `/exams/${examID.value}`)
 const detail = ref<any>(null), error = ref('')
 const canManage = computed(() => Boolean(detail.value?.can_manage))
+const attachmentsVisible = ref(false)
+const editable = computed(() => canManage.value && ['draft','rejected'].includes(detail.value?.exam.review_status))
+const canViewRecords = computed(() => !canManage.value && ['running','closed'].includes(detail.value?.lifecycle))
 const showRanking = computed(() => detail.value?.exam.scoring_rule !== 'oi' && (canManage.value || detail.value?.ranking_visible))
 const active = computed(() => auth.role === 'student' && Boolean(detail.value) && detail.value.can_submit)
 const { warning, flush } = useExamEnvironment(active, computed(() => auth.user?.id || 0), examID)
@@ -113,6 +116,7 @@ async function initialize() {
   initializing = true; error.value = ''
   try {
     await loadDetail()
+    if (!detail.value) return
     if (auth.role === 'student' && eventLifecycle(detail.value.exam)==='running' && !detail.value.finished_at) {
       const state = await examLock.syncActiveExam()
       if (!state.active) {
@@ -138,15 +142,18 @@ async function initialize() {
   } finally { initializing = false }
 }
 async function loadDetail() {
-  detail.value = (await generatedApi.getExam({ path: { id: examID.value } })).data
+  try { detail.value = (await generatedApi.getExam({ path: { id: examID.value } })).data }
+  catch (err: any) {
+    if (err.response?.data?.code === 'EVENT_COMPLETED') { examLock.unlock(); detail.value = null; await router.replace(`/competitions/exam/${examID.value}`) }
+    throw err
+  }
   if (deadline) window.clearTimeout(deadline)
   if (detail.value.lifecycle === 'running' && detail.value.exam.ends_at) {
     const serverNow = new Date(detail.value.now).getTime()
     const delay = new Date(detail.value.exam.ends_at).getTime() - serverNow
     deadline = window.setTimeout(() => {
-      if (!canManage.value && detail.value) {
-        detail.value.can_read_problems = false; detail.value.can_submit = false;
-        detail.value.ranking_visible = false; detail.value.problems = [];
+      if (detail.value) {
+        detail.value.can_submit = false;
         detail.value.closed = true; submitVisible.value = false;
       }
       void checkState()
@@ -154,7 +161,7 @@ async function loadDetail() {
   }
 }
 async function loadHistory() {
-  if (!detail.value) return
+  if (!detail.value || (!canManage.value && !canViewRecords.value)) { history.value = []; latest.value = []; return }
   try {
     const [rows, recent] = await Promise.all([generatedApi.listSubmissions<any>({ query: { exam_id: examID.value } }), getLatestSubmissions({ exam_id: examID.value })])
     history.value = rows.data; latest.value = recent as Submission[]
@@ -168,7 +175,7 @@ async function checkState() {
       if (!state.active) {
         await flush(); examLock.unlock(); stream?.close(); submitVisible.value = false;
         await loadDetail(); await loadHistory();
-        if (!['description', 'records'].includes(String(section.value))) await router.replace(`${base.value}/description`)
+        if (!detail.value.can_read_problems && !['description', 'records'].includes(String(section.value))) await router.replace(`${base.value}/description`)
         return
       }
       if (state.examId !== examID.value) { await router.replace(`/exams/${state.examId}/description`); return }
@@ -225,6 +232,7 @@ onBeforeUnmount(() => { if (poller) window.clearInterval(poller); if (deadline) 
 </script>
 
 <style scoped>
+.section-heading { display:flex; flex-wrap:wrap; align-items:center; gap:12px; margin-bottom:18px; }.section-heading h2 { margin:0; }.event-management-actions { display:flex; flex-wrap:wrap; gap:8px; }.event-management-actions :deep(.el-button + .el-button) { margin-left:0; }
 .paper-full-width { grid-column: 1 / -1; }
 .exam-page { min-height: 100%; padding: 24px 20px 58px; background: color-mix(in srgb, var(--surface) 74%, #edf2f7); }
 .exam-shell { width: min(1320px, 100%); margin: 0 auto; }
