@@ -59,4 +59,14 @@
 - 1440px / 390px 浏览器验收通过：单题 Markdown、真实 HTTPS 图片、题面/样例保存、附件按钮顺序、未开始仅说明、截止下载、完结旧链接归档跳转、删除归档排除，以及 100 KiB 预览、分块上传与测试点按名合并。
 - 原 Markdown 路径已变更，使用原目录下现有的 `二阶矩阵.md` 验收，不发布用户题面文件。
 
-服务器发布结果将在验收完成后补充。
+## 服务器发布结果
+
+- 应用提交：`e88460eaed3eecad7e2f582406594b4ce97b9d00`，由本机 Git 的 `TailingMing` 提交；服务器使用该提交重新构建并验收的 API、worker、web 镜像。
+- 隔离 PostgreSQL 16 生产副本连续两次迁移检查通过，仍为版本 034；用户、提交、题目版本、工单数量、场次题目版本绑定及历史迁移校验值保持一致。
+- 隔离容器中考试、团队比赛真实判题均 Accepted；分块测试点上传、按名合并、审核、附件下载、截止只读、完结不可撤销、旧入口 410 和删除归档排除均通过。
+- 正式 Nginx 构建的 1440px / 390px 浏览器验收通过，远程 HTTPS 图片正常显示，控制台无运行错误。
+- 完整备份：`/opt/School-OJ-backups/lifecycle-20261021/production/backup-20261020T162506Z-NWvEkK`，数据库、私有对象和队列在隔离环境恢复验证成功。
+- 生产启动、HTTP 健康检查、未登录资源拒绝、桌面和手机登录保护验证通过，运行镜像 ID 与验收镜像一致，生产凭据未改动。
+- 清理本次隔离测试、恢复验证和数据库副本容器及其临时卷，移除本次无标签构建中间镜像；保留正式数据、备份和 `rollback-lifecycle-2a7221e` 镜像。清理后可用空间约 6.3 GiB。
+- 发布证据：`/opt/School-OJ-backups/lifecycle-20261021/`，包含 `container-qa.json`、`copy-validation.log`、`browser-import-qa.json`、`release/SUCCESS`、`cleanup.json` 等。
+
