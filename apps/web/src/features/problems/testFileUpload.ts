@@ -1,4 +1,5 @@
 import { generatedApi } from '../../api/client'
+import { randomUUID } from '../uuid'
 
 export const TEST_UPLOAD_CHUNK_SIZE = 4 * 1024 * 1024
 export const TEST_UPLOAD_CHUNK_THRESHOLD = 16 * 1024 * 1024
@@ -38,7 +39,7 @@ export function buildChunkPlan(files: File[]) {
   const references: TestUploadReference[] = []
   const tasks: ChunkTask[] = []
   files.forEach((file, fileIndex) => {
-    const uploadID = newUploadID()
+    const uploadID = randomUUID()
     const chunkCount = Math.ceil(file.size / TEST_UPLOAD_CHUNK_SIZE)
     references.push({ id: uploadID, name: file.name, chunk_count: chunkCount, size: file.size })
     for (let chunkIndex = 0; chunkIndex < chunkCount; chunkIndex += 1) {
@@ -82,12 +83,4 @@ export async function uploadTestFilesInChunks(files: File[], onProgress: (percen
   await Promise.all(Array.from({ length: Math.min(3, tasks.length) }, () => worker()))
   onProgress(100)
   return references
-}
-
-function newUploadID() {
-  if (typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function') return crypto.randomUUID()
-  if (typeof crypto === 'undefined') return `${Date.now().toString(16)}-${Math.random().toString(16).slice(2)}-${Math.random().toString(16).slice(2)}`
-  const values = new Uint32Array(4)
-  crypto.getRandomValues(values)
-  return [...values].map((value) => value.toString(16).padStart(8, '0')).join('-')
 }

@@ -1,4 +1,5 @@
 import { generatedApi } from "../../api/client";
+import { randomUUID } from "../uuid";
 import { eventPath, type EventKind } from "../../api/modules/events";
 import {
   type TestUploadReference,
@@ -55,7 +56,7 @@ export async function uploadEventTests(
       end: number;
     }> = [];
   for (const file of files) {
-    const id = crypto.randomUUID(),
+    const id = randomUUID(),
       count = Math.max(1, Math.ceil(file.size / EVENT_CHUNK_SIZE));
     refs.push({ id, name: file.name, size: file.size, chunk_count: count });
     for (let index = 0; index < count; index++)

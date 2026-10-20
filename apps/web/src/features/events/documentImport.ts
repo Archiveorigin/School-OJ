@@ -1,4 +1,5 @@
 import { importProblemMarkdown } from "../problems/importMarkdown";
+import { randomUUID } from "../uuid";
 import { type StatementSections } from "./statement";
 
 export type ImportAsset = {
@@ -29,7 +30,7 @@ export function importEventMarkdown(source: string): ImportedProblem {
     .filter(Boolean)
     .join("\n\n");
   return {
-    key: crypto.randomUUID(),
+    key: randomUUID(),
     title,
     sections: {
       description: draft.description,
