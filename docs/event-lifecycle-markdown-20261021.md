@@ -69,4 +69,4 @@
 - 生产启动、HTTP 健康检查、未登录资源拒绝、桌面和手机登录保护验证通过，运行镜像 ID 与验收镜像一致，生产凭据未改动。
 - 清理本次隔离测试、恢复验证和数据库副本容器及其临时卷，移除本次无标签构建中间镜像；保留正式数据、备份和 `rollback-lifecycle-2a7221e` 镜像。清理后可用空间约 6.3 GiB。
 - 发布证据：`/opt/School-OJ-backups/lifecycle-20261021/`，包含 `container-qa.json`、`copy-validation.log`、`browser-import-qa.json`、`release/SUCCESS`、`cleanup.json` 等。
-
+- GitHub 已推送分支：[`codex/event-lifecycle-markdown-20261020`](https://github.com/Archiveorigin/School-OJ/tree/codex/event-lifecycle-markdown-20261020)。使用本机 Git 和缓存凭据完成推送，未出现账号授权弹窗。
