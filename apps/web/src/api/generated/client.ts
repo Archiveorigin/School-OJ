@@ -246,6 +246,7 @@ export interface components {
     "review_status"?: "draft" | "pending" | "approved" | "rejected"
     "review_revision"?: number
     "review_note"?: string
+    "completed_at"?: (string) | null
   }
     "TeamProblemSet": {
     "id": number
@@ -307,6 +308,7 @@ export interface components {
     "review_status"?: "draft" | "pending" | "approved" | "rejected"
     "review_revision"?: number
     "review_note"?: string
+    "completed_at"?: (string) | null
   }
     "ExamProblem": {
     "problem_id": number
@@ -673,6 +675,7 @@ export const apiOperations = {
   "downloadEventAttachment": { method: "GET", path: "/event-papers/{kind}/{event_id}/attachments/{attachment_id}", segments: [] },
   "deleteEventAttachment": { method: "DELETE", path: "/event-papers/{kind}/{event_id}/attachments/{attachment_id}", segments: [] },
   "listEventProblemChoices": { method: "GET", path: "/event-papers/{kind}/{event_id}/choices", segments: [] },
+  "uploadEventTestChunk": { method: "PUT", path: "/event-papers/{kind}/{event_id}/test-uploads/{upload_id}/{chunk_index}", segments: [] },
 } as const
 
 export type ApiOperationId = keyof typeof apiOperations
@@ -1153,12 +1156,12 @@ export const generatedApi = {
   }>("updateEventSettings", options),
   "reviewEventPaper": <TResponse = components['schemas']["JsonObject"]>(options: ApiRequestOptions<{
     "revision": number
-    "action": "submit" | "withdraw" | "approve" | "reject"
+    "action": "submit" | "withdraw" | "approve" | "reject" | "complete" | "reopen"
     "note"?: string
   }> = {}) =>
     requestOperation<TResponse, {
     "revision": number
-    "action": "submit" | "withdraw" | "approve" | "reject"
+    "action": "submit" | "withdraw" | "approve" | "reject" | "complete" | "reopen"
     "note"?: string
   }>("reviewEventPaper", options),
   "getEventArchive": <TResponse = components['schemas']["JsonObject"]>(options: ApiRequestOptions<never> = {}) =>
@@ -1205,6 +1208,8 @@ export const generatedApi = {
   }>("deleteEventAttachment", options),
   "listEventProblemChoices": <TResponse = components['schemas']["JsonObject"]>(options: ApiRequestOptions<never> = {}) =>
     requestOperation<TResponse, never>("listEventProblemChoices", options),
+  "uploadEventTestChunk": <TResponse = components['schemas']["JsonObject"]>(options: ApiRequestOptions<never> = {}) =>
+    requestOperation<TResponse, never>("uploadEventTestChunk", options),
 }
 
 // 兼容现有页面的 Axios 调用；新代码优先使用 generatedApi 的 operationId 方法。

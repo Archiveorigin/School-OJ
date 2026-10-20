@@ -72,6 +72,34 @@ func (s Server) saveEventProblem(c *gin.Context) {
 		eventError(c, err)
 		return
 	}
+	if req.StatementSections != nil {
+		req.Statement, err = services.RenderProblemStatement(req.StatementSections)
+		if err != nil {
+			c.JSON(400, gin.H{"error": err.Error()})
+			return
+		}
+	} else if c.Param("problem_id") == "" {
+		c.JSON(400, gin.H{"error": "新题须按题目描述、输入格式、输出格式、样例的规范填写"})
+		return
+	}
+	if len(req.TestUploads) > 0 {
+		if len(req.Cases) > 0 {
+			c.JSON(400, gin.H{"error": "不能同时提交分片测试点和直接上传文件"})
+			return
+		}
+		u, _ := middleware.CurrentUser(c)
+		uploads, cleanup, e := consumeEventTestUploads(u.ID, p, req.TestUploads)
+		if e != nil {
+			eventError(c, e)
+			return
+		}
+		defer cleanup()
+		req.Cases, e = services.BuildNamedProblemCasesFromTestPointFiles(uploads)
+		if e != nil {
+			c.JSON(400, gin.H{"error": e.Error()})
+			return
+		}
+	}
 	if req.Score == 0 {
 		req.Score = 100
 	}
@@ -141,6 +169,7 @@ func (s Server) saveEventProblem(c *gin.Context) {
 				manifest := old.Manifest
 				manifest.Title = req.Title
 				manifest.Statement = req.Statement
+				manifest.StatementSections = req.StatementSections
 				manifest.TimeLimitMS = req.TimeLimitMS
 				manifest.MemoryLimitMB = req.MemoryLimitMB
 				manifest.OutputLimitKB = req.OutputLimitKB

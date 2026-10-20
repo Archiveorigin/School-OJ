@@ -101,6 +101,9 @@ func TestEventReviewLifecycleAndArchive(t *testing.T) {
 				t.Fatal(err)
 			}
 			assertStatus(t, eventReviewRequest(t, f, base, kind, id, &f.teacher, "withdraw"), 409)
+			assertStatus(t, f.request("GET", base+"/archive", &f.student, nil), 403)
+			assertStatus(t, eventReviewRequest(t, f, base, kind, id, &f.teacher, "complete"), 403)
+			assertStatus(t, eventReviewRequest(t, f, base, kind, id, &f.admin, "complete"), 200)
 			assertStatus(t, f.request("GET", base+"/archive", &f.student, nil), 200)
 			assertStatus(t, f.request("GET", "/api/event-archives", &f.student, nil), 200)
 			if kind == "exam" {
@@ -239,6 +242,7 @@ func TestEventNewProblemVersionIsolation(t *testing.T) {
 	setupTicketObjects(t, f)
 	base, id := eventTestPaper(t, f, "exam")
 	req := eventProblemInput{ProblemPackageDraft: services.ProblemPackageDraft{Title: "event only", Statement: "statement", TimeLimitMS: 1000, MemoryLimitMB: 256, OutputLimitKB: 1024, Cases: []services.ProblemCaseDraft{{Name: "first", Input: "1", Output: "2", Weight: 7}, {Name: "second", Input: "3", Output: "4", Weight: 13}}}, Revision: 1, TestMode: "replace", Label: "C", Score: 30}
+	req.StatementSections = &services.ProblemStatementSections{Description: "statement", InputFormat: "integer", OutputFormat: "integer", Samples: []services.ProblemStatementSample{{Input: "1", Output: "2"}}}
 	r := f.request("POST", base+"/problems", &f.teacher, req)
 	assertStatus(t, r, 200)
 	var problem models.Problem

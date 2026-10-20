@@ -14,6 +14,27 @@ type EventReview struct {
 	ReviewSubmittedAt *time.Time `json:"review_submitted_at"`
 	ReviewedAt        *time.Time `json:"reviewed_at"`
 	ReviewedBy        *uint      `json:"reviewed_by"`
+	CompletedAt       *time.Time `json:"completed_at"`
+	CompletedBy       *uint      `json:"completed_by"`
+	CompletionNote    string     `json:"completion_note" gorm:"type:text;not null;default:''"`
+}
+
+// Lifecycle is derived from approval, the clock, and explicit completion.
+// A deadline alone never publishes an archive.
+func (r EventReview) Lifecycle(start, end *time.Time, now time.Time) string {
+	if !r.Approved() {
+		return r.ReviewStatus
+	}
+	if start != nil && now.Before(*start) {
+		return "upcoming"
+	}
+	if end != nil && !now.Before(*end) {
+		if r.CompletedAt != nil {
+			return "completed"
+		}
+		return "closed"
+	}
+	return "running"
 }
 
 func (r EventReview) Approved() bool { return r.ReviewStatus == "approved" || r.ReviewStatus == "" }

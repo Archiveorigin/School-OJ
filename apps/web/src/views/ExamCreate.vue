@@ -93,7 +93,7 @@ async function create() {
       class_id: form.class_id && form.class_id > 0 ? form.class_id : null,
       problems: [],
     });
-    await router.push(`/exams/${result.id}/description`);
+    await router.push(`/event-papers/exam/${result.id}/edit`);
   } catch (e) {
     error.value = apiErrorMessage(e);
   } finally {

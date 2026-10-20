@@ -3,6 +3,7 @@ import { useAuthStore } from '../stores/auth'
 
 const CompetitionList = () => import('../views/events/CompetitionList.vue')
 const CompetitionDetail = () => import('../views/events/CompetitionDetail.vue')
+const EventAuthoring = () => import('../views/events/EventAuthoring.vue')
 const AdminHome = () => import('../views/admin/AdminHome.vue')
 const AdminLayout = () => import('../views/admin/AdminLayout.vue')
 const AssignmentDetail = () => import('../views/AssignmentDetail.vue')
@@ -51,6 +52,7 @@ import { legacyExamPath } from '../features/events/workspace'
 const router = createRouter({
   history: createWebHistory(),
   routes: [
+    { path: '/event-papers/:kind/:eventId/edit', component: EventAuthoring, meta: { title: '组题工作区' } },
     { path: '/login', component: Login, meta: { public: true } },
     { path: '/register', component: Register, meta: { public: true } },
     { path: '/forgot-password', component: ForgotPassword, meta: { public: true } },
@@ -87,6 +89,7 @@ const router = createRouter({
     { path: '/contest/:contestId/description', name: 'contest-description', component: ContestWorkspace, meta: { title: '比赛说明', activeMenu: '/teams' } },
     { path: '/contest/:contestId/problems', name: 'contest-problems', component: ContestWorkspace, meta: { title: '题目列表', activeMenu: '/teams' } },
     { path: '/contest/:contestId/problems/:label', name: 'contest-problem', component: ContestWorkspace, meta: { title: '比赛题目', activeMenu: '/teams' } },
+    { path: '/contest/:contestId/records', name: 'contest-records', component: ContestWorkspace, meta: { title: '本人提交', activeMenu: '/teams' } },
     { path: '/contest/:contestId/scoreboard', name: 'contest-scoreboard', component: ContestWorkspace, meta: { title: '排行榜', activeMenu: '/teams' } },
     { path: '/problem-set/:setId', component: TeamProblemSetDetail, meta: { title: '团队题单', activeMenu: '/teams' } },
     { path: '/teams/:teamId/problem-sets/:setId', redirect: (to) => ({ path: `/problem-set/${to.params.setId}`, query: to.query, hash: to.hash }) },
@@ -128,8 +131,8 @@ const router = createRouter({
       redirect: (to) => `/exams/${to.params.id}/description`,
       meta: { title: '考试' },
     },
-    ...['description', 'problems', 'problems/:label', 'scoreboard'].map(section => ({ path: `/exams/:id/${section}`, component: ExamDetail, meta: { title: '课程考试' } })),
-    ...['overview', 'submit', 'records', 'ranking'].map(section => ({ path: `/exams/:id/${section}`, redirect: (to: any) => ({ path: legacyExamPath(String(to.params.id), section, to.query), query: to.query }) })),
+    ...['description', 'problems', 'problems/:label', 'scoreboard','records'].map(section => ({ path: `/exams/:id/${section}`, component: ExamDetail, meta: { title: '课程考试' } })),
+    ...['overview', 'submit', 'ranking'].map(section => ({ path: `/exams/:id/${section}`, redirect: (to: any) => ({ path: legacyExamPath(String(to.params.id), section, to.query), query: to.query }) })),
     { path: '/submissions', component: Submissions, meta: { title: '我的提交' } },
     {
       path: '/admin',

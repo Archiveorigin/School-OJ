@@ -49,7 +49,7 @@
           <el-table-column label="结束" min-width="170">
             <template #default="{ row }">{{ formatDateTime(row.ends_at) }}</template>
           </el-table-column>
-          <el-table-column v-if="canManage" label="审核" width="110"><template #default="{ row }"><el-tag>{{ reviewLabels[row.review_status as ReviewStatus] || '已批准' }}</el-tag></template></el-table-column>
+          <el-table-column v-if="canManage" label="审核" width="110"><template #default="{ row }"><el-tag>{{ lifecycleLabels[eventLifecycle(row)] }}</el-tag></template></el-table-column>
           <el-table-column v-if="canManage" label="模式" width="130">
             <template #default="{ row }">
               <el-tag v-if="row.settings?.manual_review" type="warning" effect="light">人工阅卷</el-tag>
@@ -64,10 +64,10 @@
           <el-table-column label="操作" width="380">
             <template #default="{ row }">
               <el-button v-if="isArchived(row)" size="small" type="primary" @click="router.push(`/competitions/exam/${row.id}`)">查看归档</el-button>
-              <el-button v-if="!isArchived(row)" size="small" type="primary" :disabled="!canManage && examWindowStatus(row) !== 'running'" @click="openDetail(row)">
-                {{ !canManage && examWindowStatus(row) === 'not_started' ? '未开始' : !canManage && examWindowStatus(row) === 'closed' ? '已结束' : '进入' }}
+              <el-button v-if="!isArchived(row)" size="small" type="primary"  @click="openDetail(row)">
+                {{ eventLifecycle(row)==='running' && !row.finished_at ? '进入' : '查看说明' }}
               </el-button>
-              <el-button v-if="canManage || (row.settings?.ranking_visible && scoringRule(row) !== 'oi')" size="small" @click="router.push(`/exams/${row.id}/ranking`)">榜单</el-button>
+              <el-button v-if="canManage || (row.settings?.ranking_visible && scoringRule(row) !== 'oi' && ['running','completed'].includes(eventLifecycle(row)))" size="small" @click="router.push(`/exams/${row.id}/ranking`)">榜单</el-button>
               <el-button v-if="canManage" size="small" @click="openReport(row)">完成情况</el-button>
               <el-button v-if="canManage" size="small" @click="router.push(`/admin/exams/${row.id}/activity`)">行为日志</el-button>
               <el-button v-if="canManage" size="small" type="danger" plain @click="removeExam(row)">删除</el-button>
@@ -159,7 +159,7 @@
 </template>
 
 <script setup lang="ts">
-import { reviewLabels, type ReviewStatus } from '../api/modules/events'
+import { eventLifecycle,lifecycleLabels,reviewLabels, type ReviewStatus } from '../api/modules/events'
 import { apiErrorMessage } from '../api/errors'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { computed, onMounted, ref, watch } from 'vue'
@@ -212,17 +212,7 @@ function createExam() {
   router.push({ path: '/admin/exams/new', query: courseID.value ? { course_id: courseID.value } : {} })
 }
 
-function openDetail(row: any) {
-  if (!canManage.value && examWindowStatus(row) === 'not_started') {
-    ElMessage.warning('考试未开始，不能进入')
-    return
-  }
-  if (!canManage.value && examWindowStatus(row) === 'closed') {
-    ElMessage.warning('考试已结束，不能再次进入')
-    return
-  }
-  router.push(`/exams/${row.id}`)
-}
+function openDetail(row:any){router.push(`/exams/${row.id}/description`)}
 
 async function openReport(row: any) {
   report.value = (await generatedApi.examReport<any>({ path: { "id": row.id } })).data
@@ -313,7 +303,8 @@ function courseText(row: any) {
 
 function examStatusLabel(row: any) {
   if (examWindowStatus(row) === 'not_started') return '未开始'
-  if (examWindowStatus(row) === 'closed') return '已结束'
+  if (row.finished_at && eventLifecycle(row)==='running') return '已交卷'
+  if (['closed','completed'].includes(eventLifecycle(row))) return lifecycleLabels[eventLifecycle(row)]
   return workStatusLabel(row.work_status)
 }
 
@@ -323,7 +314,7 @@ function examStatusType(row: any): 'success' | 'warning' | 'info' {
   return workStatusType(row.work_status)
 }
 
-function isArchived(row: any) { return (!row.review_status || row.review_status === 'approved') && row.ends_at && Date.parse(row.ends_at) <= Date.now() }
+function isArchived(row: any) { return eventLifecycle(row)==='completed' }
 
 function examWindowStatus(row: any): 'not_started' | 'running' | 'closed' {
   if (row.review_status && row.review_status !== 'approved') return 'not_started'

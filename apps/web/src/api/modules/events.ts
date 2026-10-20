@@ -1,7 +1,47 @@
 import { generatedApi, type Problem } from "../client";
+import type { StatementSections } from "../../features/events/statement";
 
 export type EventKind = "exam" | "contest";
 export type ReviewStatus = "draft" | "pending" | "approved" | "rejected";
+export type EventLifecycle =
+  | "draft"
+  | "pending"
+  | "rejected"
+  | "upcoming"
+  | "running"
+  | "closed"
+  | "completed";
+export const lifecycleLabels: Record<EventLifecycle, string> = {
+  draft: "草稿",
+  pending: "待审核",
+  rejected: "已退回",
+  upcoming: "未开始",
+  running: "进行中",
+  closed: "已截止",
+  completed: "已完结",
+};
+export function eventLifecycle(
+  event: {
+    review_status?: string;
+    starts_at?: string;
+    ends_at?: string;
+    duration_minutes?: number;
+    completed_at?: string | null;
+  },
+  now = Date.now(),
+): EventLifecycle {
+  if (event.review_status && event.review_status !== "approved")
+    return event.review_status as EventLifecycle;
+  const start = event.starts_at ? Date.parse(event.starts_at) : 0;
+  const end = event.ends_at
+    ? Date.parse(event.ends_at)
+    : start && event.duration_minutes
+      ? start + event.duration_minutes * 60000
+      : 0;
+  if (start > now) return "upcoming";
+  if (end && end <= now) return event.completed_at ? "completed" : "closed";
+  return "running";
+}
 export type EventRecord = {
   id: number;
   title: string;
@@ -15,8 +55,12 @@ export type EventRecord = {
   review_status: ReviewStatus;
   review_revision: number;
   review_note: string;
+  completed_at?: string | null;
+  completion_note?: string;
+  lifecycle?: EventLifecycle;
 };
 export type PaperProblem = {
+  statement_sections?: StatementSections;
   problem_id: number;
   problem_version_id: number;
   label: string;
@@ -34,6 +78,8 @@ export type Paper = {
   kind: EventKind;
   problems: PaperProblem[];
   can_edit: boolean;
+  lifecycle?: EventLifecycle;
+  completion_checks?: { judging: number; ungraded: number };
   can_view_ranking?: boolean;
   history?: Array<{
     id: number;

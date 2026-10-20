@@ -88,7 +88,7 @@ func (p eventPaper) ends() *time.Time {
 	return contestEndAt(p.contest)
 }
 func (p eventPaper) archived(now time.Time) bool {
-	if !p.review().Approved() || p.ends() == nil || now.Before(*p.ends()) {
+	if p.lifecycle(now) != "completed" {
 		return false
 	}
 	if p.kind == "exam" {
@@ -111,6 +111,9 @@ func (s Server) canReadEventPaper(user models.User, p eventPaper, now time.Time)
 		return true
 	}
 	if !p.review().Approved() || p.starts() != nil && now.Before(*p.starts()) {
+		return false
+	}
+	if p.lifecycle(now) == "closed" {
 		return false
 	}
 	if p.kind == "exam" {
@@ -166,13 +169,26 @@ func bumpEventRevision(tx *gorm.DB, p eventPaper) error {
 }
 
 type eventPaperProblem struct {
-	ProblemID        uint                     `json:"problem_id"`
-	ProblemVersionID uint                     `json:"problem_version_id"`
-	Label            string                   `json:"label"`
-	Score            int                      `json:"score"`
-	Problem          models.Problem           `json:"problem"`
-	CaseCount        int                      `json:"case_count"`
-	Checker          services.CheckerManifest `json:"checker"`
+	ProblemID         uint                               `json:"problem_id"`
+	ProblemVersionID  uint                               `json:"problem_version_id"`
+	Label             string                             `json:"label"`
+	Score             int                                `json:"score"`
+	Problem           models.Problem                     `json:"problem"`
+	CaseCount         int                                `json:"case_count"`
+	Checker           services.CheckerManifest           `json:"checker"`
+	StatementSections *services.ProblemStatementSections `json:"statement_sections,omitempty"`
+}
+
+func eventStatementSections(problem models.Problem) *services.ProblemStatementSections {
+	data, err := json.Marshal(problem.Manifest["statement_sections"])
+	if err != nil {
+		return nil
+	}
+	var sections *services.ProblemStatementSections
+	if json.Unmarshal(data, &sections) != nil {
+		return nil
+	}
+	return sections
 }
 
 func eventPaperProblems(db *gorm.DB, p eventPaper) ([]eventPaperProblem, error) {
@@ -184,7 +200,7 @@ func eventPaperProblems(db *gorm.DB, p eventPaper) ([]eventPaperProblem, error) 
 		}
 		for _, link := range links {
 			applyProblemVersion(&link.Problem, link.ProblemVersion)
-			out = append(out, eventPaperProblem{link.ProblemID, link.ProblemVersionID, link.Label, link.Score, link.Problem, len(problemTestCases(link.Problem.Manifest)), eventProblemChecker(link.Problem)})
+			out = append(out, eventPaperProblem{link.ProblemID, link.ProblemVersionID, link.Label, link.Score, link.Problem, len(problemTestCases(link.Problem.Manifest)), eventProblemChecker(link.Problem), eventStatementSections(link.Problem)})
 		}
 	} else {
 		var links []models.TeamContestProblem
@@ -194,7 +210,7 @@ func eventPaperProblems(db *gorm.DB, p eventPaper) ([]eventPaperProblem, error) 
 		normalizeTeamContestProblemLabels(links)
 		for _, link := range links {
 			applyProblemVersion(&link.Problem, link.ProblemVersion)
-			out = append(out, eventPaperProblem{link.ProblemID, link.ProblemVersionID, link.Label, 100, link.Problem, len(problemTestCases(link.Problem.Manifest)), eventProblemChecker(link.Problem)})
+			out = append(out, eventPaperProblem{link.ProblemID, link.ProblemVersionID, link.Label, 100, link.Problem, len(problemTestCases(link.Problem.Manifest)), eventProblemChecker(link.Problem), eventStatementSections(link.Problem)})
 		}
 	}
 	return out, nil
@@ -234,7 +250,12 @@ func (s Server) getEventPaper(c *gin.Context) {
 		return
 	}
 	c.Header("Cache-Control", "private, no-store")
-	c.JSON(200, gin.H{"event": p.model(), "kind": p.kind, "review": p.review(), "problems": problems, "history": history, "can_edit": p.review().Editable()})
+	checks, err := completionChecks(s.DB, p)
+	if err != nil {
+		eventError(c, err)
+		return
+	}
+	c.JSON(200, gin.H{"event": p.model(), "kind": p.kind, "review": p.review(), "lifecycle": p.lifecycle(time.Now()), "completion_checks": checks, "problems": problems, "history": history, "can_edit": p.review().Editable()})
 }
 func (s Server) reviewEventPaper(c *gin.Context) {
 	p, ok := s.eventPaperByParams(c, true)
@@ -251,7 +272,7 @@ func (s Server) reviewEventPaper(c *gin.Context) {
 	}
 	req.Note = strings.TrimSpace(req.Note)
 	u, _ := middleware.CurrentUser(c)
-	if (req.Action == "approve" || req.Action == "reject") && u.Role != models.RoleAdmin {
+	if (req.Action == "approve" || req.Action == "reject" || req.Action == "complete" || req.Action == "reopen") && u.Role != models.RoleAdmin {
 		c.JSON(403, gin.H{"error": "仅系统管理员可审核整场考试或比赛"})
 		return
 	}
@@ -277,6 +298,19 @@ func (s Server) reviewEventPaper(c *gin.Context) {
 		now := time.Now()
 		updates := map[string]any{"review_revision": r.ReviewRevision + 1}
 		switch req.Action {
+		case "complete":
+			if err = validateEventCompletion(tx, p, now); err != nil {
+				return err
+			}
+			updates["completed_at"], updates["completed_by"], updates["completion_note"] = now, u.ID, req.Note
+		case "reopen":
+			if p.lifecycle(now) != "completed" {
+				return eventFail(409, "仅已完结场次可以撤销完结")
+			}
+			if req.Note == "" {
+				return eventFail(400, "请填写撤销完结的原因")
+			}
+			updates["completed_at"], updates["completed_by"], updates["completion_note"] = nil, nil, req.Note
 		case "submit":
 			if err = requireEventDraft(p, req.Revision); err != nil {
 				return err

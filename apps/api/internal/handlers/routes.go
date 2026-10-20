@@ -71,6 +71,7 @@ func (s Server) registerAPIRoutes(api *gin.RouterGroup) {
 	auth.GET("/event-papers/:kind/:event_id/archive", s.getEventArchive)
 	auth.PUT("/event-papers/:kind/:event_id/problems", s.updateEventProblemSelection)
 	auth.POST("/event-papers/:kind/:event_id/problems", s.saveEventProblem)
+	auth.PUT("/event-papers/:kind/:event_id/test-uploads/:upload_id/:chunk_index", s.uploadEventTestChunk)
 	auth.PUT("/event-papers/:kind/:event_id/problems/:problem_id", s.saveEventProblem)
 	auth.GET("/event-papers/:kind/:event_id/problems/:problem_id/package", s.downloadEventProblemPackage)
 	auth.GET("/event-papers/:kind/:event_id/problems/:problem_id/assets/*asset_path", s.getEventProblemAsset)

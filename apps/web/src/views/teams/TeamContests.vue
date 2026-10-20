@@ -20,12 +20,12 @@
           <template #default="{ row }">{{ String(row.scoring_rule || 'acm').toUpperCase() }}</template>
         </el-table-column>
         <el-table-column label="状态" width="110">
-          <template #default="{ row }"><el-tag :type="statusType(row.status)">{{ row.review_status && row.review_status !== 'approved' ? reviewLabels[row.review_status as ReviewStatus] : statusLabel(row.status) }}</el-tag></template>
+          <template #default="{ row }"><el-tag :type="statusType(row.status)">{{ lifecycleLabels[eventLifecycle(row)] }}</el-tag></template>
         </el-table-column>
         <el-table-column label="操作" :width="hasManagementActions ? 224 : 90" align="right" fixed="right">
           <template #default="{ row }">
             <div class="row-actions" @click.stop>
-              <el-button v-if="row.can_edit" link @click.stop="editContest(row)">编辑</el-button>
+              <el-button v-if="row.can_edit" link @click.stop="router.push(`/event-papers/contest/${row.id}/edit`)">组题</el-button><el-button v-if="row.can_edit" link @click.stop="editContest(row)">设置</el-button>
               <el-button
                 v-if="row.can_delete"
                 type="danger"
@@ -79,6 +79,7 @@
 </template>
 
 <script setup lang="ts">
+import {eventLifecycle,lifecycleLabels} from "../../api/modules/events"
 import { reviewLabels, type ReviewStatus } from '../../api/modules/events'
 import { apiErrorMessage } from '../../api/errors'
 import { ElMessage, ElMessageBox } from 'element-plus'
@@ -176,8 +177,8 @@ async function deleteContest(row: TeamContest) {
 }
 
 function openContest(row: TeamContest) {
-  if (row.status === 'closed' && (!row.review_status || row.review_status === 'approved')) { void router.push(`/competitions/contest/${row.id}`); return }
-  if ((row.status === 'draft' || row.status === 'published') && !canOrganize.value && !row.can_edit && !row.can_delete) {
+  if (eventLifecycle(row)==='completed') { void router.push(`/competitions/contest/${row.id}`); return }
+  if ((row.review_status==='draft' || row.review_status==='pending' || row.review_status==='rejected') && !canOrganize.value && !row.can_edit && !row.can_delete) {
     ElMessage.warning('比赛尚未开始')
     return
   }
@@ -186,8 +187,8 @@ function openContest(row: TeamContest) {
 
 function statusLabel(status?: TeamContest['status']) {
   if (status === 'draft') return '草稿'
-  if (status === 'published') return '已发布'
-  if (status === 'closed') return '已结束'
+  if (status === 'published') return '未开始'
+  if (status === 'closed') return '已截止'
   return '进行中'
 }
 

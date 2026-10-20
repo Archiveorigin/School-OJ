@@ -20,15 +20,16 @@ import (
 )
 
 type ProblemManifest struct {
-	Slug          string          `json:"slug" yaml:"slug"`
-	Title         string          `json:"title" yaml:"title"`
-	Statement     string          `json:"statement" yaml:"statement"`
-	TimeLimitMS   int             `json:"time_limit_ms" yaml:"time_limit_ms"`
-	MemoryLimitMB int             `json:"memory_limit_mb" yaml:"memory_limit_mb"`
-	OutputLimitKB int             `json:"output_limit_kb" yaml:"output_limit_kb"`
-	Checker       CheckerManifest `json:"checker" yaml:"checker"`
-	Assets        []AssetManifest `json:"assets,omitempty" yaml:"assets,omitempty"`
-	Cases         []CaseManifest  `json:"cases" yaml:"cases"`
+	StatementSections *ProblemStatementSections `json:"statement_sections,omitempty" yaml:"statement_sections,omitempty"`
+	Slug              string                    `json:"slug" yaml:"slug"`
+	Title             string                    `json:"title" yaml:"title"`
+	Statement         string                    `json:"statement" yaml:"statement"`
+	TimeLimitMS       int                       `json:"time_limit_ms" yaml:"time_limit_ms"`
+	MemoryLimitMB     int                       `json:"memory_limit_mb" yaml:"memory_limit_mb"`
+	OutputLimitKB     int                       `json:"output_limit_kb" yaml:"output_limit_kb"`
+	Checker           CheckerManifest           `json:"checker" yaml:"checker"`
+	Assets            []AssetManifest           `json:"assets,omitempty" yaml:"assets,omitempty"`
+	Cases             []CaseManifest            `json:"cases" yaml:"cases"`
 }
 
 type CheckerManifest struct {
@@ -68,20 +69,21 @@ type ParsedProblemAsset struct {
 }
 
 type ProblemPackageDraft struct {
-	Slug          string                `json:"slug"`
-	Title         string                `json:"title"`
-	Statement     string                `json:"statement"`
-	Tags          []string              `json:"tags"`
-	Difficulty    string                `json:"difficulty"`
-	TeamID        *uint                 `json:"team_id,omitempty"`
-	ProblemSetID  *uint                 `json:"problem_set_id,omitempty"`
-	TimeLimitMS   int                   `json:"time_limit_ms"`
-	MemoryLimitMB int                   `json:"memory_limit_mb"`
-	OutputLimitKB int                   `json:"output_limit_kb"`
-	Checker       CheckerManifest       `json:"checker"`
-	Assets        []ProblemAssetDraft   `json:"assets"`
-	Cases         []ProblemCaseDraft    `json:"cases"`
-	TestUploads   []TestUploadReference `json:"test_uploads,omitempty"`
+	StatementSections *ProblemStatementSections `json:"statement_sections,omitempty"`
+	Slug              string                    `json:"slug"`
+	Title             string                    `json:"title"`
+	Statement         string                    `json:"statement"`
+	Tags              []string                  `json:"tags"`
+	Difficulty        string                    `json:"difficulty"`
+	TeamID            *uint                     `json:"team_id,omitempty"`
+	ProblemSetID      *uint                     `json:"problem_set_id,omitempty"`
+	TimeLimitMS       int                       `json:"time_limit_ms"`
+	MemoryLimitMB     int                       `json:"memory_limit_mb"`
+	OutputLimitKB     int                       `json:"output_limit_kb"`
+	Checker           CheckerManifest           `json:"checker"`
+	Assets            []ProblemAssetDraft       `json:"assets"`
+	Cases             []ProblemCaseDraft        `json:"cases"`
+	TestUploads       []TestUploadReference     `json:"test_uploads,omitempty"`
 }
 
 type TestUploadReference struct {
@@ -352,6 +354,13 @@ func lastNumber(value string) (int, bool) {
 }
 
 func BuildProblemPackage(draft ProblemPackageDraft) ([]byte, ParsedProblemPackage, error) {
+	if draft.StatementSections != nil {
+		statement, err := RenderProblemStatement(draft.StatementSections)
+		if err != nil {
+			return nil, ParsedProblemPackage{}, err
+		}
+		draft.Statement = statement
+	}
 	if strings.TrimSpace(draft.Title) == "" {
 		return nil, ParsedProblemPackage{}, fmt.Errorf("title is required")
 	}
@@ -379,14 +388,15 @@ func BuildProblemPackage(draft ProblemPackageDraft) ([]byte, ParsedProblemPackag
 	}
 
 	manifest := ProblemManifest{
-		Slug:          strings.TrimSpace(draft.Slug),
-		Title:         strings.TrimSpace(draft.Title),
-		Statement:     strings.TrimSpace(draft.Statement),
-		TimeLimitMS:   draft.TimeLimitMS,
-		MemoryLimitMB: draft.MemoryLimitMB,
-		OutputLimitKB: draft.OutputLimitKB,
-		Checker:       checker,
-		Cases:         make([]CaseManifest, 0, len(draft.Cases)),
+		StatementSections: draft.StatementSections,
+		Slug:              strings.TrimSpace(draft.Slug),
+		Title:             strings.TrimSpace(draft.Title),
+		Statement:         strings.TrimSpace(draft.Statement),
+		TimeLimitMS:       draft.TimeLimitMS,
+		MemoryLimitMB:     draft.MemoryLimitMB,
+		OutputLimitKB:     draft.OutputLimitKB,
+		Checker:           checker,
+		Cases:             make([]CaseManifest, 0, len(draft.Cases)),
 	}
 	files := map[string][]byte{}
 	for i, tc := range draft.Cases {
@@ -717,6 +727,14 @@ func ParseProblemPackage(body []byte) (ParsedProblemPackage, error) {
 	var manifest ProblemManifest
 	if err := yaml.Unmarshal(manifestBytes, &manifest); err != nil {
 		return ParsedProblemPackage{}, fmt.Errorf("parse problem.yaml: %w", err)
+	}
+	// A legacy ticket may edit raw Markdown without structured fields. Never
+	// reopen that version with stale form fields and overwrite its reviewed text.
+	if manifest.StatementSections != nil {
+		canonical, err := RenderProblemStatement(manifest.StatementSections)
+		if err != nil || strings.TrimSpace(canonical) != strings.TrimSpace(manifest.Statement) {
+			manifest.StatementSections = nil
+		}
 	}
 	if strings.TrimSpace(manifest.Title) == "" {
 		return ParsedProblemPackage{}, fmt.Errorf("title is required")

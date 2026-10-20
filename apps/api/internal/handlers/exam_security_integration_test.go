@@ -160,7 +160,7 @@ func TestExamSecurityPostgres(t *testing.T) {
 	f := newExamFixture(t)
 	student := &f.student
 	get := fmt.Sprintf("/api/exams/%d", f.exam.ID)
-	assertStatus(t, f.request("GET", get, student, nil), 403)
+	assertExamDescriptionOnly(t, f.request("GET", get, student, nil))
 	var count int64
 	f.s.DB.Model(&models.ExamAttempt{}).Count(&count)
 	if count != 0 {
@@ -218,11 +218,30 @@ func TestExamSecurityPostgres(t *testing.T) {
 	assertStatus(t, f.request("POST", get+"/finish", student, nil), 200)
 	assertStatus(t, f.request("POST", get+"/finish", student, nil), 200)
 	assertStatus(t, f.request("GET", "/api/problems", student, nil), 200)
-	assertStatus(t, f.request("GET", get, student, nil), 403)
+	assertExamDescriptionOnly(t, f.request("GET", get, student, nil))
 	assertStatus(t, f.request("POST", get+"/enter", student, nil), 403)
 	f.s.DB.Model(&models.ExamActivity{}).Where("event = 'finish'").Count(&count)
 	if count != 1 {
 		t.Fatalf("finish log count=%d", count)
+	}
+}
+
+func assertExamDescriptionOnly(t *testing.T, response *httptest.ResponseRecorder) {
+	t.Helper()
+	assertStatus(t, response, 200)
+	var data struct {
+		CanRead   bool              `json:"can_read_problems"`
+		CanSubmit bool              `json:"can_submit"`
+		Problems  []json.RawMessage `json:"problems"`
+		Exam      struct {
+			Problems []json.RawMessage `json:"problems"`
+		} `json:"exam"`
+	}
+	if err := json.Unmarshal(response.Body.Bytes(), &data); err != nil {
+		t.Fatal(err)
+	}
+	if data.CanRead || data.CanSubmit || len(data.Problems) != 0 || len(data.Exam.Problems) != 0 {
+		t.Fatal("description exposed exam paper")
 	}
 }
 

@@ -3402,51 +3402,43 @@ func (s Server) getExam(c *gin.Context) {
 	var finishedAt *time.Time
 	if user.Role == models.RoleStudent {
 		finishedAt = s.examFinishedAt(item.ID, user.ID)
-		if reason, _ := studentExamEntryDecision(item, now, finishedAt); reason != "" {
-			resp := gin.H{"error": reason}
-			if finishedAt != nil {
-				resp["finished_at"] = finishedAt
-			}
-			if item.StartsAt != nil && reason == "exam has not started" {
-				resp["starts_at"] = item.StartsAt
-			}
-			c.JSON(http.StatusForbidden, resp)
-			return
-		}
-		active, err := activeExamInDB(s.DB, user.ID, now)
-		if err != nil && !errors.Is(err, gorm.ErrRecordNotFound) {
-			examMutationError(c, err)
-			return
-		}
-		if active.ID != item.ID {
-			c.JSON(http.StatusForbidden, gin.H{"error": "请先确认进入考试", "code": "EXAM_ENTER_REQUIRED", "exam_id": item.ID})
-			return
-		}
+	}
+	paper := eventPaper{kind: "exam", id: item.ID, exam: item}
+	canRead := s.canReadEventPaper(user, paper, now)
+	// Description and own submissions remain accessible around the test window.
+	// Test content is released only after entry or administrative completion.
+	if !canRead {
+		item.Problems = nil
 	}
 	summary := s.examSummary(item.ID, user.ID, true)
+	if !canRead {
+		summary.Problems = nil
+	}
 	if s.examSummaryMustBeHidden(user, item, now) {
 		summary = redactWorkSummary(summary)
 	}
 	allSubmitted := user.Role == models.RoleStudent && s.examAllSubmitted(item.ID, user.ID)
 	c.JSON(http.StatusOK, gin.H{
-		"exam":            item,
-		"can_manage":      s.canManageCourse(user, item.CourseID),
-		"problems":        examProblemViews(item),
-		"now":             now,
-		"closed":          closed,
-		"not_started":     notStarted,
-		"can_submit":      item.Approved() && !closed && !notStarted && finishedAt == nil,
-		"manual_review":   examManualReview(item),
-		"lock_exit":       examLockExit(item),
-		"ranking_visible": examRankingVisible(item),
-		"scoring_rule":    examScoringRule(item),
-		"all_submitted":   allSubmitted,
-		"finished_at":     finishedAt,
-		"work_status":     summary.WorkStatus,
-		"total_score":     summary.TotalScore,
-		"max_score":       summary.MaxScore,
-		"score_ready":     summary.ScoreReady,
-		"problem_scores":  summary.Problems,
+		"exam":              item,
+		"can_manage":        s.canManageCourse(user, item.CourseID),
+		"problems":          examProblemViews(item),
+		"now":               now,
+		"closed":            closed,
+		"not_started":       notStarted,
+		"can_submit":        canRead && item.Approved() && !closed && !notStarted && finishedAt == nil,
+		"can_read_problems": canRead,
+		"lifecycle":         paper.lifecycle(now),
+		"manual_review":     examManualReview(item),
+		"lock_exit":         examLockExit(item),
+		"ranking_visible":   examRankingVisible(item) && (s.canManageCourse(user, item.CourseID) || canRead),
+		"scoring_rule":      examScoringRule(item),
+		"all_submitted":     allSubmitted,
+		"finished_at":       finishedAt,
+		"work_status":       summary.WorkStatus,
+		"total_score":       summary.TotalScore,
+		"max_score":         summary.MaxScore,
+		"score_ready":       summary.ScoreReady,
+		"problem_scores":    summary.Problems,
 	})
 }
 
@@ -3629,6 +3621,9 @@ func (s Server) examRanking(c *gin.Context) {
 }
 
 func examRankingAccessReason(item models.Exam, canManage bool, rankingVisible bool, canAccess bool, now time.Time) string {
+	if !canManage && item.EventReview.Lifecycle(item.StartsAt, item.EndsAt, now) == "closed" {
+		return "场次已截止，排名将在管理员确认完结后开放"
+	}
 	if canManage {
 		return ""
 	}
@@ -4368,12 +4363,25 @@ func (s Server) judgeManualExamSubmission(c *gin.Context) {
 		return
 	}
 	if err := s.DB.Transaction(func(tx *gorm.DB) error {
+		locked, e := loadEventPaper(tx, "exam", exam.ID, true)
+		if e != nil {
+			return e
+		}
+		if locked.exam.CompletedAt != nil {
+			return eventFail(409, "场次已完结，请管理员先撤销完结再调整评阅")
+		}
+		if err := tx.Clauses(clause.Locking{Strength: "UPDATE"}).First(&sub, sub.ID).Error; err != nil {
+			return err
+		}
+		if sub.Status == models.StatusQueued || sub.Status == models.StatusRunning {
+			return eventFail(409, "submission is already judging")
+		}
 		if err := tx.Model(&sub).Updates(map[string]any{"status": models.StatusQueued, "message": "queued for reference judging"}).Error; err != nil {
 			return err
 		}
 		return services.AddSubmissionOutbox(tx, sub.ID)
 	}); err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		eventError(c, err)
 		return
 	}
 	services.Audit(c, s.DB, "exam.manual_review.judge", "submission", sub.ID, datatypes.JSONMap{"exam_id": exam.ID, "dispatch": "outbox"})
@@ -4403,14 +4411,29 @@ func (s Server) gradeManualExamSubmission(c *gin.Context) {
 	}
 	now := time.Now()
 	grader := user.ID
-	if err := s.DB.Model(&sub).Updates(map[string]any{
-		"status":           models.StatusManualGraded,
-		"manual_score":     req.Score,
-		"manual_graded_by": grader,
-		"manual_graded_at": now,
-		"message":          "manual graded",
-	}).Error; err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+	if err := s.DB.Transaction(func(tx *gorm.DB) error {
+		locked, e := loadEventPaper(tx, "exam", exam.ID, true)
+		if e != nil {
+			return e
+		}
+		if locked.exam.CompletedAt != nil {
+			return eventFail(409, "场次已完结，请管理员先撤销完结再调整评阅")
+		}
+		if e = tx.Clauses(clause.Locking{Strength: "UPDATE"}).First(&sub, sub.ID).Error; e != nil {
+			return e
+		}
+		if sub.Status == models.StatusQueued || sub.Status == models.StatusRunning {
+			return eventFail(409, "参考评测尚未完成，请稍后评分")
+		}
+		return tx.Model(&sub).Updates(map[string]any{
+			"status":           models.StatusManualGraded,
+			"manual_score":     req.Score,
+			"manual_graded_by": grader,
+			"manual_graded_at": now,
+			"message":          "manual graded",
+		}).Error
+	}); err != nil {
+		eventError(c, err)
 		return
 	}
 	services.Audit(c, s.DB, "exam.manual_review.grade", "submission", sub.ID, datatypes.JSONMap{"exam_id": exam.ID, "score": req.Score})

@@ -11,14 +11,15 @@
     </div>
     <nav class="event-nav" :aria-label="`${kind}导航`">
       <router-link :to="`${base}/description`">{{ kind }}说明</router-link>
-      <router-link :to="`${base}/problems`">题目列表</router-link>
+      <router-link v-if="showProblems !== false" :to="`${base}/problems`">题目列表</router-link>
+      <router-link v-if="showRecords" :to="`${base}/records`">本人提交</router-link>
       <router-link v-if="showRanking && rule !== 'oi'" :to="`${base}/scoreboard`">排行榜</router-link>
     </nav>
   </header>
 </template>
 
 <script setup lang="ts">
-defineProps<{ title: string; subtitle?: string; rule: string; status: string; kind: '比赛' | '考试'; base: string; showRanking: boolean; backLabel?: string }>()
+defineProps<{ title: string; subtitle?: string; rule: string; status: string; kind: '比赛' | '考试'; base: string; showRanking: boolean; backLabel?: string;showProblems?:boolean;showRecords?:boolean }>()
 defineEmits<{ back: [] }>()
 </script>
 

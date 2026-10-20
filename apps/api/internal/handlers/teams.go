@@ -797,12 +797,16 @@ func (s Server) getTeamContest(c *gin.Context) {
 	endsAt, status := teamContestWindow(contest, time.Now())
 	canOrganize := s.canManageEventPaper(user, eventPaper{kind: "contest", id: contest.ID, contest: contest})
 	canManage := s.canManageTeam(user, team)
-	if !canOrganize && !s.canReadEventPaper(user, eventPaper{kind: "contest", id: contest.ID, contest: contest}, time.Now()) {
-		c.JSON(http.StatusForbidden, gin.H{"error": "比赛尚未开始"})
+	paper := eventPaper{kind: "contest", id: contest.ID, contest: contest}
+	canRead := s.canReadEventPaper(user, paper, time.Now())
+	if !canOrganize && !contest.Approved() {
+		c.JSON(http.StatusForbidden, gin.H{"error": "比赛尚未通过整场审核"})
 		return
 	}
 	var links []models.TeamContestProblem
-	s.DB.Preload("Problem").Preload("ProblemVersion").Where("contest_id = ?", contest.ID).Order("sort_order, id").Find(&links)
+	if canRead {
+		s.DB.Preload("Problem").Preload("ProblemVersion").Where("contest_id = ?", contest.ID).Order("sort_order, id").Find(&links)
+	}
 	hydrateTeamContestProblemVersions(links)
 	links = filterActiveTeamContestProblemLinks(links)
 	normalizeTeamContestProblemLabels(links)
@@ -838,14 +842,17 @@ func (s Server) getTeamContest(c *gin.Context) {
 			CanEdit:      canOrganize && status == models.TeamContestDraft && contest.Editable(),
 			CanDelete:    canManage,
 		},
-		"team":           s.teamViews([]models.Team{team}, user.ID)[0],
-		"problems":       views,
-		"can_organize":   canOrganize,
-		"can_submit":     status == models.TeamContestRunning && participantCount > 0,
-		"is_participant": participantCount > 0,
-		"can_edit":       canOrganize && status == models.TeamContestDraft && contest.Editable(),
-		"can_delete":     canManage,
-		"can_publish":    canOrganize && status == models.TeamContestDraft && contest.Editable(),
+		"team":              s.teamViews([]models.Team{team}, user.ID)[0],
+		"problems":          views,
+		"can_organize":      canOrganize,
+		"can_read_problems": canRead,
+		"lifecycle":         paper.lifecycle(time.Now()),
+		"now":               time.Now(),
+		"can_submit":        status == models.TeamContestRunning && participantCount > 0,
+		"is_participant":    participantCount > 0,
+		"can_edit":          canOrganize && status == models.TeamContestDraft && contest.Editable(),
+		"can_delete":        canManage,
+		"can_publish":       canOrganize && status == models.TeamContestDraft && contest.Editable(),
 	})
 }
 

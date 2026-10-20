@@ -1,193 +1,328 @@
 <template>
   <section class="paper-workspace">
     <el-alert v-if="error" type="error" :closable="false" :title="error" />
-    <section v-if="paper" class="panel paper-panel" v-loading="busy">
-      <header>
+    <template v-if="paper">
+      <header class="paper-header">
         <div>
-          <h2>{{ paper.event.title }} · 组题与整场审核</h2>
-          <p class="muted">
-            题目、时间和本场附件统一送审；批准后在开始前可撤回修改，修改后须重新审核。
-          </p>
+          <span class="eyebrow">PAPER WORKSPACE</span>
+          <h1>{{ paper.event.title }}</h1>
+          <p>组织题目与本场附件，预览完整内容后提交整场审核。</p>
         </div>
-        <el-tag>{{ reviewLabels[paper.event.review_status] }}</el-tag>
+        <el-tag size="large">{{ lifecycleLabels[lifecycle] }}</el-tag>
       </header>
+      <ol class="lifecycle-track" aria-label="场次流程">
+        <li
+          v-for="(label, state) in {
+            pending: '待审核',
+            upcoming: '未开始',
+            running: '进行中',
+            closed: '已截止',
+            completed: '已完结',
+          }"
+          :key="state"
+          :class="{ current: lifecycle === state }"
+        >
+          {{ label }}
+        </li>
+      </ol>
       <el-alert
         v-if="paper.event.review_note"
         :title="paper.event.review_note"
         type="info"
         :closable="false"
       />
-      <div class="actions">
-        <el-button
-          v-if="paper.can_edit"
-          type="primary"
-          @click="review('submit')"
-          >提交整场审核</el-button
-        >
-        <el-button v-if="canWithdraw" @click="review('withdraw')"
-          >撤回并修改</el-button
-        >
-        <template
-          v-if="
-            auth.role === 'admin' && paper.event.review_status === 'pending'
-          "
-          ><el-button type="success" @click="review('approve')"
-            >批准整场</el-button
-          ><el-button type="danger" @click="review('reject')"
-            >退回修改</el-button
-          ></template
-        >
-        <el-button :disabled="busy" @click="refresh">刷新</el-button>
+      <el-alert
+        v-if="lifecycle === 'closed'"
+        type="warning"
+        :closable="false"
+        title="本场已截止，答题已关闭。管理员确认完结后，题目、附件和原权限允许的排名才进入前台比赛归档。"
+      />
+      <div class="paper-toolbar">
+        <div>
+          <strong>{{ paper.problems.length }}</strong> 道题
+          <span v-if="kind === 'exam'"
+            >·
+            {{ paper.problems.reduce((sum, p) => sum + p.score, 0) }} 分</span
+          ><span class="muted"> · 修订 {{ paper.event.review_revision }}</span>
+        </div>
+        <div class="actions">
+          <el-button :disabled="busy || editorOpen" @click="refresh"
+            >刷新</el-button
+          >
+          <el-button
+            v-if="canWithdraw"
+            :disabled="busy || editorOpen"
+            @click="review('withdraw')"
+            >撤回并修改</el-button
+          >
+          <el-button
+            v-if="paper.can_edit"
+            type="primary"
+            :disabled="busy || editorOpen || !paper.problems.length"
+            @click="review('submit')"
+            >提交整场审核</el-button
+          >
+          <template
+            v-if="
+              auth.role === 'admin' && paper.event.review_status === 'pending'
+            "
+            ><el-button
+              :disabled="busy"
+              type="danger"
+              plain
+              @click="review('reject')"
+              >退回修改</el-button
+            ><el-button
+              :disabled="busy"
+              type="primary"
+              @click="review('approve')"
+              >批准整场</el-button
+            ></template
+          >
+          <el-button
+            v-if="auth.role === 'admin' && lifecycle === 'closed'"
+            type="primary"
+            :disabled="
+              busy ||
+              !!paper.completion_checks?.judging ||
+              !!paper.completion_checks?.ungraded
+            "
+            @click="review('complete')"
+            >确认完结</el-button
+          >
+          <el-button
+            v-if="auth.role === 'admin' && lifecycle === 'completed'"
+            :disabled="busy"
+            @click="review('reopen')"
+            >撤销完结</el-button
+          >
+        </div>
       </div>
-      <el-collapse>
-        <el-collapse-item title="场次说明与时间" name="settings"
-          ><el-form label-position="top" :disabled="!paper.can_edit">
-            <el-form-item label="名称"
-              ><el-input
-                v-model="settings.title"
-                maxlength="200" /></el-form-item
-            ><el-form-item label="说明"
-              ><el-input
-                v-model="settings.description"
-                type="textarea"
-                :rows="4"
-                maxlength="20000"
-            /></el-form-item>
-            <div class="actions">
-              <el-form-item label="开始时间"
-                ><el-date-picker
-                  v-model="settings.starts_at"
-                  type="datetime"
-                  value-format="YYYY-MM-DDTHH:mm:ssZ" /></el-form-item
-              ><el-form-item label="结束时间"
-                ><el-date-picker
-                  v-model="settings.ends_at"
-                  type="datetime"
-                  value-format="YYYY-MM-DDTHH:mm:ssZ"
-              /></el-form-item>
-            </div>
-            <el-button v-if="paper.can_edit" @click="saveSettings"
-              >保存说明与时间</el-button
-            >
-          </el-form></el-collapse-item
-        >
-      </el-collapse>
-      <div v-if="paper.can_edit" class="actions">
-        <el-button type="primary" @click="editProblem()">新增本场题目</el-button
-        ><el-select
-          v-model="selectedID"
-          filterable
-          remote
-          :remote-method="searchChoices"
-          :loading="searching"
-          placeholder="搜索题库题号或标题"
-          class="problem-select"
-          @visible-change="(visible: boolean) => visible && searchChoices('')"
-          ><el-option
-            v-for="choice in choices"
-            :key="choice.id"
-            :value="choice.id"
-            :label="`${choice.display_code || choice.id} · ${choice.title}`" /></el-select
-        ><el-button :disabled="!selectedID" @click="addSelected"
-          >添加已有题目</el-button
-        >
-      </div>
-      <div class="paper-problems">
-        <article
-          v-for="(link, index) in paper.problems"
-          :key="link.problem_id"
-          class="paper-problem"
-        >
-          <div class="problem-heading">
-            <strong>{{ link.label }}. {{ link.problem.title }}</strong
-            ><span class="muted"
-              >版本 {{ link.problem_version_id }} ·
-              {{ link.case_count }} 组测试点<span v-if="kind === 'exam'">
-                · {{ link.score }} 分</span
-              ></span
+      <p
+        v-if="
+          lifecycle === 'closed' &&
+          (paper.completion_checks?.judging ||
+            paper.completion_checks?.ungraded)
+        "
+        class="muted"
+      >
+        待判题 {{ paper.completion_checks?.judging }} 份 · 待人工评分
+        {{ paper.completion_checks?.ungraded }} 份；处理完成后刷新再确认完结。
+      </p>
+      <div class="paper-layout" v-loading="busy">
+        <aside class="paper-rail">
+          <div class="rail-title">
+            <h2>本场题目</h2>
+            <el-button
+              v-if="paper.can_edit"
+              type="primary"
+              size="small"
+              :disabled="busy"
+              @click="editProblem()"
+              >新增题目</el-button
             >
           </div>
-          <div class="actions">
-            <el-button
-              @click="
-                preview =
-                  preview === link.problem_id ? undefined : link.problem_id
+          <div v-if="paper.can_edit" class="existing-picker">
+            <el-select
+              v-model="selectedID"
+              filterable
+              remote
+              :remote-method="searchChoices"
+              :loading="searching"
+              placeholder="输入题号或标题"
+              aria-label="输入题号或标题"
+              @visible-change="
+                (visible: boolean) => visible && searchChoices('')
               "
-              >查看题面</el-button
-            ><el-button @click="download(link)">下载审核题包</el-button>
-            <template v-if="paper.can_edit"
-              ><el-button
-                v-if="
-                  link.problem.event_kind === kind &&
-                  link.problem.event_id === eventId
-                "
-                @click="editProblem(link)"
-                >编辑新题</el-button
-              ><el-button @click="adoptLatest(link)">采用最新版本</el-button
-              ><el-button :disabled="index === 0" @click="move(index, -1)"
-                >上移</el-button
-              ><el-button
-                :disabled="index === paper.problems.length - 1"
-                @click="move(index, 1)"
-                >下移</el-button
-              ><el-button v-if="kind === 'exam'" @click="changeScore(link)"
-                >分值</el-button
-              ><el-button type="danger" link @click="remove(link)"
-                >移除</el-button
+              ><el-option
+                v-for="choice in choices"
+                :key="choice.id"
+                :value="choice.id"
+                :label="`${choice.display_code || choice.id} · ${choice.title}`" /></el-select
+            ><el-button
+              :disabled="!selectedID || editorOpen || busy"
+              @click="addSelected"
+              >添加已有题目</el-button
+            >
+          </div>
+          <nav class="problem-directory" aria-label="试卷题目目录">
+            <button
+              v-for="link in paper.problems"
+              :key="link.problem_id"
+              type="button"
+              :class="{
+                selected:
+                  !editorOpen && selected?.problem_id === link.problem_id,
+              }"
+              @click="selectProblem(link)"
+            >
+              <span class="letter">{{ link.label }}</span
+              ><span
+                ><strong>{{ link.problem.title }}</strong
+                ><small
+                  >{{ link.case_count }} 组测试<span v-if="kind === 'exam'">
+                    · {{ link.score }} 分</span
+                  ></small
+                ></span
+              >
+            </button>
+          </nav>
+          <p v-if="!paper.problems.length" class="muted empty-directory">
+            从新增题目或输入已有题号开始。
+          </p>
+        </aside>
+        <section class="paper-main panel">
+          <EventProblemEditor
+            v-if="editorOpen"
+            :key="editing?.problem_id || 'new'"
+            :kind="kind"
+            :event-id="eventId"
+            :revision="paper.event.review_revision"
+            :link="editing"
+            :next-label="nextLabel()"
+            @dirty="dirty = $event"
+            @saved="problemSaved"
+            @cancel="closeEditor"
+          />
+          <template v-else>
+            <el-tabs v-model="tab"
+              ><el-tab-pane label="题目预览" name="problems" /><el-tab-pane
+                label="本场附件"
+                name="attachments" /><el-tab-pane
+                label="说明与时间"
+                name="settings" /><el-tab-pane label="审核记录" name="history"
+            /></el-tabs>
+            <template v-if="tab === 'problems'"
+              ><article v-if="selected" class="paper-problem">
+                <div class="preview-heading">
+                  <div>
+                    <span class="eyebrow">题目 {{ selected.label }}</span>
+                    <h2>{{ selected.problem.title }}</h2>
+                    <p class="muted">
+                      {{ selected.case_count }} 组测试 · 固定版本
+                      {{ selected.problem_version_id }}
+                    </p>
+                  </div>
+                  <el-button @click="download(selected)"
+                    >下载审核题包</el-button
+                  >
+                </div>
+                <div v-if="paper.can_edit" class="actions question-actions">
+                  <el-button
+                    v-if="
+                      selected.problem.event_kind === kind &&
+                      selected.problem.event_id === eventId
+                    "
+                    @click="editProblem(selected)"
+                    >编辑题目</el-button
+                  ><el-button @click="adoptLatest(selected)"
+                    >采用最新版本</el-button
+                  ><el-button
+                    :disabled="paper.problems.indexOf(selected) === 0"
+                    @click="move(paper.problems.indexOf(selected), -1)"
+                    >上移</el-button
+                  ><el-button
+                    :disabled="
+                      paper.problems.indexOf(selected) ===
+                      paper.problems.length - 1
+                    "
+                    @click="move(paper.problems.indexOf(selected), 1)"
+                    >下移</el-button
+                  ><el-button
+                    v-if="kind === 'exam'"
+                    @click="changeScore(selected)"
+                    >分值</el-button
+                  ><el-button type="danger" link @click="remove(selected)"
+                    >移除</el-button
+                  >
+                </div>
+                <ProblemStatementView
+                  embedded
+                  :problem="selected.problem"
+                  :show-meta="false"
+                  :asset-base="eventAssets(kind, eventId, selected.problem_id)"
+                />
+              </article>
+              <el-empty v-else description="本场还没有题目" :image-size="100"
+                ><el-button
+                  v-if="paper.can_edit"
+                  type="primary"
+                  @click="editProblem()"
+                  >新增题目</el-button
+                ></el-empty
               ></template
             >
-          </div>
-          <ProblemStatementView
-            v-if="preview === link.problem_id"
-            embedded
-            :problem="link.problem"
-            :show-meta="false"
-            :asset-base="eventAssets(kind, eventId, link.problem_id)"
-          />
-        </article>
-      </div>
-      <el-empty
-        v-if="!paper.problems.length"
-        description="先添加题目，再提交整场审核"
-        :image-size="70"
-      />
-      <el-collapse v-if="paper.history?.length"
-        ><el-collapse-item title="审核记录" name="history"
-          ><p v-for="entry in paper.history" :key="entry.id">
-            {{ formatDateTime(entry.created_at) }} · 修订 {{ entry.revision }} ·
-            {{ actionLabels[entry.action] || entry.action }} {{ entry.note }}
-          </p></el-collapse-item
-        ></el-collapse
-      >
-    </section>
-    <EventAttachments
-      v-if="paper"
-      :kind="kind"
-      :event-id="eventId"
-      :revision="paper.event.review_revision"
-      :editable="paper.can_edit && !busy"
-      @changed="refresh"
-    />
-    <el-dialog
-      v-model="editorOpen"
-      title="本场题目"
-      width="min(960px, calc(100vw - 24px))"
-      destroy-on-close
-      :close-on-click-modal="false"
-      ><EventProblemEditor
-        v-if="paper && editorOpen"
-        :kind="kind"
-        :event-id="eventId"
-        :revision="paper.event.review_revision"
-        :link="editing"
-        :next-label="labelAt(paper.problems.length)"
-        @saved="problemSaved"
-        @cancel="editorOpen = false"
-    /></el-dialog>
+            <EventAttachments
+              v-else-if="tab === 'attachments'"
+              :kind="kind"
+              :event-id="eventId"
+              :revision="paper.event.review_revision"
+              :editable="paper.can_edit && !busy"
+              @changed="refresh"
+            />
+            <el-form
+              v-else-if="tab === 'settings'"
+              label-position="top"
+              :disabled="!paper.can_edit"
+              class="paper-settings"
+              ><el-form-item label="场次名称"
+                ><el-input
+                  v-model="settings.title"
+                  maxlength="200" /></el-form-item
+              ><el-form-item label="说明"
+                ><el-input
+                  v-model="settings.description"
+                  type="textarea"
+                  :rows="6"
+                  maxlength="20000"
+              /></el-form-item>
+              <div class="actions">
+                <el-form-item label="开始时间"
+                  ><el-date-picker
+                    v-model="settings.starts_at"
+                    type="datetime"
+                    value-format="YYYY-MM-DDTHH:mm:ssZ" /></el-form-item
+                ><el-form-item label="截止时间"
+                  ><el-date-picker
+                    v-model="settings.ends_at"
+                    type="datetime"
+                    value-format="YYYY-MM-DDTHH:mm:ssZ"
+                /></el-form-item>
+              </div>
+              <el-button
+                v-if="paper.can_edit"
+                type="primary"
+                @click="saveSettings"
+                >保存说明与时间</el-button
+              ></el-form
+            >
+            <section v-else-if="tab === 'history'">
+              <el-empty
+                v-if="!paper.history?.length"
+                description="暂无审核记录"
+              />
+              <ol v-else class="review-history">
+                <li v-for="entry in paper.history" :key="entry.id">
+                  <strong>{{
+                    actionLabels[entry.action] || entry.action
+                  }}</strong
+                  ><small
+                    >{{ formatDateTime(entry.created_at) }} · 修订
+                    {{ entry.revision }}</small
+                  >
+                  <p v-if="entry.note">{{ entry.note }}</p>
+                </li>
+              </ol>
+            </section>
+          </template>
+        </section>
+      </div> </template
+    ><el-skeleton v-else-if="!error" :rows="8" animated />
   </section>
 </template>
 <script setup lang="ts">
-import { computed, reactive, ref, watch } from "vue";
+import { computed, reactive, ref, watch, onBeforeUnmount } from "vue";
+import { onBeforeRouteLeave, onBeforeRouteUpdate } from "vue-router";
 import { ElMessageBox } from "element-plus";
 import { generatedApi, type Problem } from "../../api/client";
 import { apiErrorMessage } from "../../api/errors";
@@ -197,6 +332,8 @@ import {
   eventPath,
   loadPaper,
   reviewLabels,
+  eventLifecycle,
+  lifecycleLabels,
   type EventKind,
   type Paper,
   type PaperProblem,
@@ -224,12 +361,59 @@ const settings = reactive({
   starts_at: "",
   ends_at: "",
 });
+const tab = ref("problems"),
+  dirty = ref(false);
+const lifecycle = computed(
+  () =>
+    paper.value?.lifecycle ||
+    (paper.value ? eventLifecycle(paper.value.event) : "draft"),
+);
+const selected = computed(
+  () =>
+    paper.value?.problems.find((p) => p.problem_id === preview.value) ||
+    paper.value?.problems[0],
+);
+async function discard() {
+  if (!dirty.value) return true;
+  try {
+    await ElMessageBox.confirm(
+      "本题有尚未保存的修改，离开将丢弃这些修改。",
+      "离开题目编辑",
+      { confirmButtonText: "丢弃并离开", cancelButtonText: "继续编辑" },
+    );
+    dirty.value = false;
+    return true;
+  } catch {
+    return false;
+  }
+}
+async function selectProblem(link: PaperProblem) {
+  if (!(await discard())) return;
+  editorOpen.value = false;
+  preview.value = link.problem_id;
+  tab.value = "problems";
+}
+async function closeEditor() {
+  if (await discard()) editorOpen.value = false;
+}
+function beforeUnload(event: BeforeUnloadEvent) {
+  if (dirty.value) {
+    event.preventDefault();
+    event.returnValue = "";
+  }
+}
+window.addEventListener("beforeunload", beforeUnload);
+onBeforeUnmount(() => window.removeEventListener("beforeunload", beforeUnload));
+onBeforeRouteLeave(discard);
+onBeforeRouteUpdate(discard);
 const actionLabels: Record<string, string> = {
   submit: "提交审核",
   approve: "批准",
   reject: "退回",
   withdraw: "撤回",
   delete: "删除",
+  complete: "确认完结",
+  reopen: "撤销完结",
 };
 const canWithdraw = computed(
   () =>
@@ -284,16 +468,20 @@ async function mutate(action: () => Promise<unknown>) {
     busy.value = false;
   }
 }
-async function review(action: "submit" | "withdraw" | "approve" | "reject") {
+async function review(
+  action: "submit" | "withdraw" | "approve" | "reject" | "complete" | "reopen",
+) {
   if (!paper.value) return;
   let note = "";
   try {
-    if (action === "reject") {
+    if (action === "reject" || action === "reopen") {
       const answer = await ElMessageBox.prompt(
-        "请填写整场退回原因",
-        "退回审核",
+        action === "reopen"
+          ? "撤销后归档将隐藏，并恢复为已截止；不会重新开放答题。请填写原因。"
+          : "请填写整场退回原因",
+        actionLabels[action],
         {
-          confirmButtonText: "退回",
+          confirmButtonText: actionLabels[action],
           cancelButtonText: "取消",
           inputValidator: (value) => !!value?.trim() || "退回原因不能为空",
         },
@@ -301,11 +489,13 @@ async function review(action: "submit" | "withdraw" | "approve" | "reject") {
       note = answer.value;
     } else {
       await ElMessageBox.confirm(
-        action === "approve"
-          ? "请确认本场题面、测试点、时间和附件均已核对。批准后参与者将按开始时间获得访问权限。"
-          : action === "withdraw"
-            ? "撤回后参与者无法进入，修改完成后须重新审核。"
-            : "提交后题目、设置和附件将锁定，等待管理员整场审核。",
+        action === "complete"
+          ? "已核对题目、附件和最终成绩？确认后本场以已完结状态进入前台比赛归档，访问权限保持原范围。"
+          : action === "approve"
+            ? "请确认本场题面、测试点、时间和附件均已核对。批准后参与者将按开始时间获得访问权限。"
+            : action === "withdraw"
+              ? "撤回后参与者无法进入，修改完成后须重新审核。"
+              : "提交后题目、设置和附件将锁定，等待管理员整场审核。",
         actionLabels[action],
         { confirmButtonText: "确认", cancelButtonText: "取消" },
       );
@@ -350,6 +540,12 @@ function labelAt(index: number) {
     value = String.fromCharCode(65 + ((index - 1) % 26)) + value;
   return value;
 }
+function nextLabel() {
+  const used = new Set(paper.value?.problems.map((p) => p.label.toUpperCase()));
+  let i = 0;
+  while (used.has(labelAt(i))) i++;
+  return labelAt(i);
+}
 async function saveSelection(
   problems: Array<{
     problem_id: number;
@@ -386,7 +582,7 @@ async function addSelected() {
     ...selection(),
     {
       problem_id: selectedID.value,
-      label: labelAt(paper.value.problems.length),
+      label: nextLabel(),
       score: 100,
     },
   ]);
@@ -455,11 +651,15 @@ async function changeScore(link: PaperProblem) {
     })),
   );
 }
-function editProblem(link?: PaperProblem) {
+async function editProblem(link?: PaperProblem) {
+  if (!(await discard())) return;
+  tab.value = "problems";
+  dirty.value = false;
   editing.value = link;
   editorOpen.value = true;
 }
 async function problemSaved() {
+  dirty.value = false;
   editorOpen.value = false;
   await refresh();
 }
@@ -477,51 +677,219 @@ watch(() => [props.kind, props.eventId], load, { immediate: true });
   display: grid;
   gap: 18px;
   min-width: 0;
-  margin-top: 18px;
 }
-.paper-panel {
-  padding: 20px;
-  display: grid;
-  gap: 18px;
-  min-width: 0;
-}
-header,
-.actions,
-.problem-heading {
+.paper-header,
+.paper-toolbar,
+.preview-heading,
+.rail-title,
+.actions {
   display: flex;
-  flex-wrap: wrap;
   align-items: center;
-  gap: 12px;
-}
-header {
   justify-content: space-between;
+  gap: 14px;
+  flex-wrap: wrap;
 }
-h2 {
-  margin: 0;
-  font-size: 20px;
+.paper-header h1 {
+  margin: 7px 0;
+  font-size: clamp(22px, 3vw, 30px);
+  overflow-wrap: anywhere;
 }
+.paper-header p,
 .muted {
   color: var(--muted);
-  line-height: 1.7;
+  line-height: 1.65;
+  margin: 0;
 }
-.problem-select {
-  width: min(360px, 100%);
+.eyebrow {
+  font-size: 11px;
+  letter-spacing: 0.12em;
+  color: var(--muted);
+  font-weight: 700;
 }
-.paper-problem {
-  padding: 16px 0;
-  border-top: 1px solid var(--border);
-  display: grid;
-  gap: 12px;
+.paper-toolbar {
+  padding: 4px 0;
 }
-.problem-heading strong {
-  overflow-wrap: anywhere;
+.paper-toolbar strong {
+  font-size: 22px;
+}
+.actions {
+  justify-content: flex-start;
+  gap: 8px;
 }
 .actions :deep(.el-button + .el-button) {
   margin-left: 0;
 }
-@media (max-width: 600px) {
-  .paper-panel {
+.lifecycle-track {
+  display: flex;
+  list-style: none;
+  padding: 0;
+  margin: 0;
+  border-bottom: 1px solid var(--border);
+  overflow-x: auto;
+}
+.lifecycle-track li {
+  padding: 11px 20px;
+  white-space: nowrap;
+  color: var(--muted);
+  font-size: 13px;
+  border-bottom: 2px solid transparent;
+}
+.lifecycle-track .current {
+  color: var(--accent);
+  border-color: var(--accent);
+  font-weight: 700;
+}
+.paper-layout {
+  display: grid;
+  grid-template-columns: 250px minmax(0, 1fr);
+  gap: 22px;
+  align-items: start;
+}
+.paper-rail {
+  position: sticky;
+  top: 18px;
+  min-width: 0;
+}
+.rail-title h2 {
+  font-size: 14px;
+  margin: 0;
+}
+.existing-picker {
+  display: grid;
+  gap: 8px;
+  padding: 16px 0;
+  border-bottom: 1px solid var(--border);
+}
+.problem-directory {
+  display: grid;
+  gap: 4px;
+  margin-top: 12px;
+  max-height: 65vh;
+  overflow: auto;
+}
+.problem-directory button {
+  border: 0;
+  background: transparent;
+  color: var(--text);
+  text-align: left;
+  display: flex;
+  gap: 10px;
+  padding: 12px 8px;
+  border-radius: 8px;
+  cursor: pointer;
+  width: 100%;
+  align-items: flex-start;
+}
+.problem-directory button:hover,
+.problem-directory button.selected {
+  background: var(--surface-strong);
+}
+.problem-directory button.selected {
+  box-shadow: inset 3px 0 var(--accent);
+}
+.problem-directory button:focus-visible {
+  outline: 2px solid var(--accent);
+}
+.letter {
+  font-size: 13px;
+  font-weight: 700;
+  color: var(--accent);
+  width: 24px;
+  flex-shrink: 0;
+}
+.problem-directory strong {
+  font-size: 13px;
+  overflow-wrap: anywhere;
+  display: block;
+  line-height: 1.5;
+}
+.problem-directory small {
+  color: var(--muted);
+  display: block;
+  margin-top: 5px;
+}
+.empty-directory {
+  font-size: 13px;
+  padding: 22px 4px;
+}
+.paper-main {
+  padding: 24px;
+  min-width: 0;
+  min-height: 520px;
+}
+.paper-problem {
+  display: grid;
+  gap: 16px;
+}
+.preview-heading h2 {
+  font-size: 23px;
+  overflow-wrap: anywhere;
+  margin: 6px 0;
+}
+.question-actions {
+  border-bottom: 1px solid var(--border);
+  padding-bottom: 15px;
+}
+.paper-settings {
+  max-width: 740px;
+  padding: 12px 0;
+}
+.review-history {
+  padding: 8px 0;
+  list-style: none;
+}
+.review-history li {
+  padding: 14px 0;
+  border-bottom: 1px solid var(--border);
+}
+.review-history small {
+  display: block;
+  color: var(--muted);
+  margin-top: 6px;
+}
+.review-history p {
+  overflow-wrap: anywhere;
+}
+.paper-main :deep(.event-attachments) {
+  border: 0;
+  box-shadow: none;
+  padding: 8px 0;
+}
+@media (max-width: 1100px) {
+  .paper-layout {
+    grid-template-columns: 220px minmax(0, 1fr);
+    gap: 14px;
+  }
+  .paper-main {
+    padding: 18px;
+  }
+}
+@media (max-width: 760px) {
+  .paper-layout {
+    grid-template-columns: 1fr;
+  }
+  .paper-rail {
+    position: static;
+  }
+  .problem-directory {
+    max-height: 220px;
+  }
+  .paper-main {
     padding: 14px;
+    min-height: 360px;
+  }
+  .lifecycle-track li {
+    padding: 10px 14px;
+  }
+  .paper-toolbar {
+    align-items: flex-start;
+    gap: 12px;
+  }
+  .paper-toolbar .actions {
+    width: 100%;
+  }
+  .paper-settings :deep(.el-date-editor) {
+    max-width: 100%;
   }
 }
 </style>

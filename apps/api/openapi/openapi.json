@@ -12108,7 +12108,9 @@
                       "submit",
                       "withdraw",
                       "approve",
-                      "reject"
+                      "reject",
+                      "complete",
+                      "reopen"
                     ]
                   },
                   "note": {
@@ -12894,6 +12896,100 @@
           },
           "409": {
             "description": "修订号或审核状态冲突"
+          }
+        }
+      }
+    },
+    "/event-papers/{kind}/{event_id}/test-uploads/{upload_id}/{chunk_index}": {
+      "put": {
+        "operationId": "uploadEventTestChunk",
+        "tags": [
+          "整场审核与归档"
+        ],
+        "summary": "Upload private event test file chunk",
+        "x-handler": "uploadEventTestChunk",
+        "x-auth": "bearer",
+        "parameters": [
+          {
+            "name": "kind",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "event_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer"
+            }
+          },
+          {
+            "name": "upload_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "chunk_index",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer"
+            }
+          },
+          {
+            "name": "revision",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "404": {
+            "description": "场次或文件不存在"
+          },
+          "409": {
+            "description": "修订号或审核状态冲突"
+          },
+          "201": {
+            "description": "成功",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/JsonObject"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "Upload quota exhausted"
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/octet-stream": {
+              "schema": {
+                "type": "string",
+                "format": "binary"
+              }
+            }
           }
         }
       }
@@ -13902,6 +13998,11 @@
           },
           "review_note": {
             "type": "string"
+          },
+          "completed_at": {
+            "type": "string",
+            "format": "date-time",
+            "nullable": true
           }
         }
       },
@@ -14153,6 +14254,11 @@
           },
           "review_note": {
             "type": "string"
+          },
+          "completed_at": {
+            "type": "string",
+            "format": "date-time",
+            "nullable": true
           }
         }
       },

@@ -20,15 +20,17 @@ type eventListRow struct {
 	ScoringRule    string     `json:"scoring_rule"`
 	ReviewStatus   string     `json:"review_status"`
 	ReviewRevision int        `json:"review_revision"`
+	CompletedAt    *time.Time `json:"completed_at"`
+	Lifecycle      string     `json:"lifecycle"`
 	ProblemCount   int64      `json:"problem_count"`
 }
 
 func (s Server) eventListQuery(user models.User, archive bool) *gorm.DB {
-	exams := s.DB.Table("exams e").Select(`'exam' AS kind,e.id,e.title,c.name AS context_name,e.starts_at,e.ends_at,e.scoring_rule,e.review_status,e.review_revision,(SELECT count(*) FROM exam_problems ep WHERE ep.exam_id=e.id) AS problem_count`).Joins("JOIN courses c ON c.id=e.course_id").Where("e.deleted_at IS NULL")
-	contests := s.DB.Table("team_contests e").Select(`'contest' AS kind,e.id,e.title,t.name AS context_name,e.starts_at,e.starts_at+e.duration_minutes*interval '1 minute' AS ends_at,e.scoring_rule,e.review_status,e.review_revision,(SELECT count(*) FROM team_contest_problems ep WHERE ep.contest_id=e.id) AS problem_count`).Joins("JOIN teams t ON t.id=e.team_id").Where("e.deleted_at IS NULL")
+	exams := s.DB.Table("exams e").Select(`'exam' AS kind,e.id,e.title,c.name AS context_name,e.starts_at,e.ends_at,e.scoring_rule,e.review_status,e.review_revision,e.completed_at,(SELECT count(*) FROM exam_problems ep WHERE ep.exam_id=e.id) AS problem_count`).Joins("JOIN courses c ON c.id=e.course_id").Where("e.deleted_at IS NULL")
+	contests := s.DB.Table("team_contests e").Select(`'contest' AS kind,e.id,e.title,t.name AS context_name,e.starts_at,e.starts_at+e.duration_minutes*interval '1 minute' AS ends_at,e.scoring_rule,e.review_status,e.review_revision,e.completed_at,(SELECT count(*) FROM team_contest_problems ep WHERE ep.contest_id=e.id) AS problem_count`).Joins("JOIN teams t ON t.id=e.team_id").Where("e.deleted_at IS NULL")
 	if archive {
-		exams = exams.Where("e.review_status='approved' AND e.ends_at IS NOT NULL AND e.ends_at<=?", time.Now())
-		contests = contests.Where("e.review_status='approved' AND e.state<>'draft' AND e.starts_at IS NOT NULL AND e.starts_at+e.duration_minutes*interval '1 minute'<=?", time.Now())
+		exams = exams.Where("e.completed_at IS NOT NULL AND e.review_status='approved' AND e.ends_at IS NOT NULL AND e.ends_at<=?", time.Now())
+		contests = contests.Where("e.completed_at IS NOT NULL AND e.review_status='approved' AND e.state<>'draft' AND e.starts_at IS NOT NULL AND e.starts_at+e.duration_minutes*interval '1 minute'<=?", time.Now())
 		if user.Role != models.RoleAdmin {
 			if user.Role == models.RoleTeacher {
 				exams = exams.Where("c.teacher_id=? OR EXISTS(SELECT 1 FROM course_memberships m WHERE m.course_id=e.course_id AND m.user_id=? AND m.role IN ?)", user.ID, user.ID, courseTeachingRoles())
@@ -38,7 +40,8 @@ func (s Server) eventListQuery(user models.User, archive bool) *gorm.DB {
 			contests = contests.Where("EXISTS(SELECT 1 FROM team_memberships m WHERE m.team_id=e.team_id AND m.user_id=?)", user.ID)
 		}
 	}
-	return s.DB.Table("(? UNION ALL ?) AS events", exams, contests)
+	union := s.DB.Table("(? UNION ALL ?) AS events", exams, contests).Select(`events.*, CASE WHEN review_status<>'approved' THEN review_status WHEN starts_at>NOW() THEN 'upcoming' WHEN ends_at<=NOW() THEN CASE WHEN completed_at IS NULL THEN 'closed' ELSE 'completed' END ELSE 'running' END AS lifecycle`)
+	return s.DB.Table("(?) AS event_states", union)
 }
 func (s Server) listEventArchives(c *gin.Context) { s.listEvents(c, true) }
 func (s Server) listEventReviews(c *gin.Context)  { s.listEvents(c, false) }
@@ -54,7 +57,11 @@ func (s Server) listEvents(c *gin.Context, archive bool) {
 		q = q.Where("kind=?", kind)
 	}
 	if status := c.Query("status"); status != "" && !archive {
-		q = q.Where("review_status=?", status)
+		if status == "approved" {
+			q = q.Where("review_status=?", status)
+		} else {
+			q = q.Where("lifecycle=?", status)
+		}
 	}
 	if search := strings.TrimSpace(c.Query("q")); search != "" {
 		q = q.Where("title ILIKE ?", "%"+strings.NewReplacer("\\", "\\\\", "%", "\\%", "_", "\\_").Replace(search)+"%")
@@ -67,7 +74,7 @@ func (s Server) listEvents(c *gin.Context, archive bool) {
 	items := []eventListRow{}
 	order := "ends_at desc,id desc,kind"
 	if !archive {
-		order = "CASE WHEN review_status='pending' THEN 0 ELSE 1 END, starts_at asc NULLS LAST,id desc,kind"
+		order = "CASE WHEN lifecycle='pending' THEN 0 WHEN lifecycle='closed' THEN 1 ELSE 2 END, starts_at asc NULLS LAST,id desc,kind"
 	}
 	if err := q.Order(order).Offset((page - 1) * size).Limit(size).Scan(&items).Error; err != nil {
 		eventError(c, err)

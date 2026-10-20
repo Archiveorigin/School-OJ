@@ -1,8 +1,8 @@
 <template>
   <section class="contest-page">
     <div v-if="detail" class="contest-shell">
-      <EventWorkspaceHeader :title="detail.contest.title" :subtitle="detail.team.name" :rule="detail.contest.scoring_rule" :status="statusLabel(detail.contest.status)"
-        kind="比赛" :base="`/contest/${contestID}`" :show-ranking="true" back-label="返回团队比赛" @back="goBack"><template #actions><el-button @click="openEventTicket">比赛反馈</el-button></template></EventWorkspaceHeader>
+      <EventWorkspaceHeader :title="detail.contest.title" :subtitle="detail.team.name" :rule="detail.contest.scoring_rule" :status="lifecycleLabels[eventLifecycle(detail.contest)]"
+        kind="比赛" :base="`/contest/${contestID}`" :show-ranking="detail.can_read_problems" :show-problems="detail.can_read_problems" :show-records="true" back-label="返回团队比赛" @back="goBack"><template #actions><el-button @click="openEventTicket">比赛反馈</el-button></template></EventWorkspaceHeader>
 
       <main class="contest-content">
         <template v-if="section === 'description'">
@@ -48,19 +48,19 @@
               </dl>
             </aside>
           </div>
-          <EventReviewPanel v-if="detail.can_organize" :key="detail.contest.review_revision" kind="contest" :event-id="contestID" @changed="loadDetail" />
-          <EventAttachments v-else kind="contest" :event-id="contestID" />
+          <EventManageCard v-if="detail.can_organize" kind="contest" :event-id="contestID" :editable="detail.can_edit" />
+          <EventAttachments v-else-if="detail.can_read_problems" kind="contest" :event-id="contestID" /><el-alert v-else :closable="false" type="info" :title="eventLifecycle(detail.contest)==='closed'?'本场已截止，题目、附件和排名将在管理员确认完结后开放。':'本场尚未开始或你不在参赛名单中。'" />
         </template>
 
-        <EventProblemList v-else-if="section === 'problems'" :items="problemItems" :base="`/contest/${contestID}`">
-          <template #actions><el-button v-if="detail.can_edit" type="primary" @click="router.push(`/contest/${contestID}/description`)">组题与审核</el-button></template>
+        <EventProblemList v-else-if="section === 'problems' && detail.can_read_problems" :items="problemItems" :base="`/contest/${contestID}`">
+          <template #actions><el-button v-if="detail.can_edit" type="primary" @click="router.push(`/event-papers/contest/${contestID}/edit`)">组题</el-button></template>
         </EventProblemList>
         <EventProblemPanel v-else-if="section === 'problem' && selectedLink" :selected="{ ...selectedLink, score: 100 }" :items="problemItems"
           :records="problemRecords" :base="`/contest/${contestID}`" :asset-base="`/event-papers/contest/${contestID}/problems/${selectedLink.problem_id}/assets`" @refresh="loadRecords" @view-submission="viewSubmission">
           <template #actions><el-button @click="openProblemTicket">工单修改</el-button><el-button type="primary" :disabled="!detail.can_submit" @click="openSubmit">提交代码</el-button></template>
         </EventProblemPanel>
 
-        <template v-else-if="section === 'scoreboard' && detail.contest.scoring_rule !== 'oi'">
+        <template v-else-if="section === 'scoreboard' && detail.can_read_problems && detail.contest.scoring_rule !== 'oi'">
           <section class="contest-scoreboard">
             <LeaderboardBoard
               :data="scoreboardData"
@@ -74,7 +74,8 @@
             />
           </section>
         </template>
-        <el-result v-else title="题目不存在或页面未开放"><template #extra><el-button @click="router.replace(`/contest/${contestID}/problems`)">题目列表</el-button></template></el-result>
+        <section v-else-if="section==='records'" class="panel own-records"><h2>本人提交</h2><el-table :data="records.filter((r:any)=>r.user_id===auth.user?.id)"><el-table-column prop="id" label="提交编号"/><el-table-column prop="status" label="状态"/><el-table-column label="时间"><template #default="{row}">{{ dateText(row.created_at) }}</template></el-table-column><el-table-column label="操作"><template #default="{row}"><el-button link @click="viewSubmission(row.id)">查看提交</el-button></template></el-table-column></el-table><el-button @click="loadRecords">刷新提交</el-button></section>
+        <el-result v-else title="此页面暂未开放"><template #extra><el-button @click="router.replace(`/contest/${contestID}/description`)">返回比赛说明</el-button></template></el-result>
       </main>
 
       <TicketDialog v-model="ticketVisible" :context="{ kind: 'contest', id: contestID, problemID: ticketProblemID }" />
@@ -136,9 +137,10 @@
 </template>
 
 <script setup lang="ts">
+import {eventLifecycle,lifecycleLabels} from "../../api/modules/events"
 import { useSubmissionStreams } from "../../features/submissions/live"
 import { apiErrorMessage } from '../../api/errors'
-import EventReviewPanel from '../../components/events/EventReviewPanel.vue'
+import EventManageCard from '../../components/events/EventManageCard.vue'
 import EventAttachments from '../../components/events/EventAttachments.vue'
 import TicketDialog from '../../components/tickets/TicketDialog.vue'
 
@@ -183,6 +185,8 @@ const detail = ref<any>(null),
   editing = ref(false)
 let stream: AuthenticatedEventSource | null = null
 let rankingTimer: number | undefined
+let detailTimer: number | undefined, deadlineTimer: number | undefined
+let detailLoading = false
 const ticketVisible = ref(false), ticketProblemID = ref<number | undefined>()
 function openEventTicket() { ticketProblemID.value = undefined; ticketVisible.value = true }
 function openProblemTicket() { if (selectedLink.value) { ticketProblemID.value = selectedLink.value.problem_id; ticketVisible.value = true } }
@@ -211,7 +215,7 @@ const section = computed(() =>
       ? 'problems'
       : route.name === 'contest-problem'
         ? 'problem'
-        : 'scoreboard'
+        : route.name === 'contest-records' ? 'records' : 'scoreboard'
 )
 const selectedLink = computed(
   () =>
@@ -244,8 +248,25 @@ const rankingUpdatedAt = computed(() =>
   rankingLoadedAt.value ? formatDateTime(rankingLoadedAt.value) : ''
 )
 async function loadDetail() {
+  if (detailLoading) return
+  detailLoading = true
   try {
     detail.value = (await generatedApi.getTeamContestViaContestsContestId<any>({ path: { "contest_id": contestID.value } })).data
+    if (deadlineTimer) window.clearTimeout(deadlineTimer)
+    if (detail.value.lifecycle === 'running' && detail.value.contest.ends_at) {
+      const delay = Date.parse(detail.value.contest.ends_at) - Date.parse(detail.value.now)
+      deadlineTimer = window.setTimeout(() => {
+        if (detail.value && !detail.value.can_organize) {
+          detail.value.can_read_problems = false; detail.value.can_submit = false; detail.value.problems = [];
+          ranking.value = {rows: [], problems: []}; submitVisible.value = false
+        }
+        void loadDetail()
+      }, Math.min(Math.max(100, delay + 100), 2147483647))
+    }
+    if (!detail.value.can_read_problems) {
+      ranking.value = {rows: [], problems: []}; submitVisible.value = false
+      if (!['description', 'records'].includes(section.value)) await router.replace(`/contest/${contestID.value}/description`)
+    }
     if (detail.value.contest.scoring_rule === 'oi' && section.value === 'scoreboard')
       await router.replace(`/contest/${contestID.value}/problems`)
     Object.assign(editForm, { ...detail.value.contest })
@@ -257,7 +278,7 @@ async function loadDetail() {
   } catch (e: any) {
     ElMessage.error(apiErrorMessage(e))
     await router.replace('/teams')
-  }
+  } finally { detailLoading = false }
 }
 async function loadRecords() {
   if (!contestID.value) return
@@ -268,6 +289,7 @@ async function loadRecords() {
   }
 }
 async function loadRanking() {
+  if(!detail.value?.can_read_problems)return;
   if (detail.value?.contest.scoring_rule === 'oi' || rankingLoading.value) return
   rankingLoading.value = true
   rankingError.value = ''
@@ -292,15 +314,6 @@ function goBack() {
 }
 function dateText(v?: string) {
   return v ? formatDateTime(v) : '待定'
-}
-function statusLabel(v: string) {
-  return v === 'draft'
-    ? '草稿'
-    : v === 'published'
-      ? '待开始'
-      : v === 'running'
-        ? '进行中'
-        : '已结束'
 }
 function clearRankingTimer() {
   if (rankingTimer) window.clearTimeout(rankingTimer)
@@ -375,9 +388,12 @@ watch(
 )
 onMounted(async () => {
   await loadDetail()
+  detailTimer = window.setInterval(() => void loadDetail(), 15000)
   if (section.value === 'scoreboard') await loadRanking()
 })
 onBeforeUnmount(() => {
+  if (detailTimer) window.clearInterval(detailTimer)
+  if (deadlineTimer) window.clearTimeout(deadlineTimer)
   stream?.close()
   clearRankingTimer()
 })
