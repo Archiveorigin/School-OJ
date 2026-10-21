@@ -15,6 +15,7 @@ import (
 	"mime/multipart"
 	"net/http"
 	"path/filepath"
+	"school-oj/apps/api/internal/authz"
 	"strconv"
 	"strings"
 	"time"
@@ -102,7 +103,7 @@ func sameTicketID(a, b *uint) bool { return a == nil && b == nil || a != nil && 
 // Existing private feedback remains readable by its requester after an event ends.
 func (s Server) ticketContextAccess(user models.User, ticket models.ProblemChangeTicket, writing bool) (bool, bool) {
 	// Administrators must be able to close orphaned tickets after a target is removed.
-	if user.Role == models.RoleAdmin {
+	if authz.Has(user, authz.TicketAny) {
 		return true, true
 	}
 	if ticket.ExamID != nil {
@@ -154,13 +155,13 @@ func (s Server) ticketContextAccess(user models.User, ticket models.ProblemChang
 		return true, false
 	}
 	if ticket.ProblemID == nil {
-		return user.ID != 0 && (ticket.RequesterID == user.ID || user.Role == models.RoleAdmin), user.Role == models.RoleAdmin
+		return user.ID != 0 && (ticket.RequesterID == user.ID || authz.Has(user, authz.TicketAny)), authz.Has(user, authz.TicketAny)
 	}
 	var problem models.Problem
 	if s.DB.Where("deleted_at IS NULL").First(&problem, *ticket.ProblemID).Error != nil {
 		return false, false
 	}
-	manager := user.Role == models.RoleAdmin
+	manager := authz.Has(user, authz.TicketAny)
 	accessible := s.isProblemPublic(problem.ID) || user.ID != 0 && (s.canManageProblemData(user, problem) || s.canAccessTeamProblem(user, problem))
 	if writing && problem.ArchivedAt != nil {
 		accessible = false
@@ -217,7 +218,7 @@ func (s Server) ticketProjection(user models.User, ticket models.ProblemChangeTi
 		"processed_at": ticket.ProcessedAt, "applied_version_id": ticket.AppliedVersionID,
 		"attachment_count": len(ticket.Attachments), "attachments_private": !private,
 		"can_edit":   readable && user.ID != 0 && user.ID == ticket.RequesterID && ticketEditableStatus(ticket.Status),
-		"can_manage": manager, "can_apply": user.Role == models.RoleAdmin && ticket.Action != models.ProblemChangeSuggest && (ticket.ProblemID != nil || ticket.Action == models.ProblemChangeCreate),
+		"can_manage": manager, "can_apply": authz.Has(user, authz.TicketAny) && ticket.Action != models.ProblemChangeSuggest && (ticket.ProblemID != nil || ticket.Action == models.ProblemChangeCreate),
 		"can_resolve": manager && ticketCanResolve(ticket),
 	}
 	if ticket.ProblemID != nil {
@@ -234,7 +235,7 @@ func (s Server) ticketProjection(user models.User, ticket models.ProblemChangeTi
 			s.DB.Model(&models.Problem{}).Select("id, title, display_code, difficulty").Where("id = ?", *ticket.ProblemID).Scan(&p)
 		}
 		view["problem"] = gin.H{"id": p.ID, "title": p.Title, "display_code": p.DisplayCode, "difficulty": p.Difficulty}
-		if user.Role == models.RoleAdmin {
+		if authz.Has(user, authz.TicketAny) {
 			s.DB.Model(&models.Problem{}).Select("current_version_id").Where("id = ?", *ticket.ProblemID).Scan(&p)
 			view["current_version_id"] = p.CurrentVersionID
 		}
@@ -249,7 +250,7 @@ func (s Server) ticketProjection(user models.User, ticket models.ProblemChangeTi
 			view["attachment_name"] = ticket.Attachments[0].Name
 		}
 	}
-	if user.Role == models.RoleAdmin && detail {
+	if authz.Has(user, authz.TicketAny) && detail {
 		s.loadProblemChangeTicketImpact(&ticket)
 		view["impact_summary"] = ticket.ImpactSummary
 		if ticket.Status == models.ProblemChangePending && (ticket.Action == models.ProblemChangeCreate || ticket.Action == models.ProblemChangeReplace && ticket.ProblemID != nil) {
@@ -655,7 +656,7 @@ func (s Server) listProblemChangeTicketEligibleProblems(c *gin.Context) {
 		DisplayCode string `json:"display_code"`
 	}
 	q := s.DB.Model(&models.Problem{}).Select("id,title,display_code").Where("deleted_at IS NULL AND archived_at IS NULL")
-	if user.Role != models.RoleAdmin {
+	if !authz.Has(user, authz.TicketAny) {
 		q = q.Where("owner_id = ?", user.ID)
 	}
 	if q.Order("id DESC").Limit(100).Scan(&problems).Error != nil {
@@ -965,7 +966,7 @@ func (s Server) applyProblemChangeTicket(c *gin.Context) {
 		return
 	}
 	admin, _ := middleware.CurrentUser(c)
-	if admin.Role != models.RoleAdmin {
+	if !authz.Has(admin, authz.TicketAny) {
 		c.JSON(403, gin.H{"error": "题库变更仅系统管理员可执行"})
 		return
 	}

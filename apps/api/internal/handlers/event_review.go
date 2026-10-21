@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"errors"
 	"net/http"
+	"school-oj/apps/api/internal/authz"
 	"strings"
 	"time"
 
@@ -273,7 +274,7 @@ func (s Server) reviewEventPaper(c *gin.Context) {
 	}
 	req.Note = strings.TrimSpace(req.Note)
 	u, _ := middleware.CurrentUser(c)
-	if (req.Action == "approve" || req.Action == "reject" || req.Action == "complete" || req.Action == "reopen") && u.Role != models.RoleAdmin {
+	if (req.Action == "approve" || req.Action == "reject" || req.Action == "complete" || req.Action == "reopen") && !authz.Has(u, authz.EventReview) {
 		c.JSON(403, gin.H{"error": "仅系统管理员可审核整场考试或比赛"})
 		return
 	}

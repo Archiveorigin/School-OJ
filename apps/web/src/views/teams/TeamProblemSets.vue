@@ -73,11 +73,7 @@ const editingItem = ref<TeamProblemSet | null>(null)
 const deletingID = ref<number | null>(null)
 const form = reactive({ title: '', description: '', icon_url: '' })
 const editForm = reactive({ title: '', description: '', icon_url: '' })
-const canOrganize = computed(() => {
-  if (props.team.my_role === 'owner') return true
-  if (props.team.contest_permission === 'all') return Boolean(props.team.my_role)
-  return props.team.contest_permission === 'admin' && props.team.my_role === 'admin'
-})
+const canOrganize = computed(() => Boolean(props.team.can_organize))
 
 async function load() {
   loading.value = true

@@ -39,7 +39,7 @@
 
       <section class="overview-card pending-card">
         <AdminSectionHeader title="待处理" />
-        <template v-if="auth.role === 'admin'">
+        <template v-if="auth.can('user:manage')">
           <button
             class="pending-row"
             type="button"
@@ -102,9 +102,9 @@
       </section>
 
       <section class="overview-card activity-card">
-        <AdminSectionHeader :title="auth.role === 'admin' ? '最近动态' : '考试状态'">
+        <AdminSectionHeader :title="auth.can('user:manage') ? '最近动态' : '考试状态'">
           <el-button
-            v-if="auth.role === 'admin'"
+            v-if="auth.can('user:manage')"
             text
             type="primary"
             @click="router.push('/admin/audit-logs')"
@@ -202,13 +202,13 @@ const quickLinks = computed(() => [
     icon: Collection
   },
   {
-    path: auth.role === 'admin' ? '/admin/problem-authors' : '/admin/prepared-problems',
-    label: auth.role === 'admin' ? '工单管理' : '预备题库',
-    icon: auth.role === 'admin' ? Document : EditPen
+    path: auth.can('user:manage') ? '/admin/problem-authors' : '/admin/prepared-problems',
+    label: auth.can('user:manage') ? '工单管理' : '预备题库',
+    icon: auth.can('user:manage') ? Document : EditPen
   }
 ])
 const activityItems = computed(() =>
-  auth.role === 'admin'
+  auth.can('user:manage')
     ? auditLogs.value.slice(0, 5).map((item) => ({
         key: `audit-${item.id}`,
         title: item.actor_name || '系统',
@@ -295,7 +295,7 @@ async function load() {
   try {
     const examResponse = await generatedApi.listExams<any>()
     exams.value = Array.isArray(examResponse.data) ? examResponse.data : []
-    if (auth.role === 'admin') {
+    if (auth.can('user:manage')) {
       const [applicationResult, ticketResult, auditResult] = await Promise.allSettled([
         generatedApi.listAuthorApplications<any>({ query: { status: 'pending' } }),
         generatedApi.listProblemChangeTickets<any>({ query: { status: 'pending' } }),

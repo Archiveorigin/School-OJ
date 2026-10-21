@@ -21,11 +21,13 @@ import (
 	"strings"
 	"time"
 
+	"school-oj/apps/api/internal/authz"
 	"school-oj/apps/api/internal/config"
 	"school-oj/apps/api/internal/jplag"
 	"school-oj/apps/api/internal/middleware"
 	"school-oj/apps/api/internal/models"
 	"school-oj/apps/api/internal/services"
+	"school-oj/apps/api/internal/visibility"
 
 	"github.com/gin-gonic/gin"
 	"github.com/minio/minio-go/v7"
@@ -326,7 +328,7 @@ func (s Server) login(c *gin.Context) {
 			_ = appendExamActivity(s.DB, exam.ID, user.ID, fmt.Sprintf("login:%d", time.Now().UnixNano()), "login", c.ClientIP(), nil, nil)
 		}
 	}
-	c.JSON(http.StatusOK, gin.H{"token": token, "user": user})
+	c.JSON(http.StatusOK, gin.H{"token": token, "user": authenticatedUser(user)})
 }
 
 func (s Server) recordFailedLogin(email string) int {
@@ -350,7 +352,7 @@ func (s Server) clearFailedLogin(email string) {
 
 func (s Server) me(c *gin.Context) {
 	user, _ := middleware.CurrentUser(c)
-	c.JSON(http.StatusOK, user)
+	c.JSON(http.StatusOK, authenticatedUser(user))
 }
 
 func (s Server) activeExam(c *gin.Context) {
@@ -496,7 +498,7 @@ func (s Server) updateUser(c *gin.Context) {
 		"role":       req.Role,
 		"student_no": studentNo,
 	}
-	if err := s.DB.Model(&user).Updates(updates).Error; err != nil {
+	if err := services.UpdateAccountAccess(s.DB.WithContext(c.Request.Context()), user.ID, updates); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 		return
 	}
@@ -521,7 +523,7 @@ func (s Server) deleteUser(c *gin.Context) {
 		return
 	}
 	deletedEmail := fmt.Sprintf("deleted-%d@local.invalid", user.ID)
-	if err := s.DB.Model(&user).Updates(map[string]any{
+	if err := services.UpdateAccountAccess(s.DB.WithContext(c.Request.Context()), user.ID, map[string]any{
 		"email":           deletedEmail,
 		"name":            "deleted user",
 		"password_hash":   "deleted",
@@ -529,7 +531,7 @@ func (s Server) deleteUser(c *gin.Context) {
 		"avatar_url":      "",
 		"email_verified":  false,
 		"account_deleted": true,
-	}).Error; err != nil {
+	}); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 		return
 	}
@@ -976,15 +978,9 @@ func (s Server) listCourses(c *gin.Context) {
 	if term := strings.TrimSpace(c.Query("term")); term != "" {
 		q = q.Where("term = ?", term)
 	}
-	switch user.Role {
-	case models.RoleAdmin:
-	case models.RoleTeacher:
-		q = q.Where("teacher_id = ? OR id IN (?)", user.ID, s.DB.Model(&models.CourseMembership{}).Select("course_id").Where("user_id = ? AND role IN ?", user.ID, courseTeachingRoles()))
-	default:
-		q = q.Where("id IN (?)", s.DB.Model(&models.CourseMembership{}).Select("course_id").Where("user_id = ?", user.ID))
-	}
+	q = q.Scopes(visibility.Courses(user))
 	q.Find(&courses)
-	c.JSON(http.StatusOK, courses)
+	c.JSON(http.StatusOK, s.courseCapabilities(user, courses))
 }
 
 func (s Server) createCourse(c *gin.Context) {
@@ -1343,18 +1339,9 @@ func (s Server) listClasses(c *gin.Context) {
 	if courseID := c.Query("course_id"); courseID != "" {
 		q = q.Where("course_id = ?", courseID)
 	}
-	switch user.Role {
-	case models.RoleAdmin:
-	case models.RoleTeacher:
-		q = q.Where("course_id IN (?) OR course_id IN (?)",
-			s.DB.Model(&models.Course{}).Select("id").Where("teacher_id = ?", user.ID),
-			s.DB.Model(&models.CourseMembership{}).Select("course_id").Where("user_id = ? AND role IN ?", user.ID, courseTeachingRoles()),
-		)
-	default:
-		q = q.Where("id IN (?)", s.DB.Model(&models.ClassMembership{}).Select("class_id").Where("user_id = ?", user.ID))
-	}
+	q = q.Scopes(visibility.Classes(user))
 	q.Find(&classes)
-	c.JSON(http.StatusOK, s.classListViews(classes))
+	c.JSON(http.StatusOK, s.classListViews(s.classCapabilities(user, classes)))
 }
 
 func (s Server) updateClass(c *gin.Context) {
@@ -1542,12 +1529,9 @@ func (s Server) myClasses(c *gin.Context) {
 		Joins("join courses on courses.id = classes.course_id").
 		Where("classes.archived = false AND courses.archived = false").
 		Order("courses.id desc, classes.id desc")
-	switch user.Role {
-	case models.RoleAdmin:
-	case models.RoleTeacher:
-		q = q.Where("courses.teacher_id = ? OR courses.id IN (?)", user.ID, s.DB.Model(&models.CourseMembership{}).Select("course_id").Where("user_id = ? AND role IN ?", user.ID, courseTeachingRoles()))
-	default:
-		q = q.Joins("join class_memberships on class_memberships.class_id = classes.id").Where("class_memberships.user_id = ?", user.ID)
+	q = q.Where("classes.id IN (?)", s.DB.Model(&models.Class{}).Select("id").Scopes(visibility.Classes(user)))
+	if !authz.Has(user, authz.CourseTeach) {
+		q = q.Select("classes.id as id, classes.id as class_id, classes.name as class_name, courses.id as course_id, courses.code as course_code, courses.name as course_name, courses.term as term")
 	}
 	q.Scan(&rows)
 	c.JSON(http.StatusOK, rows)
@@ -2115,7 +2099,7 @@ func (s Server) saveProblemPackage(c *gin.Context, user models.User, body []byte
 		if err := tx.Create(&problem).Error; err != nil {
 			return err
 		}
-		if user.Role != models.RoleAdmin {
+		if !authz.Has(user, authz.ProblemReview) {
 			review := models.ProblemReview{
 				ProblemID:   problem.ID,
 				AuthorID:    user.ID,
@@ -2133,7 +2117,7 @@ func (s Server) saveProblemPackage(c *gin.Context, user models.User, body []byte
 	}
 	services.Audit(c, s.DB, action, "problem", problem.ID, datatypes.JSONMap{
 		"slug":            problem.Slug,
-		"review_required": user.Role != models.RoleAdmin,
+		"review_required": !authz.Has(user, authz.ProblemReview),
 	})
 	return problem, true
 }
@@ -2293,7 +2277,7 @@ func (s Server) updateProblem(c *gin.Context) {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 		return
 	}
-	if user.Role != models.RoleAdmin {
+	if !authz.Has(user, authz.ProblemReview) {
 		if err := s.submitProblemForReview(problem.ID, problem.OwnerID); err != nil {
 			c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 			return
@@ -2558,7 +2542,14 @@ func (s Server) canManageProblemData(user models.User, problem models.Problem) b
 		p, err := loadEventPaper(s.DB, problem.EventKind, *problem.EventID, false)
 		return err == nil && s.canManageEventPaper(user, p)
 	}
-	if user.Role == models.RoleAdmin {
+	if problem.TeamID != nil {
+		var team models.Team
+		if s.DB.First(&team, *problem.TeamID).Error != nil {
+			return false
+		}
+		return s.canManageTeam(user, team) || problem.OwnerID == user.ID && s.canTeamContentPermission(user, team)
+	}
+	if authz.Has(user, authz.ProblemAny) {
 		return true
 	}
 	if canCreateProblems(user) && problem.OwnerID == user.ID {
@@ -2571,7 +2562,7 @@ func (s Server) canManageProblemData(user models.User, problem models.Problem) b
 }
 
 func canCreateProblems(user models.User) bool {
-	return user.CanAuthor || user.Role == models.RoleAdmin
+	return authz.Has(user, authz.ProblemAuthor)
 }
 
 func (s Server) problemPackageBody(c *gin.Context, problem models.Problem) ([]byte, bool) {
@@ -2730,7 +2721,7 @@ func (s Server) deleteProblem(c *gin.Context) {
 		c.JSON(http.StatusNotFound, gin.H{"error": "problem not found"})
 		return
 	}
-	if user.Role != models.RoleAdmin && problem.OwnerID != user.ID {
+	if !authz.Has(user, authz.ProblemAny) && problem.OwnerID != user.ID {
 		c.JSON(http.StatusForbidden, gin.H{"error": "forbidden"})
 		return
 	}
@@ -2769,9 +2760,7 @@ func (s Server) listPreparedProblems(c *gin.Context) {
 	user, _ := middleware.CurrentUser(c)
 	items := []models.PreparedProblem{}
 	q := s.DB.Model(&models.PreparedProblem{}).Preload("Problem").Joins("join problems on problems.id = prepared_problems.problem_id").Where("problems.deleted_at IS NULL AND problems.archived_at IS NULL").Order("prepared_problems.updated_at desc, prepared_problems.id desc")
-	if user.Role != models.RoleAdmin {
-		q = q.Where("prepared_problems.owner_id = ?", user.ID)
-	}
+	q = q.Scopes(visibility.PreparedProblems(user))
 	if raw := strings.TrimSpace(c.Query("q")); raw != "" {
 		like := "%" + strings.ToLower(raw) + "%"
 		q = q.Where(
@@ -3008,21 +2997,7 @@ func (s Server) listAssignments(c *gin.Context) {
 		}
 		q = q.Where("course_id = ?", courseID)
 	}
-	if c.Query("class_id") == "" && c.Query("course_id") == "" {
-		switch user.Role {
-		case models.RoleAdmin:
-		case models.RoleTeacher:
-			q = q.Where("course_id IN (?) OR course_id IN (?)",
-				s.DB.Model(&models.Course{}).Select("id").Where("teacher_id = ?", user.ID),
-				s.DB.Model(&models.CourseMembership{}).Select("course_id").Where("user_id = ? AND role IN ?", user.ID, courseTeachingRoles()),
-			)
-		default:
-			q = q.Where("class_id IN (?) OR (class_id IS NULL AND course_id IN (?))",
-				s.DB.Model(&models.ClassMembership{}).Select("class_id").Where("user_id = ?", user.ID),
-				s.DB.Model(&models.CourseMembership{}).Select("course_id").Where("user_id = ? AND role = ?", user.ID, models.RoleStudent),
-			)
-		}
-	}
+	q = q.Scopes(visibility.CourseWork(user))
 	q.Find(&items)
 	views := s.assignmentListViews(items)
 	if user.Role != models.RoleStudent {
@@ -3224,21 +3199,7 @@ func (s Server) listExams(c *gin.Context) {
 		}
 		q = q.Where("course_id = ?", courseID)
 	}
-	if c.Query("class_id") == "" && c.Query("course_id") == "" {
-		switch user.Role {
-		case models.RoleAdmin:
-		case models.RoleTeacher:
-			q = q.Where("course_id IN (?) OR course_id IN (?)",
-				s.DB.Model(&models.Course{}).Select("id").Where("teacher_id = ?", user.ID),
-				s.DB.Model(&models.CourseMembership{}).Select("course_id").Where("user_id = ? AND role IN ?", user.ID, courseTeachingRoles()),
-			)
-		default:
-			q = q.Where("class_id IN (?) OR (class_id IS NULL AND course_id IN (?))",
-				s.DB.Model(&models.ClassMembership{}).Select("class_id").Where("user_id = ?", user.ID),
-				s.DB.Model(&models.CourseMembership{}).Select("course_id").Where("user_id = ? AND role = ?", user.ID, models.RoleStudent),
-			)
-		}
-	}
+	q = q.Scopes(visibility.CourseWork(user))
 	q.Find(&items)
 	views := s.examListViews(items)
 	if user.Role != models.RoleStudent {
@@ -4532,6 +4493,10 @@ func (s Server) createSubmission(c *gin.Context) {
 			return
 		}
 	} else {
+		if req.AssignmentID == nil && req.ExamID == nil && !s.isProblemPublic(problem.ID) && !s.canAccessTeamProblem(user, problem) && !s.canManageProblemData(user, problem) {
+			c.JSON(http.StatusForbidden, gin.H{"error": "没有访问此题目的权限"})
+			return
+		}
 		if req.AssignmentID != nil {
 			var assignment models.Assignment
 			if err := s.DB.Where("deleted_at IS NULL").First(&assignment, *req.AssignmentID).Error; err != nil {
@@ -4694,22 +4659,8 @@ func (s Server) listSubmissions(c *gin.Context) {
 				user.ID,
 			)
 		}
-	} else if user.Role == models.RoleStudent {
-		q = q.Where("user_id = ?", user.ID)
-	} else if user.Role == models.RoleTeacher {
-		primaryCourses := s.DB.Model(&models.Course{}).Select("id").Where("teacher_id = ?", user.ID)
-		memberCourses := s.DB.Model(&models.CourseMembership{}).Select("course_id").Where("user_id = ? AND role IN ?", user.ID, courseTeachingRoles())
-		visibleClassProblems := s.DB.Table("class_problems").
-			Select("class_problems.problem_id").
-			Joins("join classes on classes.id = class_problems.class_id").
-			Where("classes.course_id IN (?) OR classes.course_id IN (?)", primaryCourses, memberCourses)
-		q = q.Where(
-			"user_id = ? OR problem_id IN (?) OR assignment_id IN (?) OR exam_id IN (?)",
-			user.ID,
-			s.DB.Model(&models.Problem{}).Select("id").Where("owner_id = ? OR id IN (?)", user.ID, visibleClassProblems),
-			s.DB.Model(&models.Assignment{}).Select("id").Where("deleted_at IS NULL").Where("course_id IN (?) OR course_id IN (?)", primaryCourses, memberCourses),
-			s.DB.Model(&models.Exam{}).Select("id").Where("deleted_at IS NULL").Where("course_id IN (?) OR course_id IN (?)", primaryCourses, memberCourses),
-		)
+	} else {
+		q = q.Scopes(visibility.Submissions(user))
 	}
 	if problemID := c.Query("problem_id"); problemID != "" {
 		q = q.Where("problem_id = ?", problemID)
@@ -5184,39 +5135,15 @@ func idParam(c *gin.Context, name string) (uint, bool) {
 }
 
 func (s Server) canManageCourse(user models.User, courseID uint) bool {
-	if user.Role == models.RoleAdmin {
-		return true
-	}
-	if user.Role != models.RoleTeacher {
-		return false
-	}
-	var count int64
-	s.DB.Model(&models.Course{}).Where("id = ? AND teacher_id = ?", courseID, user.ID).Count(&count)
-	if count > 0 {
-		return true
-	}
-	s.DB.Model(&models.CourseMembership{}).Where("course_id = ? AND user_id = ? AND role IN ?", courseID, user.ID, courseTeachingRoles()).Count(&count)
-	return count > 0
+	return s.courseDecision(user, courseID, authz.CourseManage)
 }
 
 func (s Server) canAdminCourse(user models.User, courseID uint) bool {
-	if user.Role == models.RoleAdmin {
-		return true
-	}
-	if user.Role != models.RoleTeacher {
-		return false
-	}
-	var count int64
-	s.DB.Model(&models.Course{}).Where("id = ? AND teacher_id = ?", courseID, user.ID).Count(&count)
-	if count > 0 {
-		return true
-	}
-	s.DB.Model(&models.CourseMembership{}).Where("course_id = ? AND user_id = ? AND role IN ?", courseID, user.ID, courseAdminRoles()).Count(&count)
-	return count > 0
+	return s.courseDecision(user, courseID, authz.CourseAdmin)
 }
 
 func (s Server) canAccessClass(user models.User, classID uint) bool {
-	if user.Role == models.RoleAdmin {
+	if authz.Has(user, authz.CourseAny) {
 		return true
 	}
 	if user.Role == models.RoleTeacher {
@@ -5228,7 +5155,7 @@ func (s Server) canAccessClass(user models.User, classID uint) bool {
 }
 
 func (s Server) canManageClass(user models.User, classID uint) bool {
-	if user.Role == models.RoleAdmin {
+	if authz.Has(user, authz.CourseAny) {
 		return true
 	}
 	var class models.Class
@@ -5240,24 +5167,7 @@ func (s Server) canManageClass(user models.User, classID uint) bool {
 
 func (s Server) visibleClassIDs(user models.User) []uint {
 	var ids []uint
-	switch user.Role {
-	case models.RoleAdmin:
-		s.DB.Model(&models.Class{}).Where("archived = false").Order("id desc").Pluck("id", &ids)
-	case models.RoleTeacher:
-		s.DB.Model(&models.Class{}).
-			Where("archived = false").
-			Where("course_id IN (?) OR course_id IN (?)",
-				s.DB.Model(&models.Course{}).Select("id").Where("teacher_id = ?", user.ID),
-				s.DB.Model(&models.CourseMembership{}).Select("course_id").Where("user_id = ? AND role IN ?", user.ID, courseTeachingRoles()),
-			).
-			Order("id desc").Pluck("id", &ids)
-	default:
-		s.DB.Model(&models.ClassMembership{}).
-			Joins("join classes on classes.id = class_memberships.class_id").
-			Joins("join courses on courses.id = classes.course_id").
-			Where("class_memberships.user_id = ? AND classes.archived = false AND courses.archived = false", user.ID).
-			Order("class_id desc").Pluck("class_id", &ids)
-	}
+	s.DB.Model(&models.Class{}).Where("archived = false").Where("course_id IN (?)", s.DB.Model(&models.Course{}).Select("id").Where("archived = false")).Scopes(visibility.Classes(user)).Order("id desc").Pluck("id", &ids)
 	return ids
 }
 
@@ -5303,7 +5213,7 @@ func (s Server) canReadProblemAsset(user models.User, problem models.Problem, as
 	if s.canAccessTeamProblem(user, problem) {
 		return true
 	}
-	if user.Role == models.RoleAdmin {
+	if authz.Has(user, authz.ProblemAny) {
 		return true
 	}
 	if canCreateProblems(user) && problem.OwnerID == user.ID {
@@ -5496,7 +5406,7 @@ func (s Server) studentInCourse(userID uint, courseID uint) bool {
 }
 
 func (s Server) canAccessAssignment(user models.User, assignment models.Assignment) bool {
-	if user.Role == models.RoleAdmin {
+	if authz.Has(user, authz.CourseAny) {
 		return true
 	}
 	if user.Role == models.RoleTeacher {
@@ -5509,7 +5419,7 @@ func (s Server) canAccessAssignment(user models.User, assignment models.Assignme
 }
 
 func (s Server) canAccessCourse(user models.User, courseID uint) bool {
-	if user.Role == models.RoleAdmin {
+	if authz.Has(user, authz.CourseAny) {
 		return true
 	}
 	if user.Role == models.RoleTeacher {
@@ -5522,7 +5432,7 @@ func (s Server) canAccessExam(user models.User, exam models.Exam) bool {
 	if exam.DeletedAt != nil {
 		return false
 	}
-	if user.Role == models.RoleAdmin {
+	if authz.Has(user, authz.CourseAny) {
 		return true
 	}
 	if user.Role == models.RoleTeacher {
@@ -6201,7 +6111,7 @@ func (s Server) examProblemScore(examID uint, problemID uint) (int, bool) {
 }
 
 func (s Server) canAccessSubmission(user models.User, sub models.Submission) bool {
-	if user.Role == models.RoleAdmin || sub.UserID == user.ID {
+	if authz.Has(user, authz.SubmissionAny) || sub.UserID == user.ID {
 		return true
 	}
 	if sub.TeamContestID != nil || sub.ProblemSetID != nil {
@@ -6236,7 +6146,7 @@ func isStandaloneProblemSubmission(sub models.Submission) bool {
 }
 
 func (s Server) canViewSubmissionResults(user models.User, sub models.Submission) bool {
-	if user.Role == models.RoleAdmin || sub.UserID == user.ID {
+	if authz.Has(user, authz.SubmissionResultsAny) || sub.UserID == user.ID {
 		return true
 	}
 	if sub.TeamContestID != nil || sub.ProblemSetID != nil {
@@ -6263,7 +6173,7 @@ func (s Server) preparedProblemForUser(c *gin.Context, user models.User, id uint
 		c.JSON(http.StatusNotFound, gin.H{"error": "prepared problem not found"})
 		return models.PreparedProblem{}, false
 	}
-	if user.Role != models.RoleAdmin && item.OwnerID != user.ID {
+	if !authz.Has(user, authz.ProblemAny) && item.OwnerID != user.ID {
 		c.JSON(http.StatusForbidden, gin.H{"error": "forbidden"})
 		return models.PreparedProblem{}, false
 	}
@@ -6296,7 +6206,7 @@ func (s Server) validateProblemSelection(c *gin.Context, user models.User, probl
 		if classID != nil && s.classHasReleasedProblem(*classID, item.ProblemID) {
 			continue
 		}
-		if user.Role != models.RoleAdmin && item.OwnerID != user.ID {
+		if !authz.Has(user, authz.ProblemAny) && item.OwnerID != user.ID {
 			c.JSON(http.StatusForbidden, gin.H{"error": "prepared problem is not yours"})
 			return nil, false
 		}
@@ -6321,7 +6231,7 @@ func (s Server) validateProblemSelection(c *gin.Context, user models.User, probl
 			c.JSON(403, gin.H{"error": "场次专属题目只能在所属场次中使用"})
 			return nil, false
 		}
-		if _, isPrepared := prepared[problem.ID]; isPrepared || user.Role == models.RoleAdmin || problem.OwnerID == user.ID {
+		if _, isPrepared := prepared[problem.ID]; isPrepared || authz.Has(user, authz.ProblemAny) || problem.OwnerID == user.ID {
 			continue
 		}
 		if classID != nil && s.classHasReleasedProblem(*classID, problem.ID) {
@@ -6936,6 +6846,7 @@ func userPublicColumns() []string {
 		"student_no",
 		"avatar_url",
 		"can_author",
+		"perm_version",
 		"email_verified",
 		"account_deleted",
 		"created_at",

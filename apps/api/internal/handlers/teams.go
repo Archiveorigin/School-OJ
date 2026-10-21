@@ -8,6 +8,7 @@ import (
 	"io"
 	"net/http"
 	"regexp"
+	"school-oj/apps/api/internal/authz"
 	"sort"
 	"strings"
 	"time"
@@ -34,6 +35,7 @@ var (
 const defaultTeamContestAwardPercent = 10
 
 type teamView struct {
+	CanOrganize        bool            `json:"can_organize"`
 	ID                 uint            `json:"id"`
 	Name               string          `json:"name"`
 	Slug               string          `json:"slug"`
@@ -254,7 +256,8 @@ func (s Server) teamViews(teams []models.Team, userID uint) []teamView {
 			Visibility: team.Visibility, JoinMode: team.JoinMode, ContestPermission: team.ContestPermission,
 			Description: team.Description, Announcement: announcement, IconURL: team.IconURL,
 			CreatedAt: team.CreatedAt, UpdatedAt: team.UpdatedAt, JoinCode: code,
-			CanManage: canManage, CanEditPermissions: user.Role == models.RoleAdmin || membership.Role == models.TeamRoleOwner,
+			CanOrganize: authz.Check(authz.FromUser(user), authz.TeamContent, authz.Resource{ID: team.ID, Member: joined, Membership: string(membership.Role), ContentPermission: team.ContestPermission}).Allow,
+			CanManage:   canManage, CanEditPermissions: authz.Has(user, authz.TeamAny) || membership.Role == models.TeamRoleOwner,
 			OwnerName:        ownerNames[team.OwnerID],
 			MemberCount:      counts[team.ID],
 			MyRole:           membership.Role,
@@ -341,7 +344,7 @@ func (s Server) getTeam(c *gin.Context) {
 		return
 	}
 	_, joined := s.teamMembership(team.ID, user.ID)
-	if team.Visibility != "public" && !joined && user.Role != models.RoleAdmin {
+	if team.Visibility != "public" && !joined && !authz.Has(user, authz.TeamAny) {
 		c.JSON(http.StatusNotFound, gin.H{"error": "team not found"})
 		return
 	}
@@ -355,7 +358,7 @@ func (s Server) updateTeam(c *gin.Context) {
 		return
 	}
 	membership, joined := s.teamMembership(team.ID, user.ID)
-	if user.Role != models.RoleAdmin && (!joined || (membership.Role != models.TeamRoleOwner && membership.Role != models.TeamRoleAdmin)) {
+	if !authz.Has(user, authz.TeamAny) && (!joined || (membership.Role != models.TeamRoleOwner && membership.Role != models.TeamRoleAdmin)) {
 		c.JSON(http.StatusForbidden, gin.H{"error": "forbidden"})
 		return
 	}
@@ -385,7 +388,7 @@ func (s Server) updateTeam(c *gin.Context) {
 		"announcement": strings.TrimSpace(req.Announcement),
 		"icon_url":     strings.TrimSpace(req.IconURL),
 	}
-	if membership.Role == models.TeamRoleOwner || user.Role == models.RoleAdmin {
+	if membership.Role == models.TeamRoleOwner || authz.Has(user, authz.TeamAny) {
 		if !validTeamSetting(req.Visibility, []string{"private", "public"}) ||
 			!validTeamSetting(req.JoinMode, []string{"invitation", "application", "open"}) ||
 			!validTeamSetting(req.ContestPermission, []string{"all", "admin", "owner"}) {
@@ -1802,7 +1805,7 @@ func (s Server) createScopedTeamSubmission(c *gin.Context, user models.User, req
 			if err := tx.Model(&models.TeamMembership{}).Where("team_id=? AND user_id=?", contest.TeamID, user.ID).Count(&membershipCount).Error; err != nil {
 				return err
 			}
-			if membershipCount == 0 && user.Role != models.RoleAdmin {
+			if membershipCount == 0 && !authz.Has(user, authz.TeamAny) {
 				return &teamContentMutationError{status: 403, message: "已不属于此团队"}
 			}
 			var participantCount int64
@@ -1895,10 +1898,7 @@ func (s Server) teamMembership(teamID, userID uint) (models.TeamMembership, bool
 }
 
 func (s Server) requireTeamMember(c *gin.Context, user models.User, team models.Team) bool {
-	if user.Role == models.RoleAdmin {
-		return true
-	}
-	if _, ok := s.teamMembership(team.ID, user.ID); !ok {
+	if !s.teamDecision(user, team, authz.TeamRead) {
 		c.JSON(http.StatusForbidden, gin.H{"error": "仅团队成员可以访问"})
 		return false
 	}
@@ -1914,11 +1914,7 @@ func (s Server) requireTeamManager(c *gin.Context, user models.User, team models
 }
 
 func (s Server) canManageTeam(user models.User, team models.Team) bool {
-	if user.Role == models.RoleAdmin {
-		return true
-	}
-	membership, ok := s.teamMembership(team.ID, user.ID)
-	return hasTeamManagerPermission(user.Role, membership.Role, ok)
+	return s.teamDecision(user, team, authz.TeamManage)
 }
 
 func hasTeamManagerPermission(userRole models.Role, membershipRole models.TeamRole, joined bool) bool {
@@ -1926,49 +1922,22 @@ func hasTeamManagerPermission(userRole models.Role, membershipRole models.TeamRo
 }
 
 func (s Server) requireTeamContentPermission(c *gin.Context, user models.User, team models.Team) bool {
-	if user.Role == models.RoleAdmin {
-		return true
-	}
-	membership, ok := s.teamMembership(team.ID, user.ID)
-	if !ok {
-		c.JSON(http.StatusForbidden, gin.H{"error": "仅团队成员可以操作"})
+	if !s.canTeamContentPermission(user, team) {
+		c.JSON(http.StatusForbidden, gin.H{"error": "当前团队职级不能组织比赛或题单"})
 		return false
 	}
-	allowed := membership.Role == models.TeamRoleOwner
-	if team.ContestPermission == "admin" {
-		allowed = allowed || membership.Role == models.TeamRoleAdmin
-	}
-	if team.ContestPermission == "all" {
-		allowed = true
-	}
-	if !allowed {
-		c.JSON(http.StatusForbidden, gin.H{"error": "当前团队职级不能组织比赛或题单"})
-	}
-	return allowed
+	return true
 }
 
 func (s Server) canTeamContentPermission(user models.User, team models.Team) bool {
-	if user.Role == models.RoleAdmin {
-		return true
-	}
-	membership, ok := s.teamMembership(team.ID, user.ID)
-	if !ok {
-		return false
-	}
-	if membership.Role == models.TeamRoleOwner {
-		return true
-	}
-	if team.ContestPermission == "all" {
-		return true
-	}
-	return team.ContestPermission == "admin" && membership.Role == models.TeamRoleAdmin
+	return s.teamDecision(user, team, authz.TeamContent)
 }
 
 func (s Server) canAccessTeamProblem(user models.User, problem models.Problem) bool {
 	if problem.TeamID == nil {
 		return false
 	}
-	if user.Role == models.RoleAdmin {
+	if authz.Has(user, authz.TeamAny) {
 		return true
 	}
 	_, ok := s.teamMembership(*problem.TeamID, user.ID)

@@ -252,13 +252,7 @@ const pagedSubmissions = computed(() => {
   const start = (submissionPage.value - 1) * submissionPageSize.value
   return filteredSubmissions.value.slice(start, start + submissionPageSize.value)
 })
-const canOrganize = computed(() => {
-  const team = detail.value?.team
-  if (!team) return false
-  if (team.my_role === 'owner') return true
-  if (team.contest_permission === 'all') return Boolean(team.my_role)
-  return team.contest_permission === 'admin' && team.my_role === 'admin'
-})
+const canOrganize = computed(() => Boolean(detail.value?.team.can_organize))
 
 async function load() {
   try {

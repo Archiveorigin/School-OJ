@@ -1,0 +1,18 @@
+{
+  "user:manage": ["admin"],
+  "permission:manage": ["admin"],
+  "audit:view": ["admin"],
+  "event:review": ["admin"],
+  "problem:review": ["admin"],
+  "problem:author": ["admin", "problem_author"],
+  "course:teach": ["admin", "teacher"],
+  "course:create": ["admin", "teacher"],
+  "course:manage:any": ["admin"],
+  "team:manage:any": ["admin"],
+  "problem:manage:any": ["admin"],
+  "submission:read:any": ["admin"],
+  "submission:results:any": ["admin"],
+  "ticket:manage:any": ["admin"],
+  "event:read:any": ["admin"],
+  "exam:participate": ["student"]
+}

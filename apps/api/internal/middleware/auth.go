@@ -1,13 +1,14 @@
 package middleware
 
 import (
+	"context"
 	"errors"
 	"net/http"
 	"strings"
 	"time"
 
+	"school-oj/apps/api/internal/authz"
 	"school-oj/apps/api/internal/models"
-	"school-oj/apps/api/internal/rbac"
 
 	"github.com/gin-gonic/gin"
 	"github.com/golang-jwt/jwt/v5"
@@ -15,15 +16,21 @@ import (
 )
 
 type Claims struct {
-	UserID uint        `json:"user_id"`
-	Role   models.Role `json:"role"`
+	TokenVersion int64       `json:"token_version,omitempty"`
+	Roles        []string    `json:"roles,omitempty"`
+	PermVersion  int64       `json:"perm_version,omitempty"`
+	UserID       uint        `json:"user_id"`
+	Role         models.Role `json:"role"`
 	jwt.RegisteredClaims
 }
 
 func SignToken(secret string, user models.User) (string, error) {
 	claims := Claims{
-		UserID: user.ID,
-		Role:   user.Role,
+		TokenVersion: max(user.TokenVersion, 1),
+		Roles:        authz.FromUser(user).Roles,
+		PermVersion:  user.PermVersion,
+		UserID:       user.ID,
+		Role:         user.Role,
 		RegisteredClaims: jwt.RegisteredClaims{
 			Subject:   user.Email,
 			ExpiresAt: jwt.NewNumericDate(time.Now().Add(12 * time.Hour)),
@@ -53,6 +60,10 @@ func authenticate(db *gorm.DB, secret string, required bool) gin.HandlerFunc {
 			tokenString = strings.TrimPrefix(header, "Bearer ")
 		}
 		if tokenString == "" {
+			if header != "" {
+				c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{"error": "invalid authorization header"})
+				return
+			}
 			if required {
 				c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{"error": "missing bearer token"})
 				return
@@ -76,7 +87,10 @@ func authenticate(db *gorm.DB, secret string, required bool) gin.HandlerFunc {
 			return
 		}
 		var user models.User
-		if err := db.Where("account_deleted = false").First(&user, claims.UserID).Error; err != nil {
+		identityContext, cancel := context.WithTimeout(c.Request.Context(), 2*time.Second)
+		err = db.WithContext(identityContext).Where("account_deleted = false").First(&user, claims.UserID).Error
+		cancel()
+		if err != nil {
 			if errors.Is(err, gorm.ErrRecordNotFound) {
 				c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{"error": "user not found"})
 			} else {
@@ -84,18 +98,22 @@ func authenticate(db *gorm.DB, secret string, required bool) gin.HandlerFunc {
 			}
 			return
 		}
-		c.Set("user", user)
-		c.Next()
-	}
-}
-
-func RequireRoles(roles ...models.Role) gin.HandlerFunc {
-	return func(c *gin.Context) {
-		user, ok := CurrentUser(c)
-		if !ok || !rbac.IsAllowed(user.Role, roles...) {
-			c.AbortWithStatusJSON(http.StatusForbidden, gin.H{"error": "forbidden"})
+		// Pre-migration tokens are accepted only until the first credential
+		// change. Permission changes refresh capabilities without ending login.
+		if max(claims.TokenVersion, 1) != max(user.TokenVersion, 1) {
+			c.Set("authorization.reason", "SESSION_REVOKED")
+			c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{"error": "登录已失效，请重新登录", "code": "SESSION_REVOKED"})
 			return
 		}
+		if !authz.ValidBaseRole(user.Role) {
+			c.Set("authorization.reason", "IDENTITY_UNDEFINED")
+			c.AbortWithStatusJSON(http.StatusForbidden, gin.H{"error": "账号角色未定义", "code": "IDENTITY_UNDEFINED"})
+			return
+		}
+		// Live database state is authoritative, including for legacy tokens.
+		// No decision cache: permission revocations apply on the next request.
+		c.Set("user", user)
+		c.Set("authenticated_context", authz.FromUser(user))
 		c.Next()
 	}
 }

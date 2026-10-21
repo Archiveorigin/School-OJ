@@ -31,6 +31,9 @@ export interface components {
     "account_deleted"?: boolean
     "created_at"?: string
     "updated_at"?: string
+    "roles"?: Array<string>
+    "permissions"?: Array<string>
+    "perm_version"?: number
   }
     "AuthResponse": {
     "token": string
@@ -455,6 +458,23 @@ export interface components {
     "revision": number
     "expected_version_id"?: (number) | null
   }
+    "AuthorizationPolicy": {
+    "code": string
+    "model": string
+    "scope": string
+    "roles": Array<string>
+  }
+    "AuthorizationRoute": {
+    "method": string
+    "path": string
+    "code": string
+    "access": string
+  }
+    "AuthorizationRegistry": {
+    "policies": Array<components['schemas']["AuthorizationPolicy"]>
+    "routes": Array<components['schemas']["AuthorizationRoute"]>
+    "default_deny": boolean
+  }
   }
 }
 
@@ -678,6 +698,7 @@ export const apiOperations = {
   "uploadEventTestChunk": { method: "PUT", path: "/event-papers/{kind}/{event_id}/test-uploads/{upload_id}/{chunk_index}", segments: [] },
   "getEventRanking": { method: "GET", path: "/event-papers/{kind}/{event_id}/ranking", segments: [] },
   "exportEventRanking": { method: "GET", path: "/event-papers/{kind}/{event_id}/ranking/export", segments: [] },
+  "authorizationPolicies": { method: "GET", path: "/authorization/policies", segments: [] },
 } as const
 
 export type ApiOperationId = keyof typeof apiOperations
@@ -1218,6 +1239,8 @@ export const generatedApi = {
     requestOperation<TResponse, never>("getEventRanking", options),
   "exportEventRanking": <TResponse = unknown>(options: ApiRequestOptions<never> = {}) =>
     requestOperation<TResponse, never>("exportEventRanking", options),
+  "authorizationPolicies": <TResponse = components['schemas']["AuthorizationRegistry"]>(options: ApiRequestOptions<never> = {}) =>
+    requestOperation<TResponse, never>("authorizationPolicies", options),
 }
 
 // 兼容现有页面的 Axios 调用；新代码优先使用 generatedApi 的 operationId 方法。

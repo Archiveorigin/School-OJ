@@ -64,7 +64,7 @@
           >
           <template
             v-if="
-              auth.role === 'admin' && paper.event.review_status === 'pending'
+              auth.can('event:review') && paper.event.review_status === 'pending'
             "
             ><el-button
               :disabled="busy"
@@ -80,7 +80,7 @@
             ></template
           >
           <el-button
-            v-if="auth.role === 'admin' && lifecycle === 'closed'"
+            v-if="auth.can('event:review') && lifecycle === 'closed'"
             type="primary"
             :disabled="
               busy ||

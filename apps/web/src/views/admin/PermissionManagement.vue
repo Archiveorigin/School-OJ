@@ -4,6 +4,26 @@
       <el-button :loading="loading" @click="load">刷新</el-button>
     </AdminPageHeader>
 
+    <section class="panel role-scope-panel" aria-label="角色与权限范围">
+      <h3>角色与权限范围</h3>
+      <p>学生、教师、管理员是全站身份；课程职级和团队职级只在各自空间内生效。出题者是独立附加权限。</p>
+      <dl class="role-scope-list">
+        <div><dt>教师</dt><dd>管理本人负责或受邀协作的课程。助教可教学和阅卷，课程管理员可维护成员与设置。</dd></div>
+        <div><dt>团队职级</dt><dd>创建者维护团队权限；管理员管理成员；组织比赛与题单按团队设置授权。任何全站身份都可以成为团队成员。</dd></div>
+        <div><dt>管理员</dt><dd>按下表授予管理能力。跨课程、跨团队访问和敏感操作会记录审计。</dd></div>
+        <div><dt>出题者</dt><dd>可发起题目变更工单；提交后仍须审核，不会获得用户管理或其他团队的权限。</dd></div>
+      </dl>
+      <el-collapse v-if="registry">
+        <el-collapse-item :title="`查看能力清单 · ${registry.policies.length} 项能力 / ${registry.routes.length} 个操作`" name="policies">
+          <el-table :data="registry.policies" row-key="code" aria-label="权限能力清单">
+            <el-table-column label="能力" min-width="170"><template #default="{ row }">{{ capabilityNames[row.code] || row.code }}</template></el-table-column>
+            <el-table-column label="授权范围" min-width="210"><template #default="{ row }">{{ row.scope === 'resource' ? '按所属课程／团队职级判定' : row.roles.map(capabilityRoleName).join('、') }}</template></el-table-column>
+          </el-table>
+        </el-collapse-item>
+      </el-collapse>
+      <el-alert v-else-if="!loading" title="能力清单加载失败，请刷新重试" type="error" :closable="false" />
+    </section>
+
     <section class="permission-summary" aria-label="权限概况">
       <article>
         <span>权限类型</span><strong>{{ definitions.length }}</strong>
@@ -152,6 +172,9 @@ import { generatedApi,
   type UserPermissionDefinition
 } from '../../api/client'
 import { formatDateTime } from '../../features/time'
+import { capabilityNames, capabilityRoleName } from '../../features/authorization'
+import type { components } from '../../api/client'
+const registry = ref<components['schemas']['AuthorizationRegistry'] | null>(null)
 
 const loading = ref(false)
 const updatingUserID = ref(0)
@@ -182,6 +205,8 @@ const filteredUsers = computed(() => {
 })
 
 async function load() {
+  registry.value = null
+  try { registry.value = (await generatedApi.authorizationPolicies()).data } catch { /* retry shown above */ }
   loading.value = true
   try {
     const [userResponse, applicationResponse, permissionResponse] = await Promise.all([
@@ -266,6 +291,14 @@ onMounted(load)
 </script>
 
 <style scoped>
+.role-scope-panel { padding: 20px; }
+.role-scope-panel p, .role-scope-list dd { color: var(--text-secondary); line-height: 1.65; }
+.role-scope-list { display: grid; gap: 12px; }
+.role-scope-list div { display: grid; grid-template-columns: 90px minmax(0, 1fr); gap: 12px; }
+.role-scope-list dt { font-weight: 600; }
+.role-scope-list dd { margin: 0; }
+@media (max-width: 600px) { .role-scope-list div { grid-template-columns: 1fr; gap: 4px; } }
+
 .permission-page {
   padding: 24px 28px 40px;
 }

@@ -72,10 +72,10 @@
             <template #default="{ row }">
               <el-button size="small" type="primary" @click="openClasses(row)">班级</el-button>
               <el-button size="small" type="success" @click="router.push(`/admin/courses/${row.id}/students`)">学生</el-button>
-              <el-button v-if="canManage" size="small" @click="openMembers(row)">成员</el-button>
-              <el-button v-if="canManage" size="small" @click="openCourseDialog(row)">编辑</el-button>
-              <el-button v-if="canManage && !row.archived" size="small" @click="openClassDialog(row.id)">加班级</el-button>
-              <el-button v-if="canManage" size="small" :type="row.archived ? 'success' : 'warning'" plain @click="setCourseArchived(row, !row.archived)">
+              <el-button v-if="row.can_manage" size="small" @click="openMembers(row)">成员</el-button>
+              <el-button v-if="row.can_admin" size="small" @click="openCourseDialog(row)">编辑</el-button>
+              <el-button v-if="row.can_admin && !row.archived" size="small" @click="openClassDialog(row.id)">加班级</el-button>
+              <el-button v-if="row.can_admin" size="small" :type="row.archived ? 'success' : 'warning'" plain @click="setCourseArchived(row, !row.archived)">
                 {{ row.archived ? '恢复' : '归档' }}
               </el-button>
             </template>
@@ -127,7 +127,7 @@
     </el-dialog>
 
     <el-drawer v-model="memberDrawerVisible" size="720px" :title="memberCourse ? `成员管理：${memberCourse.name}` : '成员管理'">
-      <div class="member-form">
+      <div v-if="memberCourse?.can_admin" class="member-form">
         <el-input v-model="memberForm.email" placeholder="成员邮箱" />
         <el-select v-model="memberForm.role" class="role-select">
           <el-option label="主讲教师" value="course_admin" />
@@ -150,7 +150,7 @@
         <el-table-column prop="class_count" label="班级数" width="90" />
         <el-table-column label="操作" width="90">
           <template #default="{ row }">
-            <el-button size="small" type="danger" plain @click="removeMember(row)">移除</el-button>
+            <el-button v-if="memberCourse?.can_admin" size="small" type="danger" plain @click="removeMember(row)">移除</el-button>
           </template>
         </el-table-column>
       </el-table>
@@ -170,6 +170,8 @@ import { useAuthStore } from '../stores/auth'
 import { useClassroomStore } from '../stores/classroom'
 
 type Course = {
+  can_manage?: boolean
+  can_admin?: boolean
   id: number
   code?: string
   name: string
@@ -197,7 +199,7 @@ type CourseMember = {
 const auth = useAuthStore()
 const classroom = useClassroomStore()
 const router = useRouter()
-const canManage = computed(() => auth.role === 'admin' || auth.role === 'teacher')
+const canManage = computed(() => auth.can('course:teach'))
 const loading = ref(false)
 const courses = ref<Course[]>([])
 const page = ref(1)

@@ -46,6 +46,7 @@ function setUser(role: 'admin' | 'teacher') {
       email: `${role}@example.com`,
       name: role === 'admin' ? '系统管理员' : '张老师',
       role,
+      permissions: role === 'admin' ? ['course:teach', 'user:manage', 'permission:manage', 'problem:review', 'event:review', 'audit:view'] : ['course:teach'],
       can_author: true
     } as any
   })

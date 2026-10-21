@@ -111,7 +111,9 @@
           "400": {
             "$ref": "#/components/responses/BadRequest"
           }
-        }
+        },
+        "x-policy": "auth:login",
+        "x-access": "public"
       }
     },
     "/auth/send-code": {
@@ -163,7 +165,9 @@
           "400": {
             "$ref": "#/components/responses/BadRequest"
           }
-        }
+        },
+        "x-policy": "auth:send-email-code",
+        "x-access": "public"
       }
     },
     "/auth/register": {
@@ -215,7 +219,9 @@
           "400": {
             "$ref": "#/components/responses/BadRequest"
           }
-        }
+        },
+        "x-policy": "auth:register",
+        "x-access": "public"
       }
     },
     "/auth/password-reset": {
@@ -267,7 +273,9 @@
           "400": {
             "$ref": "#/components/responses/BadRequest"
           }
-        }
+        },
+        "x-policy": "auth:reset-password",
+        "x-access": "public"
       }
     },
     "/problems": {
@@ -306,7 +314,9 @@
           "503": {
             "$ref": "#/components/responses/ServiceUnavailable"
           }
-        }
+        },
+        "x-policy": "problem:list-problems",
+        "x-access": "public"
       },
       "post": {
         "operationId": "problemChangeTicketOnly",
@@ -365,7 +375,9 @@
           "503": {
             "$ref": "#/components/responses/ServiceUnavailable"
           }
-        }
+        },
+        "x-policy": "problem:problem-change-ticket-only",
+        "x-access": "authenticated"
       }
     },
     "/problems/catalog": {
@@ -411,7 +423,9 @@
             },
             "description": "Include own team private problems; requires team content permission."
           }
-        ]
+        ],
+        "x-policy": "problem:list-problem-catalog",
+        "x-access": "public"
       }
     },
     "/problems/{id}/assets/{asset_path}": {
@@ -466,7 +480,9 @@
           "503": {
             "$ref": "#/components/responses/ServiceUnavailable"
           }
-        }
+        },
+        "x-policy": "problem:get-problem-asset",
+        "x-access": "public"
       }
     },
     "/problems/{id}": {
@@ -512,7 +528,9 @@
           "503": {
             "$ref": "#/components/responses/ServiceUnavailable"
           }
-        }
+        },
+        "x-policy": "problem:get-problem",
+        "x-access": "public"
       },
       "put": {
         "operationId": "problemChangeTicketOnlyViaProblemsId",
@@ -571,7 +589,9 @@
           "503": {
             "$ref": "#/components/responses/ServiceUnavailable"
           }
-        }
+        },
+        "x-policy": "problem:problem-change-ticket-only",
+        "x-access": "authenticated"
       },
       "delete": {
         "operationId": "problemChangeTicketOnlyDeleteProblem",
@@ -615,7 +635,9 @@
           "503": {
             "$ref": "#/components/responses/ServiceUnavailable"
           }
-        }
+        },
+        "x-policy": "problem:problem-change-ticket-only",
+        "x-access": "authenticated"
       }
     },
     "/me": {
@@ -650,7 +672,9 @@
           "503": {
             "$ref": "#/components/responses/ServiceUnavailable"
           }
-        }
+        },
+        "x-policy": "me:me",
+        "x-access": "authenticated"
       }
     },
     "/me/active-exam": {
@@ -685,7 +709,9 @@
           "503": {
             "$ref": "#/components/responses/ServiceUnavailable"
           }
-        }
+        },
+        "x-policy": "me:active-exam",
+        "x-access": "authenticated"
       }
     },
     "/profile": {
@@ -720,7 +746,9 @@
           "503": {
             "$ref": "#/components/responses/ServiceUnavailable"
           }
-        }
+        },
+        "x-policy": "profile:get-profile",
+        "x-access": "authenticated"
       },
       "put": {
         "operationId": "updateProfile",
@@ -768,7 +796,9 @@
           "503": {
             "$ref": "#/components/responses/ServiceUnavailable"
           }
-        }
+        },
+        "x-policy": "profile:update-profile",
+        "x-access": "authenticated"
       },
       "delete": {
         "operationId": "deleteProfile",
@@ -801,7 +831,9 @@
           "503": {
             "$ref": "#/components/responses/ServiceUnavailable"
           }
-        }
+        },
+        "x-policy": "profile:delete-profile",
+        "x-access": "authenticated"
       }
     },
     "/profile/password": {
@@ -861,7 +893,9 @@
           "503": {
             "$ref": "#/components/responses/ServiceUnavailable"
           }
-        }
+        },
+        "x-policy": "profile:update-profile-password",
+        "x-access": "authenticated"
       }
     },
     "/profile/email-code": {
@@ -921,7 +955,9 @@
           "503": {
             "$ref": "#/components/responses/ServiceUnavailable"
           }
-        }
+        },
+        "x-policy": "profile:send-profile-email-code",
+        "x-access": "authenticated"
       }
     },
     "/profile/email": {
@@ -981,7 +1017,9 @@
           "503": {
             "$ref": "#/components/responses/ServiceUnavailable"
           }
-        }
+        },
+        "x-policy": "profile:rebind-email",
+        "x-access": "authenticated"
       }
     },
     "/author-applications/me": {
@@ -1016,7 +1054,9 @@
           "503": {
             "$ref": "#/components/responses/ServiceUnavailable"
           }
-        }
+        },
+        "x-policy": "author-applications:get-my-author-application",
+        "x-access": "authenticated"
       }
     },
     "/author-applications": {
@@ -1076,7 +1116,9 @@
           "503": {
             "$ref": "#/components/responses/ServiceUnavailable"
           }
-        }
+        },
+        "x-policy": "author-applications:create-author-application",
+        "x-access": "authenticated"
       },
       "get": {
         "operationId": "listAuthorApplications",
@@ -1086,9 +1128,6 @@
         "summary": "GET /author-applications",
         "x-handler": "listAuthorApplications",
         "x-auth": "bearer",
-        "x-roles": [
-          "admin"
-        ],
         "responses": {
           "200": {
             "description": "成功",
@@ -1115,7 +1154,9 @@
           "503": {
             "$ref": "#/components/responses/ServiceUnavailable"
           }
-        }
+        },
+        "x-policy": "author-applications:list-author-applications",
+        "x-access": "permission:manage"
       }
     },
     "/feedback": {
@@ -1175,7 +1216,9 @@
           "503": {
             "$ref": "#/components/responses/ServiceUnavailable"
           }
-        }
+        },
+        "x-policy": "feedback:create-feedback",
+        "x-access": "authenticated"
       }
     },
     "/teams": {
@@ -1213,7 +1256,9 @@
           "503": {
             "$ref": "#/components/responses/ServiceUnavailable"
           }
-        }
+        },
+        "x-policy": "team:list-teams",
+        "x-access": "authenticated"
       },
       "post": {
         "operationId": "createTeam",
@@ -1271,7 +1316,9 @@
           "503": {
             "$ref": "#/components/responses/ServiceUnavailable"
           }
-        }
+        },
+        "x-policy": "team:create-team",
+        "x-access": "authenticated"
       }
     },
     "/teams/{id}": {
@@ -1316,7 +1363,9 @@
           "503": {
             "$ref": "#/components/responses/ServiceUnavailable"
           }
-        }
+        },
+        "x-policy": "team:get-team",
+        "x-access": "authenticated"
       },
       "put": {
         "operationId": "updateTeam",
@@ -1374,7 +1423,9 @@
           "503": {
             "$ref": "#/components/responses/ServiceUnavailable"
           }
-        }
+        },
+        "x-policy": "team:update-team",
+        "x-access": "authenticated"
       }
     },
     "/teams/{id}/join": {
@@ -1449,7 +1500,9 @@
           "503": {
             "$ref": "#/components/responses/ServiceUnavailable"
           }
-        }
+        },
+        "x-policy": "team:join-team",
+        "x-access": "authenticated"
       }
     },
     "/teams/{id}/leave": {
@@ -1519,7 +1572,9 @@
           "503": {
             "$ref": "#/components/responses/ServiceUnavailable"
           }
-        }
+        },
+        "x-policy": "team:leave-team",
+        "x-access": "authenticated"
       }
     },
     "/teams/{id}/members": {
@@ -1564,7 +1619,9 @@
           "503": {
             "$ref": "#/components/responses/ServiceUnavailable"
           }
-        }
+        },
+        "x-policy": "team:list-team-members",
+        "x-access": "authenticated"
       }
     },
     "/teams/{id}/members/{user_id}": {
@@ -1632,7 +1689,9 @@
           "503": {
             "$ref": "#/components/responses/ServiceUnavailable"
           }
-        }
+        },
+        "x-policy": "team:update-team-member",
+        "x-access": "authenticated"
       },
       "delete": {
         "operationId": "removeTeamMember",
@@ -1683,7 +1742,9 @@
           "503": {
             "$ref": "#/components/responses/ServiceUnavailable"
           }
-        }
+        },
+        "x-policy": "team:remove-team-member",
+        "x-access": "authenticated"
       }
     },
     "/teams/{id}/applications": {
@@ -1728,7 +1789,9 @@
           "503": {
             "$ref": "#/components/responses/ServiceUnavailable"
           }
-        }
+        },
+        "x-policy": "team:list-team-applications",
+        "x-access": "authenticated"
       }
     },
     "/teams/{id}/applications/{application_id}": {
@@ -1796,7 +1859,9 @@
           "503": {
             "$ref": "#/components/responses/ServiceUnavailable"
           }
-        }
+        },
+        "x-policy": "team:review-team-application",
+        "x-access": "authenticated"
       }
     },
     "/teams/{id}/contests": {
@@ -1844,7 +1909,9 @@
           "503": {
             "$ref": "#/components/responses/ServiceUnavailable"
           }
-        }
+        },
+        "x-policy": "team:list-team-contests",
+        "x-access": "authenticated"
       },
       "post": {
         "operationId": "createTeamContest",
@@ -1912,7 +1979,9 @@
           "503": {
             "$ref": "#/components/responses/ServiceUnavailable"
           }
-        }
+        },
+        "x-policy": "team:create-team-contest",
+        "x-access": "authenticated"
       }
     },
     "/teams/{id}/contests/{contest_id}": {
@@ -1965,7 +2034,9 @@
           "503": {
             "$ref": "#/components/responses/ServiceUnavailable"
           }
-        }
+        },
+        "x-policy": "team:get-team-contest",
+        "x-access": "authenticated"
       },
       "put": {
         "operationId": "updateTeamContest",
@@ -2031,7 +2102,9 @@
           "503": {
             "$ref": "#/components/responses/ServiceUnavailable"
           }
-        }
+        },
+        "x-policy": "team:update-team-contest",
+        "x-access": "authenticated"
       },
       "delete": {
         "operationId": "deleteTeamContest",
@@ -2082,7 +2155,9 @@
           "503": {
             "$ref": "#/components/responses/ServiceUnavailable"
           }
-        }
+        },
+        "x-policy": "team:delete-team-contest",
+        "x-access": "authenticated"
       }
     },
     "/teams/{id}/contests/{contest_id}/publish": {
@@ -2163,7 +2238,9 @@
           "503": {
             "$ref": "#/components/responses/ServiceUnavailable"
           }
-        }
+        },
+        "x-policy": "team:publish-team-contest",
+        "x-access": "authenticated"
       }
     },
     "/teams/{id}/contests/{contest_id}/problems": {
@@ -2241,7 +2318,9 @@
           "503": {
             "$ref": "#/components/responses/ServiceUnavailable"
           }
-        }
+        },
+        "x-policy": "team:add-team-contest-problem",
+        "x-access": "authenticated"
       }
     },
     "/teams/{id}/contests/{contest_id}/problems/{problem_id}": {
@@ -2302,7 +2381,9 @@
           "503": {
             "$ref": "#/components/responses/ServiceUnavailable"
           }
-        }
+        },
+        "x-policy": "team:remove-team-contest-problem",
+        "x-access": "authenticated"
       }
     },
     "/teams/{id}/contests/{contest_id}/submissions": {
@@ -2355,7 +2436,9 @@
           "503": {
             "$ref": "#/components/responses/ServiceUnavailable"
           }
-        }
+        },
+        "x-policy": "team:list-team-contest-submissions",
+        "x-access": "authenticated"
       },
       "post": {
         "operationId": "createTeamContestSubmission",
@@ -2431,7 +2514,9 @@
           "503": {
             "$ref": "#/components/responses/ServiceUnavailable"
           }
-        }
+        },
+        "x-policy": "team:create-team-contest-submission",
+        "x-access": "authenticated"
       }
     },
     "/teams/{id}/contests/{contest_id}/ranking": {
@@ -2484,7 +2569,9 @@
           "503": {
             "$ref": "#/components/responses/ServiceUnavailable"
           }
-        }
+        },
+        "x-policy": "team:team-contest-ranking",
+        "x-access": "authenticated"
       }
     },
     "/contests/{contest_id}": {
@@ -2529,7 +2616,9 @@
           "503": {
             "$ref": "#/components/responses/ServiceUnavailable"
           }
-        }
+        },
+        "x-policy": "contest:get-team-contest",
+        "x-access": "authenticated"
       },
       "put": {
         "operationId": "updateTeamContestViaContestsContestId",
@@ -2587,7 +2676,9 @@
           "503": {
             "$ref": "#/components/responses/ServiceUnavailable"
           }
-        }
+        },
+        "x-policy": "contest:update-team-contest",
+        "x-access": "authenticated"
       },
       "delete": {
         "operationId": "deleteTeamContestViaContestsContestId",
@@ -2630,7 +2721,9 @@
           "503": {
             "$ref": "#/components/responses/ServiceUnavailable"
           }
-        }
+        },
+        "x-policy": "contest:delete-team-contest",
+        "x-access": "authenticated"
       }
     },
     "/contests/{contest_id}/publish": {
@@ -2703,7 +2796,9 @@
           "503": {
             "$ref": "#/components/responses/ServiceUnavailable"
           }
-        }
+        },
+        "x-policy": "contest:publish-team-contest",
+        "x-access": "authenticated"
       }
     },
     "/contests/{contest_id}/problems": {
@@ -2773,7 +2868,9 @@
           "503": {
             "$ref": "#/components/responses/ServiceUnavailable"
           }
-        }
+        },
+        "x-policy": "contest:add-team-contest-problem",
+        "x-access": "authenticated"
       }
     },
     "/contests/{contest_id}/problems/{problem_id}": {
@@ -2826,7 +2923,9 @@
           "503": {
             "$ref": "#/components/responses/ServiceUnavailable"
           }
-        }
+        },
+        "x-policy": "contest:remove-team-contest-problem",
+        "x-access": "authenticated"
       }
     },
     "/contests/{contest_id}/submissions": {
@@ -2871,7 +2970,9 @@
           "503": {
             "$ref": "#/components/responses/ServiceUnavailable"
           }
-        }
+        },
+        "x-policy": "contest:list-team-contest-submissions",
+        "x-access": "authenticated"
       },
       "post": {
         "operationId": "createTeamContestSubmissionViaContestsContestIdSubmissions",
@@ -2939,7 +3040,9 @@
           "503": {
             "$ref": "#/components/responses/ServiceUnavailable"
           }
-        }
+        },
+        "x-policy": "contest:create-team-contest-submission",
+        "x-access": "authenticated"
       }
     },
     "/contests/{contest_id}/ranking": {
@@ -2984,7 +3087,9 @@
           "503": {
             "$ref": "#/components/responses/ServiceUnavailable"
           }
-        }
+        },
+        "x-policy": "contest:team-contest-ranking",
+        "x-access": "authenticated"
       }
     },
     "/teams/{id}/problem-sets": {
@@ -3032,7 +3137,9 @@
           "503": {
             "$ref": "#/components/responses/ServiceUnavailable"
           }
-        }
+        },
+        "x-policy": "team:list-team-problem-sets",
+        "x-access": "authenticated"
       },
       "post": {
         "operationId": "createTeamProblemSet",
@@ -3095,7 +3202,9 @@
           "503": {
             "$ref": "#/components/responses/ServiceUnavailable"
           }
-        }
+        },
+        "x-policy": "team:create-team-problem-set",
+        "x-access": "authenticated"
       }
     },
     "/teams/{id}/problem-sets/{set_id}": {
@@ -3148,7 +3257,9 @@
           "503": {
             "$ref": "#/components/responses/ServiceUnavailable"
           }
-        }
+        },
+        "x-policy": "team:get-team-problem-set",
+        "x-access": "authenticated"
       },
       "put": {
         "operationId": "updateTeamProblemSet",
@@ -3209,7 +3320,9 @@
           "503": {
             "$ref": "#/components/responses/ServiceUnavailable"
           }
-        }
+        },
+        "x-policy": "team:update-team-problem-set",
+        "x-access": "authenticated"
       },
       "delete": {
         "operationId": "deleteTeamProblemSet",
@@ -3260,7 +3373,9 @@
           "503": {
             "$ref": "#/components/responses/ServiceUnavailable"
           }
-        }
+        },
+        "x-policy": "team:delete-team-problem-set",
+        "x-access": "authenticated"
       }
     },
     "/teams/{id}/problem-sets/{set_id}/problems": {
@@ -3333,7 +3448,9 @@
           "503": {
             "$ref": "#/components/responses/ServiceUnavailable"
           }
-        }
+        },
+        "x-policy": "team:add-team-problem-set-problem",
+        "x-access": "authenticated"
       }
     },
     "/teams/{id}/problem-sets/{set_id}/problems/{problem_id}": {
@@ -3394,7 +3511,9 @@
           "503": {
             "$ref": "#/components/responses/ServiceUnavailable"
           }
-        }
+        },
+        "x-policy": "team:remove-team-problem-set-problem",
+        "x-access": "authenticated"
       }
     },
     "/teams/{id}/problem-sets/{set_id}/submissions": {
@@ -3447,7 +3566,9 @@
           "503": {
             "$ref": "#/components/responses/ServiceUnavailable"
           }
-        }
+        },
+        "x-policy": "team:list-team-problem-set-submissions",
+        "x-access": "authenticated"
       },
       "post": {
         "operationId": "createTeamProblemSetSubmission",
@@ -3523,7 +3644,9 @@
           "503": {
             "$ref": "#/components/responses/ServiceUnavailable"
           }
-        }
+        },
+        "x-policy": "team:create-team-problem-set-submission",
+        "x-access": "authenticated"
       }
     },
     "/teams/{id}/problem-sets/{set_id}/discussions": {
@@ -3576,7 +3699,9 @@
           "503": {
             "$ref": "#/components/responses/ServiceUnavailable"
           }
-        }
+        },
+        "x-policy": "team:list-team-discussions",
+        "x-access": "authenticated"
       },
       "post": {
         "operationId": "createTeamDiscussion",
@@ -3652,7 +3777,9 @@
           "503": {
             "$ref": "#/components/responses/ServiceUnavailable"
           }
-        }
+        },
+        "x-policy": "team:create-team-discussion",
+        "x-access": "authenticated"
       }
     },
     "/problem-sets/{set_id}": {
@@ -3697,7 +3824,9 @@
           "503": {
             "$ref": "#/components/responses/ServiceUnavailable"
           }
-        }
+        },
+        "x-policy": "problem-sets:get-team-problem-set",
+        "x-access": "authenticated"
       },
       "put": {
         "operationId": "updateTeamProblemSetViaProblemSetsSetId",
@@ -3750,7 +3879,9 @@
           "503": {
             "$ref": "#/components/responses/ServiceUnavailable"
           }
-        }
+        },
+        "x-policy": "problem-sets:update-team-problem-set",
+        "x-access": "authenticated"
       },
       "delete": {
         "operationId": "deleteTeamProblemSetViaProblemSetsSetId",
@@ -3793,7 +3924,9 @@
           "503": {
             "$ref": "#/components/responses/ServiceUnavailable"
           }
-        }
+        },
+        "x-policy": "problem-sets:delete-team-problem-set",
+        "x-access": "authenticated"
       }
     },
     "/problem-sets/{set_id}/problems": {
@@ -3858,7 +3991,9 @@
           "503": {
             "$ref": "#/components/responses/ServiceUnavailable"
           }
-        }
+        },
+        "x-policy": "problem-sets:add-team-problem-set-problem",
+        "x-access": "authenticated"
       }
     },
     "/problem-sets/{set_id}/problems/{problem_id}": {
@@ -3911,7 +4046,9 @@
           "503": {
             "$ref": "#/components/responses/ServiceUnavailable"
           }
-        }
+        },
+        "x-policy": "problem-sets:remove-team-problem-set-problem",
+        "x-access": "authenticated"
       }
     },
     "/problem-sets/{set_id}/submissions": {
@@ -3956,7 +4093,9 @@
           "503": {
             "$ref": "#/components/responses/ServiceUnavailable"
           }
-        }
+        },
+        "x-policy": "problem-sets:list-team-problem-set-submissions",
+        "x-access": "authenticated"
       },
       "post": {
         "operationId": "createTeamProblemSetSubmissionViaProblemSetsSetIdSubmissions",
@@ -4024,7 +4163,9 @@
           "503": {
             "$ref": "#/components/responses/ServiceUnavailable"
           }
-        }
+        },
+        "x-policy": "problem-sets:create-team-problem-set-submission",
+        "x-access": "authenticated"
       }
     },
     "/problem-sets/{set_id}/discussions": {
@@ -4069,7 +4210,9 @@
           "503": {
             "$ref": "#/components/responses/ServiceUnavailable"
           }
-        }
+        },
+        "x-policy": "problem-sets:list-team-discussions",
+        "x-access": "authenticated"
       },
       "post": {
         "operationId": "createTeamDiscussionViaProblemSetsSetIdDiscussions",
@@ -4137,7 +4280,9 @@
           "503": {
             "$ref": "#/components/responses/ServiceUnavailable"
           }
-        }
+        },
+        "x-policy": "problem-sets:create-team-discussion",
+        "x-access": "authenticated"
       }
     },
     "/courses": {
@@ -4172,7 +4317,9 @@
           "503": {
             "$ref": "#/components/responses/ServiceUnavailable"
           }
-        }
+        },
+        "x-policy": "course:list-courses",
+        "x-access": "authenticated"
       },
       "post": {
         "operationId": "createCourse",
@@ -4182,10 +4329,6 @@
         "summary": "POST /courses",
         "x-handler": "createCourse",
         "x-auth": "bearer",
-        "x-roles": [
-          "admin",
-          "teacher"
-        ],
         "requestBody": {
           "required": false,
           "content": {
@@ -4234,7 +4377,9 @@
           "503": {
             "$ref": "#/components/responses/ServiceUnavailable"
           }
-        }
+        },
+        "x-policy": "course:create-course",
+        "x-access": "course:create"
       }
     },
     "/courses/{id}": {
@@ -4246,10 +4391,6 @@
         "summary": "PUT /courses/:id",
         "x-handler": "updateCourse",
         "x-auth": "bearer",
-        "x-roles": [
-          "admin",
-          "teacher"
-        ],
         "parameters": [
           {
             "name": "id",
@@ -4298,7 +4439,9 @@
           "503": {
             "$ref": "#/components/responses/ServiceUnavailable"
           }
-        }
+        },
+        "x-policy": "course:update-course",
+        "x-access": "course:teach"
       },
       "delete": {
         "operationId": "archiveCourse",
@@ -4308,10 +4451,6 @@
         "summary": "DELETE /courses/:id",
         "x-handler": "archiveCourse",
         "x-auth": "bearer",
-        "x-roles": [
-          "admin",
-          "teacher"
-        ],
         "parameters": [
           {
             "name": "id",
@@ -4345,7 +4484,9 @@
           "503": {
             "$ref": "#/components/responses/ServiceUnavailable"
           }
-        }
+        },
+        "x-policy": "course:archive-course",
+        "x-access": "course:teach"
       }
     },
     "/courses/{id}/archive": {
@@ -4357,10 +4498,6 @@
         "summary": "POST /courses/:id/archive",
         "x-handler": "archiveCourse",
         "x-auth": "bearer",
-        "x-roles": [
-          "admin",
-          "teacher"
-        ],
         "parameters": [
           {
             "name": "id",
@@ -4419,7 +4556,9 @@
           "503": {
             "$ref": "#/components/responses/ServiceUnavailable"
           }
-        }
+        },
+        "x-policy": "course:archive-course",
+        "x-access": "course:teach"
       }
     },
     "/courses/{id}/classes": {
@@ -4431,10 +4570,6 @@
         "summary": "POST /courses/:id/classes",
         "x-handler": "createClass",
         "x-auth": "bearer",
-        "x-roles": [
-          "admin",
-          "teacher"
-        ],
         "parameters": [
           {
             "name": "id",
@@ -4493,7 +4628,9 @@
           "503": {
             "$ref": "#/components/responses/ServiceUnavailable"
           }
-        }
+        },
+        "x-policy": "course:create-class",
+        "x-access": "course:teach"
       }
     },
     "/courses/{id}/members": {
@@ -4505,10 +4642,6 @@
         "summary": "GET /courses/:id/members",
         "x-handler": "listCourseMembers",
         "x-auth": "bearer",
-        "x-roles": [
-          "admin",
-          "teacher"
-        ],
         "parameters": [
           {
             "name": "id",
@@ -4542,7 +4675,9 @@
           "503": {
             "$ref": "#/components/responses/ServiceUnavailable"
           }
-        }
+        },
+        "x-policy": "course:list-course-members",
+        "x-access": "course:teach"
       },
       "post": {
         "operationId": "addCourseMember",
@@ -4552,10 +4687,6 @@
         "summary": "POST /courses/:id/members",
         "x-handler": "addCourseMember",
         "x-auth": "bearer",
-        "x-roles": [
-          "admin",
-          "teacher"
-        ],
         "parameters": [
           {
             "name": "id",
@@ -4614,7 +4745,9 @@
           "503": {
             "$ref": "#/components/responses/ServiceUnavailable"
           }
-        }
+        },
+        "x-policy": "course:add-course-member",
+        "x-access": "course:teach"
       }
     },
     "/courses/{id}/members/{user_id}": {
@@ -4626,10 +4759,6 @@
         "summary": "DELETE /courses/:id/members/:user_id",
         "x-handler": "removeCourseMember",
         "x-auth": "bearer",
-        "x-roles": [
-          "admin",
-          "teacher"
-        ],
         "parameters": [
           {
             "name": "id",
@@ -4671,7 +4800,9 @@
           "503": {
             "$ref": "#/components/responses/ServiceUnavailable"
           }
-        }
+        },
+        "x-policy": "course:remove-course-member",
+        "x-access": "course:teach"
       }
     },
     "/courses/preview": {
@@ -4706,7 +4837,9 @@
           "503": {
             "$ref": "#/components/responses/ServiceUnavailable"
           }
-        }
+        },
+        "x-policy": "course:preview-course-by-code",
+        "x-access": "authenticated"
       }
     },
     "/courses/join": {
@@ -4766,7 +4899,9 @@
           "503": {
             "$ref": "#/components/responses/ServiceUnavailable"
           }
-        }
+        },
+        "x-policy": "course:join-course-by-code",
+        "x-access": "authenticated"
       }
     },
     "/courses/{id}/leave": {
@@ -4836,7 +4971,9 @@
           "503": {
             "$ref": "#/components/responses/ServiceUnavailable"
           }
-        }
+        },
+        "x-policy": "course:leave-course",
+        "x-access": "authenticated"
       }
     },
     "/courses/{id}/students": {
@@ -4848,10 +4985,6 @@
         "summary": "GET /courses/:id/students",
         "x-handler": "listCourseStudents",
         "x-auth": "bearer",
-        "x-roles": [
-          "admin",
-          "teacher"
-        ],
         "parameters": [
           {
             "name": "id",
@@ -4885,7 +5018,9 @@
           "503": {
             "$ref": "#/components/responses/ServiceUnavailable"
           }
-        }
+        },
+        "x-policy": "course:list-course-students",
+        "x-access": "course:teach"
       }
     },
     "/classes": {
@@ -4920,7 +5055,9 @@
           "503": {
             "$ref": "#/components/responses/ServiceUnavailable"
           }
-        }
+        },
+        "x-policy": "class:list-classes",
+        "x-access": "authenticated"
       }
     },
     "/classes/join-preview": {
@@ -4932,9 +5069,6 @@
         "summary": "GET /classes/join-preview",
         "x-handler": "previewClassJoin",
         "x-auth": "bearer",
-        "x-roles": [
-          "student"
-        ],
         "responses": {
           "200": {
             "description": "成功",
@@ -4958,7 +5092,9 @@
           "503": {
             "$ref": "#/components/responses/ServiceUnavailable"
           }
-        }
+        },
+        "x-policy": "class:preview-class-join",
+        "x-access": "exam:participate"
       }
     },
     "/me/classes": {
@@ -4993,7 +5129,9 @@
           "503": {
             "$ref": "#/components/responses/ServiceUnavailable"
           }
-        }
+        },
+        "x-policy": "me:my-classes",
+        "x-access": "authenticated"
       }
     },
     "/classes/join": {
@@ -5005,9 +5143,6 @@
         "summary": "POST /classes/join",
         "x-handler": "joinClassByCode",
         "x-auth": "bearer",
-        "x-roles": [
-          "student"
-        ],
         "requestBody": {
           "required": false,
           "content": {
@@ -5056,7 +5191,9 @@
           "503": {
             "$ref": "#/components/responses/ServiceUnavailable"
           }
-        }
+        },
+        "x-policy": "class:join-class-by-code",
+        "x-access": "exam:participate"
       }
     },
     "/classes/{id}/join": {
@@ -5068,9 +5205,6 @@
         "summary": "POST /classes/:id/join",
         "x-handler": "joinClass",
         "x-auth": "bearer",
-        "x-roles": [
-          "student"
-        ],
         "parameters": [
           {
             "name": "id",
@@ -5129,7 +5263,9 @@
           "503": {
             "$ref": "#/components/responses/ServiceUnavailable"
           }
-        }
+        },
+        "x-policy": "class:join-class",
+        "x-access": "exam:participate"
       }
     },
     "/classes/{id}/leave": {
@@ -5141,9 +5277,6 @@
         "summary": "POST /classes/:id/leave",
         "x-handler": "leaveClass",
         "x-auth": "bearer",
-        "x-roles": [
-          "student"
-        ],
         "parameters": [
           {
             "name": "id",
@@ -5202,7 +5335,9 @@
           "503": {
             "$ref": "#/components/responses/ServiceUnavailable"
           }
-        }
+        },
+        "x-policy": "class:leave-class",
+        "x-access": "exam:participate"
       }
     },
     "/classes/{id}": {
@@ -5214,10 +5349,6 @@
         "summary": "PUT /classes/:id",
         "x-handler": "updateClass",
         "x-auth": "bearer",
-        "x-roles": [
-          "admin",
-          "teacher"
-        ],
         "parameters": [
           {
             "name": "id",
@@ -5266,7 +5397,9 @@
           "503": {
             "$ref": "#/components/responses/ServiceUnavailable"
           }
-        }
+        },
+        "x-policy": "class:update-class",
+        "x-access": "course:teach"
       },
       "delete": {
         "operationId": "archiveClass",
@@ -5276,10 +5409,6 @@
         "summary": "DELETE /classes/:id",
         "x-handler": "archiveClass",
         "x-auth": "bearer",
-        "x-roles": [
-          "admin",
-          "teacher"
-        ],
         "parameters": [
           {
             "name": "id",
@@ -5313,7 +5442,9 @@
           "503": {
             "$ref": "#/components/responses/ServiceUnavailable"
           }
-        }
+        },
+        "x-policy": "class:archive-class",
+        "x-access": "course:teach"
       }
     },
     "/classes/{id}/archive": {
@@ -5325,10 +5456,6 @@
         "summary": "POST /classes/:id/archive",
         "x-handler": "archiveClass",
         "x-auth": "bearer",
-        "x-roles": [
-          "admin",
-          "teacher"
-        ],
         "parameters": [
           {
             "name": "id",
@@ -5387,7 +5514,9 @@
           "503": {
             "$ref": "#/components/responses/ServiceUnavailable"
           }
-        }
+        },
+        "x-policy": "class:archive-class",
+        "x-access": "course:teach"
       }
     },
     "/classes/{id}/students": {
@@ -5399,10 +5528,6 @@
         "summary": "GET /classes/:id/students",
         "x-handler": "listClassStudents",
         "x-auth": "bearer",
-        "x-roles": [
-          "admin",
-          "teacher"
-        ],
         "parameters": [
           {
             "name": "id",
@@ -5436,7 +5561,9 @@
           "503": {
             "$ref": "#/components/responses/ServiceUnavailable"
           }
-        }
+        },
+        "x-policy": "class:list-class-students",
+        "x-access": "course:teach"
       }
     },
     "/classes/{id}/students/{user_id}": {
@@ -5448,10 +5575,6 @@
         "summary": "DELETE /classes/:id/students/:user_id",
         "x-handler": "removeClassStudent",
         "x-auth": "bearer",
-        "x-roles": [
-          "admin",
-          "teacher"
-        ],
         "parameters": [
           {
             "name": "id",
@@ -5493,7 +5616,9 @@
           "503": {
             "$ref": "#/components/responses/ServiceUnavailable"
           }
-        }
+        },
+        "x-policy": "class:remove-class-student",
+        "x-access": "course:teach"
       }
     },
     "/classes/{id}/students/import": {
@@ -5505,10 +5630,6 @@
         "summary": "POST /classes/:id/students/import",
         "x-handler": "importClassStudents",
         "x-auth": "bearer",
-        "x-roles": [
-          "admin",
-          "teacher"
-        ],
         "parameters": [
           {
             "name": "id",
@@ -5567,7 +5688,9 @@
           "503": {
             "$ref": "#/components/responses/ServiceUnavailable"
           }
-        }
+        },
+        "x-policy": "class:import-class-students",
+        "x-access": "course:teach"
       }
     },
     "/problem-test-uploads/{upload_id}/{chunk_index}": {
@@ -5636,7 +5759,9 @@
           "503": {
             "$ref": "#/components/responses/ServiceUnavailable"
           }
-        }
+        },
+        "x-policy": "problem-test-uploads:problem-change-ticket-only",
+        "x-access": "authenticated"
       }
     },
     "/problems/parse-markdown": {
@@ -5696,7 +5821,9 @@
           "503": {
             "$ref": "#/components/responses/ServiceUnavailable"
           }
-        }
+        },
+        "x-policy": "problem:parse-markdown-batch",
+        "x-access": "authenticated"
       }
     },
     "/problems/upload": {
@@ -5757,7 +5884,9 @@
           "503": {
             "$ref": "#/components/responses/ServiceUnavailable"
           }
-        }
+        },
+        "x-policy": "problem:problem-change-ticket-only",
+        "x-access": "authenticated"
       }
     },
     "/problems/{id}/tests": {
@@ -5802,7 +5931,9 @@
           "503": {
             "$ref": "#/components/responses/ServiceUnavailable"
           }
-        }
+        },
+        "x-policy": "problem:list-problem-tests",
+        "x-access": "authenticated"
       }
     },
     "/problems/{id}/tests/download": {
@@ -5847,7 +5978,9 @@
           "503": {
             "$ref": "#/components/responses/ServiceUnavailable"
           }
-        }
+        },
+        "x-policy": "problem:download-problem-tests",
+        "x-access": "authenticated"
       }
     },
     "/problems/{id}/tests/file/{file_path}": {
@@ -5901,7 +6034,9 @@
           "503": {
             "$ref": "#/components/responses/ServiceUnavailable"
           }
-        }
+        },
+        "x-policy": "problem:download-problem-test-file",
+        "x-access": "authenticated"
       }
     },
     "/prepared-problems": {
@@ -5913,10 +6048,6 @@
         "summary": "GET /prepared-problems",
         "x-handler": "listPreparedProblems",
         "x-auth": "bearer",
-        "x-roles": [
-          "admin",
-          "teacher"
-        ],
         "responses": {
           "200": {
             "description": "成功",
@@ -5943,7 +6074,9 @@
           "503": {
             "$ref": "#/components/responses/ServiceUnavailable"
           }
-        }
+        },
+        "x-policy": "prepared-problems:list-prepared-problems",
+        "x-access": "course:teach"
       },
       "post": {
         "operationId": "problemChangeTicketOnlyViaPreparedProblems",
@@ -5953,10 +6086,6 @@
         "summary": "POST /prepared-problems",
         "x-handler": "problemChangeTicketOnly",
         "x-auth": "bearer",
-        "x-roles": [
-          "admin",
-          "teacher"
-        ],
         "deprecated": true,
         "requestBody": {
           "required": false,
@@ -6006,7 +6135,9 @@
           "503": {
             "$ref": "#/components/responses/ServiceUnavailable"
           }
-        }
+        },
+        "x-policy": "prepared-problems:problem-change-ticket-only",
+        "x-access": "course:teach"
       }
     },
     "/prepared-problems/upload": {
@@ -6018,10 +6149,6 @@
         "summary": "POST /prepared-problems/upload",
         "x-handler": "problemChangeTicketOnly",
         "x-auth": "bearer",
-        "x-roles": [
-          "admin",
-          "teacher"
-        ],
         "deprecated": true,
         "requestBody": {
           "required": false,
@@ -6071,7 +6198,9 @@
           "503": {
             "$ref": "#/components/responses/ServiceUnavailable"
           }
-        }
+        },
+        "x-policy": "prepared-problems:problem-change-ticket-only",
+        "x-access": "course:teach"
       }
     },
     "/prepared-problems/{id}": {
@@ -6083,10 +6212,6 @@
         "summary": "GET /prepared-problems/:id",
         "x-handler": "getPreparedProblem",
         "x-auth": "bearer",
-        "x-roles": [
-          "admin",
-          "teacher"
-        ],
         "parameters": [
           {
             "name": "id",
@@ -6120,7 +6245,9 @@
           "503": {
             "$ref": "#/components/responses/ServiceUnavailable"
           }
-        }
+        },
+        "x-policy": "prepared-problems:get-prepared-problem",
+        "x-access": "course:teach"
       },
       "put": {
         "operationId": "problemChangeTicketOnlyViaPreparedProblemsId",
@@ -6130,10 +6257,6 @@
         "summary": "PUT /prepared-problems/:id",
         "x-handler": "problemChangeTicketOnly",
         "x-auth": "bearer",
-        "x-roles": [
-          "admin",
-          "teacher"
-        ],
         "deprecated": true,
         "parameters": [
           {
@@ -6183,7 +6306,9 @@
           "503": {
             "$ref": "#/components/responses/ServiceUnavailable"
           }
-        }
+        },
+        "x-policy": "prepared-problems:problem-change-ticket-only",
+        "x-access": "course:teach"
       }
     },
     "/prepared-problems/{id}/publish": {
@@ -6195,10 +6320,6 @@
         "summary": "POST /prepared-problems/:id/publish",
         "x-handler": "problemChangeTicketOnly",
         "x-auth": "bearer",
-        "x-roles": [
-          "admin",
-          "teacher"
-        ],
         "deprecated": true,
         "parameters": [
           {
@@ -6258,7 +6379,9 @@
           "503": {
             "$ref": "#/components/responses/ServiceUnavailable"
           }
-        }
+        },
+        "x-policy": "prepared-problems:problem-change-ticket-only",
+        "x-access": "course:teach"
       }
     },
     "/problem-change-tickets": {
@@ -6322,7 +6445,9 @@
               }
             }
           }
-        }
+        },
+        "x-policy": "problem-change-tickets:create-problem-change-ticket",
+        "x-access": "authenticated"
       },
       "get": {
         "operationId": "listProblemChangeTickets",
@@ -6403,9 +6528,8 @@
             "$ref": "#/components/responses/ServiceUnavailable"
           }
         },
-        "x-roles": [
-          "admin"
-        ]
+        "x-policy": "problem-change-tickets:list-problem-change-tickets",
+        "x-access": "problem:review"
       }
     },
     "/problem-change-tickets/mine": {
@@ -6487,7 +6611,9 @@
           "503": {
             "$ref": "#/components/responses/ServiceUnavailable"
           }
-        }
+        },
+        "x-policy": "problem-change-tickets:list-my-problem-change-tickets",
+        "x-access": "authenticated"
       }
     },
     "/problem-change-tickets/eligible-problems": {
@@ -6572,7 +6698,9 @@
           "503": {
             "$ref": "#/components/responses/ServiceUnavailable"
           }
-        }
+        },
+        "x-policy": "problem-change-tickets:list-problem-change-ticket-eligible-problems",
+        "x-access": "authenticated"
       }
     },
     "/problem-change-tickets/{id}": {
@@ -6620,7 +6748,9 @@
           "503": {
             "$ref": "#/components/responses/ServiceUnavailable"
           }
-        }
+        },
+        "x-policy": "problem-change-tickets:get-problem-change-ticket",
+        "x-access": "authenticated"
       },
       "patch": {
         "operationId": "updateProblemChangeTicket",
@@ -6681,7 +6811,9 @@
               }
             }
           }
-        }
+        },
+        "x-policy": "problem-change-tickets:update-problem-change-ticket",
+        "x-access": "authenticated"
       },
       "delete": {
         "operationId": "deleteProblemChangeTicket",
@@ -6742,7 +6874,9 @@
               }
             }
           }
-        }
+        },
+        "x-policy": "problem-change-tickets:delete-problem-change-ticket",
+        "x-access": "authenticated"
       }
     },
     "/problem-change-tickets/{id}/attachment": {
@@ -6798,7 +6932,9 @@
           "503": {
             "$ref": "#/components/responses/ServiceUnavailable"
           }
-        }
+        },
+        "x-policy": "problem-change-tickets:download-problem-change-ticket-attachment",
+        "x-access": "authenticated"
       }
     },
     "/problem-change-tickets/{id}/cancel": {
@@ -6856,7 +6992,9 @@
               }
             }
           }
-        }
+        },
+        "x-policy": "problem-change-tickets:cancel-problem-change-ticket",
+        "x-access": "authenticated"
       }
     },
     "/problem-change-tickets/{id}/reject": {
@@ -6914,7 +7052,9 @@
               }
             }
           }
-        }
+        },
+        "x-policy": "problem-change-tickets:reject-problem-change-ticket",
+        "x-access": "authenticated"
       }
     },
     "/problem-change-tickets/{id}/apply": {
@@ -6973,9 +7113,8 @@
             }
           }
         },
-        "x-roles": [
-          "admin"
-        ]
+        "x-policy": "problem-change-tickets:apply-problem-change-ticket",
+        "x-access": "problem:review"
       }
     },
     "/assignments": {
@@ -7010,7 +7149,9 @@
           "503": {
             "$ref": "#/components/responses/ServiceUnavailable"
           }
-        }
+        },
+        "x-policy": "assignment:list-assignments",
+        "x-access": "authenticated"
       },
       "post": {
         "operationId": "createAssignment",
@@ -7020,10 +7161,6 @@
         "summary": "POST /assignments",
         "x-handler": "createAssignment",
         "x-auth": "bearer",
-        "x-roles": [
-          "admin",
-          "teacher"
-        ],
         "requestBody": {
           "required": false,
           "content": {
@@ -7072,7 +7209,9 @@
           "503": {
             "$ref": "#/components/responses/ServiceUnavailable"
           }
-        }
+        },
+        "x-policy": "assignment:create-assignment",
+        "x-access": "course:teach"
       }
     },
     "/assignments/{id}": {
@@ -7117,7 +7256,9 @@
           "503": {
             "$ref": "#/components/responses/ServiceUnavailable"
           }
-        }
+        },
+        "x-policy": "assignment:get-assignment",
+        "x-access": "authenticated"
       },
       "delete": {
         "operationId": "deleteAssignment",
@@ -7127,10 +7268,6 @@
         "summary": "DELETE /assignments/:id",
         "x-handler": "deleteAssignment",
         "x-auth": "bearer",
-        "x-roles": [
-          "admin",
-          "teacher"
-        ],
         "parameters": [
           {
             "name": "id",
@@ -7164,7 +7301,9 @@
           "503": {
             "$ref": "#/components/responses/ServiceUnavailable"
           }
-        }
+        },
+        "x-policy": "assignment:delete-assignment",
+        "x-access": "course:teach"
       }
     },
     "/assignments/{id}/report": {
@@ -7176,10 +7315,6 @@
         "summary": "GET /assignments/:id/report",
         "x-handler": "assignmentReport",
         "x-auth": "bearer",
-        "x-roles": [
-          "admin",
-          "teacher"
-        ],
         "parameters": [
           {
             "name": "id",
@@ -7213,7 +7348,9 @@
           "503": {
             "$ref": "#/components/responses/ServiceUnavailable"
           }
-        }
+        },
+        "x-policy": "assignment:assignment-report",
+        "x-access": "course:teach"
       }
     },
     "/exams": {
@@ -7248,7 +7385,9 @@
           "503": {
             "$ref": "#/components/responses/ServiceUnavailable"
           }
-        }
+        },
+        "x-policy": "exam:list-exams",
+        "x-access": "authenticated"
       },
       "post": {
         "operationId": "createExam",
@@ -7258,10 +7397,6 @@
         "summary": "POST /exams",
         "x-handler": "createExam",
         "x-auth": "bearer",
-        "x-roles": [
-          "admin",
-          "teacher"
-        ],
         "requestBody": {
           "required": false,
           "content": {
@@ -7310,7 +7445,9 @@
           "503": {
             "$ref": "#/components/responses/ServiceUnavailable"
           }
-        }
+        },
+        "x-policy": "exam:create-exam",
+        "x-access": "course:teach"
       }
     },
     "/exams/{id}": {
@@ -7356,7 +7493,9 @@
             "$ref": "#/components/responses/ServiceUnavailable"
           }
         },
-        "description": "学生必须先调用 enter。仅考试进行中且尚未交卷可读取；GET 不建立考试记录。"
+        "description": "学生必须先调用 enter。仅考试进行中且尚未交卷可读取；GET 不建立考试记录。",
+        "x-policy": "exam:get-exam",
+        "x-access": "authenticated"
       },
       "delete": {
         "operationId": "deleteExam",
@@ -7366,10 +7505,6 @@
         "summary": "DELETE /exams/:id",
         "x-handler": "deleteExam",
         "x-auth": "bearer",
-        "x-roles": [
-          "admin",
-          "teacher"
-        ],
         "parameters": [
           {
             "name": "id",
@@ -7403,7 +7538,9 @@
           "503": {
             "$ref": "#/components/responses/ServiceUnavailable"
           }
-        }
+        },
+        "x-policy": "exam:delete-exam",
+        "x-access": "course:teach"
       }
     },
     "/exams/{id}/finish": {
@@ -7415,9 +7552,6 @@
         "summary": "POST /exams/:id/finish",
         "x-handler": "finishExam",
         "x-auth": "bearer",
-        "x-roles": [
-          "student"
-        ],
         "parameters": [
           {
             "name": "id",
@@ -7476,7 +7610,9 @@
           "503": {
             "$ref": "#/components/responses/ServiceUnavailable"
           }
-        }
+        },
+        "x-policy": "exam:finish-exam",
+        "x-access": "exam:participate"
       }
     },
     "/exams/{id}/report/export": {
@@ -7488,10 +7624,6 @@
         "summary": "GET /exams/:id/report/export",
         "x-handler": "exportExamReport",
         "x-auth": "bearer",
-        "x-roles": [
-          "admin",
-          "teacher"
-        ],
         "parameters": [
           {
             "name": "id",
@@ -7525,7 +7657,9 @@
           "503": {
             "$ref": "#/components/responses/ServiceUnavailable"
           }
-        }
+        },
+        "x-policy": "exam:export-exam-report",
+        "x-access": "course:teach"
       }
     },
     "/exams/{id}/report": {
@@ -7537,10 +7671,6 @@
         "summary": "GET /exams/:id/report",
         "x-handler": "examReport",
         "x-auth": "bearer",
-        "x-roles": [
-          "admin",
-          "teacher"
-        ],
         "parameters": [
           {
             "name": "id",
@@ -7574,7 +7704,9 @@
           "503": {
             "$ref": "#/components/responses/ServiceUnavailable"
           }
-        }
+        },
+        "x-policy": "exam:exam-report",
+        "x-access": "course:teach"
       }
     },
     "/exams/{id}/ranking": {
@@ -7619,7 +7751,9 @@
           "503": {
             "$ref": "#/components/responses/ServiceUnavailable"
           }
-        }
+        },
+        "x-policy": "exam:exam-ranking",
+        "x-access": "authenticated"
       }
     },
     "/exams/{id}/submissions/{submission_id}/judge": {
@@ -7631,10 +7765,6 @@
         "summary": "POST /exams/:id/submissions/:submission_id/judge",
         "x-handler": "judgeManualExamSubmission",
         "x-auth": "bearer",
-        "x-roles": [
-          "admin",
-          "teacher"
-        ],
         "parameters": [
           {
             "name": "id",
@@ -7701,7 +7831,9 @@
           "503": {
             "$ref": "#/components/responses/ServiceUnavailable"
           }
-        }
+        },
+        "x-policy": "exam:judge-manual-exam-submission",
+        "x-access": "course:teach"
       }
     },
     "/exams/{id}/submissions/{submission_id}/grade": {
@@ -7713,10 +7845,6 @@
         "summary": "PUT /exams/:id/submissions/:submission_id/grade",
         "x-handler": "gradeManualExamSubmission",
         "x-auth": "bearer",
-        "x-roles": [
-          "admin",
-          "teacher"
-        ],
         "parameters": [
           {
             "name": "id",
@@ -7773,7 +7901,9 @@
           "503": {
             "$ref": "#/components/responses/ServiceUnavailable"
           }
-        }
+        },
+        "x-policy": "exam:grade-manual-exam-submission",
+        "x-access": "course:teach"
       }
     },
     "/submissions": {
@@ -7833,7 +7963,9 @@
           "503": {
             "$ref": "#/components/responses/ServiceUnavailable"
           }
-        }
+        },
+        "x-policy": "submission:create-submission",
+        "x-access": "authenticated"
       },
       "get": {
         "operationId": "listSubmissions",
@@ -7943,7 +8075,9 @@
               "type": "integer"
             }
           }
-        ]
+        ],
+        "x-policy": "submission:list-submissions",
+        "x-access": "authenticated"
       }
     },
     "/submissions/latest": {
@@ -7981,7 +8115,9 @@
           "503": {
             "$ref": "#/components/responses/ServiceUnavailable"
           }
-        }
+        },
+        "x-policy": "submission:latest-submissions",
+        "x-access": "authenticated"
       }
     },
     "/submissions/{id}": {
@@ -8026,7 +8162,9 @@
           "503": {
             "$ref": "#/components/responses/ServiceUnavailable"
           }
-        }
+        },
+        "x-policy": "submission:get-submission",
+        "x-access": "authenticated"
       }
     },
     "/submissions/{id}/events": {
@@ -8071,7 +8209,9 @@
           "503": {
             "$ref": "#/components/responses/ServiceUnavailable"
           }
-        }
+        },
+        "x-policy": "submission:submission-events",
+        "x-access": "authenticated"
       }
     },
     "/plagiarism/jobs": {
@@ -8083,10 +8223,6 @@
         "summary": "GET /plagiarism/jobs",
         "x-handler": "listPlagiarismJobs",
         "x-auth": "bearer",
-        "x-roles": [
-          "admin",
-          "teacher"
-        ],
         "responses": {
           "200": {
             "description": "成功",
@@ -8110,7 +8246,9 @@
           "503": {
             "$ref": "#/components/responses/ServiceUnavailable"
           }
-        }
+        },
+        "x-policy": "plagiarism:list-plagiarism-jobs",
+        "x-access": "course:teach"
       },
       "post": {
         "operationId": "createPlagiarismJob",
@@ -8120,10 +8258,6 @@
         "summary": "POST /plagiarism/jobs",
         "x-handler": "createPlagiarismJob",
         "x-auth": "bearer",
-        "x-roles": [
-          "admin",
-          "teacher"
-        ],
         "requestBody": {
           "required": false,
           "content": {
@@ -8172,7 +8306,9 @@
           "503": {
             "$ref": "#/components/responses/ServiceUnavailable"
           }
-        }
+        },
+        "x-policy": "plagiarism:create-plagiarism-job",
+        "x-access": "course:teach"
       }
     },
     "/audit-logs": {
@@ -8184,9 +8320,6 @@
         "summary": "查询审计日志",
         "x-handler": "listAuditLogs",
         "x-auth": "bearer",
-        "x-roles": [
-          "admin"
-        ],
         "responses": {
           "200": {
             "description": "成功",
@@ -8210,7 +8343,9 @@
           "503": {
             "$ref": "#/components/responses/ServiceUnavailable"
           }
-        }
+        },
+        "x-policy": "audit-logs:list-audit-logs",
+        "x-access": "audit:view"
       }
     },
     "/users": {
@@ -8222,9 +8357,6 @@
         "summary": "查询用户",
         "x-handler": "listUsers",
         "x-auth": "bearer",
-        "x-roles": [
-          "admin"
-        ],
         "responses": {
           "200": {
             "description": "成功",
@@ -8251,7 +8383,9 @@
           "503": {
             "$ref": "#/components/responses/ServiceUnavailable"
           }
-        }
+        },
+        "x-policy": "user:list-users",
+        "x-access": "user:manage"
       },
       "post": {
         "operationId": "createUser",
@@ -8261,9 +8395,6 @@
         "summary": "POST /users",
         "x-handler": "createUser",
         "x-auth": "bearer",
-        "x-roles": [
-          "admin"
-        ],
         "requestBody": {
           "required": false,
           "content": {
@@ -8312,7 +8443,9 @@
           "503": {
             "$ref": "#/components/responses/ServiceUnavailable"
           }
-        }
+        },
+        "x-policy": "user:create-user",
+        "x-access": "user:manage"
       }
     },
     "/permissions": {
@@ -8324,9 +8457,6 @@
         "summary": "GET /permissions",
         "x-handler": "listUserPermissionDefinitions",
         "x-auth": "bearer",
-        "x-roles": [
-          "admin"
-        ],
         "responses": {
           "200": {
             "description": "成功",
@@ -8353,7 +8483,9 @@
           "503": {
             "$ref": "#/components/responses/ServiceUnavailable"
           }
-        }
+        },
+        "x-policy": "permissions:list-user-permission-definitions",
+        "x-access": "permission:manage"
       }
     },
     "/users/{id}": {
@@ -8365,9 +8497,6 @@
         "summary": "GET /users/:id",
         "x-handler": "getUser",
         "x-auth": "bearer",
-        "x-roles": [
-          "admin"
-        ],
         "parameters": [
           {
             "name": "id",
@@ -8401,7 +8530,9 @@
           "503": {
             "$ref": "#/components/responses/ServiceUnavailable"
           }
-        }
+        },
+        "x-policy": "user:get-user",
+        "x-access": "user:manage"
       },
       "put": {
         "operationId": "updateUser",
@@ -8411,9 +8542,6 @@
         "summary": "PUT /users/:id",
         "x-handler": "updateUser",
         "x-auth": "bearer",
-        "x-roles": [
-          "admin"
-        ],
         "parameters": [
           {
             "name": "id",
@@ -8462,7 +8590,9 @@
           "503": {
             "$ref": "#/components/responses/ServiceUnavailable"
           }
-        }
+        },
+        "x-policy": "user:update-user",
+        "x-access": "user:manage"
       },
       "delete": {
         "operationId": "deleteUser",
@@ -8472,9 +8602,6 @@
         "summary": "DELETE /users/:id",
         "x-handler": "deleteUser",
         "x-auth": "bearer",
-        "x-roles": [
-          "admin"
-        ],
         "parameters": [
           {
             "name": "id",
@@ -8508,7 +8635,9 @@
           "503": {
             "$ref": "#/components/responses/ServiceUnavailable"
           }
-        }
+        },
+        "x-policy": "user:delete-user",
+        "x-access": "user:manage"
       }
     },
     "/users/{id}/permissions/{permission}": {
@@ -8520,9 +8649,6 @@
         "summary": "PUT /users/:id/permissions/:permission",
         "x-handler": "updateUserPermission",
         "x-auth": "bearer",
-        "x-roles": [
-          "admin"
-        ],
         "parameters": [
           {
             "name": "id",
@@ -8579,7 +8705,9 @@
           "503": {
             "$ref": "#/components/responses/ServiceUnavailable"
           }
-        }
+        },
+        "x-policy": "user:update-user-permission",
+        "x-access": "permission:manage"
       }
     },
     "/users/{id}/reset-password": {
@@ -8591,9 +8719,6 @@
         "summary": "POST /users/:id/reset-password",
         "x-handler": "resetUserPassword",
         "x-auth": "bearer",
-        "x-roles": [
-          "admin"
-        ],
         "parameters": [
           {
             "name": "id",
@@ -8652,7 +8777,9 @@
           "503": {
             "$ref": "#/components/responses/ServiceUnavailable"
           }
-        }
+        },
+        "x-policy": "user:reset-user-password",
+        "x-access": "user:manage"
       }
     },
     "/author-applications/{id}/review": {
@@ -8664,9 +8791,6 @@
         "summary": "PUT /author-applications/:id/review",
         "x-handler": "reviewAuthorApplication",
         "x-auth": "bearer",
-        "x-roles": [
-          "admin"
-        ],
         "parameters": [
           {
             "name": "id",
@@ -8715,7 +8839,9 @@
           "503": {
             "$ref": "#/components/responses/ServiceUnavailable"
           }
-        }
+        },
+        "x-policy": "author-applications:review-author-application",
+        "x-access": "permission:manage"
       }
     },
     "/problem-authors": {
@@ -8727,9 +8853,6 @@
         "summary": "GET /problem-authors",
         "x-handler": "listProblemAuthors",
         "x-auth": "bearer",
-        "x-roles": [
-          "admin"
-        ],
         "responses": {
           "200": {
             "description": "成功",
@@ -8753,7 +8876,9 @@
           "503": {
             "$ref": "#/components/responses/ServiceUnavailable"
           }
-        }
+        },
+        "x-policy": "problem-authors:list-problem-authors",
+        "x-access": "permission:manage"
       }
     },
     "/problem-authors/{id}": {
@@ -8765,9 +8890,6 @@
         "summary": "DELETE /problem-authors/:id",
         "x-handler": "removeProblemAuthor",
         "x-auth": "bearer",
-        "x-roles": [
-          "admin"
-        ],
         "parameters": [
           {
             "name": "id",
@@ -8801,7 +8923,9 @@
           "503": {
             "$ref": "#/components/responses/ServiceUnavailable"
           }
-        }
+        },
+        "x-policy": "problem-authors:remove-problem-author",
+        "x-access": "permission:manage"
       }
     },
     "/problem-reviews/mine": {
@@ -8836,7 +8960,9 @@
           "503": {
             "$ref": "#/components/responses/ServiceUnavailable"
           }
-        }
+        },
+        "x-policy": "problem-reviews:list-my-problem-reviews",
+        "x-access": "authenticated"
       }
     },
     "/problem-reviews": {
@@ -8848,9 +8974,6 @@
         "summary": "GET /problem-reviews",
         "x-handler": "listProblemReviews",
         "x-auth": "bearer",
-        "x-roles": [
-          "admin"
-        ],
         "responses": {
           "200": {
             "description": "成功",
@@ -8874,7 +8997,9 @@
           "503": {
             "$ref": "#/components/responses/ServiceUnavailable"
           }
-        }
+        },
+        "x-policy": "problem-reviews:list-problem-reviews",
+        "x-access": "problem:review"
       }
     },
     "/problem-reviews/{id}/review": {
@@ -8886,9 +9011,6 @@
         "summary": "PUT /problem-reviews/:id/review",
         "x-handler": "problemChangeTicketOnly",
         "x-auth": "bearer",
-        "x-roles": [
-          "admin"
-        ],
         "deprecated": true,
         "parameters": [
           {
@@ -8938,7 +9060,9 @@
           "503": {
             "$ref": "#/components/responses/ServiceUnavailable"
           }
-        }
+        },
+        "x-policy": "problem-reviews:problem-change-ticket-only",
+        "x-access": "problem:review"
       }
     },
     "/problem-reviews/{id}/withdraw": {
@@ -8950,9 +9074,6 @@
         "summary": "PUT /problem-reviews/:id/withdraw",
         "x-handler": "problemChangeTicketOnly",
         "x-auth": "bearer",
-        "x-roles": [
-          "admin"
-        ],
         "deprecated": true,
         "parameters": [
           {
@@ -9002,7 +9123,9 @@
           "503": {
             "$ref": "#/components/responses/ServiceUnavailable"
           }
-        }
+        },
+        "x-policy": "problem-reviews:problem-change-ticket-only",
+        "x-access": "problem:review"
       }
     },
     "/exams/{id}/enter": {
@@ -9058,9 +9181,8 @@
             "$ref": "#/components/responses/ServiceUnavailable"
           }
         },
-        "x-roles": [
-          "student"
-        ]
+        "x-policy": "exam:enter-exam",
+        "x-access": "exam:participate"
       }
     },
     "/exams/{id}/activity": {
@@ -9134,9 +9256,8 @@
             }
           }
         },
-        "x-roles": [
-          "student"
-        ]
+        "x-policy": "exam:record-exam-activity",
+        "x-access": "exam:participate"
       },
       "get": {
         "operationId": "listExamActivity",
@@ -9237,10 +9358,8 @@
             "$ref": "#/components/responses/ServiceUnavailable"
           }
         },
-        "x-roles": [
-          "admin",
-          "teacher"
-        ]
+        "x-policy": "exam:list-exam-activity",
+        "x-access": "course:teach"
       }
     },
     "/exams/{id}/problems/{problem_id}/assets/{asset_path}": {
@@ -9313,7 +9432,9 @@
           "503": {
             "$ref": "#/components/responses/ServiceUnavailable"
           }
-        }
+        },
+        "x-policy": "exam:get-exam-problem-asset",
+        "x-access": "authenticated"
       }
     },
     "/team-invitations/preview": {
@@ -9386,7 +9507,9 @@
           "503": {
             "$ref": "#/components/responses/ServiceUnavailable"
           }
-        }
+        },
+        "x-policy": "team-invitations:preview-team-invitation",
+        "x-access": "authenticated"
       }
     },
     "/teams/{id}/join-preview": {
@@ -9441,7 +9564,9 @@
           "503": {
             "$ref": "#/components/responses/ServiceUnavailable"
           }
-        }
+        },
+        "x-policy": "team:preview-team-join",
+        "x-access": "authenticated"
       }
     },
     "/problem-change-tickets/{id}/resolve": {
@@ -9499,7 +9624,9 @@
               }
             }
           }
-        }
+        },
+        "x-policy": "problem-change-tickets:resolve-problem-change-ticket",
+        "x-access": "authenticated"
       }
     },
     "/problem-change-tickets/{id}/attachments/{attachment_id}": {
@@ -9563,7 +9690,9 @@
           "503": {
             "$ref": "#/components/responses/ServiceUnavailable"
           }
-        }
+        },
+        "x-policy": "problem-change-tickets:download-problem-change-ticket-attachment",
+        "x-access": "authenticated"
       }
     },
     "/problems/{id}/change-tickets": {
@@ -9653,7 +9782,9 @@
           "503": {
             "$ref": "#/components/responses/ServiceUnavailable"
           }
-        }
+        },
+        "x-policy": "problem:list-scoped-problem-change-tickets",
+        "x-access": "public"
       },
       "post": {
         "operationId": "createProblemFeedbackTicket",
@@ -9724,7 +9855,9 @@
               }
             }
           }
-        }
+        },
+        "x-policy": "problem:create-problem-change-ticket",
+        "x-access": "authenticated"
       }
     },
     "/problems/{id}/change-tickets/{ticket_id}": {
@@ -9780,7 +9913,9 @@
           "503": {
             "$ref": "#/components/responses/ServiceUnavailable"
           }
-        }
+        },
+        "x-policy": "problem:get-problem-change-ticket",
+        "x-access": "public"
       },
       "patch": {
         "operationId": "updateProblemFeedbackTicket",
@@ -9849,7 +9984,9 @@
               }
             }
           }
-        }
+        },
+        "x-policy": "problem:update-problem-change-ticket",
+        "x-access": "authenticated"
       },
       "delete": {
         "operationId": "deleteProblemFeedbackTicket",
@@ -9918,7 +10055,9 @@
               }
             }
           }
-        }
+        },
+        "x-policy": "problem:delete-problem-change-ticket",
+        "x-access": "authenticated"
       }
     },
     "/problems/{id}/change-tickets/{ticket_id}/attachments/{attachment_id}": {
@@ -9990,7 +10129,9 @@
           "503": {
             "$ref": "#/components/responses/ServiceUnavailable"
           }
-        }
+        },
+        "x-policy": "problem:download-problem-change-ticket-attachment",
+        "x-access": "authenticated"
       }
     },
     "/problems/{id}/change-tickets/{ticket_id}/cancel": {
@@ -10056,7 +10197,9 @@
               }
             }
           }
-        }
+        },
+        "x-policy": "problem:cancel-problem-change-ticket",
+        "x-access": "authenticated"
       }
     },
     "/problems/{id}/change-tickets/{ticket_id}/reject": {
@@ -10122,7 +10265,9 @@
               }
             }
           }
-        }
+        },
+        "x-policy": "problem:reject-problem-change-ticket",
+        "x-access": "authenticated"
       }
     },
     "/problems/{id}/change-tickets/{ticket_id}/resolve": {
@@ -10188,7 +10333,9 @@
               }
             }
           }
-        }
+        },
+        "x-policy": "problem:resolve-problem-change-ticket",
+        "x-access": "authenticated"
       }
     },
     "/exams/{id}/change-tickets": {
@@ -10278,7 +10425,9 @@
           "503": {
             "$ref": "#/components/responses/ServiceUnavailable"
           }
-        }
+        },
+        "x-policy": "exam:list-scoped-problem-change-tickets",
+        "x-access": "authenticated"
       },
       "post": {
         "operationId": "createExamFeedbackTicket",
@@ -10349,7 +10498,9 @@
               }
             }
           }
-        }
+        },
+        "x-policy": "exam:create-problem-change-ticket",
+        "x-access": "authenticated"
       }
     },
     "/exams/{id}/change-tickets/{ticket_id}": {
@@ -10405,7 +10556,9 @@
           "503": {
             "$ref": "#/components/responses/ServiceUnavailable"
           }
-        }
+        },
+        "x-policy": "exam:get-problem-change-ticket",
+        "x-access": "authenticated"
       },
       "patch": {
         "operationId": "updateExamFeedbackTicket",
@@ -10474,7 +10627,9 @@
               }
             }
           }
-        }
+        },
+        "x-policy": "exam:update-problem-change-ticket",
+        "x-access": "authenticated"
       },
       "delete": {
         "operationId": "deleteExamFeedbackTicket",
@@ -10543,7 +10698,9 @@
               }
             }
           }
-        }
+        },
+        "x-policy": "exam:delete-problem-change-ticket",
+        "x-access": "authenticated"
       }
     },
     "/exams/{id}/change-tickets/{ticket_id}/attachments/{attachment_id}": {
@@ -10615,7 +10772,9 @@
           "503": {
             "$ref": "#/components/responses/ServiceUnavailable"
           }
-        }
+        },
+        "x-policy": "exam:download-problem-change-ticket-attachment",
+        "x-access": "authenticated"
       }
     },
     "/exams/{id}/change-tickets/{ticket_id}/cancel": {
@@ -10681,7 +10840,9 @@
               }
             }
           }
-        }
+        },
+        "x-policy": "exam:cancel-problem-change-ticket",
+        "x-access": "authenticated"
       }
     },
     "/exams/{id}/change-tickets/{ticket_id}/reject": {
@@ -10747,7 +10908,9 @@
               }
             }
           }
-        }
+        },
+        "x-policy": "exam:reject-problem-change-ticket",
+        "x-access": "authenticated"
       }
     },
     "/exams/{id}/change-tickets/{ticket_id}/resolve": {
@@ -10813,7 +10976,9 @@
               }
             }
           }
-        }
+        },
+        "x-policy": "exam:resolve-problem-change-ticket",
+        "x-access": "authenticated"
       }
     },
     "/contests/{contest_id}/change-tickets": {
@@ -10903,7 +11068,9 @@
           "503": {
             "$ref": "#/components/responses/ServiceUnavailable"
           }
-        }
+        },
+        "x-policy": "contest:list-scoped-problem-change-tickets",
+        "x-access": "authenticated"
       },
       "post": {
         "operationId": "createContestFeedbackTicket",
@@ -10974,7 +11141,9 @@
               }
             }
           }
-        }
+        },
+        "x-policy": "contest:create-problem-change-ticket",
+        "x-access": "authenticated"
       }
     },
     "/contests/{contest_id}/change-tickets/{ticket_id}": {
@@ -11030,7 +11199,9 @@
           "503": {
             "$ref": "#/components/responses/ServiceUnavailable"
           }
-        }
+        },
+        "x-policy": "contest:get-problem-change-ticket",
+        "x-access": "authenticated"
       },
       "patch": {
         "operationId": "updateContestFeedbackTicket",
@@ -11099,7 +11270,9 @@
               }
             }
           }
-        }
+        },
+        "x-policy": "contest:update-problem-change-ticket",
+        "x-access": "authenticated"
       },
       "delete": {
         "operationId": "deleteContestFeedbackTicket",
@@ -11168,7 +11341,9 @@
               }
             }
           }
-        }
+        },
+        "x-policy": "contest:delete-problem-change-ticket",
+        "x-access": "authenticated"
       }
     },
     "/contests/{contest_id}/change-tickets/{ticket_id}/attachments/{attachment_id}": {
@@ -11240,7 +11415,9 @@
           "503": {
             "$ref": "#/components/responses/ServiceUnavailable"
           }
-        }
+        },
+        "x-policy": "contest:download-problem-change-ticket-attachment",
+        "x-access": "authenticated"
       }
     },
     "/contests/{contest_id}/change-tickets/{ticket_id}/cancel": {
@@ -11306,7 +11483,9 @@
               }
             }
           }
-        }
+        },
+        "x-policy": "contest:cancel-problem-change-ticket",
+        "x-access": "authenticated"
       }
     },
     "/contests/{contest_id}/change-tickets/{ticket_id}/reject": {
@@ -11372,7 +11551,9 @@
               }
             }
           }
-        }
+        },
+        "x-policy": "contest:reject-problem-change-ticket",
+        "x-access": "authenticated"
       }
     },
     "/contests/{contest_id}/change-tickets/{ticket_id}/resolve": {
@@ -11438,7 +11619,9 @@
               }
             }
           }
-        }
+        },
+        "x-policy": "contest:resolve-problem-change-ticket",
+        "x-access": "authenticated"
       }
     },
     "/problem-change-tickets/{id}/return": {
@@ -11496,7 +11679,9 @@
               }
             }
           }
-        }
+        },
+        "x-policy": "problem-change-tickets:return-problem-change-ticket",
+        "x-access": "authenticated"
       }
     },
     "/problems/{id}/change-tickets/{ticket_id}/return": {
@@ -11562,7 +11747,9 @@
               }
             }
           }
-        }
+        },
+        "x-policy": "problem:return-problem-change-ticket",
+        "x-access": "authenticated"
       }
     },
     "/exams/{id}/change-tickets/{ticket_id}/return": {
@@ -11628,7 +11815,9 @@
               }
             }
           }
-        }
+        },
+        "x-policy": "exam:return-problem-change-ticket",
+        "x-access": "authenticated"
       }
     },
     "/contests/{contest_id}/change-tickets/{ticket_id}/return": {
@@ -11694,7 +11883,9 @@
               }
             }
           }
-        }
+        },
+        "x-policy": "contest:return-problem-change-ticket",
+        "x-access": "authenticated"
       }
     },
     "/problem-change-tickets/{id}/preview": {
@@ -11753,9 +11944,8 @@
             }
           }
         },
-        "x-roles": [
-          "admin"
-        ]
+        "x-policy": "problem-change-tickets:preview-problem-change-ticket",
+        "x-access": "problem:review"
       }
     },
     "/event-archives": {
@@ -11830,7 +12020,9 @@
           "409": {
             "description": "修订号或审核状态冲突"
           }
-        }
+        },
+        "x-policy": "event-archives:list-event-archives",
+        "x-access": "authenticated"
       }
     },
     "/event-reviews": {
@@ -11906,9 +12098,8 @@
             "description": "修订号或审核状态冲突"
           }
         },
-        "x-roles": [
-          "admin"
-        ]
+        "x-policy": "event-reviews:list-event-reviews",
+        "x-access": "event:review"
       }
     },
     "/event-papers/{kind}/{event_id}": {
@@ -11964,7 +12155,9 @@
           "409": {
             "description": "修订号或审核状态冲突"
           }
-        }
+        },
+        "x-policy": "event-papers:get-event-paper",
+        "x-access": "authenticated"
       }
     },
     "/event-papers/{kind}/{event_id}/settings": {
@@ -12031,7 +12224,9 @@
               }
             }
           }
-        }
+        },
+        "x-policy": "event-papers:update-event-settings",
+        "x-access": "authenticated"
       }
     },
     "/event-papers/{kind}/{event_id}/review": {
@@ -12120,7 +12315,9 @@
               }
             }
           }
-        }
+        },
+        "x-policy": "event-papers:review-event-paper",
+        "x-access": "authenticated"
       }
     },
     "/event-papers/{kind}/{event_id}/archive": {
@@ -12176,7 +12373,9 @@
           "409": {
             "description": "修订号或审核状态冲突"
           }
-        }
+        },
+        "x-policy": "event-papers:get-event-archive",
+        "x-access": "authenticated"
       }
     },
     "/event-papers/{kind}/{event_id}/problems": {
@@ -12243,7 +12442,9 @@
               }
             }
           }
-        }
+        },
+        "x-policy": "event-papers:update-event-problem-selection",
+        "x-access": "authenticated"
       },
       "post": {
         "operationId": "createEventProblem",
@@ -12328,7 +12529,9 @@
               }
             }
           }
-        }
+        },
+        "x-policy": "event-papers:save-event-problem",
+        "x-access": "authenticated"
       }
     },
     "/event-papers/{kind}/{event_id}/problems/{problem_id}": {
@@ -12423,7 +12626,9 @@
               }
             }
           }
-        }
+        },
+        "x-policy": "event-papers:save-event-problem",
+        "x-access": "authenticated"
       }
     },
     "/event-papers/{kind}/{event_id}/problems/{problem_id}/package": {
@@ -12488,7 +12693,9 @@
           "409": {
             "description": "修订号或审核状态冲突"
           }
-        }
+        },
+        "x-policy": "event-papers:download-event-problem-package",
+        "x-access": "authenticated"
       }
     },
     "/event-papers/{kind}/{event_id}/problems/{problem_id}/assets/{asset_path}": {
@@ -12562,7 +12769,9 @@
           "409": {
             "description": "修订号或审核状态冲突"
           }
-        }
+        },
+        "x-policy": "event-papers:get-event-problem-asset",
+        "x-access": "authenticated"
       }
     },
     "/event-papers/{kind}/{event_id}/attachments": {
@@ -12618,7 +12827,9 @@
           "409": {
             "description": "修订号或审核状态冲突"
           }
-        }
+        },
+        "x-policy": "event-papers:list-event-attachments",
+        "x-access": "authenticated"
       },
       "post": {
         "operationId": "uploadEventAttachment",
@@ -12695,7 +12906,9 @@
               }
             }
           }
-        }
+        },
+        "x-policy": "event-papers:upload-event-attachment",
+        "x-access": "authenticated"
       }
     },
     "/event-papers/{kind}/{event_id}/attachments/{attachment_id}": {
@@ -12770,7 +12983,9 @@
               }
             }
           }
-        }
+        },
+        "x-policy": "event-papers:delete-event-attachment",
+        "x-access": "authenticated"
       },
       "get": {
         "operationId": "downloadEventAttachment",
@@ -12833,7 +13048,9 @@
           "409": {
             "description": "修订号或审核状态冲突"
           }
-        }
+        },
+        "x-policy": "event-papers:download-event-attachment",
+        "x-access": "authenticated"
       }
     },
     "/event-papers/{kind}/{event_id}/choices": {
@@ -12896,7 +13113,9 @@
           "409": {
             "description": "修订号或审核状态冲突"
           }
-        }
+        },
+        "x-policy": "event-papers:list-event-problem-choices",
+        "x-access": "authenticated"
       }
     },
     "/event-papers/{kind}/{event_id}/test-uploads/{upload_id}/{chunk_index}": {
@@ -12990,7 +13209,9 @@
               }
             }
           }
-        }
+        },
+        "x-policy": "event-papers:upload-event-test-chunk",
+        "x-access": "authenticated"
       }
     },
     "/event-papers/{kind}/{event_id}/ranking": {
@@ -13038,7 +13259,9 @@
           "409": {
             "description": "场次未截止或仍有评分未完成"
           }
-        }
+        },
+        "x-policy": "event-papers:get-event-ranking",
+        "x-access": "authenticated"
       }
     },
     "/event-papers/{kind}/{event_id}/ranking/export": {
@@ -13105,7 +13328,46 @@
           "409": {
             "description": "场次未截止或仍有评分未完成"
           }
-        }
+        },
+        "x-policy": "event-papers:export-event-ranking",
+        "x-access": "authenticated"
+      }
+    },
+    "/authorization/policies": {
+      "get": {
+        "operationId": "authorizationPolicies",
+        "tags": [
+          "管理"
+        ],
+        "summary": "查看权限能力与操作注册表",
+        "x-handler": "authorizationPolicies",
+        "x-auth": "bearer",
+        "responses": {
+          "200": {
+            "description": "成功",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AuthorizationRegistry"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "503": {
+            "$ref": "#/components/responses/ServiceUnavailable"
+          }
+        },
+        "x-policy": "authorization:policies",
+        "x-access": "permission:manage"
       }
     }
   },
@@ -13216,6 +13478,22 @@
           "updated_at": {
             "type": "string",
             "format": "date-time"
+          },
+          "roles": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "permissions": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "perm_version": {
+            "type": "integer",
+            "format": "int64"
           }
         }
       },
@@ -14982,6 +15260,80 @@
           "expected_version_id": {
             "type": "integer",
             "nullable": true
+          }
+        }
+      },
+      "AuthorizationPolicy": {
+        "type": "object",
+        "required": [
+          "code",
+          "model",
+          "scope",
+          "roles"
+        ],
+        "properties": {
+          "code": {
+            "type": "string"
+          },
+          "model": {
+            "type": "string"
+          },
+          "scope": {
+            "type": "string"
+          },
+          "roles": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          }
+        }
+      },
+      "AuthorizationRoute": {
+        "type": "object",
+        "required": [
+          "method",
+          "path",
+          "code",
+          "access"
+        ],
+        "properties": {
+          "method": {
+            "type": "string"
+          },
+          "path": {
+            "type": "string"
+          },
+          "code": {
+            "type": "string"
+          },
+          "access": {
+            "type": "string"
+          }
+        }
+      },
+      "AuthorizationRegistry": {
+        "type": "object",
+        "required": [
+          "policies",
+          "routes",
+          "default_deny"
+        ],
+        "properties": {
+          "policies": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/AuthorizationPolicy"
+            }
+          },
+          "routes": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/AuthorizationRoute"
+            }
+          },
+          "default_deny": {
+            "type": "boolean"
           }
         }
       }

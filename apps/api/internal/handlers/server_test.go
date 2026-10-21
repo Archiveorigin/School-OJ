@@ -423,7 +423,7 @@ func TestParseProblemInternalSlugRejectsNonInternalValues(t *testing.T) {
 }
 
 func TestCanCreateProblemsUsesIndependentAuthorFlag(t *testing.T) {
-	student := models.User{Role: models.RoleStudent}
+	student := models.User{ID: 1, Role: models.RoleStudent}
 	if canCreateProblems(student) {
 		t.Fatal("plain student must not be allowed to create problems")
 	}
@@ -434,7 +434,7 @@ func TestCanCreateProblemsUsesIndependentAuthorFlag(t *testing.T) {
 	if student.Role != models.RoleStudent {
 		t.Fatalf("author permission changed base role to %q", student.Role)
 	}
-	teacher := models.User{Role: models.RoleTeacher}
+	teacher := models.User{ID: 1, Role: models.RoleTeacher}
 	if canCreateProblems(teacher) {
 		t.Fatal("teacher without independent author permission must not create problems")
 	}
@@ -442,7 +442,7 @@ func TestCanCreateProblemsUsesIndependentAuthorFlag(t *testing.T) {
 	if !canCreateProblems(teacher) {
 		t.Fatal("approved teacher should create problems")
 	}
-	if !canCreateProblems(models.User{Role: models.RoleAdmin}) {
+	if !canCreateProblems(models.User{ID: 1, Role: models.RoleAdmin}) {
 		t.Fatal("administrator should always create problems")
 	}
 }

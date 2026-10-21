@@ -37,7 +37,7 @@
 
       <div class="panel-header">
         <div class="toolbar">
-          <el-button v-if="canManage" type="primary" @click="openClassDialog()">新建班级</el-button>
+          <el-button v-if="activeCourses.length" type="primary" @click="openClassDialog()">新建班级</el-button>
           <el-button @click="router.push('/admin')">返回后台</el-button>
           <el-button @click="load">刷新</el-button>
         </div>
@@ -69,10 +69,10 @@
           <el-table-column label="操作" width="430" fixed="right">
             <template #default="{ row }">
               <el-button size="small" type="primary" @click="activate(row.class_id)">切换</el-button>
-              <el-button v-if="canManage" size="small" @click="openStudents(row)">学生</el-button>
-              <el-button v-if="canManage" size="small" @click="openImport(row)">导入</el-button>
-              <el-button v-if="canManage" size="small" @click="openClassDialog(row)">编辑</el-button>
-              <el-button v-if="canManage" size="small" :type="row.archived ? 'success' : 'warning'" plain @click="setClassArchived(row, !row.archived)">
+              <el-button v-if="row.can_manage" size="small" @click="openStudents(row)">学生</el-button>
+              <el-button v-if="row.can_admin" size="small" @click="openImport(row)">导入</el-button>
+              <el-button v-if="row.can_admin" size="small" @click="openClassDialog(row)">编辑</el-button>
+              <el-button v-if="row.can_admin" size="small" :type="row.archived ? 'success' : 'warning'" plain @click="setClassArchived(row, !row.archived)">
                 {{ row.archived ? '恢复' : '归档' }}
               </el-button>
               <el-button
@@ -119,7 +119,7 @@
         </el-table-column>
         <el-table-column label="操作" width="90">
           <template #default="{ row }">
-            <el-button size="small" type="danger" plain @click="removeStudent(row)">移除</el-button>
+            <el-button v-if="selectedClass?.can_admin" size="small" type="danger" plain @click="removeStudent(row)">移除</el-button>
           </template>
         </el-table-column>
       </el-table>
@@ -162,6 +162,7 @@ import { useAuthStore } from '../stores/auth'
 import { useClassroomStore } from '../stores/classroom'
 
 type Course = {
+  can_admin?: boolean
   id: number
   code?: string
   name: string
@@ -170,6 +171,8 @@ type Course = {
 }
 
 type ClassRow = ClassContext & {
+  can_manage?: boolean
+  can_admin?: boolean
   id: number
   name?: string
   archived?: boolean
@@ -209,7 +212,7 @@ const auth = useAuthStore()
 const classroom = useClassroomStore()
 const route = useRoute()
 const router = useRouter()
-const canManage = computed(() => auth.role === 'admin' || auth.role === 'teacher')
+const canManage = computed(() => auth.can('course:teach'))
 const loading = ref(false)
 const courses = ref<Course[]>([])
 const classes = ref<ClassRow[]>([])
@@ -236,7 +239,7 @@ const importText = ref('')
 const defaultPassword = ref('')
 const classForm = reactive({ course_id: 0, name: '' })
 const courseIDFilter = computed(() => Number(route.query.course_id || 0))
-const activeCourses = computed(() => courses.value.filter((course) => !course.archived))
+const activeCourses = computed(() => courses.value.filter((course) => !course.archived && course.can_admin))
 const filteredClasses = computed(() => {
   if (!courseIDFilter.value) return classes.value
   return classes.value.filter((item) => item.course_id === courseIDFilter.value)

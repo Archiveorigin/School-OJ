@@ -221,8 +221,7 @@ const canCreate = computed(
   () =>
     props.context.kind !== "manage" &&
     (props.context.kind !== "mine" ||
-      auth.user?.can_author ||
-      auth.role === "admin"),
+      auth.can("problem:author")),
 );
 let sequence = 0,
   pending: AbortController | undefined;

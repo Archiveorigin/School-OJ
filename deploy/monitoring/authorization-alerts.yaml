@@ -1,0 +1,17 @@
+# Load into the operator's Prometheus rule_files. API /metrics is internal only.
+groups:
+  - name: school-oj-authorization
+    rules:
+      - alert: AuthorizationDenialsHigh
+        expr: sum(increase(oj_authorization_decisions_total{decision="deny"}[5m])) > 50
+        for: 2m
+        labels:
+          severity: warning
+        annotations:
+          summary: "权限拒绝在 5 分钟内超过 50 次，请检查审计记录及发布变更"
+      - alert: AuthorizationAuditUnavailable
+        expr: sum(increase(oj_authorization_audit_failures_total[5m])) > 0
+        labels:
+          severity: critical
+        annotations:
+          summary: "权限审计持久化失败，请检查数据库和 API 日志"

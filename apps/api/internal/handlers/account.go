@@ -113,7 +113,7 @@ func (s Server) register(c *gin.Context) {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 		return
 	}
-	c.JSON(http.StatusCreated, gin.H{"token": token, "user": user})
+	c.JSON(http.StatusCreated, gin.H{"token": token, "user": authenticatedUser(user)})
 }
 
 func (s Server) resetPassword(c *gin.Context) {
@@ -215,7 +215,7 @@ func (s Server) rebindEmail(c *gin.Context) {
 	services.Audit(c, s.DB, "profile.email_rebind", "user", user.ID, datatypes.JSONMap{"email": email})
 	var updated models.User
 	s.DB.First(&updated, user.ID)
-	c.JSON(http.StatusOK, updated)
+	c.JSON(http.StatusOK, authenticatedUser(updated))
 }
 
 func (s Server) getProfile(c *gin.Context) {
@@ -294,7 +294,7 @@ func (s Server) getProfile(c *gin.Context) {
 		s.DB.Model(&models.Submission{}).Where("user_id = ?", user.ID).Count(&submissions)
 	}
 	c.JSON(http.StatusOK, gin.H{
-		"user":           user,
+		"user":           authenticatedUser(user),
 		"solved":         solved,
 		"submissions":    submissions,
 		"by_status":      byStatus,
@@ -371,20 +371,30 @@ func (s Server) updateProfilePassword(c *gin.Context) {
 		return
 	}
 	services.Audit(c, s.DB, "profile.password_update", "user", user.ID, nil)
-	c.JSON(http.StatusOK, gin.H{"updated": true})
+	var updated models.User
+	if s.DB.First(&updated, user.ID).Error != nil {
+		c.JSON(http.StatusServiceUnavailable, gin.H{"error": "密码已更新，请重新登录"})
+		return
+	}
+	token, err := middleware.SignToken(s.Cfg.JWTSecret, updated)
+	if err != nil {
+		c.JSON(http.StatusServiceUnavailable, gin.H{"error": "密码已更新，请重新登录"})
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{"updated": true, "token": token, "user": authenticatedUser(updated)})
 }
 
 func (s Server) deleteProfile(c *gin.Context) {
 	user, _ := middleware.CurrentUser(c)
 	deletedEmail := fmt.Sprintf("deleted-%d@local.invalid", user.ID)
-	if err := s.DB.Model(&models.User{}).Where("id = ?", user.ID).Updates(map[string]any{
+	if err := services.UpdateAccountAccess(s.DB.WithContext(c.Request.Context()), user.ID, map[string]any{
 		"email":           deletedEmail,
 		"name":            "已注销用户",
 		"password_hash":   "deleted",
 		"avatar_url":      "",
 		"email_verified":  false,
 		"account_deleted": true,
-	}).Error; err != nil {
+	}); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 		return
 	}

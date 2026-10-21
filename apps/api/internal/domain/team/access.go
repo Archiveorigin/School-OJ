@@ -3,6 +3,7 @@ package team
 
 import (
 	"context"
+	"school-oj/apps/api/internal/authz"
 	"school-oj/apps/api/internal/models"
 	"strings"
 )
@@ -22,10 +23,10 @@ const (
 
 func NormalizeCode(code string) string { return strings.ToUpper(strings.TrimSpace(code)) }
 func CanManage(base models.Role, membership models.TeamRole, joined bool) bool {
-	return base == models.RoleAdmin || joined && (membership == models.TeamRoleOwner || membership == models.TeamRoleAdmin)
+	return authz.Check(authz.Context{UserID: 1, Roles: []string{string(base)}}, authz.TeamManage, authz.Resource{ID: 1, Member: joined, Membership: string(membership)}).Allow
 }
 func CanEditPermissions(base models.Role, membership models.TeamRole, joined bool) bool {
-	return base == models.RoleAdmin || joined && membership == models.TeamRoleOwner
+	return authz.Check(authz.Context{UserID: 1, Roles: []string{string(base)}}, authz.TeamPermissions, authz.Resource{ID: 1, Member: joined, Membership: string(membership)}).Allow
 }
 func ValidRole(role models.TeamRole) bool {
 	return role == models.TeamRoleOwner || role == models.TeamRoleAdmin || role == models.TeamRoleMember

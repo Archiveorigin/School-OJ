@@ -19,6 +19,8 @@ const (
 )
 
 type User struct {
+	TokenVersion   int64     `json:"-" gorm:"not null;default:1"`
+	PermVersion    int64     `json:"perm_version" gorm:"not null;default:1"`
 	ID             uint      `json:"id" gorm:"primaryKey"`
 	Email          string    `json:"email" gorm:"uniqueIndex;size:255;not null"`
 	Name           string    `json:"name" gorm:"size:120;not null"`
@@ -34,6 +36,8 @@ type User struct {
 }
 
 type Course struct {
+	CanManage   bool      `json:"can_manage" gorm:"-"`
+	CanAdmin    bool      `json:"can_admin" gorm:"-"`
 	ID          uint      `json:"id" gorm:"primaryKey"`
 	Code        string    `json:"code" gorm:"uniqueIndex;size:64;not null"`
 	Name        string    `json:"name" gorm:"size:160;not null"`
@@ -48,6 +52,8 @@ type Course struct {
 }
 
 type Class struct {
+	CanManage bool      `json:"can_manage" gorm:"-"`
+	CanAdmin  bool      `json:"can_admin" gorm:"-"`
 	ID        uint      `json:"id" gorm:"primaryKey"`
 	CourseID  uint      `json:"course_id" gorm:"index;not null"`
 	Name      string    `json:"name" gorm:"size:120;not null"`

@@ -149,7 +149,7 @@ const actions = computed<ProblemChangeAction[]>(() => {
   return [
     "replace",
     "suggest",
-    ...(auth.user?.can_author || auth.role === "admin"
+    ...(auth.can("problem:author")
       ? props.context.kind === "problem" || props.context.problemID
         ? ["archive" as const]
         : []

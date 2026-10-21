@@ -60,7 +60,7 @@ const course = ref<any>(null)
 const joinDialogs = ref<InstanceType<typeof CourseJoinDialogs> | null>(null)
 const courseID = computed(() => Number(route.params.courseId))
 const basePath = computed(() => `/my/courses/${courseID.value}`)
-const canManage = computed(() => auth.role === 'teacher' || auth.role === 'admin')
+const canManage = computed(() => auth.can('course:teach'))
 
 async function loadCourse() {
   try {

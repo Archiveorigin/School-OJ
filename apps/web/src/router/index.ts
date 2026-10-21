@@ -45,7 +45,6 @@ const TeamWorkspace = () => import('../views/teams/TeamWorkspace.vue')
 const Users = () => import('../views/Users.vue')
 const UserAccessLayout = () => import('../views/admin/UserAccessLayout.vue')
 
-const teacherRoles = ['admin', 'teacher']
 import { useExamLockStore } from '../stores/examLock'
 import { legacyExamPath } from '../features/events/workspace'
 
@@ -137,7 +136,7 @@ const router = createRouter({
     {
       path: '/admin',
       component: AdminLayout,
-      meta: { roles: teacherRoles, title: '后台管理' },
+      meta: { capability: 'course:teach', title: '后台管理' },
       children: [
         { path: '', component: AdminHome, meta: { title: '管理概览', adminMenu: '/admin' } },
         { path: 'courses', component: CourseList, meta: { title: '课程管理', adminMenu: '/admin/courses' } },
@@ -146,20 +145,20 @@ const router = createRouter({
         { path: 'exams', component: Exams, meta: { title: '考试管理', adminMenu: '/admin/exams' } },
         { path: 'exams/new', component: ExamCreate, meta: { title: '新建考试', adminMenu: '/admin/exams' } },
         { path: 'exams/:id/activity', component: ExamActivity, meta: { title: '考试行为日志', adminMenu: '/admin/exams' } },
-        { path: 'competitions', component: CompetitionList, props: { reviewMode: true }, meta: { roles: ['admin'], title: '考试与比赛审核', adminMenu: '/admin/competitions' } },
-        { path: 'competitions/:kind/:eventId', component: CompetitionDetail, props: { reviewMode: true }, meta: { roles: ['admin'], title: '整场审核', adminMenu: '/admin/competitions' } },
+        { path: 'competitions', component: CompetitionList, props: { reviewMode: true }, meta: { capability: 'event:review', title: '考试与比赛审核', adminMenu: '/admin/competitions' } },
+        { path: 'competitions/:kind/:eventId', component: CompetitionDetail, props: { reviewMode: true }, meta: { capability: 'event:review', title: '整场审核', adminMenu: '/admin/competitions' } },
         { path: 'prepared-problems', component: PreparedProblems, meta: { title: '预备题库', adminMenu: '/admin/prepared-problems' } },
-        { path: 'problem-authors', component: ProblemTicketManagement, meta: { roles: ['admin'], title: '工单管理', adminMenu: '/admin/problem-authors' } },
+        { path: 'problem-authors', component: ProblemTicketManagement, meta: { capability: 'problem:review', title: '工单管理', adminMenu: '/admin/problem-authors' } },
         { path: 'author-permissions', redirect: '/admin/users/permissions' },
         { path: 'plagiarism', component: Plagiarism, meta: { title: 'JPlag 查重', adminMenu: '/admin/plagiarism' } },
-        { path: 'audit-logs', component: AuditLogs, meta: { roles: ['admin'], title: '审计日志', adminMenu: '/admin/audit-logs' } },
+        { path: 'audit-logs', component: AuditLogs, meta: { capability: 'audit:view', title: '审计日志', adminMenu: '/admin/audit-logs' } },
         {
           path: 'users',
           component: UserAccessLayout,
-          meta: { roles: ['admin'], title: '用户与权限', adminMenu: '/admin/users' },
+          meta: { capability: 'user:manage', title: '用户与权限', adminMenu: '/admin/users' },
           children: [
             { path: '', component: Users, meta: { title: '用户列表', adminMenu: '/admin/users' } },
-            { path: 'permissions', component: PermissionManagement, meta: { title: '权限管理', adminMenu: '/admin/users' } }
+            { path: 'permissions', component: PermissionManagement, meta: { capability: 'permission:manage', title: '权限管理', adminMenu: '/admin/users' } }
           ]
         }
       ]
@@ -177,7 +176,7 @@ const authPaths = ['/login', '/register', '/forgot-password']
 
 router.beforeEach(async (to) => {
   const auth = useAuthStore()
-  if (auth.isAuthed && !auth.hydrated) await auth.hydrate()
+  if (auth.isAuthed && (!auth.hydrated || Date.now() - auth.permissionsCheckedAt > 15_000)) await auth.hydrate()
   if (auth.isAuthed && auth.role === 'student') {
     const lock = useExamLockStore()
     try { await lock.syncActiveExam() }
@@ -188,9 +187,8 @@ router.beforeEach(async (to) => {
     return { path: '/login', query: { redirect: to.fullPath } }
   }
   if (authPaths.includes(to.path) && auth.isAuthed) return '/'
-  const roles = to.meta.roles as string[] | undefined
-  if (roles && (!auth.user || !roles.includes(auth.user.role))) return '/'
-  if (to.meta.requiresAuthor && (!auth.user || !(auth.user.can_author || auth.user.role === 'admin'))) return '/'
+  if (to.matched.some(record => record.meta.capability && !auth.can(String(record.meta.capability)))) return '/'
+  if (to.meta.requiresAuthor && !auth.can('problem:author')) return '/'
 })
 
 export default router

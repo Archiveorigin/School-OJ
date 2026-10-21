@@ -108,5 +108,6 @@ func APIMetrics(client *redis.Client) gin.HandlerFunc {
 			}
 		}
 		fmt.Fprintf(c.Writer, "oj_api_observation_write_failures_total %d\n", usageWriteFailures.Load())
+		writeAuthorizationMetrics(c.Writer)
 	}
 }

@@ -10,6 +10,15 @@
           <template #default="{ row }">{{ row.actor_name || '系统' }}</template>
         </el-table-column>
         <el-table-column prop="action" label="动作" width="180" />
+        <el-table-column label="权限判定" min-width="230">
+          <template #default="{ row }">
+            <template v-if="row.resource_type === 'authorization'">
+              <el-tag :type="row.action === 'authorization.deny' ? 'danger' : 'success'" size="small">{{ row.action === 'authorization.deny' ? '拒绝' : '允许' }}</el-tag>
+              <span class="decision-reason">{{ row.meta?.reason }} · {{ row.meta?.method }} {{ row.meta?.route }}</span>
+            </template>
+            <span v-else>—</span>
+          </template>
+        </el-table-column>
         <el-table-column label="资源" width="140">
           <template #default="{ row }">{{ row.resource_label || row.resource_type || '-' }}</template>
         </el-table-column>
@@ -51,3 +60,7 @@ async function load() {
 watch(pageSize, () => { page.value = 1 })
 onMounted(load)
 </script>
+
+<style scoped>
+.decision-reason { display: block; margin-top: 6px; overflow-wrap: anywhere; font-size: 12px; }
+</style>

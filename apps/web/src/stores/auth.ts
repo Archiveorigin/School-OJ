@@ -1,5 +1,6 @@
 import { defineStore } from 'pinia'
 import { generatedApi, setActiveToken, type User } from '../api/client'
+import { hasCapability } from '../features/authorization'
 
 export const useAuthStore = defineStore('auth', {
   state: () => ({
@@ -7,17 +8,20 @@ export const useAuthStore = defineStore('auth', {
     user: JSON.parse(localStorage.getItem('school-oj-user') || 'null') as User | null,
     theme: localStorage.getItem('huanghai-theme') || 'light',
     hydrated: false,
+    permissionsCheckedAt: 0,
     hydratePromise: null as Promise<void> | null
   }),
   getters: {
     isAuthed: (state) => Boolean(state.token),
-    role: (state) => state.user?.role
+    role: (state) => state.user?.role,
+    can: (state) => (policy: string) => hasCapability(state.user, policy)
   },
   actions: {
     async login(email: string, password: string) {
       const { data } = await generatedApi.login({ body: { email, password } })
       this.token = data.token
       this.user = data.user
+      this.permissionsCheckedAt = Date.now()
       this.hydrated = true
       setActiveToken(data.token)
       localStorage.setItem('school-oj-token', data.token)
@@ -49,10 +53,11 @@ export const useAuthStore = defineStore('auth', {
         try {
           const { data } = await generatedApi.me()
           this.user = data
+          this.permissionsCheckedAt = Date.now()
           setActiveToken(this.token)
           localStorage.setItem('school-oj-user', JSON.stringify(data))
         } catch (error: any) {
-          if (error.response?.status === 401) this.logout()
+          if (error.response?.status === 401 || error.response?.data?.code === 'IDENTITY_UNDEFINED') this.logout()
           else throw error
         } finally {
           this.hydrated = true

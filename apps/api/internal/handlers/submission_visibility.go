@@ -1,6 +1,7 @@
 package handlers
 
 import (
+	"school-oj/apps/api/internal/authz"
 	"time"
 
 	"school-oj/apps/api/internal/models"
@@ -12,7 +13,7 @@ import (
 // detail and SSE responses. It deliberately returns less information when the
 // event context cannot be loaded.
 func (s Server) shouldRedactSubmission(user models.User, submission models.Submission, now time.Time) bool {
-	if user.Role == models.RoleAdmin {
+	if authz.Has(user, authz.SubmissionResultsAny) {
 		return false
 	}
 	if submission.ExamID != nil {
@@ -91,7 +92,7 @@ func redactSubmission(submission *models.Submission) {
 }
 
 func (s Server) examSummaryMustBeHidden(user models.User, exam models.Exam, now time.Time) bool {
-	if user.Role == models.RoleAdmin || s.canManageCourse(user, exam.CourseID) {
+	if authz.Has(user, authz.SubmissionResultsAny) || s.canManageCourse(user, exam.CourseID) {
 		return false
 	}
 	ended := exam.EndsAt != nil && !now.Before(*exam.EndsAt)

@@ -119,7 +119,7 @@ const codeFileName = ref('')
 const composerRef = ref<{ clearDraft: () => void } | null>(null)
 let submissionEvents: AuthenticatedEventSource | null = null
 
-const canManage = computed(() => auth.role === 'admin' || (Boolean(auth.user?.can_author) && problem.value?.owner_id === auth.user?.id))
+const canManage = computed(() => auth.can('problem:manage:any') || (auth.can('problem:author') && problem.value?.owner_id === auth.user?.id))
 const source = ref('')
 const draftContext = computed(() => ({ userId: auth.user?.id || 0, resourceType: 'problem' as const, resourceId: problem.value?.id || 0, problemId: problem.value?.id || 0 }))
 

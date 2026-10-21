@@ -117,7 +117,7 @@ const problems = ref<Problem[]>([])
 const courses = ref<any[]>([])
 const loadError = ref('')
 
-const canManage = computed(() => auth.role === 'teacher' || auth.role === 'admin')
+const canManage = computed(() => auth.can('course:teach'))
 const acceptedCount = computed(() => problems.value.filter((item) => item.progress_status === 'accepted').length)
 const latestProblems = computed(() => problems.value.slice(0, 8))
 

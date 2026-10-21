@@ -47,6 +47,7 @@ export interface Team {
   join_code?: string
   can_manage?: boolean
   can_edit_permissions?: boolean
+  can_organize?: boolean
   description?: string
   announcement?: string
   icon_url?: string

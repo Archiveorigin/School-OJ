@@ -12,6 +12,7 @@ import (
 	"net/url"
 	"path"
 	"regexp"
+	"school-oj/apps/api/internal/authz"
 	"sort"
 	"strings"
 
@@ -89,7 +90,7 @@ func (s Server) previewProblemChangeTicket(c *gin.Context) {
 		return
 	}
 	user, _ := middleware.CurrentUser(c)
-	if user.Role != models.RoleAdmin {
+	if !authz.Has(user, authz.TicketAny) {
 		c.JSON(403, gin.H{"error": "仅系统管理员可预检题库变更"})
 		return
 	}

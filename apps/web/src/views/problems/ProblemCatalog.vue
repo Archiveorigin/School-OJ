@@ -85,7 +85,7 @@ import { useAuthStore } from '../../stores/auth'
 
 const auth = useAuthStore()
 const router = useRouter()
-const canAuthor = computed(() => Boolean(auth.user?.can_author) || auth.role === 'admin')
+const canAuthor = computed(() => auth.can('problem:author'))
 const items = ref<ProblemCatalogItem[]>([])
 const loading = ref(false)
 const total = ref(0)

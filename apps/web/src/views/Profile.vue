@@ -222,7 +222,7 @@ const roleLabel = computed(() => {
   const role = profile.value?.user.role || auth.user?.role
   return role === 'admin' ? '管理员' : role === 'teacher' ? '教师' : '学生'
 })
-const canAuthor = computed(() => Boolean(profile.value?.user.can_author || auth.user?.can_author) || (profile.value?.user.role || auth.role) === 'admin')
+const canAuthor = computed(() => auth.can('problem:author'))
 const joinedAt = computed(() => {
   const value = profile.value?.user.created_at
   if (!value) return '平台成员'
@@ -323,10 +323,11 @@ async function saveAll() {
       auth.updateUser(data)
     }
     if (changingPassword) {
-      await generatedApi.updateProfilePassword<any>({ body: {
+      const { data } = await generatedApi.updateProfilePassword<any>({ body: {
         current_password: passwordForm.current_password,
         new_password: passwordForm.new_password
       } })
+      auth.setSession(data.token, data.user)
     }
     if (changingEmail) {
       const { data } = await generatedApi.rebindEmail<any>({ body: {

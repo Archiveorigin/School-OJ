@@ -9,7 +9,7 @@ describe('admin exam navigation', () => {
     expect(list.matched.map((item) => item.path)).toEqual(['/admin', '/admin/exams'])
     expect(list.meta.adminMenu).toBe('/admin/exams')
     expect(create.matched.map((item) => item.path)).toEqual(['/admin', '/admin/exams/new'])
-    expect(create.meta.roles).toEqual(['admin', 'teacher'])
+    expect(create.meta.capability).toBe('course:teach')
     expect(create.meta.adminMenu).toBe('/admin/exams')
     expect(create.query.course_id).toBe('9')
   })

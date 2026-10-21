@@ -8,6 +8,7 @@ import (
 
 	"school-oj/apps/api/internal/middleware"
 	"school-oj/apps/api/internal/models"
+	"school-oj/apps/api/internal/visibility"
 
 	"github.com/gin-gonic/gin"
 )
@@ -140,7 +141,7 @@ func (s Server) listProblemCatalog(c *gin.Context) {
 	statistics := map[uint]counts{}
 	if len(ids) > 0 {
 		var rows []counts
-		err := db.Model(&models.Submission{}).
+		err := db.Model(&models.Submission{}).Scopes(visibility.PublicPractice).
 			Select("problem_id, COUNT(*) FILTER (WHERE status = ?) AS accepted_count, COUNT(*) FILTER (WHERE status NOT IN ?) AS evaluated_count",
 				models.StatusAccepted, []models.SubmissionStatus{models.StatusQueued, models.StatusRunning, models.StatusPendingReview, models.StatusSystemError}).
 			Where("problem_id IN ?", ids).Group("problem_id").Scan(&rows).Error

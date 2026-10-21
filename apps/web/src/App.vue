@@ -51,7 +51,7 @@
               <el-dropdown-item command="update-profile"
                 >更新个人资料</el-dropdown-item
               >
-              <el-dropdown-item v-if="auth.role === 'admin'" command="admin"
+              <el-dropdown-item v-if="auth.can('course:teach')" command="admin"
                 >后台管理</el-dropdown-item
               >
               <el-dropdown-item command="theme">
@@ -103,7 +103,7 @@ const initials = computed(() =>
   (auth.user?.name || auth.user?.email || "U").trim().slice(0, 1).toUpperCase(),
 );
 const canAuthor = computed(
-  () => Boolean(auth.user?.can_author) || auth.role === "admin",
+  () => auth.can("problem:author"),
 );
 const activeMenu = computed(() => String(route.meta.activeMenu || route.path));
 const currentExamRouteId = computed(() => {

@@ -140,7 +140,7 @@ type NavigationItem = {
   path: string;
   label: string;
   icon: Component;
-  roles?: string[];
+  capability?: string;
 };
 
 const auth = useAuthStore();
@@ -160,7 +160,7 @@ const navigationGroups: Array<{ label: string; items: NavigationItem[] }> = [
       { path: "/admin/courses", label: "课程管理", icon: Reading },
       { path: "/admin/classes", label: "班级管理", icon: User },
       { path: "/admin/exams", label: "考试管理", icon: Collection },
-      { path: "/admin/competitions", label: "考试与比赛审核", icon: Collection, roles: ["admin"] },
+      { path: "/admin/competitions", label: "考试与比赛审核", icon: Collection, capability: "event:review" },
     ],
   },
   {
@@ -171,7 +171,7 @@ const navigationGroups: Array<{ label: string; items: NavigationItem[] }> = [
         path: "/admin/problem-authors",
         label: "工单管理",
         icon: Document,
-        roles: ["admin"],
+        capability: "problem:review",
       },
       { path: "/admin/plagiarism", label: "JPlag 查重", icon: DataAnalysis },
     ],
@@ -183,13 +183,13 @@ const navigationGroups: Array<{ label: string; items: NavigationItem[] }> = [
         path: "/admin/users",
         label: "用户与权限",
         icon: User,
-        roles: ["admin"],
+        capability: "user:manage",
       },
       {
         path: "/admin/audit-logs",
         label: "审计日志",
         icon: Setting,
-        roles: ["admin"],
+        capability: "audit:view",
       },
     ],
   },
@@ -200,7 +200,7 @@ const visibleGroups = computed(() =>
     .map((group) => ({
       ...group,
       items: group.items.filter(
-        (item) => !item.roles || item.roles.includes(auth.role || ""),
+        (item) => auth.can(item.capability || "course:teach"),
       ),
     }))
     .filter((group) => group.items.length),

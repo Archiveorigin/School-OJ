@@ -3,6 +3,7 @@ package handlers
 import (
 	"github.com/gin-gonic/gin"
 	"gorm.io/gorm"
+	"school-oj/apps/api/internal/authz"
 	"school-oj/apps/api/internal/middleware"
 	"school-oj/apps/api/internal/models"
 	"strconv"
@@ -31,7 +32,7 @@ func (s Server) eventListQuery(user models.User, archive bool) *gorm.DB {
 	if archive {
 		exams = exams.Where("e.completed_at IS NOT NULL AND e.review_status='approved' AND e.ends_at IS NOT NULL AND e.ends_at<=?", time.Now())
 		contests = contests.Where("e.completed_at IS NOT NULL AND e.review_status='approved' AND e.state<>'draft' AND e.starts_at IS NOT NULL AND e.starts_at+e.duration_minutes*interval '1 minute'<=?", time.Now())
-		if user.Role != models.RoleAdmin {
+		if !authz.Has(user, authz.EventAny) {
 			if user.Role == models.RoleTeacher {
 				exams = exams.Where("c.teacher_id=? OR EXISTS(SELECT 1 FROM course_memberships m WHERE m.course_id=e.course_id AND m.user_id=? AND m.role IN ?)", user.ID, user.ID, courseTeachingRoles())
 			} else {

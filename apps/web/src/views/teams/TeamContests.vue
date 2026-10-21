@@ -107,11 +107,7 @@ const form = reactive({
   freeze_duration_minutes: 60,
   ...defaultContestAwardPercents(),
 })
-const canOrganize = computed(() => {
-  if (props.team.my_role === 'owner') return true
-  if (props.team.contest_permission === 'all') return Boolean(props.team.my_role)
-  return props.team.contest_permission === 'admin' && props.team.my_role === 'admin'
-})
+const canOrganize = computed(() => Boolean(props.team.can_organize))
 const hasManagementActions = computed(() => contests.value.some((row) => Boolean(row.can_edit || row.can_delete)))
 
 async function load() {

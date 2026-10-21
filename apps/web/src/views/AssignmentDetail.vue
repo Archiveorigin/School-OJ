@@ -104,7 +104,7 @@ const route = useRoute()
 const router = useRouter()
 const { visible: submissionVisible, detail: submissionDetail, open: openSubmission } = useSubmissionDetail()
 const auth = useAuthStore()
-const canManage = computed(() => auth.role === 'admin' || auth.role === 'teacher')
+const canManage = computed(() => auth.can('course:teach'))
 const detail = ref<any>(null)
 const assignmentListPath = computed(() => {
   const courseID = detail.value?.assignment?.course_id

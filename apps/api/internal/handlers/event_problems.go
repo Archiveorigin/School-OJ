@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
+	"school-oj/apps/api/internal/authz"
 	"strconv"
 	"strings"
 
@@ -479,7 +480,7 @@ func (s Server) listEventProblemChoices(c *gin.Context) {
 	}
 	u, _ := middleware.CurrentUser(c)
 	q := s.DB.Model(&models.Problem{}).Where("problems.event_kind = '' AND problems.deleted_at IS NULL AND problems.archived_at IS NULL")
-	if u.Role != models.RoleAdmin {
+	if !authz.Has(u, authz.ProblemAny) {
 		allowed := s.DB.Where(publicProblemSQL()).Or("problems.owner_id = ?", u.ID)
 		if p.kind == "contest" {
 			allowed = allowed.Or("problems.team_id = ?", p.contest.TeamID)
