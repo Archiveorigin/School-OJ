@@ -16,6 +16,11 @@
               <strong>排名</strong><small>Rank</small>
             </div>
           </div>
+          <div class="penalty-col penalty-name-col">
+            <div class="penalty-header-card" role="columnheader">
+              <strong>姓名</strong><small>Name</small>
+            </div>
+          </div>
           <div class="penalty-col penalty-solved-col">
             <div
               class="penalty-header-card native-header-card"
@@ -72,13 +77,9 @@
           v-for="row in rows"
           :key="row.id"
           class="penalty-row native-stripe-row"
-          :class="`award-${awardTier(row)}`"
           :data-award="awardTier(row)"
           role="row"
         >
-          <div class="penalty-participant-name" :title="row.name">
-            {{ row.name }}
-          </div>
           <div class="penalty-metrics penalty-row-metrics">
             <div class="penalty-col penalty-rank-col">
               <div
@@ -86,6 +87,16 @@
                 :class="awardRankClass(row)"
               >
                 {{ displayRank(row) }}
+              </div>
+            </div>
+            <div class="penalty-col penalty-name-col">
+              <div
+                class="penalty-participant-name"
+                role="cell"
+                :class="awardRankClass(row)"
+                :title="row.name"
+              >
+                {{ row.name }}
               </div>
             </div>
             <div class="penalty-col penalty-solved-col">
@@ -162,7 +173,8 @@ const props = withDefaults(
 const headerTrack = ref<HTMLElement | null>(null);
 function syncHeader(event: Event) {
   // Scroll only changes this DOM transform, not the whole results grid.
-  if (headerTrack.value) headerTrack.value.style.transform = `translate3d(-${(event.currentTarget as HTMLElement).scrollLeft}px, 0, 0)`;
+  if (headerTrack.value)
+    headerTrack.value.style.transform = `translate3d(-${(event.currentTarget as HTMLElement).scrollLeft}px, 0, 0)`;
 }
 
 function displayRank(row: LeaderboardRow) {
@@ -218,6 +230,7 @@ function resultTitle(row: LeaderboardRow, problemID: number | string) {
 
 <style scoped>
 .penalty-table {
+  --name-width: 180px;
   --rank-width: 64px;
   --solved-width: 72px;
   --penalty-width: 88px;
@@ -225,12 +238,12 @@ function resultTitle(row: LeaderboardRow, problemID: number | string) {
   --table-min-width: max(
     720px,
     calc(
-      var(--rank-width) + var(--solved-width) + var(--penalty-width) +
-        var(--problem-columns-width) + 42px
+      var(--rank-width) + var(--name-width) + 5px + var(--solved-width) +
+        var(--penalty-width) + var(--problem-columns-width) + 42px
     )
   );
-  --penalty-row-odd: #fff;
-  --penalty-row-even: #f3f5f7;
+  --penalty-row-odd: var(--score-card);
+  --penalty-row-even: var(--score-surface);
   width: 100%;
   min-width: 0;
 }
@@ -278,64 +291,45 @@ function resultTitle(row: LeaderboardRow, problemID: number | string) {
   --penalty-row-background: var(--penalty-row-odd);
   position: relative;
   width: 100%;
-  height: 85px;
+  height: 64px;
   display: grid;
-  grid-template-rows: 40px 45px;
+  grid-template-rows: 1fr;
   overflow: hidden;
-  border-bottom: 1px solid #d9e0e8;
+  border-bottom: 1px solid var(--score-border);
   background: var(--penalty-row-background);
   transition: background-color 150ms ease;
 }
 .penalty-row:first-child {
-  border-top: 1px solid #d9e0e8;
+  border-top: 1px solid var(--score-border);
 }
 .penalty-row:nth-child(even) {
   --penalty-row-background: var(--penalty-row-even);
 }
 .penalty-row:hover {
-  --penalty-row-background: #edf4ff;
+  --penalty-row-background: color-mix(
+    in srgb,
+    var(--score-blue) 6%,
+    var(--score-card)
+  );
 }
-.penalty-row::before {
-  content: "";
-  position: absolute;
-  inset: 0 28px 0 38%;
-  z-index: 0;
-  background: url("/logo1.png") right center / 150px auto no-repeat;
-  opacity: 0.035;
-  pointer-events: none;
-}
-.penalty-row.award-gold {
-  background:
-    linear-gradient(90deg, rgba(255, 193, 7, 0.11), transparent 28%),
-    var(--penalty-row-background);
-  box-shadow: inset 4px 0 #d9a400;
-}
-.penalty-row.award-silver {
-  background:
-    linear-gradient(90deg, rgba(148, 163, 184, 0.13), transparent 28%),
-    var(--penalty-row-background);
-  box-shadow: inset 4px 0 #8b96a8;
-}
-.penalty-row.award-bronze {
-  background:
-    linear-gradient(90deg, rgba(180, 105, 44, 0.12), transparent 28%),
-    var(--penalty-row-background);
-  box-shadow: inset 4px 0 #a9602b;
+.penalty-name-col {
+  width: var(--name-width);
 }
 .penalty-participant-name {
-  position: relative;
-  z-index: 1;
-  min-width: 0;
   display: flex;
   align-items: center;
-  padding: 0 12px;
-  overflow: hidden;
+  justify-content: center;
+  height: 40px;
+  padding: 0 10px;
+  border: 1px solid var(--score-border);
+  border-radius: 4px;
   color: var(--score-text);
-  font-size: 18px;
-  font-weight: 900;
-  line-height: 1.2;
-  text-overflow: ellipsis;
-  white-space: nowrap;
+  background: var(--score-surface);
+  font-size: 14px;
+  font-weight: 700;
+  line-height: 1.3;
+  overflow: hidden;
+  overflow-wrap: anywhere;
 }
 .penalty-metrics {
   display: flex;
@@ -408,13 +402,12 @@ function resultTitle(row: LeaderboardRow, problemID: number | string) {
 .penalty-row-metrics {
   position: relative;
   z-index: 1;
-  height: 45px;
-  align-items: end;
-  padding-bottom: 4px;
+  height: 64px;
+  align-items: center;
 }
 .penalty-stat,
 .penalty-result {
-  height: 32px;
+  height: 40px;
   display: flex;
   align-items: center;
   justify-content: center;
@@ -424,12 +417,13 @@ function resultTitle(row: LeaderboardRow, problemID: number | string) {
   font-variant-numeric: tabular-nums;
 }
 .penalty-rank-stat {
-  border: 2px solid #dee2e6;
-  color: #495057;
-  background: #f8f9fa;
+  border: 1px solid var(--score-border);
+  color: var(--score-text);
+  background: var(--score-surface);
   box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.8);
 }
-.penalty-rank-stat.is-gold {
+.penalty-rank-stat.is-gold,
+.penalty-participant-name.is-gold {
   border-color: #ff8f00;
   color: #1a1a1a;
   background: linear-gradient(135deg, #ffd700 0%, #ffb300 100%);
@@ -437,7 +431,8 @@ function resultTitle(row: LeaderboardRow, problemID: number | string) {
     0 2px 8px rgba(255, 179, 0, 0.45),
     inset 0 1px 0 rgba(255, 255, 255, 0.4);
 }
-.penalty-rank-stat.is-silver {
+.penalty-rank-stat.is-silver,
+.penalty-participant-name.is-silver {
   border-color: #909090;
   color: #1a1a1a;
   background: linear-gradient(135deg, #d5d5d5 0%, #a8a8a8 100%);
@@ -445,7 +440,8 @@ function resultTitle(row: LeaderboardRow, problemID: number | string) {
     0 2px 8px rgba(144, 144, 144, 0.35),
     inset 0 1px 0 rgba(255, 255, 255, 0.35);
 }
-.penalty-rank-stat.is-bronze {
+.penalty-rank-stat.is-bronze,
+.penalty-participant-name.is-bronze {
   border-color: #9d5f1f;
   color: #fff;
   background: linear-gradient(135deg, #cd7f32 0%, #b87333 100%);
@@ -455,14 +451,14 @@ function resultTitle(row: LeaderboardRow, problemID: number | string) {
 }
 .penalty-solved-stat {
   border: 1px solid rgba(14, 165, 233, 0.35);
-  color: #0c4a6e;
-  background: #eef9ff;
+  color: var(--score-text);
+  background: color-mix(in srgb, var(--color-info) 10%, var(--score-card));
 }
 .penalty-time-stat {
   padding: 0 4px;
   border: 1px solid rgba(234, 88, 12, 0.35);
-  color: #9a3412;
-  background: #fff5ec;
+  color: var(--score-text);
+  background: color-mix(in srgb, var(--color-warning) 10%, var(--score-card));
   font-size: 14px;
 }
 .penalty-result {
@@ -490,9 +486,9 @@ function resultTitle(row: LeaderboardRow, problemID: number | string) {
   background: #dc3545;
 }
 .penalty-result.result-none {
-  border-color: #e9ecef;
-  color: #26313f;
-  background: #adb5bd;
+  border-color: var(--score-card-border);
+  color: var(--score-muted);
+  background: var(--score-header-bg);
 }
 .penalty-result.result-pending,
 .penalty-result.result-frozen {
@@ -521,17 +517,17 @@ function resultTitle(row: LeaderboardRow, problemID: number | string) {
   line-height: 1;
   text-shadow: 0 1px 2px rgba(0, 0, 0, 0.55);
 }
-:global(.scoreboard-shell[data-theme="dark"]) .penalty-table {
+.scoreboard-core[data-theme="dark"] .penalty-table {
   --penalty-row-odd: #101827;
   --penalty-row-even: #151f30;
 }
-:global(.scoreboard-shell[data-theme="dark"]) .penalty-row {
+.scoreboard-core[data-theme="dark"] .penalty-row {
   border-color: #334155;
 }
-:global(.scoreboard-shell[data-theme="dark"]) .penalty-row:hover {
+.scoreboard-core[data-theme="dark"] .penalty-row:hover {
   --penalty-row-background: #1c2b42;
 }
-:global(.scoreboard-shell[data-theme="macaron"]) .penalty-table {
+.scoreboard-core[data-theme="macaron"] .penalty-table {
   --penalty-row-odd: #fffdfd;
   --penalty-row-even: #faf3f8;
 }

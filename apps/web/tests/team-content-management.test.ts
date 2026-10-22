@@ -12,11 +12,11 @@ import {
 const source = (path: string) => readFileSync(resolve(process.cwd(), path), 'utf8')
 
 describe('team content management', () => {
-  it('validates integer award allocations and the cumulative percentage', () => {
+  it('validates fractional award allocations and the cumulative percentage', () => {
     const defaults = defaultContestAwardPercents()
     expect(contestAwardTotal(defaults)).toBe(30)
     expect(contestAwardValidationError(defaults)).toBe('')
-    expect(contestAwardValidationError({ ...defaults, gold_award_percent: 10.5 })).toContain('整数')
+    expect(contestAwardValidationError({ ...defaults, gold_award_percent: 10.5 })).toBe('')
     expect(
       contestAwardValidationError({
         gold_award_percent: 40,
@@ -78,7 +78,7 @@ describe('team content management', () => {
     expect(contests).toContain('v-if="row.can_delete"')
     expect(contests).not.toContain('canOrganize && row.can_edit')
     expect(contests).not.toContain('canOrganize && row.can_delete')
-    expect(contests).toContain('!canOrganize.value && !row.can_edit && !row.can_delete')
+    expect(contests.replace(/\s+/g, ' ')).toContain('!canOrganize.value && !row.can_edit && !row.can_delete')
 
     expect(problemSets).toContain('v-if="item.can_edit"')
     expect(problemSets).toContain('v-if="item.can_delete"')

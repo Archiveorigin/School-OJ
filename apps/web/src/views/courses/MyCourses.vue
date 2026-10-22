@@ -110,7 +110,7 @@ onMounted(() => {
 .course-count strong { font-size: 44px; line-height: 1; }
 .course-count span { color: #dbeafe; }
 .join-shortcuts { display: flex; align-items: center; gap: 13px; padding: 10px 12px; border: 1px solid rgba(255,255,255,.28); border-radius: 16px; background: rgba(255,255,255,.1); backdrop-filter: blur(10px); }
-.join-shortcuts img { width: 54px; height: 54px; padding: 8px; object-fit: contain; border-radius: 12px; background: #fff; }
+.join-shortcuts img { width: 54px; height: 54px; padding: 8px; object-fit: contain; object-position: center; box-sizing: border-box; flex-shrink: 0; border-radius: 12px; background: #fff; }
 .join-shortcut-copy { display: grid; gap: 8px; }
 .join-shortcut-actions, .table-tools { display: flex; gap: 8px; }
 .join-shortcut-actions :deep(.el-button) { margin: 0; color: #fff; border-color: rgba(255,255,255,.54); background: rgba(255,255,255,.12); }

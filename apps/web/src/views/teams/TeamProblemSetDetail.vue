@@ -498,7 +498,7 @@ onBeforeUnmount(() => { submissionStreams.closeAll() })
 
 <style scoped>
 .set-identity { display: flex; align-items: center; gap: 16px; margin: 18px 0; min-width: 0; }
-.set-identity img { width: 60px; height: 60px; flex: 0 0 auto; object-fit: contain; object-position: center; background: var(--color-surface-solid); border: 1px solid var(--border); border-radius: 12px; }
+.set-identity img { width: 60px; height: 60px; flex: 0 0 auto; padding: 4px; object-fit: contain; object-position: center; box-sizing: border-box; flex-shrink: 0; object-position: center; background: var(--color-surface-solid); border: 1px solid var(--border); border-radius: 12px; }
 .set-identity h1 { margin: 0 0 6px; font-size: 24px; overflow-wrap: anywhere; }
 .set-identity p { margin: 0; color: var(--muted); overflow-wrap: anywhere; }
 

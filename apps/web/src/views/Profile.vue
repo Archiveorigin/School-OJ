@@ -484,7 +484,7 @@ onMounted(load)
 button.activity-cell { cursor: pointer; transition: transform .12s ease, outline-color .12s ease; }
 button.activity-cell:hover { z-index: 2; transform: scale(1.32); outline: 1px solid color-mix(in srgb, var(--accent) 62%, transparent); }
 .empty-cell { visibility: hidden; }
-:global(.dark) .activity-cell.level-0 { background: #293548; }
+.dark .activity-cell.level-0 { background: #293548; }
 .activity-cell.level-1 { background: #a7d7c5; }
 .activity-cell.level-2 { background: #59b99a; }
 .activity-cell.level-3 { background: #16856d; }

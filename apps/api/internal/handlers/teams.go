@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"math"
 	"net/http"
 	"regexp"
 	"school-oj/apps/api/internal/authz"
@@ -108,9 +109,9 @@ type teamContestInput struct {
 	ScoringRule           string     `json:"scoring_rule"`
 	FreezeEnabled         bool       `json:"freeze_enabled"`
 	FreezeDurationMinutes int        `json:"freeze_duration_minutes"`
-	GoldAwardPercent      *int       `json:"gold_award_percent"`
-	SilverAwardPercent    *int       `json:"silver_award_percent"`
-	BronzeAwardPercent    *int       `json:"bronze_award_percent"`
+	GoldAwardPercent      *float64   `json:"gold_award_percent"`
+	SilverAwardPercent    *float64   `json:"silver_award_percent"`
+	BronzeAwardPercent    *float64   `json:"bronze_award_percent"`
 }
 
 type teamContestProblemView struct {
@@ -748,7 +749,7 @@ func (s Server) updateTeamContest(c *gin.Context) {
 	}
 	result := s.DB.Model(&models.TeamContest{}).Where("id = ? AND state = ? AND deleted_at IS NULL AND review_status IN ? AND review_revision = ?", contest.ID, models.TeamContestDraft, []string{"draft", "rejected"}, req.Revision).Updates(updates)
 	if result.Error != nil || result.RowsAffected != 1 {
-		c.JSON(http.StatusConflict, gin.H{"error": "比赛已发布，设置已冻结"})
+		c.JSON(http.StatusConflict, gin.H{"error": "比赛设置或审核状态已变更，请保留当前文本，重新打开设置核对后再保存"})
 		return
 	}
 	_ = s.DB.Where("deleted_at IS NULL").First(&contest, contest.ID).Error
@@ -1029,8 +1030,15 @@ func (s Server) createTeamContestSubmission(c *gin.Context) {
 }
 
 func (s Server) teamContestRanking(c *gin.Context) {
+	scoped, closeSnapshot, err := s.rankingReadSnapshot(c.Request.Context())
+	if err != nil {
+		eventError(c, err)
+		return
+	}
+	defer closeSnapshot()
+	s = scoped
 	user, _ := middleware.CurrentUser(c)
-	contest, team, ok := s.teamContestByParams(c)
+	contest, team, ok := s.loadTeamContestByParams(c, false)
 	if !ok || !s.requireTeamMember(c, user, team) {
 		return
 	}
@@ -1075,7 +1083,15 @@ func (s Server) teamContestRanking(c *gin.Context) {
 	for _, link := range links {
 		problems = append(problems, gin.H{"problem_id": link.ProblemID, "label": link.Label, "title": link.Problem.Title, "score": 100})
 	}
+	paper := eventPaper{kind: "contest", id: contest.ID, contest: contest}
+	checks, err := completionChecks(s.DB, paper)
+	if err != nil {
+		eventError(c, err)
+		return
+	}
+	c.Header("Cache-Control", "private, no-store")
 	c.JSON(http.StatusOK, gin.H{
+		"final_ready":             rankingIsFinal(paper.lifecycle(time.Now()), checks),
 		"contest":                 contest,
 		"lifecycle":               (eventPaper{kind: "contest", id: contest.ID, contest: contest}).lifecycle(time.Now()),
 		"now":                     time.Now(),
@@ -1715,6 +1731,10 @@ func (s Server) teamProblemSetByParams(c *gin.Context) (models.TeamProblemSet, m
 }
 
 func (s Server) teamContestByParams(c *gin.Context) (models.TeamContest, models.Team, bool) {
+	return s.loadTeamContestByParams(c, true)
+}
+
+func (s Server) loadTeamContestByParams(c *gin.Context, syncState bool) (models.TeamContest, models.Team, bool) {
 	contestID, ok := idParam(c, "contest_id")
 	if !ok {
 		return models.TeamContest{}, models.Team{}, false
@@ -1728,7 +1748,9 @@ func (s Server) teamContestByParams(c *gin.Context) (models.TeamContest, models.
 		c.JSON(http.StatusNotFound, gin.H{"error": "contest not found"})
 		return models.TeamContest{}, models.Team{}, false
 	}
-	s.syncTeamContestState(&contest, time.Now())
+	if syncState {
+		s.syncTeamContestState(&contest, time.Now())
+	}
 	var team models.Team
 	if err := s.DB.First(&team, contest.TeamID).Error; err != nil {
 		c.JSON(http.StatusNotFound, gin.H{"error": "team not found"})
@@ -2056,7 +2078,7 @@ func teamAlphaLabel(index int) string {
 	return label
 }
 
-func resolveTeamContestAwardPercentages(gold, silver, bronze *int, fallbackGold, fallbackSilver, fallbackBronze int) (int, int, int, error) {
+func resolveTeamContestAwardPercentages(gold, silver, bronze *float64, fallbackGold, fallbackSilver, fallbackBronze float64) (float64, float64, float64, error) {
 	goldPercent := fallbackGold
 	if gold != nil {
 		goldPercent = *gold
@@ -2069,10 +2091,15 @@ func resolveTeamContestAwardPercentages(gold, silver, bronze *int, fallbackGold,
 	if bronze != nil {
 		bronzePercent = *bronze
 	}
+	for _, value := range []float64{goldPercent, silverPercent, bronzePercent} {
+		if math.IsNaN(value) || math.IsInf(value, 0) || math.Abs(value*1e6-math.Round(value*1e6)) > 1e-6 {
+			return 0, 0, 0, errors.New("奖项比例最多保留六位小数")
+		}
+	}
 	if goldPercent < 0 || goldPercent > 100 || silverPercent < 0 || silverPercent > 100 || bronzePercent < 0 || bronzePercent > 100 {
 		return 0, 0, 0, errors.New("金、银、铜奖比例必须在 0 到 100 之间")
 	}
-	if goldPercent+silverPercent+bronzePercent > 100 {
+	if math.Round((goldPercent+silverPercent+bronzePercent)*1e6) > 100*1e6 {
 		return 0, 0, 0, errors.New("金、银、铜奖比例之和不能超过 100")
 	}
 	return goldPercent, silverPercent, bronzePercent, nil
@@ -2101,7 +2128,7 @@ func activeTeamProblemSetLockQuery(tx *gorm.DB, setID uint) *gorm.DB {
 		Where("id = ? AND deleted_at IS NULL", setID)
 }
 
-func teamContestAwardPercentValue(value *int) int {
+func teamContestAwardPercentValue(value *float64) float64 {
 	if value == nil {
 		return defaultTeamContestAwardPercent
 	}

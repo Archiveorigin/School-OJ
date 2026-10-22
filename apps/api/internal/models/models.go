@@ -570,9 +570,9 @@ type TeamContest struct {
 	ScoringRule           string     `json:"scoring_rule" gorm:"size:16;not null;default:'acm'"`
 	FreezeEnabled         bool       `json:"freeze_enabled" gorm:"not null;default:false"`
 	FreezeDurationMinutes int        `json:"freeze_duration_minutes" gorm:"not null;default:60"`
-	GoldAwardPercent      *int       `json:"gold_award_percent" gorm:"not null;default:10"`
-	SilverAwardPercent    *int       `json:"silver_award_percent" gorm:"not null;default:10"`
-	BronzeAwardPercent    *int       `json:"bronze_award_percent" gorm:"not null;default:10"`
+	GoldAwardPercent      *float64   `json:"gold_award_percent" gorm:"type:numeric(9,6);not null;default:10"`
+	SilverAwardPercent    *float64   `json:"silver_award_percent" gorm:"type:numeric(9,6);not null;default:10"`
+	BronzeAwardPercent    *float64   `json:"bronze_award_percent" gorm:"type:numeric(9,6);not null;default:10"`
 	State                 string     `json:"state" gorm:"size:16;index;not null;default:'draft'"`
 	PublishedAt           *time.Time `json:"published_at" gorm:"index"`
 	CreatedBy             uint       `json:"created_by" gorm:"index;not null"`

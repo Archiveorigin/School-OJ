@@ -8,7 +8,20 @@
           <h1>{{ paper.event.title }}</h1>
           <p>组织题目与本场附件，预览完整内容后提交整场审核。</p>
         </div>
-        <el-tag size="large">{{ lifecycleLabels[lifecycle] }}</el-tag>
+        <div class="review-state">
+          <el-tag size="large">{{ lifecycleLabels[lifecycle] }}</el-tag>
+          <small
+            v-if="
+              paper.event.submission_version ||
+              paper.event.review_status === 'draft'
+            "
+            >{{
+              paper.event.submission_version
+                ? `第 ${paper.event.submission_version} 次提交审核`
+                : "尚未提交审核"
+            }}</small
+          >
+        </div>
       </header>
       <ol class="lifecycle-track" aria-label="场次流程">
         <li
@@ -58,13 +71,19 @@
           <el-button
             v-if="paper.can_edit"
             type="primary"
-            :disabled="busy || editorOpen || !paper.problems.length"
+            :disabled="
+              busy ||
+              editorOpen ||
+              settingsDraft.dirty.value ||
+              !paper.problems.length
+            "
             @click="review('submit')"
             >提交整场审核</el-button
           >
           <template
             v-if="
-              auth.can('event:review') && paper.event.review_status === 'pending'
+              auth.can('event:review') &&
+              paper.event.review_status === 'pending'
             "
             ><el-button
               :disabled="busy"
@@ -97,33 +116,36 @@
         v-if="
           lifecycle === 'closed' &&
           (paper.completion_checks?.judging ||
-            paper.completion_checks?.ungraded || paper.completion_checks?.failed)
+            paper.completion_checks?.ungraded ||
+            paper.completion_checks?.failed)
         "
         class="muted"
       >
         待判题 {{ paper.completion_checks?.judging }} 份 · 待人工评分
-        {{ paper.completion_checks?.ungraded }} 份 · 判题异常 {{ paper.completion_checks?.failed || 0 }} 份；处理完成后刷新再确认完结。
+        {{ paper.completion_checks?.ungraded }} 份 · 判题异常
+        {{
+          paper.completion_checks?.failed || 0
+        }}
+        份；处理完成后刷新再确认完结。
       </p>
-      <div class="paper-layout" :class="{ 'ranking-layout': tab === 'ranking' }" v-loading="busy">
+      <div
+        class="paper-layout"
+        :class="{ 'ranking-layout': tab === 'ranking' }"
+        v-loading="busy"
+      >
         <aside v-if="tab !== 'ranking'" class="paper-rail">
-          <div class="rail-title">
-            <h2>本场题目</h2>
-            <el-button
-              v-if="paper.can_edit"
-              type="primary"
-              size="small"
-              :disabled="busy"
-              @click="editProblem()"
+          <div class="rail-title"><h2>本场题目</h2></div>
+          <div v-if="paper.can_edit" class="problem-actions">
+            <el-button type="primary" :disabled="busy" @click="editProblem()"
               >新增题目</el-button
             >
+            <el-button :disabled="busy" @click="openImport()"
+              >导入 Markdown 单题</el-button
+            >
+            <el-button :disabled="busy || editorOpen" @click="pickerOpen = true"
+              >添加现有题目</el-button
+            >
           </div>
-          <el-button
-            v-if="paper.can_edit"
-            class="import-trigger"
-            :disabled="busy"
-            @click="openImport()"
-            >导入 Markdown 单题</el-button
-          >
           <el-button
             v-if="paper.can_edit && importPending"
             link
@@ -132,29 +154,6 @@
             @click="openImport()"
             >继续导入此题</el-button
           >
-          <div v-if="paper.can_edit" class="existing-picker">
-            <el-select
-              v-model="selectedID"
-              filterable
-              remote
-              :remote-method="searchChoices"
-              :loading="searching"
-              placeholder="输入题号或标题"
-              aria-label="输入题号或标题"
-              @visible-change="
-                (visible: boolean) => visible && searchChoices('')
-              "
-              ><el-option
-                v-for="choice in choices"
-                :key="choice.id"
-                :value="choice.id"
-                :label="`${choice.display_code || choice.id} · ${choice.title}`" /></el-select
-            ><el-button
-              :disabled="!selectedID || editorOpen || busy"
-              @click="addSelected"
-              >添加已有题目</el-button
-            >
-          </div>
           <nav class="problem-directory" aria-label="试卷题目目录">
             <button
               v-for="link in paper.problems"
@@ -178,7 +177,7 @@
             </button>
           </nav>
           <p v-if="!paper.problems.length" class="muted empty-directory">
-            从新增题目或输入已有题号开始。
+            新增题目，或从题库选择现有题目。
           </p>
         </aside>
         <section class="paper-main panel">
@@ -201,7 +200,10 @@
                 label="本场附件"
                 name="attachments" /><el-tab-pane
                 label="说明与时间"
-                name="settings" /><el-tab-pane v-if="['running', 'closed', 'completed'].includes(lifecycle)" label="成绩与排名" name="ranking" /><el-tab-pane label="审核记录" name="history"
+                name="settings" /><el-tab-pane
+                v-if="['running', 'closed', 'completed'].includes(lifecycle)"
+                label="成绩与排名"
+                name="ranking" /><el-tab-pane label="审核记录" name="history"
             /></el-tabs>
             <template v-if="tab === 'problems'"
               ><article v-if="selected" class="paper-problem">
@@ -271,7 +273,7 @@
             <el-form
               v-else-if="tab === 'settings'"
               label-position="top"
-              :disabled="!paper.can_edit"
+              :disabled="!paper.can_edit || busy"
               class="paper-settings"
               ><el-form-item label="场次名称"
                 ><el-input
@@ -281,7 +283,9 @@
                 ><el-input
                   v-model="settings.description"
                   type="textarea"
-                  :rows="6"
+                  :autosize="{ minRows: 6 }"
+                  resize="vertical"
+                  aria-label="场次说明"
                   maxlength="20000"
               /></el-form-item>
               <div class="actions">
@@ -304,7 +308,13 @@
                 >保存说明与时间</el-button
               ></el-form
             >
-            <EventRankingReview v-else-if="tab === 'ranking'" :key="`${kind}/${eventId}`" :kind="kind" :event-id="eventId" @updated="rankingUpdated" />
+            <EventRankingReview
+              v-else-if="tab === 'ranking'"
+              :key="`${kind}/${eventId}`"
+              :kind="kind"
+              :event-id="eventId"
+              @updated="rankingUpdated"
+            />
             <section v-else-if="tab === 'history'">
               <el-empty
                 v-if="!paper.history?.length"
@@ -323,6 +333,15 @@
           </template>
         </section>
       </div>
+      <EventProblemSelectionDialog
+        v-if="paper.can_edit"
+        :key="`picker/${kind}/${eventId}`"
+        v-model="pickerOpen"
+        :kind="kind"
+        :event-id="eventId"
+        :paper="paper"
+        @added="refresh"
+      />
       <EventDocumentImport
         v-if="paper.can_edit"
         :key="`${kind}/${eventId}`"
@@ -334,10 +353,10 @@
   </section>
 </template>
 <script setup lang="ts">
-import { computed, reactive, ref, watch, onBeforeUnmount } from "vue";
+import { computed, ref, watch, onBeforeUnmount } from "vue";
 import { onBeforeRouteLeave, onBeforeRouteUpdate, useRoute } from "vue-router";
 import { ElMessageBox } from "element-plus";
-import { generatedApi, type Problem } from "../../api/client";
+import { generatedApi } from "../../api/client";
 import { apiErrorMessage } from "../../api/errors";
 import {
   downloadPaperProblem,
@@ -358,6 +377,9 @@ import EventRankingReview from "./EventRankingReview.vue";
 import EventProblemEditor from "./EventProblemEditor.vue";
 import ProblemStatementView from "../ProblemStatementView.vue";
 import EventDocumentImport from "./EventDocumentImport.vue";
+import EventProblemSelectionDialog from "./EventProblemSelectionDialog.vue";
+import { useEditSnapshot } from "../../features/events/editSnapshot";
+const pickerOpen = ref(false);
 import type { ImportedProblem } from "../../features/events/documentImport";
 const importer = ref<InstanceType<typeof EventDocumentImport>>();
 const importedDraft = ref<ImportedProblem>();
@@ -368,18 +390,16 @@ const auth = useAuthStore(),
   paper = ref<Paper>(),
   error = ref(""),
   busy = ref(false),
-  searching = ref(false),
-  choices = ref<Problem[]>([]),
-  selectedID = ref<number>(),
   preview = ref<number>(),
   editorOpen = ref(false),
   editing = ref<PaperProblem>();
-const settings = reactive({
+const settingsDraft = useEditSnapshot({
   title: "",
   description: "",
   starts_at: "",
   ends_at: "",
 });
+const settings = settingsDraft.form;
 const tab = ref(useRoute().query.tab === "settings" ? "settings" : "problems"),
   dirty = ref(false);
 const lifecycle = computed(
@@ -392,8 +412,14 @@ const selected = computed(
     paper.value?.problems.find((p) => p.problem_id === preview.value) ||
     paper.value?.problems[0],
 );
-function rankingUpdated(snapshot: { lifecycle: Paper["lifecycle"]; completion_checks: Paper["completion_checks"] }) {
-  if (paper.value) { paper.value.lifecycle = snapshot.lifecycle; paper.value.completion_checks = snapshot.completion_checks }
+function rankingUpdated(snapshot: {
+  lifecycle: Paper["lifecycle"];
+  completion_checks: Paper["completion_checks"];
+}) {
+  if (paper.value) {
+    paper.value.lifecycle = snapshot.lifecycle;
+    paper.value.completion_checks = snapshot.completion_checks;
+  }
 }
 async function discard() {
   if (!dirty.value) return true;
@@ -419,7 +445,7 @@ async function closeEditor() {
   if (await discard()) editorOpen.value = false;
 }
 function beforeUnload(event: BeforeUnloadEvent) {
-  if (dirty.value || importPending.value) {
+  if (dirty.value || settingsDraft.dirty.value || importPending.value) {
     event.preventDefault();
     event.returnValue = "";
   }
@@ -428,6 +454,17 @@ window.addEventListener("beforeunload", beforeUnload);
 onBeforeUnmount(() => window.removeEventListener("beforeunload", beforeUnload));
 async function leaveWorkspace() {
   if (!(await discard())) return false;
+  if (settingsDraft.dirty.value) {
+    try {
+      await ElMessageBox.confirm(
+        "说明与时间有尚未保存的修改，离开将丢弃这些修改。",
+        "离开组题",
+        { confirmButtonText: "丢弃并离开", cancelButtonText: "继续编辑" },
+      );
+    } catch {
+      return false;
+    }
+  }
   if (!importPending.value) return true;
   try {
     await ElMessageBox.confirm(
@@ -458,8 +495,7 @@ const canWithdraw = computed(
       !!paper.value.event.starts_at &&
       Date.now() < Date.parse(paper.value.event.starts_at)),
 );
-let loadSequence = 0,
-  searchSequence = 0;
+let loadSequence = 0;
 async function load() {
   const sequence = ++loadSequence;
   error.value = "";
@@ -469,21 +505,23 @@ async function load() {
     paper.value = result;
     if (!result.can_edit) importPending.value = false;
     const e = result.event;
-    Object.assign(settings, {
-      title: e.title,
-      description: e.description,
-      starts_at: e.starts_at || "",
-      ends_at:
-        e.ends_at ||
-        (e.starts_at && e.duration_minutes
-          ? new Date(
-              Date.parse(e.starts_at) + e.duration_minutes * 60000,
-            ).toISOString()
-          : ""),
-    });
+    settingsDraft.sync(
+      {
+        title: e.title,
+        description: e.description,
+        starts_at: e.starts_at || "",
+        ends_at:
+          e.ends_at ||
+          (e.starts_at && e.duration_minutes
+            ? new Date(
+                Date.parse(e.starts_at) + e.duration_minutes * 60000,
+              ).toISOString()
+            : ""),
+      },
+      e.review_revision,
+    );
   } catch (e) {
     if (sequence === loadSequence) {
-      paper.value = undefined;
       error.value = apiErrorMessage(e);
     }
   }
@@ -508,7 +546,8 @@ async function mutate(action: () => Promise<unknown>) {
 async function review(
   action: "submit" | "withdraw" | "approve" | "reject" | "complete",
 ) {
-  if (!paper.value) return;
+  if (!paper.value || (action === "submit" && settingsDraft.dirty.value))
+    return;
   let note = "";
   try {
     if (action === "reject") {
@@ -549,27 +588,13 @@ async function review(
 }
 function saveSettings() {
   if (!paper.value) return;
-  void mutate(() =>
-    generatedApi.updateEventSettings({
+  void mutate(async () => {
+    await generatedApi.updateEventSettings({
       path: eventPath(props.kind, props.eventId),
-      body: { ...settings, revision: paper.value!.event.review_revision },
-    }),
-  );
-}
-async function searchChoices(q: string) {
-  const sequence = ++searchSequence;
-  searching.value = true;
-  try {
-    const { data } = await generatedApi.listEventProblemChoices<Problem[]>({
-      path: eventPath(props.kind, props.eventId),
-      query: { q },
+      body: { ...settings, revision: settingsDraft.revision.value },
     });
-    if (sequence === searchSequence) choices.value = data;
-  } catch (e) {
-    if (sequence === searchSequence) error.value = apiErrorMessage(e);
-  } finally {
-    if (sequence === searchSequence) searching.value = false;
-  }
+    settingsDraft.markSaved();
+  });
 }
 function labelAt(index: number) {
   let value = "";
@@ -608,22 +633,6 @@ function selection() {
       score,
     }),
   );
-}
-async function addSelected() {
-  if (!selectedID.value || !paper.value) return;
-  if (paper.value.problems.some((p) => p.problem_id === selectedID.value)) {
-    error.value = "此题已在本场";
-    return;
-  }
-  await saveSelection([
-    ...selection(),
-    {
-      problem_id: selectedID.value,
-      label: nextLabel(),
-      score: 100,
-    },
-  ]);
-  selectedID.value = undefined;
 }
 async function move(index: number, offset: number) {
   const list = selection();
@@ -721,13 +730,37 @@ async function download(link: PaperProblem) {
     error.value = apiErrorMessage(e);
   }
 }
-watch(() => [props.kind, props.eventId], load, { immediate: true });
+watch(
+  () => [props.kind, props.eventId],
+  () => {
+    settingsDraft.begin({}, 0);
+    paper.value = undefined;
+    pickerOpen.value = false;
+    void load();
+  },
+  { immediate: true },
+);
 </script>
 <style scoped>
-.paper-layout.ranking-layout { grid-template-columns: minmax(0, 1fr); }
-.import-trigger {
+.paper-layout.ranking-layout {
+  grid-template-columns: minmax(0, 1fr);
+}
+.problem-actions {
+  display: grid;
+  gap: 8px;
+  margin: 14px 0;
+}
+.problem-actions :deep(.el-button) {
   width: 100%;
-  margin: 4px 0 16px;
+  margin: 0;
+}
+.review-state {
+  display: grid;
+  justify-items: end;
+  gap: 7px;
+}
+.review-state small {
+  color: var(--muted);
 }
 .queue-trigger {
   width: 100%;
@@ -813,12 +846,6 @@ watch(() => [props.kind, props.eventId], load, { immediate: true });
 .rail-title h2 {
   font-size: 14px;
   margin: 0;
-}
-.existing-picker {
-  display: grid;
-  gap: 8px;
-  padding: 16px 0;
-  border-bottom: 1px solid var(--border);
 }
 .problem-directory {
   display: grid;

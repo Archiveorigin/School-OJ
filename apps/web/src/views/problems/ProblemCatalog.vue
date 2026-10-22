@@ -143,10 +143,10 @@ onBeforeUnmount(() => { if (loadTimer) window.clearTimeout(loadTimer) })
 .problem-link:hover { color: var(--accent); }
 .tag-line { display: flex; flex-wrap: wrap; gap: 5px; }
 .difficulty { font-weight: 700; }
-.difficulty-level-1 { color: #16803b; }.difficulty-level-2 { color: #0374a8; }.difficulty-level-3 { color: #b56c09; }.difficulty-level-4 { color: #c84b16; }.difficulty-level-5 { color: #be2929; }.difficulty-level-6 { color: #7138b9; }
+.difficulty-level-1 { color: var(--color-success); }.difficulty-level-2 { color: #0374a8; }.difficulty-level-3 { color: #b56c09; }.difficulty-level-4 { color: #c84b16; }.difficulty-level-5 { color: #be2929; }.difficulty-level-6 { color: #7138b9; }
 .pass-rate { display: block; color: var(--text); font-weight: 700; }.pass-rate + small { display: block; color: var(--muted); }
-.status-dot { display: inline-grid; width: 24px; height: 24px; place-items: center; color: #94a3b8; border: 1px solid #cbd5e1; border-radius: 50%; font-weight: 900; }
-.status-dot.accepted { color: #16803b; border-color: #86d39f; background: #eefbf2; }.status-dot.attempted { color: #d97706; border-color: #f4c66c; background: #fff8e8; }
+.status-dot { display: inline-grid; width: 24px; height: 24px; place-items: center; color: #94a3b8; border: 1px solid var(--border); border-radius: 50%; font-weight: 900; }
+.status-dot.accepted { color: var(--color-success); border-color: var(--color-success); background: var(--color-success-soft); }.status-dot.attempted { color: var(--color-warning); border-color: var(--color-warning); background: var(--color-warning-soft); }
 .mobile-list { display: none; }
 @media (max-width: 900px) { .filter-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }.filter-grid .el-button { width: 100%; }.active-filters small { width: 100%; margin-left: 0; } }
 @media (max-width: 640px) {

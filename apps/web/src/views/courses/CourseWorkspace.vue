@@ -94,7 +94,7 @@ onMounted(loadCourse)
 .workspace-nav { display: flex; align-items: center; justify-content: space-between; gap: 16px; padding-bottom: 30px; }
 .back-button { display: inline-flex; align-items: center; gap: 8px; padding: 8px 0; color: #bfdbfe; border: 0; background: transparent; cursor: pointer; }
 .workspace-brand { display: flex; align-items: center; gap: 9px; color: rgba(255,255,255,.82); font-size: 13px; letter-spacing: .06em; }
-.workspace-brand img { width: 30px; height: 30px; padding: 2px; object-fit: contain; border-radius: 8px; background: #fff; }
+.workspace-brand img { width: 30px; height: 30px; padding: 2px; object-fit: contain; object-position: center; box-sizing: border-box; flex-shrink: 0; border-radius: 8px; background: #fff; }
 .course-title-row { display: flex; align-items: end; justify-content: space-between; gap: 28px; }
 .course-heading { min-width: min(680px, 100%); }
 .course-heading span, .course-heading p { color: #bae6fd; }
@@ -106,7 +106,7 @@ onMounted(loadCourse)
 .course-add-button { width: 48px; height: 48px; display: grid; place-items: center; color: #083452; border: 1px solid rgba(255,255,255,.72); border-radius: 13px; background: #fff; box-shadow: 0 12px 30px rgba(0,0,0,.18); cursor: pointer; transition: transform .18s ease, box-shadow .18s ease; }
 .course-add-button:hover { transform: translateY(-2px); box-shadow: 0 16px 36px rgba(0,0,0,.24); }
 .course-add-button:focus-visible { outline: 3px solid #7dd3fc; outline-offset: 3px; }
-.course-add-button img { width: 34px; height: 34px; object-fit: contain; }
+.course-add-button img { width: 34px; height: 34px; object-fit: contain; object-position: center; box-sizing: border-box; flex-shrink: 0; }
 .course-tabs { position: sticky; top: 0; z-index: 15; display: flex; gap: 8px; padding: 0 max(28px, calc((100vw - 1220px) / 2)); border-bottom: 1px solid var(--border); background: color-mix(in srgb, var(--surface-strong) 92%, transparent); backdrop-filter: blur(16px); }
 .course-tabs a { padding: 19px 26px 16px; color: var(--muted); border-bottom: 3px solid transparent; }
 .course-tabs a.active { color: var(--accent); border-bottom-color: var(--accent); font-weight: 800; }

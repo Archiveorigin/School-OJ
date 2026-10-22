@@ -56,7 +56,7 @@
 | [`internal/models/models.go`](../apps/api/internal/models/models.go) | GORM 领域模型和枚举的集中定义，是数据库结构与 Handler 数据关系的主要代码入口。 |
 | [`internal/middleware/auth.go`](../apps/api/internal/middleware/auth.go) | JWT 签发与校验、必选/可选认证、角色中间件和当前用户读取。 |
 | [`internal/middleware/security.go`](../apps/api/internal/middleware/security.go) | 安全响应头和基于 Redis Lua 令牌桶的 IP/用户限流。 |
-| [`internal/rbac/rbac.go`](../apps/api/internal/rbac/rbac.go) | 基础角色能力判断，如课程管理、用户管理和审计查看。 |
+| [`internal/authz/policy.go`](../apps/api/internal/authz/policy.go) | 明确能力与资源范围判定，未知策略默认拒绝。 |
 | [`internal/streams/redis.go`](../apps/api/internal/streams/redis.go) | 连接 Redis，定义提交流 `oj.submissions`、入队函数和单提交通知频道。 |
 | [`internal/services/audit.go`](../apps/api/internal/services/audit.go) | 将管理和关键业务操作写入审计日志。 |
 | [`internal/services/mailer.go`](../apps/api/internal/services/mailer.go) | SMTP 邮件发送实现。 |
@@ -130,7 +130,7 @@
 | `GET /problem-change-tickets/:id/attachment` | 同上 | 申请人或管理员下载参考附件。 |
 | `POST /problem-change-tickets/:id/cancel` | 同上 | 申请人取消尚未完成的工单。 |
 | `POST /problem-change-tickets/:id/reject` | 同上 | 管理员驳回工单并记录处理说明。 |
-| `POST /problem-change-tickets/:id/apply` | 同上 | 管理员上传最终完整题包并执行新增/替换，或确认归档；事务中更新版本和未开始场次绑定。 |
+| `POST /problem-change-tickets/:id/apply` | 同上 | 管理员选择工单材料在线组包或上传完整题包，执行新增／替换或归档；事务中生成版本，场次绑定不自动替换。 |
 
 题目包的解析、构建和校验集中在 [`internal/services/problem_package.go`](../apps/api/internal/services/problem_package.go)：负责 `manifest.json`、测试点配对、权重、比较器、资源路径、大小限制、BOM 清理及 ZIP 路径穿越防护。详细格式见[题目包规范](problem-package.md)。
 
@@ -266,6 +266,18 @@
 | [`025_exam_activity.sql`](../apps/api/migrations/025_exam_activity.sql) | 考试行为日志及事件唯一索引，只新增结构、不清理历史数据。 |
 | [`026_team_access_constraints.sql`](../apps/api/migrations/026_team_access_constraints.sql) | 三级团队职级检查、每团队创建者唯一性和规范化邀请码查询索引，不改写历史角色。 |
 
+| [027_ticket_feedback.sql](../apps/api/migrations/027_ticket_feedback.sql) | 工单反馈、多附件、修订号及移除同题唯一工单限制。 |
+| [028_team_problem_set_icon.sql](../apps/api/migrations/028_team_problem_set_icon.sql) | 团队题单图标。 |
+| [029_ticket_workflow.sql](../apps/api/migrations/029_ticket_workflow.sql) | 退回补充与工单处理历史。 |
+| [030_query_indexes.sql](../apps/api/migrations/030_query_indexes.sql) | 查询索引。 |
+| [031_legacy_unique_indexes.sql](../apps/api/migrations/031_legacy_unique_indexes.sql) | 历史唯一索引治理。 |
+| [032_event_review_and_attachments.sql](../apps/api/migrations/032_event_review_and_attachments.sql) | 整场审核、场次专用题目与附件。 |
+| [033_event_completion.sql](../apps/api/migrations/033_event_completion.sql) | 管理员确认完结与成绩锁定。 |
+| [034_event_submission_version.sql](../apps/api/migrations/034_event_submission_version.sql) | 独立送审次数。 |
+| [035_authorization_version.sql](../apps/api/migrations/035_authorization_version.sql) | 权限与会话版本触发器。 |
+| [036_course_membership_roles.sql](../apps/api/migrations/036_course_membership_roles.sql) | 课程管理员与助教职级约束。 |
+| [037_fractional_contest_awards.sql](../apps/api/migrations/037_fractional_contest_awards.sql) | 比赛奖项六位小数比例。 |
+
 ## 6. Worker 判题服务
 
 | 文件 | 结构作用 |
@@ -293,7 +305,7 @@
 | [`api/errors.ts`](../apps/web/src/api/errors.ts) | 将 Axios/服务端错误统一转换为中文可读消息。 |
 | [`api/modules/courses.ts`](../apps/web/src/api/modules/courses.ts) | 课程列表的轻量 API 封装。 |
 | [`api/modules/exams.ts`](../apps/web/src/api/modules/exams.ts) | 创建考试的 API 封装。 |
-| [`api/modules/problems.ts`](../apps/web/src/api/modules/problems.ts) | 题目/预备题查询及旧创建、Markdown 解析兼容封装。 |
+| [`api/generated/client.ts`](../apps/web/src/api/generated/client.ts) | 生成的题目／预备题操作；业务经兼容客户端出口调用 operationId。 |
 | [`stores/auth.ts`](../apps/web/src/stores/auth.ts) | 登录、Token 持久化、`/me` 恢复和退出。 |
 | [`stores/classroom.ts`](../apps/web/src/stores/classroom.ts) | 当前用户班级列表缓存。 |
 | [`stores/examLock.ts`](../apps/web/src/stores/examLock.ts) | 查询活动考试、维持强制考试锁并控制允许跳转范围。 |
@@ -454,14 +466,14 @@
 | --- | --- | --- |
 | 新增或调整 HTTP 接口 | `handlers/routes.go` | 对应 Handler、`models.go`、权限中间件、前端调用和测试。 |
 | 修改题目字段或题包 | `models.go`、`services/problem_package.go` | 新迁移、工单执行、版本快照、Worker `package.go`。 |
-| 修改题目增删改流程 | `problem_change_tickets.go` | 工单前台/后台页面、附件权限、审计和未开始场次版本同步。 |
+| 修改题目增删改流程 | `problem_change_tickets.go` | 工单前台/后台页面、附件权限、审计和场次固定版本保护。 |
 | 修改判题状态或资源限制 | Worker `runner/docker.go` | Consumer、API 提交视图、状态组件和安全文档。 |
 | 修改提交创建或消息可靠性 | API `createSubmission`、`submission_outbox.go` | Worker Consumer、SSE、迁移和恢复测试。 |
 | 修改 OI/IOI/ACM 规则 | API `examRanking`、`teamContestRanking` | 服务端脱敏、榜单 adapters/表格、封榜测试。 |
 | 修改题库 UI/筛选 | `ProblemCatalog.vue` | `problem_catalog.go`、`ProblemTagSelector.vue`、`problemMeta.ts`。 |
 | 修改考试创建 | `ExamCreate.vue`、`components/exams/*` | `features/exams/*`、`POST /exams` 和迁移约束。 |
 | 修改比赛页面 | `ContestWorkspace.vue` | `router/index.ts`、`teams.go`、统一榜单组件。 |
-| 修改权限体系 | `middleware/auth.go`、`rbac.go`、用户模型 | `PermissionManagement.vue`、导航守卫、接口角色限制和迁移。 |
+| 修改权限体系 | `middleware/auth.go`、`authz/`、`visibility/scopes.go`、用户模型 | `PermissionManagement.vue`、能力导航守卫、资源范围、审计和迁移。 |
 | 修改后台首页 | `admin/AdminHome.vue` | 聚合接口的权限和失败降级。 |
 | 修改部署拓扑 | 根 `compose.yaml` | Dockerfile、部署 Compose、K8s、环境变量和回滚说明。 |
 
@@ -473,3 +485,19 @@
 4. 涉及题目内容的写操作必须经过工单和不可变版本，不恢复旧直接写接口。
 5. 涉及考试/比赛结果的响应必须经过服务端脱敏，不依赖前端隐藏。
 6. 删除代码前应同时搜索前端路由、API 注册、组件引用、测试和文档，避免留下不可达接口或冗余组件。
+
+## 12. 场次与权限模块补充索引
+
+| 入口 | 职责 |
+| --- | --- |
+| `apps/api/internal/authz/`、`handlers/authorization.go`、`visibility/scopes.go` | 能力策略、路由登记、资源授权与集合过滤 |
+| `handlers/event_review.go`、`event_problems.go`、`event_completion.go` | 整场送审、专用题目、弹窗分页选题与状态边界 |
+| `handlers/event_ranking.go` | 一致快照、评测完成判断、管理榜单与导出 |
+| `handlers/contest_ui_test.go` | 草稿保存与送审次数、批量选题原子性、范围、小数比例和最终排名回归 |
+| `components/events/EventReviewPanel.vue`、`EventProblemSelectionDialog.vue` | 场次工作区与分页多选弹窗 |
+| `features/events/editSnapshot.ts` | 未保存输入与并发标记 |
+| `TeamContestAwardFields.vue`、`features/teams/contestAwards.ts` | 人数／比例单位和六位小数转换 |
+| `LeaderboardBoard.vue`、两套 LeaderboardTable、`features/leaderboard/` | Name 列、奖项边界、主题与赛制适配 |
+| `styles/tokens.css`、`features/uuid.ts` | 全局语义主题及普通 HTTP 上传 UUID |
+
+表内 Web 路径相对 `apps/web/src/`，Handler 路径相对 `apps/api/internal/`。模块规则分别见 [场次](events.md)、[前端](frontend.md)、[权限](authorization.md)。新增路由以 OpenAPI 和 authz 注册表为完整来源，不把这份人工索引当作机器契约。

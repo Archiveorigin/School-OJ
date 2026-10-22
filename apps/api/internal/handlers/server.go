@@ -3492,6 +3492,13 @@ func (s Server) examReport(c *gin.Context) {
 }
 
 func (s Server) examRanking(c *gin.Context) {
+	scoped, closeSnapshot, err := s.rankingReadSnapshot(c.Request.Context())
+	if err != nil {
+		eventError(c, err)
+		return
+	}
+	defer closeSnapshot()
+	s = scoped
 	user, _ := middleware.CurrentUser(c)
 	id, ok := idParam(c, "id")
 	if !ok {
@@ -3569,7 +3576,15 @@ func (s Server) examRanking(c *gin.Context) {
 		eventError(c, err)
 		return
 	}
+	paper := eventPaper{kind: "exam", id: item.ID, exam: item}
+	checks, err := completionChecks(s.DB, paper)
+	if err != nil {
+		eventError(c, err)
+		return
+	}
+	c.Header("Cache-Control", "private, no-store")
 	c.JSON(http.StatusOK, gin.H{
+		"final_ready": rankingIsFinal(paper.lifecycle(time.Now()), checks),
 		"exam": gin.H{
 			"id":           item.ID,
 			"title":        item.Title,

@@ -28,9 +28,10 @@ func TestEventBrowserFixture(t *testing.T) {
 	f.s.Cfg.CORSOrigins = []string{"http://127.0.0.1:4179"}
 	f.router = f.s.Router()
 	rankingCases := seedRankingBrowserCases(t, f)
+	pickerCase := seedContestUIBrowserCases(t, f, contestID)
 	server := &http.Server{Addr: addr, Handler: f.router, ReadHeaderTimeout: 10 * time.Second}
 	f.router.GET("/__qa/info", func(c *gin.Context) {
-		c.JSON(200, gin.H{"course_id": f.exam.CourseID, "contest_id": contestID, "team_slug": "review-qa", "rankings": rankingCases})
+		c.JSON(200, gin.H{"course_id": f.exam.CourseID, "contest_id": contestID, "team_slug": "review-qa", "rankings": rankingCases, "picker": pickerCase})
 	})
 	f.router.POST("/__qa/rankings/:kind/:id/resolve", func(c *gin.Context) {
 		id, ok := idParam(c, "id")

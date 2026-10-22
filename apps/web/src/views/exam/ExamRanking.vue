@@ -6,93 +6,92 @@
       :error="error"
       :empty-text="emptyText"
       :updated-at="updatedAtLabel"
-      show-auto-refresh
-      v-model:auto-refresh="autoRefresh"
       @refresh="loadRanking"
     />
   </section>
 </template>
 
 <script setup lang="ts">
-import { apiErrorMessage } from '../../api/errors'
-defineOptions({ inheritAttrs: false })
+import { apiErrorMessage } from "../../api/errors";
+defineOptions({ inheritAttrs: false });
 
-import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
-import { useRoute } from 'vue-router'
-import { generatedApi } from '../../api/client'
-import LeaderboardBoard from '../../components/LeaderboardBoard.vue'
-import { adaptExamRanking } from '../../features/leaderboard/adapters'
-import { formatDateTime } from '../../features/time'
+import { computed, onBeforeUnmount, onMounted, ref, watch } from "vue";
+import { useRoute } from "vue-router";
+import { generatedApi } from "../../api/client";
+import LeaderboardBoard from "../../components/LeaderboardBoard.vue";
+import { adaptExamRanking } from "../../features/leaderboard/adapters";
+import { formatDateTime } from "../../features/time";
 
-const props = defineProps<{ detail?: any }>()
-const route = useRoute()
-const ranking = ref<any>(null)
-const loading = ref(false)
-const autoRefresh = ref(true)
-const error = ref('')
-const lastLoadedAt = ref<Date | null>(null)
-let refreshTimer: number | undefined
-let disposed = false
+const props = defineProps<{ detail?: any }>();
+const route = useRoute();
+const ranking = ref<any>(null);
+const loading = ref(false);
+const error = ref("");
+const lastLoadedAt = ref<Date | null>(null);
+let disposed = false;
+let requestSequence = 0;
+let controller: AbortController | undefined;
 
-const scoreboardData = computed(() => adaptExamRanking(ranking.value || { exam: props.detail?.exam }))
-const emptyText = computed(() => ranking.value?.has_class === false
-  ? '暂无课程学生的考试记录'
-  : '暂无考试记录')
-const updatedAtLabel = computed(() => lastLoadedAt.value ? formatDateTime(lastLoadedAt.value) : '')
-
-// The deadline closes submissions, not grading: late judge results and manual
-// scores must continue to refresh until the administrator finalizes the event.
-function rankingEnded() {
-  return disposed || ranking.value?.lifecycle === 'completed' || props.detail?.lifecycle === 'completed'
-}
-
-function clearRefreshTimer() {
-  if (refreshTimer) window.clearTimeout(refreshTimer)
-  refreshTimer = undefined
-}
-
-function scheduleRefresh() {
-  clearRefreshTimer()
-  if (!autoRefresh.value || rankingEnded()) return
-  refreshTimer = window.setTimeout(() => {
-    if (rankingEnded()) {
-      clearRefreshTimer()
-      return
-    }
-    void loadRanking()
-  }, 5000)
-}
+const scoreboardData = computed(() =>
+  adaptExamRanking(ranking.value || { exam: props.detail?.exam }),
+);
+const emptyText = computed(() =>
+  ranking.value?.has_class === false
+    ? "暂无课程学生的考试记录"
+    : "暂无考试记录",
+);
+const updatedAtLabel = computed(() =>
+  lastLoadedAt.value ? formatDateTime(lastLoadedAt.value) : "",
+);
 
 async function loadRanking() {
-  const examID = Number(route.params.id)
-  if (!examID || loading.value) return
-  loading.value = true
-  error.value = ''
+  const examID = Number(route.params.id);
+  if (!examID || disposed) return;
+  controller?.abort();
+  controller = new AbortController();
+  const signal = controller.signal, sequence = ++requestSequence;
+  loading.value = true;
+  error.value = "";
   try {
-    ranking.value = (await generatedApi.examRanking<any>({ path: { "id": examID } })).data
-    lastLoadedAt.value = new Date()
+    const { data } = await generatedApi.examRanking<any>({
+      path: { id: examID },
+      signal,
+    });
+    if (disposed || sequence !== requestSequence || examID !== Number(route.params.id)) return;
+    ranking.value = data;
+    lastLoadedAt.value = new Date();
   } catch (err: any) {
-    ranking.value = null
-    const apiError = apiErrorMessage(err)
-    error.value = err.response?.status === 403
-      ? (apiError === 'exam has not started' ? '考试尚未开始，开始后可查看榜单。' : '创建者未向考生开放该榜单。')
-      : apiError
+    if (signal.aborted || sequence !== requestSequence) return;
+    ranking.value = null;
+    const apiError = apiErrorMessage(err);
+    error.value =
+      err.response?.status === 403
+        ? apiError === "exam has not started"
+          ? "考试尚未开始，开始后可查看榜单。"
+          : "创建者未向考生开放该榜单。"
+        : apiError;
   } finally {
-    loading.value = false
-    scheduleRefresh()
+    if (sequence === requestSequence) loading.value = false;
   }
 }
 
-watch(autoRefresh, scheduleRefresh)
-watch(() => route.params.id, () => {
-  clearRefreshTimer()
-  ranking.value = null
-  void loadRanking()
-})
-onMounted(loadRanking)
-onBeforeUnmount(() => { disposed = true; clearRefreshTimer() })
+watch(
+  () => route.params.id,
+  () => {
+    ranking.value = null;
+    void loadRanking();
+  },
+);
+onMounted(loadRanking);
+onBeforeUnmount(() => {
+  disposed = true;
+  controller?.abort();
+});
 </script>
 
 <style scoped>
-.ranking-view { min-width: 0; padding: 2px; }
+.ranking-view {
+  min-width: 0;
+  padding: 2px;
+}
 </style>

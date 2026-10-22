@@ -79,10 +79,10 @@ function readFile(file: File) {
 
 <style scoped>
 .team-icon-control { display: grid; gap: 8px; justify-items: center; width: 100%; text-align: center; }
-.team-icon-button { position: relative; display: grid; place-items: center; width: 88px; height: 88px; padding: 0; overflow: hidden; border: 1px solid var(--border); border-radius: 16px; background: #fff; box-shadow: 0 10px 24px rgba(10, 94, 166, .12); }
-.team-icon-button.editable { cursor: pointer; }
+.team-icon-button { position: relative; display: grid; place-items: center; width: 88px; height: 88px; padding: 7px; overflow: hidden; border: 1px solid var(--border); border-radius: 16px; background: var(--surface-strong); box-shadow: 0 10px 24px rgba(10, 94, 166, .12); }
+.team-icon-button.editable { cursor: pointer; padding-bottom: 29px; }
 .team-icon-button:disabled { cursor: default; opacity: 1; }
-.team-icon-button img { width: 100%; height: 100%; object-fit: contain; object-position: center; display: block; }
+.team-icon-button img { width: 100%; height: 100%; object-fit: contain; object-position: center; display: block; min-height: 0; box-sizing: border-box; }
 .upload-hint { position: absolute; inset: auto 0 0; padding: 6px 3px; color: #fff; background: rgba(15, 23, 42, .78); font-size: 11px; }
 .hidden-input { display: none; }
 small { max-width: 360px; color: var(--muted); line-height: 1.55; }

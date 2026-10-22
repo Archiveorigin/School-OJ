@@ -7,7 +7,7 @@ import { saveDownload } from '../src/api/modules/events'
 
 vi.mock('vue-router', () => ({ useRoute: () => ({ params: { id: '7' } }) }))
 vi.mock('../src/api/client', () => ({ generatedApi: { examRanking: vi.fn(), getEventRanking: vi.fn(), exportEventRanking: vi.fn() } }))
-vi.mock('../src/components/LeaderboardBoard.vue', () => ({ default: { template: '<div />' } }))
+vi.mock('../src/components/LeaderboardBoard.vue', () => ({ default: { name: 'LeaderboardBoard', emits: ['refresh'], template: '<button class="manual-refresh" @click="$emit(\'refresh\')">刷新榜单</button>' } }))
 vi.mock('../src/api/modules/events', async importOriginal => ({ ...await importOriginal<any>(), saveDownload: vi.fn() }))
 
 beforeEach(() => vi.useFakeTimers())
@@ -18,7 +18,7 @@ const snapshot = (judging: number) => ({
 })
 
 describe('ranking refresh across the deadline', () => {
-  it('continues fetching late judge results after an exam ends, and stops after unmount', async () => {
+  it('fetches on entry and manual refresh without a periodic timer', async () => {
     vi.mocked(generatedApi.examRanking).mockResolvedValue({
       data: { lifecycle: 'closed', exam: { ends_at: '2000-01-01T00:00:00Z' }, rows: [] },
     } as any)
@@ -26,6 +26,9 @@ describe('ranking refresh across the deadline', () => {
     await flushPromises()
     expect(generatedApi.examRanking).toHaveBeenCalledTimes(1)
     await vi.advanceTimersByTimeAsync(5000)
+    await flushPromises()
+    expect(generatedApi.examRanking).toHaveBeenCalledTimes(1)
+    await wrapper.get('.manual-refresh').trigger('click')
     await flushPromises()
     expect(generatedApi.examRanking).toHaveBeenCalledTimes(2)
     wrapper.unmount()
@@ -48,7 +51,10 @@ describe('ranking refresh across the deadline', () => {
     expect(wrapper.findAll('button')[0].attributes('disabled')).toBeDefined()
     await vi.advanceTimersByTimeAsync(5000)
     await flushPromises()
-    expect(wrapper.text()).toContain('可导出供管理员审核')
+    expect(generatedApi.getEventRanking).toHaveBeenCalledTimes(1)
+    await wrapper.get('.manual-refresh').trigger('click')
+    await flushPromises()
+    expect(wrapper.text()).toContain('当前为最终排名')
     expect(wrapper.findAll('button')[0].attributes('disabled')).toBeUndefined()
     await wrapper.findAll('button')[0].trigger('click')
     await flushPromises()

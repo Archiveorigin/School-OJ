@@ -1,6 +1,7 @@
 package handlers
 
 import (
+	"context"
 	"database/sql"
 	"fmt"
 	"net/http"
@@ -12,18 +13,39 @@ import (
 	"school-oj/apps/api/internal/models"
 )
 
+type eventAwardPercentages struct {
+	Gold   float64 `json:"gold_award_percent"`
+	Silver float64 `json:"silver_award_percent"`
+	Bronze float64 `json:"bronze_award_percent"`
+}
+
+func rankingIsFinal(lifecycle string, checks eventCompletionChecks) bool {
+	return (lifecycle == "closed" || lifecycle == "completed") && checks.Judging == 0 && checks.Ungraded == 0 && checks.Failed == 0
+}
+
+func (s Server) rankingReadSnapshot(ctx context.Context) (Server, func(), error) {
+	tx := s.DB.WithContext(ctx).Begin(&sql.TxOptions{Isolation: sql.LevelRepeatableRead, ReadOnly: true})
+	if tx.Error != nil {
+		return s, nil, tx.Error
+	}
+	s.DB = tx
+	return s, func() { tx.Rollback() }, nil
+}
+
 type eventStandings struct {
-	Kind        string                `json:"kind"`
-	EventID     uint                  `json:"event_id"`
-	Title       string                `json:"title"`
-	ScoringRule string                `json:"scoring_rule"`
-	Lifecycle   string                `json:"lifecycle"`
-	StartsAt    *time.Time            `json:"starts_at"`
-	EndsAt      *time.Time            `json:"ends_at"`
-	GeneratedAt time.Time             `json:"generated_at"`
-	Checks      eventCompletionChecks `json:"completion_checks"`
-	Problems    []examRankingProblem  `json:"problems"`
-	Rows        []examRankingRow      `json:"rows"`
+	FinalReady       bool                   `json:"final_ready"`
+	AwardPercentages *eventAwardPercentages `json:"award_percentages,omitempty"`
+	Kind             string                 `json:"kind"`
+	EventID          uint                   `json:"event_id"`
+	Title            string                 `json:"title"`
+	ScoringRule      string                 `json:"scoring_rule"`
+	Lifecycle        string                 `json:"lifecycle"`
+	StartsAt         *time.Time             `json:"starts_at"`
+	EndsAt           *time.Time             `json:"ends_at"`
+	GeneratedAt      time.Time              `json:"generated_at"`
+	Checks           eventCompletionChecks  `json:"completion_checks"`
+	Problems         []examRankingProblem   `json:"problems"`
+	Rows             []examRankingRow       `json:"rows"`
 }
 
 func (s Server) loadExamRankingStudents(item models.Exam) ([]models.User, error) {
@@ -136,6 +158,7 @@ func (s Server) buildEventStandings(p eventPaper, now time.Time) (eventStandings
 	if err != nil {
 		return result, err
 	}
+	result.FinalReady = rankingIsFinal(result.Lifecycle, result.Checks)
 	if p.kind == "exam" {
 		item := p.exam
 		if err := s.DB.Preload("Problem").Preload("ProblemVersion").Where("exam_id=?", item.ID).Order("sort_order,id").Find(&item.Problems).Error; err != nil {
@@ -168,6 +191,11 @@ func (s Server) buildEventStandings(p eventPaper, now time.Time) (eventStandings
 	start := p.contest.CreatedAt
 	if p.starts() != nil {
 		start = *p.starts()
+	}
+	result.AwardPercentages = &eventAwardPercentages{
+		teamContestAwardPercentValue(p.contest.GoldAwardPercent),
+		teamContestAwardPercentValue(p.contest.SilverAwardPercent),
+		teamContestAwardPercentValue(p.contest.BronzeAwardPercent),
 	}
 	result.Title = p.contest.Title
 	result.ScoringRule, _ = parseScoringRule(p.contest.ScoringRule)

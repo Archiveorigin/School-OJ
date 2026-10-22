@@ -13,6 +13,11 @@
               <strong>排名</strong><small>Rank</small>
             </div>
           </div>
+          <div class="score-col score-name-col">
+            <div class="score-header-card" role="columnheader">
+              <strong>姓名</strong><small>Name</small>
+            </div>
+          </div>
           <div class="score-col score-full-col">
             <div class="score-header-card" role="columnheader">
               <strong>满分</strong><small>Full</small>
@@ -63,13 +68,9 @@
           v-for="row in rows"
           :key="row.id"
           class="score-row native-stripe-row"
-          :class="`award-${awardTier(row)}`"
           :data-award="awardTier(row)"
           role="row"
         >
-          <div class="score-participant-name" :title="row.name">
-            {{ row.name }}
-          </div>
           <div class="score-metrics score-row-metrics">
             <div class="score-col score-rank-col">
               <div
@@ -77,6 +78,16 @@
                 :class="awardRankClass(row)"
               >
                 {{ displayRank(row) }}
+              </div>
+            </div>
+            <div class="score-col score-name-col">
+              <div
+                class="score-participant-name"
+                role="cell"
+                :class="awardRankClass(row)"
+                :title="row.name"
+              >
+                {{ row.name }}
               </div>
             </div>
             <div class="score-col score-full-col">
@@ -142,7 +153,8 @@ const props = withDefaults(
 const headerTrack = ref<HTMLElement | null>(null);
 function syncHeader(event: Event) {
   // Scroll only changes this DOM transform, not the whole results grid.
-  if (headerTrack.value) headerTrack.value.style.transform = `translate3d(-${(event.currentTarget as HTMLElement).scrollLeft}px, 0, 0)`;
+  if (headerTrack.value)
+    headerTrack.value.style.transform = `translate3d(-${(event.currentTarget as HTMLElement).scrollLeft}px, 0, 0)`;
 }
 
 function displayRank(row: LeaderboardRow) {
@@ -198,6 +210,7 @@ function resultTitle(row: LeaderboardRow, problemID: number | string) {
 
 <style scoped>
 .score-table {
+  --name-width: 180px;
   --rank-width: 86px;
   --full-width: 96px;
   --total-width: 122px;
@@ -205,12 +218,12 @@ function resultTitle(row: LeaderboardRow, problemID: number | string) {
   --table-min-width: max(
     760px,
     calc(
-      var(--rank-width) + var(--full-width) + var(--total-width) +
-        var(--problem-columns-width) + 42px
+      var(--rank-width) + var(--name-width) + 5px + var(--full-width) +
+        var(--total-width) + var(--problem-columns-width) + 42px
     )
   );
-  --score-row-odd: #fff;
-  --score-row-even: #f3f5f7;
+  --score-row-odd: var(--score-card);
+  --score-row-even: var(--score-surface);
   width: 100%;
   min-width: 0;
 }
@@ -258,64 +271,45 @@ function resultTitle(row: LeaderboardRow, problemID: number | string) {
   --score-row-background: var(--score-row-odd);
   position: relative;
   width: 100%;
-  height: 92px;
+  height: 64px;
   display: grid;
-  grid-template-rows: 42px 50px;
+  grid-template-rows: 1fr;
   overflow: hidden;
-  border-bottom: 1px solid #d9e0e8;
+  border-bottom: 1px solid var(--score-border);
   background: var(--score-row-background);
   transition: background-color 150ms ease;
 }
 .score-row:first-child {
-  border-top: 1px solid #d9e0e8;
+  border-top: 1px solid var(--score-border);
 }
 .score-row:nth-child(even) {
   --score-row-background: var(--score-row-even);
 }
 .score-row:hover {
-  --score-row-background: #edf4ff;
+  --score-row-background: color-mix(
+    in srgb,
+    var(--score-blue) 6%,
+    var(--score-card)
+  );
 }
-.score-row::before {
-  content: "";
-  position: absolute;
-  inset: 0 28px 0 38%;
-  z-index: 0;
-  background: url("/logo1.png") right center / 155px auto no-repeat;
-  opacity: 0.035;
-  pointer-events: none;
-}
-.score-row.award-gold {
-  background:
-    linear-gradient(90deg, rgba(255, 193, 7, 0.11), transparent 28%),
-    var(--score-row-background);
-  box-shadow: inset 4px 0 #d9a400;
-}
-.score-row.award-silver {
-  background:
-    linear-gradient(90deg, rgba(148, 163, 184, 0.13), transparent 28%),
-    var(--score-row-background);
-  box-shadow: inset 4px 0 #8b96a8;
-}
-.score-row.award-bronze {
-  background:
-    linear-gradient(90deg, rgba(180, 105, 44, 0.12), transparent 28%),
-    var(--score-row-background);
-  box-shadow: inset 4px 0 #a9602b;
+.score-name-col {
+  width: var(--name-width);
 }
 .score-participant-name {
-  position: relative;
-  z-index: 1;
-  min-width: 0;
   display: flex;
   align-items: center;
-  padding: 0 12px;
-  overflow: hidden;
+  justify-content: center;
+  height: 40px;
+  padding: 0 10px;
+  border: 1px solid var(--score-border);
+  border-radius: 4px;
   color: var(--score-text);
-  font-size: 18px;
-  font-weight: 900;
-  line-height: 1.2;
-  text-overflow: ellipsis;
-  white-space: nowrap;
+  background: var(--score-surface);
+  font-size: 14px;
+  font-weight: 700;
+  line-height: 1.3;
+  overflow: hidden;
+  overflow-wrap: anywhere;
 }
 .score-metrics {
   display: flex;
@@ -394,9 +388,8 @@ function resultTitle(row: LeaderboardRow, problemID: number | string) {
 .score-row-metrics {
   position: relative;
   z-index: 1;
-  height: 50px;
-  align-items: end;
-  padding-bottom: 5px;
+  height: 64px;
+  align-items: center;
 }
 .score-stat,
 .score-result {
@@ -416,19 +409,22 @@ function resultTitle(row: LeaderboardRow, problemID: number | string) {
   padding: 0 6px;
   font-size: 16px;
 }
-.score-rank-stat.is-gold {
+.score-rank-stat.is-gold,
+.score-participant-name.is-gold {
   border-color: #ff8f00;
   color: #1a1a1a;
   background: linear-gradient(135deg, #ffd700, #ffb300);
   box-shadow: 0 2px 8px rgba(255, 179, 0, 0.4);
 }
-.score-rank-stat.is-silver {
+.score-rank-stat.is-silver,
+.score-participant-name.is-silver {
   border-color: #909090;
   color: #1a1a1a;
   background: linear-gradient(135deg, #d5d5d5, #a8a8a8);
   box-shadow: 0 2px 8px rgba(144, 144, 144, 0.32);
 }
-.score-rank-stat.is-bronze {
+.score-rank-stat.is-bronze,
+.score-participant-name.is-bronze {
   border-color: #9d5f1f;
   color: #fff;
   background: linear-gradient(135deg, #cd7f32, #b87333);
@@ -458,9 +454,9 @@ function resultTitle(row: LeaderboardRow, problemID: number | string) {
   background: #dc3545;
 }
 .score-result.result-none {
-  border-color: #e9ecef;
-  color: #26313f;
-  background: #adb5bd;
+  border-color: var(--score-card-border);
+  color: var(--score-muted);
+  background: var(--score-header-bg);
 }
 .score-result.result-pending,
 .score-result.result-frozen {
@@ -477,17 +473,17 @@ function resultTitle(row: LeaderboardRow, problemID: number | string) {
 .score-separator {
   opacity: 0.74;
 }
-:global(.scoreboard-shell[data-theme="dark"]) .score-table {
+.scoreboard-core[data-theme="dark"] .score-table {
   --score-row-odd: #101827;
   --score-row-even: #151f30;
 }
-:global(.scoreboard-shell[data-theme="dark"]) .score-row {
+.scoreboard-core[data-theme="dark"] .score-row {
   border-color: #334155;
 }
-:global(.scoreboard-shell[data-theme="dark"]) .score-row:hover {
+.scoreboard-core[data-theme="dark"] .score-row:hover {
   --score-row-background: #1c2b42;
 }
-:global(.scoreboard-shell[data-theme="macaron"]) .score-table {
+.scoreboard-core[data-theme="macaron"] .score-table {
   --score-row-odd: #fffdfd;
   --score-row-even: #faf3f8;
 }

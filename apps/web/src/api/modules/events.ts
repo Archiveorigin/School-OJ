@@ -55,6 +55,7 @@ export type EventRecord = {
   scoring_rule: string;
   review_status: ReviewStatus;
   review_revision: number;
+  submission_version?: number;
   review_note: string;
   completed_at?: string | null;
   completion_note?: string;

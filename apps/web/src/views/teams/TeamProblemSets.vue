@@ -156,7 +156,7 @@ onMounted(load)
 </script>
 
 <style scoped>
-.set-symbol img { display: block; width: 100%; height: 100%; object-fit: contain; object-position: center; border-radius: inherit; background: var(--color-surface-solid); }
+.set-symbol img { display: block; width: 100%; height: 100%; padding: 4px; object-fit: contain; object-position: center; box-sizing: border-box; flex-shrink: 0; object-position: center; border-radius: inherit; background: var(--color-surface-solid); }
 .workspace-view { padding: 28px 34px 54px; }
 .view-heading { display: flex; align-items: end; justify-content: space-between; gap: 18px; margin-bottom: 18px; }
 .view-heading h3 { margin: 0 0 5px; font-size: 22px; }

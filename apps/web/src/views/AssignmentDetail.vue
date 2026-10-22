@@ -293,7 +293,7 @@ onMounted(loadDetail)
   min-width: 180px;
   max-width: 260px;
   padding: 10px;
-  border: 1px solid #d9dee8;
+  border: 1px solid var(--border);
   border-radius: 8px;
   background: transparent;
   color: var(--text);
@@ -307,7 +307,7 @@ onMounted(loadDetail)
 }
 
 .problem-pick span {
-  color: #6b7280;
+  color: var(--muted);
   font-size: 12px;
 }
 

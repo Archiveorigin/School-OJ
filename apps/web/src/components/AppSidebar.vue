@@ -54,11 +54,12 @@ const brandPath = computed(() => '/')
 }
 
 .brand-logo {
+  padding: 3px;
   width: 36px;
   height: 36px;
-  object-fit: contain;
+  object-fit: contain; object-position: center; box-sizing: border-box; flex-shrink: 0;
   border-radius: 8px;
-  background: #fff;
+  background: var(--surface-strong);
   box-shadow: 0 8px 20px rgba(10, 94, 166, 0.15);
 }
 

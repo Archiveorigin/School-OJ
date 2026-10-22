@@ -95,8 +95,8 @@ tbody tr.accepted { background: #eaf8ef; }
 tbody tr.attempted { background: #fff0f0; }
 tbody tr.active { box-shadow: inset 4px 0 var(--accent); }
 td button { padding: 0; color: #2494dd; border: 0; background: transparent; font: inherit; text-align: left; cursor: pointer; }
-:global(.dark) tbody tr.accepted { background: color-mix(in srgb, #16a34a 22%, var(--surface-strong)); }
-:global(.dark) tbody tr.attempted { background: color-mix(in srgb, #ef4444 20%, var(--surface-strong)); }
+.dark tbody tr.accepted { background: color-mix(in srgb, #16a34a 22%, var(--surface-strong)); }
+.dark tbody tr.attempted { background: color-mix(in srgb, #ef4444 20%, var(--surface-strong)); }
 @media (max-width: 680px) {
   .problem-overview { padding: 16px 12px; }
   .problem-overview--embedded { padding: 0; }

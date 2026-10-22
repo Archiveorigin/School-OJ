@@ -86,7 +86,7 @@ make test
 
 ## 题目包
 
-普通题目可以直接在 Web 页面创建：进入「题库」，点击「上传题目包」，切换到「表单创建题目」，填写题面、限制和测试点即可。系统会自动生成 `problem.yaml` 和 ZIP 包并存入 MinIO。
+题库新增／修改通过工单填写题面与材料，管理员校验后在线组包或上传完整 ZIP 执行；考试／比赛可在独立组题工作区编辑并整场送审。流程见 [工单](docs/tickets.md) 与 [场次](docs/events.md)。
 
 生成题目 ZIP：
 
@@ -94,11 +94,11 @@ make test
 ./scripts/create_problem_zip.sh /tmp/a-plus-b.zip
 ```
 
-教师或管理员可在 Web 的题库页面上传。格式见 [docs/problem-package.md](docs/problem-package.md)。
+完整题包在具备权限的工单执行入口使用。格式见 [docs/problem-package.md](docs/problem-package.md)。
 
 ## 生产注意事项
 
 `docker compose` 版本会挂载 Docker socket 给 worker，以便启动沙箱容器。生产环境建议将 worker 放在隔离节点，限制它只能访问专用 Docker daemon，并替换默认密钥、数据库密码和 MinIO 凭据。
 默认 compose 只把 PostgreSQL 绑定到 `127.0.0.1`；如确需外部数据库访问，应显式设置 `POSTGRES_BIND` 并配置防火墙。镜像版本以 `apps/worker/internal/runner/lifecycle.go` 中固定 digest 为准，worker 完成预热后才消费任务。
 
-本轮审查逐项结论、备份恢复、监测与发布步骤见 [审查修复说明](docs/audit-remediation-20261015.md)。
+开发步骤、备份恢复和发布见 [部署流程](docs/deployment.md)，全部模块见 [开发文档导航](docs/index.md)，用户需求和验收见 [开发历史](docs/development-history.md)。

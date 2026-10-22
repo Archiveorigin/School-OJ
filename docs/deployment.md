@@ -1,72 +1,33 @@
 # 开发、测试与部署
 
-工单改造的迁移 027、隔离验收及发布闸口见 [工单反馈与发布验收](ticket-feedback.md)。该版本回滚前必须停止工单写入，防止旧程序处理新类型数据。
+本文件为当前执行步骤。每轮需求、测试与发布结果写入 [开发历史与验收](development-history.md)，不在此累积日期章节。
 
-## 1. 环境要求
+## 1. 环境与首次启动
 
-- Docker Engine 与 Docker Compose 2.20 或更高版本
-- 本地直接开发时需要 Go 1.26.9、Node.js 24 LTS 和 npm
-- 判题宿主机需要能够运行 Docker，并预先准备 C/C++、Python、Java 沙箱镜像
-- 生产环境必须使用强随机 `JWT_SECRET`，并替换数据库与 MinIO 默认凭据
-
-## 2. Compose 快速启动
+本机开发使用 Go 1.26.9、Node.js 24 与 npm；生产需要 Docker Engine、Compose v2 及可运行沙箱的宿主机。以仓库锁文件和 Dockerfile 为构建依据。Compose 覆盖文件若使用 `!override`，需支持该标签的版本。
 
 ```bash
 cp .env.example .env
-# 编辑 .env，至少设置 32 字节以上的随机 JWT_SECRET
-docker compose up -d --build
+# 分别设置 JWT_SECRET、POSTGRES_PASSWORD、REDIS_PASSWORD、MINIO_ROOT_PASSWORD
+# 每个值独立生成；JWT 至少 32 字节，MinIO 用户不使用默认 minioadmin
+make up
+make sandbox-images
 ```
 
-首次接收提交前准备沙箱镜像：
+`make up` 依次构建三个应用、启动数据服务、执行 `api --migrate-only`、启动应用。不要跳过显式 SQL 迁移。Web 默认端口 25565；健康路径 `/healthz`；PostgreSQL 默认只绑定 127.0.0.1:15432，其他数据服务不对外开放。生产 `SEED_DATA=false`，仅隔离环境可启用演示账号。
 
-```bash
-./scripts/pull_sandbox_images.sh
-docker compose restart worker
-```
+直启开发分别在 `apps/api` 运行 `go run ./cmd/api`、`apps/worker` 运行 `go run ./cmd/worker`、`apps/web` 运行 `npm ci` 和 `npm run dev`。先准备隔离的数据库、Redis、对象存储及 `.env.example` 对应连接变量。Worker 的 OJ_WORK_ROOT 必须是宿主机与容器可见的同一持久路径，不使用易被系统清理的临时目录。
 
-默认入口：
+## 2. 实现与本地验证
 
-- Web：`http://localhost:${WEB_PORT}`，`.env.example` 默认端口为 `25565`
-- API 健康检查：通过 Web 反向代理访问 `/healthz`
-- PostgreSQL：仅绑定 `127.0.0.1:15432`
-- Redis、MinIO 和 API 默认只在 Compose 网络中提供服务
+1. 检查 Git 分支、工作区与作者；在 `codex/` 分支上开发，保留用户已有修改。
+2. 更新功能、权限、OpenAPI、客户端与必要的新迁移；禁止修改已经执行的历史迁移。
+3. API／Worker 各运行 `go test ./... -count=1`；Web 运行 `npm test -- --run` 和 `npm run build`。构建包含契约、类型、架构和入口包体检查。
+4. 对关键状态和权限使用真实隔离 PostgreSQL／Redis 集成测试；界面覆盖桌面、手机及浅暗主题；Docker 判题在具备引擎的环境另外验证。
+5. 写入本轮验收记录并检查 Markdown 链接，确认提交范围不含本机 MEMORY、密钥、日志或用户题面。
 
-本地种子数据由 `SEED_DATA` 控制，默认关闭。只有隔离开发环境才设置 `SEED_DATA=true`；生产已有账号不受关闭种子数据影响。API 启动时拒绝短于 32 字节或以 `dev-secret` 开头的 JWT 密钥；更换签名密钥会使现有登录令牌失效，用户需重新登录。
+### 集成测试环境
 
-## 3. 本地直接开发
-
-分别启动三个应用：
-
-```bash
-cd apps/api && go run ./cmd/api
-cd apps/worker && go run ./cmd/worker
-cd apps/web && npm install && npm run dev
-```
-
-基础设施仍可由 Compose 提供。Worker 默认使用 `/var/lib/school-oj-worker` 作为宿主机可见工作目录；该目录必须位于持久存储，不能放在可能被系统清理的 `/tmp` 下。需要调整时在启动 Compose 前设置 `OJ_WORK_ROOT`。
-
-## 4. 测试与构建
-
-运行全部单元测试：
-
-```bash
-make test
-```
-
-也可分别执行：
-
-```bash
-cd apps/api && go test ./...
-cd apps/worker && go test ./...
-cd apps/web && npm run api:check
-cd apps/web && npm test -- --run
-cd apps/web && npm run build
-docker compose config --quiet
-```
-
-涉及页面结构、权限或结果可见性的修改，还应使用 Playwright 覆盖桌面和移动视口，检查控制台错误、网络失败、横向溢出和关键状态。
-
-### 4.1 考试与团队准入集成验收
 
 `exam_security*_test.go` 使用真实 PostgreSQL，每个用例建立随机独立 schema，结束时只清理该 schema。必须提供本机专用数据库 `oj_exam_security_test`，不能指向生产库；Redis 使用专用回环端口 `56379`，不得复用生产实例。未提供变量时集成用例会明确跳过，不应把普通 `go test` 的通过等同于集成验收完成。
 
@@ -102,67 +63,9 @@ Worker 的恢复测试也使用上述数据库/Redis 变量，在 `apps/worker` 
 
 判题终态由 fixture 预置以核验显示和脱敏，不伪装成 Worker 实际执行；图片对象使用受控 S3 传输测试验证版本和权限。真正的应用镜像构建、MinIO/Worker 沙箱端到端与生产健康检查仍须在 Docker 可用后另行执行。
 
-### 4.2 本轮验收记录（2026-09-07）
 
-以下为开发基线 `99c78d5` 上的历史本地验收记录；当前服务器发布结果见 4.3。
+## 3. 配置
 
-| 检查 | 结果 |
-| --- | --- |
-| Web 完整单测 | 29 个测试文件、104 项通过 |
-| 契约与生产构建 | 164 个操作、生成一致性、前端架构检查、vue-tsc 和 Vite 构建通过；保留已有大分包体积警告 |
-| API / Worker | `go test ./... -count=1` 通过；已提供隔离 PostgreSQL/Redis 变量，故障恢复与权限集成用例实际执行 |
-| 数据库环境 | 本地 PostgreSQL 18、Redis 7；生产 PostgreSQL 16 的容器部署验收不以此替代 |
-| Playwright | 桌面 1440×1100、手机 390×844，考试/准入 68 个检查点，共享详情/治理 18 个检查点通过；无运行时异常 |
-| 视觉复核 | 复制位置、原文、行号、白底、三级职级、弹窗横向边界与手机阅卷布局通过；记录在 `tmp/governance-qa/design-qa.md` |
-| Compose / 文档 | 根 Compose 与部署入口配置通过；259 个文档相对链接、`git diff --check` 通过 |
-| 应用镜像构建 | 未完成：本机 Docker Desktop 的 `dockerInference` 初始化失败，Linux Engine 命名管道不存在；实际执行构建命令失败，未重置 Docker |
-| 发布 | 等待维护者确认本机 Git 提交，以及容器构建验收安排；服务器、数据卷及 GitHub 本轮均未变更 |
-
-截图和 JSON 检查结果属于忽略提交的本地产物，不长期纳入源码仓库。`final result: passed` 仅指页面验收，不表示容器发布已通过。
-
-### 4.3 完整治理与组件优化发布（2026-09-18）
-
-应用版本 `269729c` 已从旧版 `4e781b5` 更新到生产服务器；此次包含此前待发布的权限、契约、迁移、任务恢复治理及复用组件优化。服务器部署分支以快进方式更新，API、Worker、Web 均重新构建并启动，应用镜像保留 `269729c` 版本标签。
-
-| 检查 | 结果 |
-| --- | --- |
-| 服务器 API / Worker | 完整 Go 测试通过；使用独立 PostgreSQL 16、Redis 7 容器，权限、迁移与任务恢复集成用例实际执行 |
-| 服务器 Web | 32 个测试文件、117 项通过；164 个操作契约检查、类型检查、生产构建通过 |
-| 真实 Docker 判题沙箱 | 正常执行及资源计量、CPU 超时、内存超限、运行错误场景通过 |
-| 数据库升级 | 迁移 026 前角色/唯一创建者预检通过；升级后迁移校验和、CHECK 约束与唯一索引校验通过 |
-| 运行状态 | API / Worker 健康，Web 正常运行，外部 `/healthz` 返回 `status: ok`；运行镜像 ID 与发布记录一致，应用日志无 panic 或 HTTP 5xx |
-| 线上浏览器 | 1440×1100、390×844 两个视口的概览、登录页、题库、题面共 8 项只读检查通过；无运行时异常、失败响应或整页横向溢出。此次线上检查未使用登录会话；完整鉴权交互见此前隔离环境的 86 项验收 |
-| 备份与清理 | PostgreSQL 备份及旧镜像保留；原 PostgreSQL / Redis / MinIO 容器 ID 不变。已移除本次 4 个测试镜像和 13 个无用构建层，释放约 2.27 GB；测试容器已清理，数据卷未删除 |
-
-服务器发布证据与备份保存在 `/opt/School-OJ-backups/release-components-269729c6449a/`，其中 `release.json` 记录旧/新镜像、数据容器 ID、备份校验和及清理结果。线上页面截图与结果在忽略提交的 `tmp/components-production-qa/`。源码已移除不安全的旧格式化逻辑、失效标题参数与样式；完整范围见 [复用组件性能与生命周期](component-performance.md)。
-
-### 4.4 工单与提交界面更新（2026-09-23）
-
-应用版本 `3986614` 已从 `435a226` 更新上线，API、Worker、Web 使用同一代码版本构建，数据服务保持原容器。此次包括工单返回／创建跳转、4 字说明、新题 50 附件、固定栏目题面编辑、Profile 工作台清理、默认公开代码、本人提交筛选及题目反馈入口调整。
-
-服务器隔离 PostgreSQL 16 / Redis 7 下 API 140 项、Worker 36 项、Web 128 项测试通过；真实镜像两个视口 33 项交互、MinIO 题包与 Worker 实际判题、Docker 沙箱专项均通过。上线后健康、镜像匹配、管理员／学生只读权限与本人筛选、10 项线上浏览器检查通过，无 HTTP 5xx 或 panic。
-
-已清理本次 8 个测试容器、4 个测试镜像和 13 个无用构建层，保留 6 个正式服务、回滚镜像、数据库及附件备份。证据目录为 `/opt/School-OJ-backups/release-ticket-update-3986614b4ad4/`，完整说明见 [工单反馈与发布验收](ticket-feedback.md)。
-
-### 4.5 性能与安全优化发布（2026-10-10）
-
-应用版本 `ed51d699fcf0` 已从 `a8fdc6a` 发布，API、Worker、Web 使用服务器 Git 原始提交导出后构建的同一版本镜像。后续文档与换行符规则记录不改变应用二进制。详细优化见 [性能与安全联合复核](component-performance.md)。
-
-首次候选由 Windows 临时源码包构建，SQL 的 CRLF 与生产 LF 校验和不同，API 启动保护拒绝迁移，发布脚本随即恢复旧镜像及配置。改用 `git archive` 原始提交字节重建后，在生产数据库副本上启动、重启均通过；迁移校验和、用户、提交和题目版本计数一致。历史迁移文件与生产迁移台账均未改写。
-
-| 检查 | 结果 |
-| --- | --- |
-| 依赖 | npm audit 0；Go 可达/导入包告警 0，未导入 openpgp 的模块提示单独记录 |
-| 自动验收 | API 154、Worker 36、Web 133 项通过；真实 Docker 判题沙箱通过；工单/导入/审核双视口共 64 项通过 |
-| 线上浏览器 | 桌面 1440×1100、手机 390×844 的首页、登录、题库共 6 项检查通过；无运行时异常或整页横向溢出；HTTP 来源的既有 COOP 告警已记录 |
-| 性能样本 | 同一生产回环地址顺序 20 次题库请求，中位 TTFB 5.97 ms → 2.16 ms，仅为小样本，不等同于压测 SLA；线上首页 JS 压缩体积 428,898 → 180,822 字节 |
-| 容器 | API/Worker 健康，Web 正常，外部 healthz 正常；三个应用容器已替换，PostgreSQL/Redis/MinIO 的原容器 ID 不变 |
-| 配置 | 已备份并轮换原短 JWT 密钥，旧令牌失效；`SEED_DATA=false` 已核验；HTTP 入口仍为原端口 |
-| 清理 | 6 个临时验收容器、临时网络、验收镜像引用、失败候选引用及本次可确认无用的构建层已清理；仅余 6 个正式容器。保留所有数据卷、回滚镜像和备份，未执行全局 prune；磁盘可用约 7.7 GB |
-
-发布备份及镜像/容器记录：`/opt/School-OJ-backups/release-performance-ed51d699fcf0/`，含 PostgreSQL dump、附件 tar、旧配置、校验和与 `release.json`；配置及容器 inspect 含密钥，目录限定 root 访问。测试与回滚诊断：`/opt/School-OJ-backups/performance-audit-20261010/`。此前失败尝试备份保留供审计。
-
-## 5. 关键环境变量
 
 | 变量 | 用途 |
 | --- | --- |
@@ -179,50 +82,43 @@ Worker 的恢复测试也使用上述数据库/Redis 变量，在 `apps/worker` 
 
 只把直接受控的代理地址加入 `TRUSTED_PROXIES`，因为接口限流依赖可信客户端 IP。生产跨域列表不得使用不受控的通配来源。
 
-## 6. 生产更新流程
 
-更新应用时保持 PostgreSQL、Redis 和 MinIO 数据服务不变，仅重建 API、Worker 和 Web：
+另需设置 `REDIS_PASSWORD`，API 与 Worker 必须一致。数据库角色密码需要真正通过数据库修改并同步配置，不能只改已有数据卷对应的环境变量。凭据轮换属于独立操作，普通应用发布不重新创建数据服务。
 
-```bash
-git pull --ff-only
-docker compose config --quiet
-docker compose build api worker web
-docker compose run --rm --no-deps api --migrate-only
-docker compose up -d --no-deps api worker web
-docker compose ps
-curl -fsS http://127.0.0.1:${WEB_PORT:-25565}/healthz
-```
+## 4. 候选构建与发布
 
-推荐发布顺序：
+本项目维护者已要求“本地验证 → 服务器构建、测试、启动 → 本机 Git GUI 提交 → GitHub”。按这个顺序执行，无须提前制造提交：
 
-1. 取得维护者发布授权后，使用本机 Git 提交并推送部署用 origin。备份 PostgreSQL，记录当前提交和应用镜像编号，保留带标签的回滚镜像。
-2. 以快进方式更新部署分支，禁止在生产目录制造合并提交。
-3. 校验 Compose 配置，构建三个应用镜像。
-4. 使用 `up -d --no-deps api worker web` 替换应用容器，不重建数据服务或删除卷。
-5. 等待 API、Worker 及依赖服务健康。
-6. 运行健康接口、登录、题库和关键业务 Playwright 验收。
-7. 验收通过后，只清理核实属于本项目的闲置资源；最后推送 GitHub 同名分支，不强推。失败则恢复上一应用提交/镜像，不上传失败版本。
+1. 记录本地和生产 HEAD、分支、工作区、六个容器 ID 与旧镜像。生产源码存在未审查变更或无法快进时先解决，不覆盖。
+2. 使用临时 Git 索引从 HEAD 加入明确的任务文件，`write-tree` 记录候选树，再 `git archive <tree>` 导出。保留文件清单与 SHA-256；不得直接打包 Windows 工作区作为镜像源码。
+3. 在服务器独立目录／Compose 项目构建 api、worker、web，使用独立数据库、Redis、MinIO、工作根与回环端口。真实判题、权限和页面交互都在候选环境执行，不在生产创建测试账号或题目。
+4. 将生产数据库恢复到独立副本，执行候选迁移两次，核对历史迁移校验和、记录数、版本绑定及数据精度。完成升级与回退演练后再切换。
+5. 备份生产数据库和配置，保留旧镜像标签。暂停 API 新写入，等待判题队列排空后暂停 Worker；执行显式迁移。
+6. 将已验收候选镜像标为应用发布镜像，仅重新创建 api、worker、web。校验健康、实际镜像、授权会话、重要 API、公开页面和日志；数据服务容器及卷保持不变。
+7. 正式验证通过后补记历史文档，按文件清单暂存；使用本机 Git GUI、确认的 TailingMing 身份提交。提交的 apps 树必须与已部署候选一致，允许最后补充验收文档。
+8. 推送服务器 origin 的工作分支，生产部署分支仅 `merge --ff-only`；逐文件校验候选应用内容与提交一致。推送 GitHub 同名分支，不强推。记录实际提交 SHA。
+9. 清理本轮独立测试资源及确认无引用的应用镜像，保留生产数据、回滚镜像和备份。
 
-API 和 Worker 必须部署同一 Git 版本，避免新数据库结构或提交上下文被旧 Worker 错误消费。
+SQL 校验依赖原始字节，`.gitattributes` 固定迁移 LF。保留生产副本检查，不能用新建空库测试替代对已有校验值的验证。候选构建已完成时不要在上线阶段重新构建另一份未验证镜像。
 
-发布镜像必须从 Linux Git checkout 或 `git archive <commit>` 的原始提交内容构建，不可把 Windows 工作区直接打包后作为候选镜像。SQL 迁移校验和依赖文件字节，CRLF 与 LF 不同；`.gitattributes` 固定迁移为 LF。发布前须用生产数据库副本执行真实 API 镜像启动与重启，不能仅凭使用同一换行符建立的测试 schema 判断历史迁移兼容。
+## 5. 迁移 037 与回滚
 
-迁移 026 前执行只读预检：确认 `team_memberships.role` 没有 `owner/admin/member` 以外的值、每个团队没有多个 `owner`。发现异常应停止部署并人工核对，不自动降级用户或删除关系。迁移失败会阻止 API 启动；不要通过改写已执行 SQL 的方式绕过检查。
+037 将比赛奖项比例改为 `NUMERIC(9,6)`，保留范围与合计约束，并保留原整数值。旧 API 使用整数模型，不保证能读取小数列，不能直接把 API 镜像切回旧版后继续写入。
 
-## 7. 回滚与清理
+回退须先停止相关写入并检查三列是否全部为整数。若均为整数，可在备份和隔离演练后以事务恢复三列整数类型并撤销仅 037 的迁移记录，随后启动旧应用；不得改动 001–036 台账或 SQL。若已有小数，禁止截断、四舍五入或直接恢复旧备份丢失新数据：保留兼容小数的新 API，修复或提供兼容旧功能的版本，再实施回退。恢复数据库备份只用于明确冻结写入且确认无新数据的窗口。
 
-如果新容器未通过健康检查，切回更新前提交或镜像，重新创建 API、Worker 和 Web；不要回滚或删除数据卷。数据库迁移应保持向前兼容，生产迁移前仍应完成备份。
+其他迁移也要逐项判断：027／029 新工单类型与待补充状态不能交给不识别它们的旧程序；035／036 字段可以保留，但旧程序缺少加强后的撤销与范围保护。
 
-清理前查看 `docker system df`，按 `com.docker.compose.project=school-oj` 标签、应用服务和镜像引用核对归属，只删除确认无用的停止容器及悬空镜像，并保留回滚镜像。构建缓存只有能确认属于本项目或使用专用 Builder 时才清理，不能确认归属就保留；任何情况下不清理数据卷。
+## 6. 备份、恢复与清理
 
-`make cleanup` 仅回收本工作根的过期沙箱与本 Compose 项目已退出的一次性容器，不执行全局 prune，不删除卷、回滚镜像或共享构建缓存。
+`BACKUP_ROOT=/opt/School-OJ-backups make backup` 暂停写入方，生成 PostgreSQL custom dump、MinIO／Redis 快照、配置、文件清单及校验和，完成或失败后恢复原先运行的服务。目录受 umask 077 保护，备份应复制到受控异地存储，不提交 Git。
 
-## 8. Kubernetes 与 JPlag
+`make restore BACKUP=/absolute/path` 只向新建 `school-oj-restore-*` 项目恢复并验证，不覆盖在线库、不启动副本 API／Worker 消费任务。旧备份缺新凭据时可使用受保护的 RESTORE_ENV_FILE，不能修改原备份和校验清单。
 
-Kubernetes 参考清单位于 `deploy/k8s/school-oj.yaml`。使用前需要构建并推送三个应用镜像、配置 PostgreSQL/Redis/MinIO，并替换清单中的密钥。
+清理按明确的 Compose 项目、容器和镜像 ID 操作，不执行全局 prune，不删除生产数据卷、回滚标签或来源不明的共享缓存。`make cleanup` 仅清理本工作根过期沙箱及本项目退出的一次性容器。独立验收项目的数据卷只有确认属于本次夹具、报告与备份已保存后才删除。
 
-原生 JPlag 通过 `JPLAG_JAR_PATH` 配置。未挂载 JAR 时，API 会生成基于轻量令牌重叠算法的可测试报告，保证业务流程可验证，但正式查重应配置受控版本的 JPlag。
+## 7. 监控、旧接口与其他部署
 
-## 2026-10-15 配置升级
+API `/metrics`、Worker `:9091/healthz` 和 `/metrics` 仅内部可见，外部 `/metrics` 返回 404。Prometheus 告警规则文件需接入实际监控才能通知，不把文件存在当作已配置告警。`make legacy-report` 检查前 30 个完整 UTC 日覆盖和旧 `/api` 用量；缺日、Redis 数据丢失或仍有调用均不能宣告下线。
 
-新版本拒绝默认 PostgreSQL/MinIO 凭据和空 Redis 密码。已有数据库必须先备份，再修改数据库角色密码并同步 `.env`；仅改环境变量不会修改已有 PostgreSQL 角色密码。本轮需要重新创建 Redis/MinIO/数据库服务容器以应用认证与日志限制，保留原命名卷。具体操作与验收记录见 [审查修复说明](audit-remediation-20261015.md)。
+Kubernetes 清单要求专用 Docker 节点，不承诺纯 containerd 可用；先执行同配置的迁移 Job，再更新 Deployment。Worker 扩容需要独立节点与工作根。JPlag 由受控版本 JAR 配置；未配置时轻量后备报告仅保证业务可测试，不等同正式查重引擎。

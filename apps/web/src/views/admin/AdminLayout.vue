@@ -291,7 +291,9 @@ function handleUserCommand(command: string) {
   width: 72px;
   height: 72px;
   object-fit: contain;
-  border-radius: 50%;
+  padding: 6px;
+  box-sizing: border-box;
+  object-position: center;
 }
 
 .admin-brand-copy strong {

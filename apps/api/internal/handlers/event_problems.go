@@ -487,9 +487,61 @@ func (s Server) listEventProblemChoices(c *gin.Context) {
 		}
 		q = q.Where(allowed)
 	}
+	if p.kind == "contest" {
+		q = q.Where(s.DB.Where(publicProblemSQL()).Or("problems.team_id = ?", p.contest.TeamID))
+	}
 	if search := strings.TrimSpace(c.Query("q")); search != "" {
 		search = "%" + strings.NewReplacer("\\", "\\\\", "%", "\\%", "_", "\\_").Replace(search) + "%"
 		q = q.Where("problems.title ILIKE ? OR problems.display_code ILIKE ?", search, search)
+	}
+	// Source filters only narrow the authorized set. Even a global administrator
+	// cannot accidentally select another team's private bank through this picker.
+	switch c.Query("source") {
+	case "public":
+		q = q.Where(publicProblemSQL())
+	case "team":
+		if p.kind != "contest" {
+			c.JSON(400, gin.H{"error": "考试没有团队题库"})
+			return
+		}
+		q = q.Where("problems.team_id = ?", p.contest.TeamID)
+	case "", "all":
+	default:
+		c.JSON(400, gin.H{"error": "题目来源无效"})
+		return
+	}
+	if raw := c.Query("problem_set_id"); raw != "" {
+		id, err := strconv.ParseUint(raw, 10, 64)
+		var set models.TeamProblemSet
+		if err != nil || id == 0 || p.kind != "contest" {
+			c.JSON(400, gin.H{"error": "题单编号无效"})
+			return
+		}
+		if err := s.DB.Where("id = ? AND team_id = ? AND deleted_at IS NULL", id, p.contest.TeamID).First(&set).Error; err != nil {
+			c.JSON(404, gin.H{"error": "题单不可用"})
+			return
+		}
+		q = q.Where("problems.id IN (?)", s.DB.Model(&models.TeamProblemSetProblem{}).Select("problem_id").Where("problem_set_id = ?", set.ID))
+	}
+	if c.Query("page") != "" {
+		page, err := strconv.Atoi(c.Query("page"))
+		if err != nil || page < 1 || page > 100000 {
+			c.JSON(400, gin.H{"error": "页码无效"})
+			return
+		}
+		var total int64
+		if err := q.Count(&total).Error; err != nil {
+			eventError(c, err)
+			return
+		}
+		items := []models.Problem{}
+		if err := q.Order("problems.id desc").Offset((page - 1) * 20).Limit(20).Find(&items).Error; err != nil {
+			eventError(c, err)
+			return
+		}
+		c.Header("Cache-Control", "private, no-store")
+		c.JSON(200, gin.H{"items": items, "total": total, "page": page, "page_size": 20})
+		return
 	}
 	items := []models.Problem{}
 	if err := q.Order("problems.id desc").Limit(50).Find(&items).Error; err != nil {

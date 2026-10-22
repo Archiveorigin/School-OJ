@@ -190,6 +190,9 @@ func TestEventRankingTiesAndManualReview(t *testing.T) {
 			}
 			if kind == "exam" {
 				f.s.DB.Model(p.model()).Update("settings", map[string]any{"manual_review": true})
+				if readStandings(t, f, base).FinalReady {
+					t.Fatal("ungraded manual submissions must prevent final ranking")
+				}
 				assertStatus(t, f.request("GET", base+"/ranking/export", &f.admin, nil), 409)
 			}
 		})

@@ -18,6 +18,6 @@ describe('leaderboard award ranges', () => {
   it('normalizes malformed values into a bounded allocation', () => {
     const normalized = normalizeAwardPercents({ gold: 80, silver: 80, bronze: 80 })
     expect(normalized.gold + normalized.silver + normalized.bronze).toBe(100)
-    expect(normalizeAwardPercents({ gold: -2, silver: Number.NaN, bronze: 12.4 })).toEqual({ gold: 0, silver: 10, bronze: 12 })
+    expect(normalizeAwardPercents({ gold: -2, silver: Number.NaN, bronze: 12.4 })).toEqual({ gold: 0, silver: 10, bronze: 12.4 })
   })
 })

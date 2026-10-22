@@ -203,7 +203,7 @@ function clampPage() {
   display: -webkit-box;
   max-height: 42px;
   overflow: hidden;
-  color: #4b5563;
+  color: var(--muted);
   line-height: 1.35;
   word-break: break-word;
   -webkit-box-orient: vertical;

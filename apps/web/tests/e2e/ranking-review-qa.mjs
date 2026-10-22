@@ -48,11 +48,11 @@ try {
     await page.getByText(/待评测 1 份.*全部处理完成后可导出/).waitFor()
     assert.ok(await excel.isDisabled())
     assert.ok(await page.getByRole('button', { name: '确认完结', exact: true }).isDisabled())
-    // No browser reload or manual refresh: the next automatic fetch must see
-    // this judge result even though the event deadline has already passed.
+    // The manual refresh must see settled results after the deadline.
     const resolved = await fetch(api + `/__qa/rankings/${item.kind}/${item.id}/resolve`, { method: 'POST' })
     assert.equal(resolved.status, 200)
-    await page.getByText('已截止：评测与人工评分均已完成，可导出供管理员审核；确认完结后为最终成绩。').waitFor()
+    await page.getByRole('button', { name: '刷新榜单', exact: true }).click()
+    await page.getByText('已截止：全部评测与人工评分已完成，当前为最终排名；管理员确认完结后锁定归档。').waitFor()
     assert.ok(await excel.isEnabled())
     assert.ok(await page.getByRole('button', { name: '确认完结', exact: true }).isEnabled())
     for (const [button, format] of [['导出 Excel', 'xlsx'], ['导出打印榜单', 'html']]) {
@@ -77,7 +77,7 @@ try {
     await exported.pdf({ path: path.join(output, `${name}-print.pdf`), printBackground: true, preferCSSPageSize: true })
     await exported.close()
     await page.setViewportSize({ width: 1440, height: 1050 })
-    checks.push({ ...item, autoRefreshAfterDeadline: true, export: ['xlsx', 'html', 'print-pdf'], desktopMobile: true })
+    checks.push({ ...item, manualRefreshAfterDeadline: true, export: ['xlsx', 'html', 'print-pdf'], desktopMobile: true })
   }
   assert.deepEqual(errors, [])
   await writeFile(path.join(output, 'result.json'), JSON.stringify({ passed: true, checks, errors }, null, 2))

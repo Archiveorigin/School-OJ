@@ -70,7 +70,12 @@ describe('LeaderboardBoard variants', () => {
     expect(wrapper.find('.penalty-solved-stat').exists()).toBe(true)
     expect(wrapper.find('.penalty-time-stat').exists()).toBe(true)
     expect(wrapper.find('.penalty-result.result-accepted.is-first').exists()).toBe(true)
-    expect(wrapper.text()).toContain('金 10%')
+    expect(wrapper.text()).toContain('姓名Name')
+    expect(wrapper.text()).not.toContain('金 10%')
+    expect(wrapper.get('.penalty-participant-name').classes()).toContain('is-gold')
+    expect(wrapper.get('.penalty-row').classes()).not.toContain('award-gold')
+    expect(wrapper.find('select[aria-label="排名模式"]').exists()).toBe(false)
+    expect(wrapper.text()).not.toContain('自动刷新')
   })
 
   it('renders the score table and full-score cells', () => {
@@ -116,11 +121,13 @@ describe('LeaderboardBoard variants', () => {
     expect(published.map((item) => item.name)).toEqual(['甲', '乙'])
   })
 
-  it('preserves shared competition ranks when switching display modes', async () => {
+  it('preserves shared competition ranks in the performance view', async () => {
     const board = data('penalty')
     board.rows = [row({ id: 1, rank: 1 }), row({ id: 2, rank: 1 }), row({ id: 3, rank: 3, solved: 0 })]
     const wrapper = mountBoard(board)
-    await wrapper.get('select[aria-label="排名模式"]').setValue('performance')
+    expect(wrapper.text()).toContain('实时表现')
+    await wrapper.setProps({ data: { ...board, finalReady: true } })
+    expect(wrapper.text()).toContain('最终排名')
     expect(wrapper.findComponent({ name: 'PenaltyLeaderboardTable' }).props('rankByID')).toEqual({ '1': 1, '2': 1, '3': 3 })
     wrapper.unmount()
   })

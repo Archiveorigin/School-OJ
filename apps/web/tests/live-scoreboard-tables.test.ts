@@ -75,13 +75,14 @@ describe("live scoreboard tables", () => {
     expect(wrapper.find(".student-avatar").exists()).toBe(false);
     expect(wrapper.find(".penalty-identity-header").exists()).toBe(false);
     expect(wrapper.get(".penalty-participant-name").text()).toBe("章佳荣");
-    expect(wrapper.get(".penalty-row").classes()).toContain("award-gold");
+    expect(wrapper.get(".penalty-row").classes()).not.toContain("award-gold");
+    expect(wrapper.get(".penalty-participant-name").classes()).toContain("is-gold");
     expect(wrapper.get(".penalty-row").attributes("data-award")).toBe("gold");
     expect(wrapper.get(".penalty-rank-stat").classes()).toContain("is-gold");
     expect(wrapper.get(".penalty-rank-stat").text()).toBe("7");
   });
 
-  it("renders score rows in the same native language without a separate identity column", () => {
+  it("renders score rows in the same native language with a separate Name column", () => {
     const row = participant({
       metric: 86,
       metricDisplay: "86/100",
@@ -115,7 +116,8 @@ describe("live scoreboard tables", () => {
     expect(wrapper.find(".student-avatar").exists()).toBe(false);
     expect(wrapper.find(".score-identity-header").exists()).toBe(false);
     expect(wrapper.get(".score-participant-name").text()).toBe("章佳荣");
-    expect(wrapper.get(".score-row").classes()).toContain("award-bronze");
+    expect(wrapper.get(".score-row").classes()).not.toContain("award-bronze");
+    expect(wrapper.get(".score-participant-name").classes()).toContain("is-bronze");
     expect(wrapper.get(".score-rank-stat").classes()).toContain("is-bronze");
     expect(wrapper.get(".score-rank-stat").text()).toBe("4");
     expect(wrapper.get(".score-result").classes()).toContain("result-wrong");

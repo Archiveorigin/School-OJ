@@ -234,7 +234,7 @@ onBeforeUnmount(() => { if (poller) window.clearInterval(poller); if (deadline) 
 <style scoped>
 .section-heading { display:flex; flex-wrap:wrap; align-items:center; gap:12px; margin-bottom:18px; }.section-heading h2 { margin:0; }.event-management-actions { display:flex; flex-wrap:wrap; gap:8px; }.event-management-actions :deep(.el-button + .el-button) { margin-left:0; }
 .paper-full-width { grid-column: 1 / -1; }
-.exam-page { min-height: 100%; padding: 24px 20px 58px; background: color-mix(in srgb, var(--surface) 74%, #edf2f7); }
+.exam-page { min-height: 100%; padding: 24px 20px 58px; background: color-mix(in srgb, var(--surface) 74%, var(--color-canvas)); }
 .exam-shell { width: min(1320px, 100%); margin: 0 auto; }
 .exam-content { padding-top: 16px; min-width: 0; }
 .description-layout { display: grid; grid-template-columns: minmax(0, 1fr) 320px; gap: 16px; }

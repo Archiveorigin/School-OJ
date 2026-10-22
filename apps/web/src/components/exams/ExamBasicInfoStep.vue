@@ -196,7 +196,7 @@ const timeSummary = computed(() => {
   display: grid;
   grid-template-columns: minmax(0, 1fr) 360px;
   min-height: calc(100vh - 82px);
-  background: #f8fafc;
+  background: var(--color-canvas);
 }
 
 .basic-canvas {
@@ -204,39 +204,39 @@ const timeSummary = computed(() => {
 }
 
 .step-intro span {
-  color: #0a5bd7;
+  color: var(--accent);
   font-size: 13px;
   font-weight: 700;
 }
 
 .step-intro h1 {
   margin: 8px 0 6px;
-  color: #101828;
+  color: var(--text);
   font-size: 34px;
 }
 
 .step-intro p {
   margin: 0;
-  color: #667085;
+  color: var(--muted);
 }
 
 .form-section {
   max-width: 900px;
   margin-top: 28px;
   padding: 26px 28px;
-  border: 1px solid #dce3ed;
+  border: 1px solid var(--border);
   border-radius: 10px;
-  background: #fff;
+  background: var(--surface-strong);
 }
 
 .form-section h2 {
   margin: 0 0 20px;
-  color: #182230;
+  color: var(--text);
   font-size: 18px;
 }
 
 .exam-form :deep(.el-form-item__label) {
-  color: #344054;
+  color: var(--text);
   font-weight: 650;
 }
 
@@ -254,7 +254,7 @@ const timeSummary = computed(() => {
 .rule-block {
   margin-top: 8px;
   padding-top: 22px;
-  border-top: 1px solid #e4e8ef;
+  border-top: 1px solid var(--border);
 }
 
 .rule-row {
@@ -263,7 +263,7 @@ const timeSummary = computed(() => {
   align-items: center;
   justify-content: space-between;
   gap: 24px;
-  border-bottom: 1px solid #edf0f4;
+  border-bottom: 1px solid var(--border);
 }
 
 .rule-row div {
@@ -272,23 +272,23 @@ const timeSummary = computed(() => {
 }
 
 .rule-row strong {
-  color: #263246;
+  color: var(--text);
 }
 
 .rule-row span {
-  color: #7a8494;
+  color: var(--muted);
   font-size: 13px;
 }
 
 .exam-overview {
   padding: 38px 30px;
-  border-left: 1px solid #dce3ed;
-  background: #fff;
+  border-left: 1px solid var(--border);
+  background: var(--surface-strong);
 }
 
 .exam-overview h2 {
   margin: 0 0 28px;
-  color: #172033;
+  color: var(--text);
 }
 
 .exam-overview dl {
@@ -303,13 +303,13 @@ const timeSummary = computed(() => {
 }
 
 .exam-overview dt {
-  color: #7c8797;
+  color: var(--muted);
   font-size: 13px;
 }
 
 .exam-overview dd {
   margin: 0;
-  color: #263246;
+  color: var(--text);
   font-weight: 650;
   line-height: 1.55;
 }
@@ -319,7 +319,7 @@ const timeSummary = computed(() => {
     grid-template-columns: 1fr;
   }
   .exam-overview {
-    border-top: 1px solid #dce3ed;
+    border-top: 1px solid var(--border);
     border-left: 0;
   }
 }

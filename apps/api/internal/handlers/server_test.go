@@ -683,30 +683,30 @@ func TestActiveTeamProblemSetLockQueryRequiresActiveRowAndShareLock(t *testing.T
 }
 
 func TestResolveTeamContestAwardPercentages(t *testing.T) {
-	zero := 0
-	twenty := 20
+	zero := float64(0)
+	twenty := float64(20)
 	gold, silver, bronze, err := resolveTeamContestAwardPercentages(nil, nil, nil, 10, 10, 10)
 	if err != nil || gold != 10 || silver != 10 || bronze != 10 {
-		t.Fatalf("default award percentages = %d/%d/%d, err=%v", gold, silver, bronze, err)
+		t.Fatalf("default award percentages = %g/%g/%g, err=%v", gold, silver, bronze, err)
 	}
 	gold, silver, bronze, err = resolveTeamContestAwardPercentages(&zero, &twenty, nil, 10, 10, 10)
 	if err != nil || gold != 0 || silver != 20 || bronze != 10 {
-		t.Fatalf("explicit/partial award percentages = %d/%d/%d, err=%v", gold, silver, bronze, err)
+		t.Fatalf("explicit/partial award percentages = %g/%g/%g, err=%v", gold, silver, bronze, err)
 	}
 
-	overflow := 81
+	overflow := float64(81)
 	if _, _, _, err := resolveTeamContestAwardPercentages(&overflow, &twenty, &zero, 10, 10, 10); err == nil {
 		t.Fatal("award percentages totaling over 100 must be rejected")
 	}
-	outOfRange := -1
+	outOfRange := float64(-1)
 	if _, _, _, err := resolveTeamContestAwardPercentages(&outOfRange, nil, nil, 10, 10, 10); err == nil {
 		t.Fatal("negative award percentage must be rejected")
 	}
 }
 
 func TestTeamContestAwardPercentagesSerializeAsNumbers(t *testing.T) {
-	zero := 0
-	ten := 10
+	zero := float64(0)
+	ten := float64(10)
 	payload, err := json.Marshal(models.TeamContest{
 		GoldAwardPercent:   &zero,
 		SilverAwardPercent: &ten,
