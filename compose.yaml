@@ -106,7 +106,8 @@ services:
       timeout: 3s
       retries: 20
 
-  worker:
+  worker: &judge-worker
+    image: "${COMPOSE_PROJECT_NAME:-school-oj}-worker"
     mem_limit: 768m
     cpus: "1.5"
     pids_limit: 256
@@ -114,7 +115,7 @@ services:
     logging: *service-logging
     build:
       context: ./apps/worker
-    environment:
+    environment: &judge-environment
       DATABASE_URL: "host=postgres user=${POSTGRES_USER:-oj} password=${POSTGRES_PASSWORD:?POSTGRES_PASSWORD must be set} dbname=${POSTGRES_DB:-oj} port=5432 sslmode=disable TimeZone=Asia/Shanghai"
       REDIS_ADDR: "redis:6379"
       REDIS_PASSWORD: "${REDIS_PASSWORD:?REDIS_PASSWORD must be set}"
@@ -149,6 +150,16 @@ services:
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock
       - "${OJ_WORK_ROOT:-/var/lib/school-oj-worker}:${OJ_WORK_ROOT:-/var/lib/school-oj-worker}:z"
+
+  worker-secondary:
+    <<: *judge-worker
+    environment:
+      <<: *judge-environment
+      SANDBOX_WORK_ROOT: "${OJ_SECONDARY_WORK_ROOT:-/var/lib/school-oj-worker-secondary}"
+      DOCKER_SANDBOX_SECCOMP: "${OJ_SECONDARY_WORK_ROOT:-/var/lib/school-oj-worker-secondary}/seccomp/oj-seccomp.json"
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+      - "${OJ_SECONDARY_WORK_ROOT:-/var/lib/school-oj-worker-secondary}:${OJ_SECONDARY_WORK_ROOT:-/var/lib/school-oj-worker-secondary}:z"
 
   web:
     mem_limit: 128m

@@ -58,8 +58,14 @@ func (r *DockerRunner) CleanupStale(ctx context.Context) error {
 	}
 	active := map[string]bool{}
 	for _, id := range strings.Fields(string(out)) {
-		body, err := exec.CommandContext(ctx, "docker", "inspect", id).Output()
+		body, err := exec.CommandContext(ctx, "docker", "inspect", id).CombinedOutput()
 		if err != nil {
+			// A second worker can finish and remove its sandbox between list and
+			// inspect. Confirm absence; daemon errors must still fail cleanup.
+			remaining, checkErr := exec.CommandContext(ctx, "docker", "ps", "-aq", "--filter", "id="+id).Output()
+			if checkErr == nil && strings.TrimSpace(string(remaining)) == "" {
+				continue
+			}
 			return fmt.Errorf("inspect sandbox %s: %w", id, err)
 		}
 		var containers []struct {

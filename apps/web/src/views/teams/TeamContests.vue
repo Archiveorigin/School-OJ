@@ -137,6 +137,8 @@
         </el-form-item>
         <el-form-item label="奖项比例">
           <TeamContestAwardFields
+            :team-id="team.id"
+            v-model:ranking-user-ids="form.ranking_user_ids"
             v-if="createVisible"
             @validity-change="awardInputValid = $event"
             v-model:gold-award-percent="form.gold_award_percent"
@@ -202,6 +204,7 @@ const form = reactive({
   scoring_rule: 'acm' as ScoringRule,
   freeze_enabled: false,
   freeze_duration_minutes: 60,
+  ranking_user_ids: null as number[] | null,
   ...defaultContestAwardPercents()
 })
 const canOrganize = computed(() => Boolean(props.team.can_organize))
@@ -235,7 +238,7 @@ async function createContest() {
     return
   }
   const awardError = !awardInputValid.value
-    ? '请检查奖项设置和换算基数'
+    ? '请检查奖项设置和排名名单'
     : contestAwardValidationError(form)
   if (awardError) {
     ElMessage.warning(awardError)
@@ -255,6 +258,7 @@ async function createContest() {
       scoring_rule: 'acm',
       freeze_enabled: false,
       freeze_duration_minutes: 60,
+      ranking_user_ids: null as number[] | null,
       ...defaultContestAwardPercents()
     })
     createVisible.value = false

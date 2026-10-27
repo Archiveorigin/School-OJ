@@ -250,6 +250,7 @@ export interface components {
     "review_revision"?: number
     "review_note"?: string
     "completed_at"?: (string) | null
+    "ranking_user_ids"?: (Array<number>) | null
   }
     "TeamProblemSet": {
     "id": number

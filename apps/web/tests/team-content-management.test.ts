@@ -26,7 +26,7 @@ describe('team content management', () => {
     ).toContain('不能超过 100%')
   })
 
-  it('shows the live award total and emits individual percentage changes', async () => {
+  it('rejects award totals over 100 percent and emits individual percentage changes', async () => {
     const wrapper = mount(TeamContestAwardFields, {
       props: {
         goldAwardPercent: 10,
@@ -45,12 +45,12 @@ describe('team content management', () => {
       }
     })
 
-    expect(wrapper.text()).toContain('30%')
+    expect(wrapper.text()).not.toContain('奖项占比合计')
     await wrapper.findAll('.number-input')[0].trigger('click')
     expect(wrapper.emitted('update:goldAwardPercent')).toEqual([[11]])
 
     await wrapper.setProps({ goldAwardPercent: 90 })
-    expect(wrapper.text()).toContain('110%')
+    expect(wrapper.text()).not.toContain('奖项占比合计')
     expect(wrapper.get('.award-error').text()).toContain('不能超过 100%')
   })
 

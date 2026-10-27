@@ -14432,6 +14432,15 @@
             "type": "string",
             "format": "date-time",
             "nullable": true
+          },
+          "ranking_user_ids": {
+            "type": "array",
+            "nullable": true,
+            "items": {
+              "type": "integer",
+              "minimum": 1
+            },
+            "description": "排名和奖项换算名单；null 为全体，空数组为不排名。不会限制提交权限。草稿/退回状态可编辑，审核通过时冻结。"
           }
         }
       },

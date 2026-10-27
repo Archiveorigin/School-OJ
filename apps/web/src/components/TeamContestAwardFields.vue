@@ -10,18 +10,14 @@
         <el-radio-button value="count">人数（人）</el-radio-button>
       </el-radio-group>
     </div>
-    <div v-if="unit === 'count'" class="award-basis">
-      <span>换算基数（预计参赛人数）</span>
-      <el-input-number
-        v-model="participants"
-        :min="1"
-        :max="1000000"
-        :precision="0"
-        controls-position="right"
-        aria-label="预计参赛人数"
-        placeholder="输入人数"
-      />
-    </div>
+    <TeamContestRankingRoster
+      v-if="teamId"
+      :team-id="teamId"
+      :model-value="rankingUserIds ?? null"
+      @update:model-value="emit('update:rankingUserIds', $event)"
+      @count-change="participants = $event"
+      @validity-change="rosterValid = $event"
+    />
     <div class="award-fields">
       <div
         v-for="(medal, index) in medals"
@@ -49,19 +45,17 @@
         />
       </div>
     </div>
-    <div class="award-summary" aria-live="polite">
-      <div>
-        <span>奖项占比合计</span><strong>{{ total }}%</strong>
-      </div>
-      <p v-if="validationError" class="award-error">{{ validationError }}</p>
-      <p v-else-if="unit === 'count'">
-        按 {{ participants }} 人换算为比例：金 {{ percents[0] }}% · 银
-        {{ percents[1] }}% · 铜 {{ percents[2] }}%。
-      </p>
-      <p>
-        最终按实际参赛人数计算累计名额并向上取整；同名次同奖，实际获奖人数可能增加。
-      </p>
-    </div>
+    <p v-if="validationError" role="alert" class="award-error">
+      {{ validationError }}
+    </p>
+    <p v-else-if="unit === 'count'" class="award-note">
+      按名单 {{ participants }} 人换算：金 {{ percents[0] }}% · 银
+      {{ percents[1] }}% · 铜 {{ percents[2] }}%。
+    </p>
+    <p class="award-note">
+      按排名名单人数计算累计名额并向上取整；同名次同奖，实际获奖人数可能增加。全设为
+      0 可不评奖。
+    </p>
   </div>
 </template>
 
@@ -70,22 +64,28 @@ import { computed, ref, watch } from "vue";
 import {
   awardCountToPercent,
   awardCountsFromPercents,
-  contestAwardTotal,
   contestAwardValidationError,
 } from "../features/teams/contestAwards";
+import TeamContestRankingRoster from "./TeamContestRankingRoster.vue";
 const props = defineProps<{
+  teamId?: number;
+  rankingUserIds?: number[] | null;
   goldAwardPercent: number;
   silverAwardPercent: number;
   bronzeAwardPercent: number;
 }>();
 const emit = defineEmits<{
+  "update:rankingUserIds": [value: number[] | null];
   "update:goldAwardPercent": [value: number];
   "update:silverAwardPercent": [value: number];
   "update:bronzeAwardPercent": [value: number];
   "validity-change": [valid: boolean];
 }>();
 const unit = ref<"percent" | "count">("percent");
-const participants = ref<number>();
+const participants = ref(0);
+const rosterValid = ref(!props.teamId);
+const countDraft = ref([0, 0, 0]);
+const basisReady = ref(false);
 const medals = [
   { key: "gold", label: "金奖" },
   { key: "silver", label: "银奖" },
@@ -107,20 +107,53 @@ const validBasis = computed(
     participants.value! >= 1 &&
     participants.value! <= 1000000,
 );
-const counts = computed(() =>
-  awardCountsFromPercents(
-    allocation.value,
-    validBasis.value ? participants.value! : 0,
-  ),
-);
-const total = computed(() =>
-  Number(contestAwardTotal(allocation.value).toFixed(6)),
-);
-const validationError = computed(() =>
-  unit.value === "count" && !validBasis.value
-    ? "请填写预计参赛人数作为换算基数"
-    : contestAwardValidationError(allocation.value),
-);
+const counts = computed(() => countDraft.value);
+const validationError = computed(() => {
+  if (!rosterValid.value) return "请检查排名名单是否已加载且成员有效";
+  if (unit.value === "count") {
+    if (!validBasis.value) return "请至少选择一名排名人员，才能按人数设置奖项";
+    if (
+      counts.value.some((n) => !Number.isInteger(n) || n < 0) ||
+      counts.value.reduce((a, b) => a + b, 0) > participants.value
+    )
+      return "获奖人数合计不能超过名单人数，请调整奖项人数";
+  }
+  return contestAwardValidationError(allocation.value);
+});
+watch(unit, (value) => {
+  if (value === "count")
+    countDraft.value = awardCountsFromPercents(
+      allocation.value,
+      participants.value,
+    );
+});
+watch(participants, () => {
+  if (!validBasis.value) {
+    basisReady.value = false;
+    return;
+  }
+  // The first valid basis can arrive after a failed member-list load. Derive
+  // the counts from the stored percentages instead of persisting a zero draft.
+  if (!basisReady.value) {
+    basisReady.value = true;
+    if (unit.value === "count")
+      countDraft.value = awardCountsFromPercents(
+        allocation.value,
+        participants.value,
+      );
+  }
+  if (unit.value === "count") emitCounts();
+});
+function emitCounts() {
+  if (
+    !validBasis.value ||
+    counts.value.reduce((a, b) => a + b, 0) > participants.value
+  )
+    return;
+  counts.value.forEach((count, i) =>
+    emitValue(i, awardCountToPercent(count, participants.value)),
+  );
+}
 watch(validationError, (error) => emit("validity-change", !error), {
   immediate: true,
 });
@@ -135,11 +168,8 @@ function update(index: number, value: number | undefined) {
     return;
   }
   if (!validBasis.value) return;
-  const next = [...counts.value];
-  next[index] = Number(value ?? 0);
-  next.forEach((count, i) =>
-    emitValue(i, awardCountToPercent(count, participants.value!)),
-  );
+  countDraft.value[index] = Number(value ?? 0);
+  emitCounts();
 }
 </script>
 
@@ -199,35 +229,16 @@ function update(index: number, value: number | undefined) {
 .award-field :deep(.el-input-number) {
   width: 100%;
 }
-.award-summary {
-  padding: 11px 13px;
-  border: 1px solid color-mix(in srgb, var(--accent) 20%, var(--border));
-  border-radius: 9px;
-  background: color-mix(in srgb, var(--accent) 6%, var(--surface-strong));
-}
-.award-summary > div {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 12px;
-}
-.award-summary strong {
-  color: var(--accent);
-  font-size: 18px;
-}
-.award-summary p {
-  margin: 4px 0 0;
+.award-note {
+  margin: 0;
   color: var(--muted);
   font-size: 12px;
-  line-height: 1.5;
+  line-height: 1.6;
 }
-.award-allocation--invalid .award-summary {
-  border-color: color-mix(in srgb, #dc2626 55%, var(--border));
-  background: color-mix(in srgb, #dc2626 7%, var(--surface-strong));
-}
-.award-allocation--invalid .award-summary strong,
-.award-summary .award-error {
-  color: #dc2626;
+.award-error {
+  margin: 0;
+  color: var(--el-color-danger);
+  font-size: 13px;
 }
 @media (max-width: 560px) {
   .award-fields {

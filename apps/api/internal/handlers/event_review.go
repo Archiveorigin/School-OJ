@@ -399,6 +399,9 @@ func (s Server) reviewEventPaper(c *gin.Context) {
 					updates["participants_frozen"] = true
 				}
 				if p.kind == "contest" {
+					if _, err := normalizeContestRankingRoster(tx, p.contest.TeamID, p.contest.RankingUserIDs); err != nil {
+						return eventFail(409, err.Error())
+					}
 					updates["state"] = models.TeamContestPublished
 					updates["published_at"] = now
 					if err = tx.Where("contest_id=?", p.id).Delete(&models.TeamContestParticipant{}).Error; err != nil {

@@ -256,6 +256,8 @@
               :max="Math.max(1, editForm.duration_minutes - 1)" /></el-form-item
           ><el-form-item label="奖项设置"
             ><TeamContestAwardFields
+            :team-id="detail.team.id"
+            v-model:ranking-user-ids="editForm.ranking_user_ids"
               v-if="editVisible"
               v-model:gold-award-percent="editForm.gold_award_percent"
               v-model:silver-award-percent="editForm.silver_award_percent"
@@ -371,6 +373,7 @@ const settingsDraft = useEditSnapshot({
   scoring_rule: 'acm' as ScoringRule,
   freeze_enabled: false,
   freeze_duration_minutes: 60,
+  ranking_user_ids: null as number[] | null,
   gold_award_percent: 10,
   silver_award_percent: 10,
   bronze_award_percent: 10
@@ -599,7 +602,7 @@ async function submitSolution() {
 }
 async function saveContest() {
   const awardError = !awardInputValid.value
-    ? '请检查奖项设置和换算基数'
+    ? '请检查奖项设置和排名名单'
     : contestAwardValidationError(editForm)
   if (awardError) {
     ElMessage.warning(awardError)

@@ -20,7 +20,7 @@ resume() {
 }
 trap resume EXIT
 "${compose[@]}" config --quiet
-"${compose[@]}" stop -t 30 web api worker
+"${compose[@]}" stop -t 30 web api worker worker-secondary
 "${compose[@]}" exec -T postgres sh -ec 'pg_dump -U "$POSTGRES_USER" -d "$POSTGRES_DB" --format=custom --no-owner --no-privileges' > "$backup_dir/postgres.dump"
 "${compose[@]}" exec -T postgres pg_restore --list < "$backup_dir/postgres.dump" > "$backup_dir/postgres.list"
 # Stop object and queue writers for a consistent filesystem snapshot. PostgreSQL

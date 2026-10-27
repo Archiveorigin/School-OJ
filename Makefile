@@ -7,7 +7,7 @@ up:
 	$(COMPOSE) build api worker web
 	$(COMPOSE) up -d --wait postgres redis minio
 	$(COMPOSE) run --rm --no-deps api --migrate-only
-	$(COMPOSE) up -d --wait api worker web
+	$(COMPOSE) up -d --wait api worker worker-secondary web
 
 down:
 	$(COMPOSE) down

@@ -560,6 +560,7 @@ type TeamJoinApplication struct {
 }
 
 type TeamContest struct {
+	RankingUserIDs datatypes.JSON `json:"ranking_user_ids" gorm:"type:jsonb"`
 	EventReview
 	ID                    uint       `json:"id" gorm:"primaryKey"`
 	TeamID                uint       `json:"team_id" gorm:"index;not null"`

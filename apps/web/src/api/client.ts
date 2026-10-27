@@ -74,6 +74,7 @@ export interface TeamProblemSet {
 }
 
 export interface TeamContest {
+  ranking_user_ids?: number[] | null
   review_status?: 'draft' | 'pending' | 'approved' | 'rejected'
   review_revision?: number
   id: number

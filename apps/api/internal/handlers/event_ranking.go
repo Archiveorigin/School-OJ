@@ -77,7 +77,14 @@ func (s Server) loadContestRankingParticipants(contest models.TeamContest) ([]mo
 	} else {
 		q = q.Where("id IN (?)", s.DB.Model(&models.TeamContestParticipant{}).Select("user_id").Where("contest_id=?", contest.ID))
 	}
-	err := q.Order("id").Find(&users).Error
+	ids, selected, err := contestRankingIDs(contest.RankingUserIDs)
+	if err != nil {
+		return nil, nil, err
+	}
+	if selected {
+		q = q.Where("id IN ?", ids)
+	}
+	err = q.Order("id").Find(&users).Error
 	return links, users, err
 }
 

@@ -3,6 +3,7 @@ package handlers
 import (
 	"crypto/rand"
 	"encoding/hex"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
@@ -101,17 +102,18 @@ type teamProblemSetView struct {
 }
 
 type teamContestInput struct {
-	Revision              int        `json:"revision"`
-	Title                 string     `json:"title" binding:"required"`
-	Description           string     `json:"description"`
-	StartsAt              *time.Time `json:"starts_at"`
-	DurationMinutes       int        `json:"duration_minutes"`
-	ScoringRule           string     `json:"scoring_rule"`
-	FreezeEnabled         bool       `json:"freeze_enabled"`
-	FreezeDurationMinutes int        `json:"freeze_duration_minutes"`
-	GoldAwardPercent      *float64   `json:"gold_award_percent"`
-	SilverAwardPercent    *float64   `json:"silver_award_percent"`
-	BronzeAwardPercent    *float64   `json:"bronze_award_percent"`
+	RankingUserIDs        json.RawMessage `json:"ranking_user_ids"`
+	Revision              int             `json:"revision"`
+	Title                 string          `json:"title" binding:"required"`
+	Description           string          `json:"description"`
+	StartsAt              *time.Time      `json:"starts_at"`
+	DurationMinutes       int             `json:"duration_minutes"`
+	ScoringRule           string          `json:"scoring_rule"`
+	FreezeEnabled         bool            `json:"freeze_enabled"`
+	FreezeDurationMinutes int             `json:"freeze_duration_minutes"`
+	GoldAwardPercent      *float64        `json:"gold_award_percent"`
+	SilverAwardPercent    *float64        `json:"silver_award_percent"`
+	BronzeAwardPercent    *float64        `json:"bronze_award_percent"`
 }
 
 type teamContestProblemView struct {
@@ -664,7 +666,13 @@ func (s Server) createTeamContest(c *gin.Context) {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 		return
 	}
+	roster, err := normalizeContestRankingRoster(s.DB, team.ID, req.RankingUserIDs)
+	if err != nil {
+		c.JSON(400, gin.H{"error": err.Error()})
+		return
+	}
 	item := models.TeamContest{
+		RankingUserIDs:        roster,
 		EventReview:           models.EventReview{ReviewStatus: "draft", ReviewRevision: 1},
 		TeamID:                team.ID,
 		Title:                 req.Title,
@@ -734,7 +742,16 @@ func (s Server) updateTeamContest(c *gin.Context) {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 		return
 	}
+	if len(req.RankingUserIDs) == 0 {
+		req.RankingUserIDs = json.RawMessage(contest.RankingUserIDs)
+	}
+	roster, err := normalizeContestRankingRoster(s.DB, team.ID, req.RankingUserIDs)
+	if err != nil {
+		c.JSON(400, gin.H{"error": err.Error()})
+		return
+	}
 	updates := map[string]any{
+		"ranking_user_ids":        roster,
 		"title":                   req.Title,
 		"description":             strings.TrimSpace(req.Description),
 		"starts_at":               req.StartsAt,

@@ -277,6 +277,7 @@
 | [035_authorization_version.sql](../apps/api/migrations/035_authorization_version.sql) | 权限与会话版本触发器。 |
 | [036_course_membership_roles.sql](../apps/api/migrations/036_course_membership_roles.sql) | 课程管理员与助教职级约束。 |
 | [037_fractional_contest_awards.sql](../apps/api/migrations/037_fractional_contest_awards.sql) | 比赛奖项六位小数比例。 |
+| [038_contest_ranking_roster.sql](../apps/api/migrations/038_contest_ranking_roster.sql) | 比赛排名与评奖名单（JSONB 用户 ID 数组，NULL 为全体），附数组类型检查约束。 |
 
 ## 6. Worker 判题服务
 
@@ -387,7 +388,8 @@
 | [`ListPagination.vue`](../apps/web/src/components/ListPagination.vue) | 列表分页器。 |
 | [`CourseJoinDialogs.vue`](../apps/web/src/components/CourseJoinDialogs.vue) | 课程邀请码加入对话框。 |
 | [`TeamIconUpload.vue`](../apps/web/src/components/TeamIconUpload.vue) | 团队图标选择、校验和预览。 |
-| [`TeamContestAwardFields.vue`](../apps/web/src/components/TeamContestAwardFields.vue) | 金银铜获奖比例输入与校验。 |
+| [`TeamContestAwardFields.vue`](../apps/web/src/components/TeamContestAwardFields.vue) | 金银铜获奖比例/人数输入、换算基数来自排名名单并校验合计不超过 100%。 |
+| [`TeamContestRankingRoster.vue`](../apps/web/src/components/TeamContestRankingRoster.vue) | 排名与评奖名单：全体/指定切换、逐人选择、用户名名单导入预览与失效成员提示。 |
 | [`components/admin/AdminPageHeader.vue`](../apps/web/src/components/admin/AdminPageHeader.vue) | 后台页面统一标题、英文眉题和操作区。 |
 | [`components/admin/AdminSectionHeader.vue`](../apps/web/src/components/admin/AdminSectionHeader.vue) | 后台卡片/区块统一标题和操作区。 |
 | [`components/exams/*`](../apps/web/src/components/exams) | 考试创建向导头部、基本信息、选题、发布复核和总分摘要。 |
@@ -412,7 +414,8 @@
 | [`features/leaderboard/types.ts`](../apps/web/src/features/leaderboard/types.ts) | 统一榜单行、题目、单元格、状态和奖项类型。 |
 | [`features/assignments/assignmentMeta.ts`](../apps/web/src/features/assignments/assignmentMeta.ts) | 作业状态、分数文本、时间状态和列表筛选。 |
 | [`features/submissions/drafts.ts`](../apps/web/src/features/submissions/drafts.ts) | 按用户、资源、题目和语言隔离的本地代码草稿。 |
-| [`features/teams/contestAwards.ts`](../apps/web/src/features/teams/contestAwards.ts) | 团队比赛奖项比例默认值与总和校验。 |
+| [`features/teams/contestAwards.ts`](../apps/web/src/features/teams/contestAwards.ts) | 团队比赛奖项比例默认值、总和校验和人数/比例换算。 |
+| [`features/teams/rankingRoster.ts`](../apps/web/src/features/teams/rankingRoster.ts) | 用户名名单解析与匹配：BOM/CRLF/逗号分隔、表头、去重、未知与重名报告。 |
 | [`features/clipboard.ts`](../apps/web/src/features/clipboard.ts) | 现代 Clipboard API 与兼容复制回退。 |
 | [`features/time.ts`](../apps/web/src/features/time.ts) | 统一日期时间格式化。 |
 
@@ -428,7 +431,8 @@
 | [`deploy/compose/compose.yaml`](../deploy/compose/compose.yaml) | 独立部署目录下的 Compose 编排版本。 |
 | [`deploy/k8s/school-oj.yaml`](../deploy/k8s/school-oj.yaml) | Kubernetes 工作负载、Service、配置和存储声明。 |
 | [`scripts/smoke.sh`](../scripts/smoke.sh) | 部署后的 API 冒烟检查。 |
-| [`scripts/cleanup_docker.sh`](../scripts/cleanup_docker.sh) | 清理停止容器、悬空镜像和可安全删除的构建缓存，不清理业务数据卷。 |
+| [`scripts/cleanup_docker.sh`](../scripts/cleanup_docker.sh) | 清理停止容器、悬空镜像和可安全删除的构建缓存，不清理业务数据卷；两个 Worker 的沙箱根分别清理。 |
+| [`scripts/judge_capacity.py`](../scripts/judge_capacity.py) | 隔离 QA 项目的端到端判题容量探针：突发、持续 20 份/分钟、双 Worker 并发与资源/健康保护。 |
 | [`scripts/pull_sandbox_images.sh`](../scripts/pull_sandbox_images.sh) | 预拉取 C/C++、Python、Java 判题沙箱镜像。 |
 | [`scripts/create_problem_zip.sh`](../scripts/create_problem_zip.sh) | 从规范目录生成可上传的完整题目 ZIP。 |
 | [`scripts/jplag.sh`](../scripts/jplag.sh) | JPlag 命令行包装和参数转发。 |

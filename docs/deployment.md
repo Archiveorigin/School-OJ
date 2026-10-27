@@ -75,7 +75,8 @@ Worker 的恢复测试也使用上述数据库/Redis 变量，在 `apps/worker` 
 | `MINIO_ROOT_USER`、`MINIO_ROOT_PASSWORD`、`MINIO_BUCKET` | 对象存储配置 |
 | `CORS_ALLOWED_ORIGINS` | 允许的浏览器来源，逗号分隔 |
 | `TRUSTED_PROXIES` | 受信反向代理 IP/CIDR，逗号分隔 |
-| `OJ_WORK_ROOT` | Worker 与宿主机共享的沙箱根目录 |
+| `OJ_WORK_ROOT` | 主 Worker 与宿主机共享的沙箱根目录 |
+| `OJ_SECONDARY_WORK_ROOT` | 第二个 Worker 的独立宿主工作根，不能与主 Worker 重叠 |
 | `SUBMISSION_MAX_RETRIES` | 基础设施错误最大重试次数 |
 | `SUBMISSION_RETRY_IDLE_SECONDS` | Redis pending 任务回收时间 |
 | `SMTP_*`、`MAIL_FROM*` | 注册、换绑和找回密码邮件配置 |
@@ -89,12 +90,12 @@ Worker 的恢复测试也使用上述数据库/Redis 变量，在 `apps/worker` 
 
 本项目维护者已要求“本地验证 → 服务器构建、测试、启动 → 本机 Git GUI 提交 → GitHub”。按这个顺序执行，无须提前制造提交：
 
-1. 记录本地和生产 HEAD、分支、工作区、六个容器 ID 与旧镜像。生产源码存在未审查变更或无法快进时先解决，不覆盖。
+1. 记录本地和生产 HEAD、分支、工作区、全部生产容器 ID 与旧镜像。生产源码存在未审查变更或无法快进时先解决，不覆盖。
 2. 使用临时 Git 索引从 HEAD 加入明确的任务文件，`write-tree` 记录候选树，再 `git archive <tree>` 导出。保留文件清单与 SHA-256；不得直接打包 Windows 工作区作为镜像源码。
 3. 在服务器独立目录／Compose 项目构建 api、worker、web，使用独立数据库、Redis、MinIO、工作根与回环端口。真实判题、权限和页面交互都在候选环境执行，不在生产创建测试账号或题目。
 4. 将生产数据库恢复到独立副本，执行候选迁移两次，核对历史迁移校验和、记录数、版本绑定及数据精度。完成升级与回退演练后再切换。
-5. 备份生产数据库和配置，保留旧镜像标签。暂停 API 新写入，等待判题队列排空后暂停 Worker；执行显式迁移。
-6. 将已验收候选镜像标为应用发布镜像，仅重新创建 api、worker、web。校验健康、实际镜像、授权会话、重要 API、公开页面和日志；数据服务容器及卷保持不变。
+5. 备份生产数据库和配置，保留旧镜像标签。暂停 API 新写入，等待提交队列排空后同时暂停 worker 与 worker-secondary（两者消费同一 `oj.submissions` 流）；确认 `queued`／`running` 均为 0 后执行显式迁移。
+6. 将已验收候选镜像标为应用发布镜像，仅重新创建 api、worker、worker-secondary、web。校验健康、实际镜像、授权会话、重要 API、公开页面和日志；数据服务容器及卷保持不变。
 7. 正式验证通过后补记历史文档，按文件清单暂存；使用本机 Git GUI、确认的 TailingMing 身份提交。提交的 apps 树必须与已部署候选一致，允许最后补充验收文档。
 8. 推送服务器 origin 的工作分支，生产部署分支仅 `merge --ff-only`；逐文件校验候选应用内容与提交一致。推送 GitHub 同名分支，不强推。记录实际提交 SHA。
 9. 清理本轮独立测试资源及确认无引用的应用镜像，保留生产数据、回滚镜像和备份。
@@ -122,3 +123,17 @@ SQL 校验依赖原始字节，`.gitattributes` 固定迁移 LF。保留生产�
 API `/metrics`、Worker `:9091/healthz` 和 `/metrics` 仅内部可见，外部 `/metrics` 返回 404。Prometheus 告警规则文件需接入实际监控才能通知，不把文件存在当作已配置告警。`make legacy-report` 检查前 30 个完整 UTC 日覆盖和旧 `/api` 用量；缺日、Redis 数据丢失或仍有调用均不能宣告下线。
 
 Kubernetes 清单要求专用 Docker 节点，不承诺纯 containerd 可用；先执行同配置的迁移 Job，再更新 Deployment。Worker 扩容需要独立节点与工作根。JPlag 由受控版本 JAR 配置；未配置时轻量后备报告仅保证业务可测试，不等同正式查重引擎。
+
+## 8. 两份提交并发与容量验收
+
+Compose 默认运行 `worker` 和 `worker-secondary`，两者复用同一镜像、数据库、Redis Stream 和 `SUBMISSION_GROUP=judge-workers`，消费者身份默认使用各自容器 hostname。每个进程串行处理一份提交，总并发为 2；不要额外对两个服务使用 `--scale`，也不要把 `SANDBOX_CPU` 当作并发数。
+
+两个实例分别挂载 `OJ_WORK_ROOT` 和 `OJ_SECONDARY_WORK_ROOT`，seccomp 文件路径同步设置；宿主与容器的绝对路径必须相同。单个控制容器上限 1.5 CPU／768 MiB，每个独立判题沙箱上限 1 CPU，运行内存仍按题目限制，编译至少 1 GiB。控制容器的内存限额不包含它通过 Docker socket 启动的沙箱。配置共用 [Compose YAML 合并](https://docs.docker.com/reference/compose-file/fragments/)，任务分配沿用 [Redis 消费组](https://redis.io/docs/latest/commands/xreadgroup/)。
+
+`make up` 启动两个 Worker；备份必须同时暂停两者，清理脚本分别清理两个工作根。监控应分别检查两个容器的健康；`:9091` 不映射到宿主端口。扩缩容验证须同时覆盖唯一消费者、排队任务分配、租约恢复、终态幂等和工作目录隔离。
+
+`scripts/judge_capacity.py` 在真实 API → PostgreSQL Outbox → Redis → 两个 Worker → MinIO/Docker → 结果入库链路运行合成负载。只允许名称以 `school-oj-judge-qa-` 开头、开启种子数据且 Web 仅绑定回环地址的独立环境；不向生产库写压测用户、题目或提交。执行：`python3 scripts/judge_capacity.py /opt/School-OJ-judge-qa-YYYYMMDD`。脚本输出突发吞吐、连续 5 分钟每分钟 20 份的响应耗时、并发峰值、宿主 CPU／可用内存和生产健康采样；可用内存低于 2 GiB 或健康请求失败时停止加压。中断后先停止测试 API／Worker 并确认测试沙箱结束，再清理明确属于该项目的容器、卷和工作目录。
+
+20 份／分钟指完整提交完成率，不能视作任何题目都保证的固定速率。测试点数量、每点 CPU 时间、语言和编译复杂度都会改变吞吐；报告必须同时记录负载定义和排队延迟，不能仅按接口接收成功数宣称达标。
+
+迁移 038 仅新增排名名单列，既有场次默认为全体。上线前在生产数据库的隔离副本执行两次并核验旧迁移校验和及记录数。旧 API 会忽略新增名单列；若已经保存指定名单，不能直接回退旧 API 后继续提供榜单，否则排名范围将扩大。保留新 API 修复，或在冻结写入并确认无新名单写入的发布窗口内回退；不删除真实业务数据。
