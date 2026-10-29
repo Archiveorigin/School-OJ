@@ -37,6 +37,8 @@ var Routes = []RoutePolicy{
 	{"PUT", "/event-papers/:kind/:event_id/problems/:problem_id", "event-papers:save-event-problem", "authenticated"},
 	{"GET", "/event-papers/:kind/:event_id/problems/:problem_id/package", "event-papers:download-event-problem-package", "authenticated"},
 	{"GET", "/event-papers/:kind/:event_id/problems/:problem_id/assets/*asset_path", "event-papers:get-event-problem-asset", "authenticated"},
+	{"GET", "/event-papers/:kind/:event_id/announcements", "event-papers:list-event-announcements", "authenticated"},
+	{"POST", "/event-papers/:kind/:event_id/announcements", "event-papers:publish-event-announcement", "authenticated"},
 	{"GET", "/event-papers/:kind/:event_id/attachments", "event-papers:list-event-attachments", "authenticated"},
 	{"POST", "/event-papers/:kind/:event_id/attachments", "event-papers:upload-event-attachment", "authenticated"},
 	{"DELETE", "/event-papers/:kind/:event_id/attachments/:attachment_id", "event-papers:delete-event-attachment", "authenticated"},

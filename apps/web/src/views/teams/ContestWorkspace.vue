@@ -21,6 +21,7 @@
       >
 
       <main class="contest-content">
+<EventAnnouncements v-if="detail.can_read_problems" kind="contest" :event-id="contestID" :can-publish="detail.can_organize" />
         <template v-if="section === 'description'">
           <div class="two-column">
             <section class="panel description-panel">
@@ -290,6 +291,7 @@
 </template>
 
 <script setup lang="ts">
+import EventAnnouncements from '../../components/events/EventAnnouncements.vue'
 import { eventLifecycle, lifecycleLabels } from '../../api/modules/events'
 import { useSubmissionStreams } from '../../features/submissions/live'
 import { apiErrorMessage } from '../../api/errors'

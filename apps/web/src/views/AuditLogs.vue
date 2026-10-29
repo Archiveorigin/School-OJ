@@ -9,7 +9,7 @@
         <el-table-column label="用户" min-width="120">
           <template #default="{ row }">{{ row.actor_name || '系统' }}</template>
         </el-table-column>
-        <el-table-column prop="action" label="动作" width="180" />
+        <el-table-column label="动作" width="180"><template #default="{ row }">{{ actionLabels[row.action] || row.action }}</template></el-table-column>
         <el-table-column label="权限判定" min-width="230">
           <template #default="{ row }">
             <template v-if="row.resource_type === 'authorization'">
@@ -40,6 +40,7 @@ import { generatedApi } from '../api/client'
 import ListPagination from '../components/ListPagination.vue'
 import { formatDateTime } from '../features/time'
 
+const actionLabels: Record<string, string> = { 'auth.login': '登录', 'auth.register': '注册', 'auth.password_reset': '重置密码', 'authorization.allow': '允许访问', 'authorization.deny': '拒绝访问', 'user.create': '创建用户', 'user.update': '编辑用户', 'user.delete': '删除用户', 'exam.create': '创建考试', 'exam.delete': '删除考试', 'exam.finish': '交卷', 'submission.create': '提交代码', 'event.announcement.publish': '发布赛时公告' }
 const items = ref<any[]>([])
 const loading = ref(false)
 const page = ref(1)

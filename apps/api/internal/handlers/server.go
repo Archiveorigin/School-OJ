@@ -4347,7 +4347,10 @@ func (s Server) deleteExam(c *gin.Context) {
 		if err := tx.Model(&models.Exam{}).Where("id = ?", item.ID).Update("deleted_at", now).Error; err != nil {
 			return err
 		}
-		return s.cleanupFutureReleaseRows(tx, "exam", item.ID, item.ClassID, item.EndsAt)
+		if err := s.cleanupFutureReleaseRows(tx, "exam", item.ID, item.ClassID, item.EndsAt); err != nil {
+			return err
+		}
+		return services.DeleteExamRecords(tx, item.ID)
 	}); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 		return
@@ -4970,7 +4973,7 @@ func (s Server) listPlagiarismJobs(c *gin.Context) {
 
 func (s Server) listAuditLogs(c *gin.Context) {
 	var logs []models.AuditLog
-	s.DB.Order("id desc").Limit(200).Find(&logs)
+	s.DB.Where("created_at >= CURRENT_TIMESTAMP - INTERVAL '3 months'").Order("id desc").Limit(200).Find(&logs)
 	c.JSON(http.StatusOK, s.auditLogViews(logs))
 }
 

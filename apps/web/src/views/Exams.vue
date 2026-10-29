@@ -235,7 +235,7 @@ async function exportReport() {
 
 async function removeExam(row: any) {
   try {
-    await ElMessageBox.confirm('删除后学生端将不再显示该考试，历史提交会保留。确认删除？', '删除考试', { type: 'warning' })
+    await ElMessageBox.confirm('删除后将永久清除本场考试的提交、判题结果、作答与行为记录，无法恢复。确认删除？', '删除考试', { type: 'warning' })
     await generatedApi.deleteExam<any>({ path: { "id": row.id } })
     ElMessage.success('考试已删除')
     await load()

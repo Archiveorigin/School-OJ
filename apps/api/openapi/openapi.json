@@ -13406,6 +13406,145 @@
         "x-policy": "authorization:policies",
         "x-access": "permission:manage"
       }
+    },
+    "/event-papers/{kind}/{event_id}/announcements": {
+      "get": {
+        "operationId": "listEventAnnouncements",
+        "tags": [
+          "整场审核与归档"
+        ],
+        "summary": "listEventAnnouncements",
+        "x-handler": "listEventAnnouncements",
+        "x-auth": "bearer",
+        "parameters": [
+          {
+            "name": "kind",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "event_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "成功",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/JsonObject"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "404": {
+            "description": "场次或文件不存在"
+          },
+          "409": {
+            "description": "修订号或审核状态冲突"
+          }
+        },
+        "x-policy": "event-papers:list-event-announcements",
+        "x-access": "authenticated"
+      },
+      "post": {
+        "operationId": "publishEventAnnouncement",
+        "tags": [
+          "整场审核与归档"
+        ],
+        "summary": "publishEventAnnouncement",
+        "x-handler": "publishEventAnnouncement",
+        "x-auth": "bearer",
+        "parameters": [
+          {
+            "name": "kind",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "event_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "成功",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/JsonObject"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "404": {
+            "description": "场次或文件不存在"
+          },
+          "409": {
+            "description": "修订号或审核状态冲突"
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "body"
+                ],
+                "properties": {
+                  "body": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 4000
+                  },
+                  "problem_id": {
+                    "type": "integer",
+                    "minimum": 1,
+                    "nullable": true
+                  }
+                }
+              }
+            }
+          }
+        },
+        "x-policy": "event-papers:publish-event-announcement",
+        "x-access": "authenticated"
+      }
     }
   },
   "components": {

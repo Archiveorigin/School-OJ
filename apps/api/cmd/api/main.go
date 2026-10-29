@@ -61,6 +61,7 @@ func main() {
 	}
 	outboxDispatcher := services.SubmissionOutboxDispatcher{DB: gdb, Redis: redisClient}
 	go outboxDispatcher.Run(ctx)
+	go services.RunAuditRetention(ctx, gdb)
 	go middleware.ObserveAPICoverage(ctx, redisClient)
 	server := handlers.Server{DB: gdb, Redis: redisClient, MinIO: minioClient, Cfg: cfg}
 	// Bound slow headers and idle keep-alives without imposing a write deadline

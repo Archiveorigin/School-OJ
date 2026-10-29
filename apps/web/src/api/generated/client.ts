@@ -700,6 +700,8 @@ export const apiOperations = {
   "getEventRanking": { method: "GET", path: "/event-papers/{kind}/{event_id}/ranking", segments: [] },
   "exportEventRanking": { method: "GET", path: "/event-papers/{kind}/{event_id}/ranking/export", segments: [] },
   "authorizationPolicies": { method: "GET", path: "/authorization/policies", segments: [] },
+  "listEventAnnouncements": { method: "GET", path: "/event-papers/{kind}/{event_id}/announcements", segments: [] },
+  "publishEventAnnouncement": { method: "POST", path: "/event-papers/{kind}/{event_id}/announcements", segments: [] },
 } as const
 
 export type ApiOperationId = keyof typeof apiOperations
@@ -1242,6 +1244,16 @@ export const generatedApi = {
     requestOperation<TResponse, never>("exportEventRanking", options),
   "authorizationPolicies": <TResponse = components['schemas']["AuthorizationRegistry"]>(options: ApiRequestOptions<never> = {}) =>
     requestOperation<TResponse, never>("authorizationPolicies", options),
+  "listEventAnnouncements": <TResponse = components['schemas']["JsonObject"]>(options: ApiRequestOptions<never> = {}) =>
+    requestOperation<TResponse, never>("listEventAnnouncements", options),
+  "publishEventAnnouncement": <TResponse = components['schemas']["JsonObject"]>(options: ApiRequestOptions<{
+    "body": string
+    "problem_id"?: (number) | null
+  }> = {}) =>
+    requestOperation<TResponse, {
+    "body": string
+    "problem_id"?: (number) | null
+  }>("publishEventAnnouncement", options),
 }
 
 // 兼容现有页面的 Axios 调用；新代码优先使用 generatedApi 的 operationId 方法。

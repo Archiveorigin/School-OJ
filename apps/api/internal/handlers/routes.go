@@ -86,6 +86,8 @@ func (s Server) registerAPIRoutes(api *gin.RouterGroup) {
 	auth.PUT("/event-papers/:kind/:event_id/problems/:problem_id", s.saveEventProblem)
 	auth.GET("/event-papers/:kind/:event_id/problems/:problem_id/package", s.downloadEventProblemPackage)
 	auth.GET("/event-papers/:kind/:event_id/problems/:problem_id/assets/*asset_path", s.getEventProblemAsset)
+	auth.GET("/event-papers/:kind/:event_id/announcements", s.listEventAnnouncements)
+	auth.POST("/event-papers/:kind/:event_id/announcements", s.publishEventAnnouncement)
 	auth.GET("/event-papers/:kind/:event_id/attachments", s.listEventAttachments)
 	auth.POST("/event-papers/:kind/:event_id/attachments", s.uploadEventAttachment)
 	auth.DELETE("/event-papers/:kind/:event_id/attachments/:attachment_id", s.deleteEventAttachment)

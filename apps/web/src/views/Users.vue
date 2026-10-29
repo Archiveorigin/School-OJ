@@ -11,6 +11,7 @@
     </div>
 
     <div class="panel">
+      <el-input v-model="search" clearable aria-label="搜索用户" placeholder="按邮箱、姓名或学号搜索" style="max-width: 420px; margin-bottom: 16px" />
       <el-table :data="pagedUsers" v-loading="loading">
         <el-table-column prop="email" label="邮箱" min-width="220" />
         <el-table-column prop="name" label="姓名" min-width="140" />
@@ -31,7 +32,7 @@
           </template>
         </el-table-column>
       </el-table>
-      <ListPagination v-model:page="page" v-model:page-size="pageSize" :total="users.length" />
+      <ListPagination v-model:page="page" v-model:page-size="pageSize" :total="filteredUsers.length" />
     </div>
 
     <el-dialog v-model="createVisible" title="新建用户" width="520px" @closed="resetCreateForm">
@@ -125,7 +126,13 @@ const savingEdit = ref(false)
 const savingReset = ref(false)
 const page = ref(1)
 const pageSize = ref(20)
-const pagedUsers = computed(() => users.value.slice((page.value - 1) * pageSize.value, page.value * pageSize.value))
+const search = ref('')
+const filteredUsers = computed(() => {
+  const term = search.value.trim().toLocaleLowerCase()
+  return users.value.filter(user => [user.email, user.name, user.student_no].some(value => (value || '').toLocaleLowerCase().includes(term)))
+})
+watch(search, () => { page.value = 1 })
+const pagedUsers = computed(() => filteredUsers.value.slice((page.value - 1) * pageSize.value, page.value * pageSize.value))
 
 const createForm = reactive({
   email: '',

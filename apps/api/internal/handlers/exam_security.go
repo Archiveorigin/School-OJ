@@ -84,7 +84,7 @@ func (s Server) examRequestAllowed(c *gin.Context, userID, examID uint) (bool, e
 		if c.Param("kind") != "exam" || c.Param("event_id") != strconv.FormatUint(uint64(examID), 10) || method != http.MethodGet {
 			return false, nil
 		}
-		return path == "/event-papers/:kind/:event_id/attachments" || path == "/event-papers/:kind/:event_id/attachments/:attachment_id" || path == "/event-papers/:kind/:event_id/problems/:problem_id/assets/*asset_path", nil
+		return path == "/event-papers/:kind/:event_id/announcements" || path == "/event-papers/:kind/:event_id/attachments" || path == "/event-papers/:kind/:event_id/attachments/:attachment_id" || path == "/event-papers/:kind/:event_id/problems/:problem_id/assets/*asset_path", nil
 	}
 	if method == http.MethodGet && (path == "/me" || path == "/me/active-exam") {
 		return true, nil
