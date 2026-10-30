@@ -42,6 +42,17 @@ export function createContestReplay(packet: ReplayPacket) {
   const rows = structuredClone(packet.initial_rows);
   const final = new Map(packet.final_rows.map((row) => [row.user_id, row]));
   const byId = new Map(rows.map((row) => [row.user_id, row]));
+  // Only participation is used here; hidden verdicts/scores never break ties.
+  const participated = (id: number | string) => {
+    const row = final.get(Number(id));
+    return Boolean(
+      row &&
+      (row.submission_count > 0 ||
+        row.problems.some(
+          (c: any) => (c.submission_count ?? c.attempts ?? 0) > 0,
+        )),
+    );
+  };
   const pending = new Map<number, Map<number, any>>();
   for (const row of rows) {
     const target = final.get(row.user_id);
@@ -116,6 +127,14 @@ export function createContestReplay(packet: ReplayPacket) {
     // These two snapshots are authoritative server standings, including exact
     // tie ordering and unranked grouping. Only intermediate frames are reranked.
     if (step === 0 || (step === total && !consistencyError)) {
+      if (step === 0 && step !== total)
+        board.rows.sort(
+          (a, b) =>
+            Number(Boolean(a.unranked)) - Number(Boolean(b.unranked)) ||
+            a.rank - b.rank ||
+            Number(participated(b.id)) - Number(participated(a.id)),
+        );
+
       board.participantCount = board.rows.filter((row) => !row.unranked).length;
       return board;
     }
@@ -148,6 +167,7 @@ export function createContestReplay(packet: ReplayPacket) {
     board.rows.sort(
       (a, b) =>
         compare(a, b) ||
+        Number(participated(b.id)) - Number(participated(a.id)) ||
         (a.name === b.name
           ? Number(a.id) - Number(b.id)
           : a.name < b.name

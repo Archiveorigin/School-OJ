@@ -90,6 +90,7 @@
         <article
           v-for="row in rows"
           :key="row.id"
+          :data-row-id="row.id"
           class="penalty-row native-stripe-row"
           :data-award="awardTier(row)"
           :data-reveal-focus="data.revealUserId === row.id"
@@ -283,11 +284,11 @@ function resultTitle(row: LeaderboardRow, problemID: number | string) {
 </script>
 
 <style scoped>
-.rank-reveal-move {
+.penalty-row.rank-reveal-move {
   transition: transform var(--score-motion-row, 700ms) var(--score-motion-ease);
 }
 @media (prefers-reduced-motion: reduce) {
-  .rank-reveal-move {
+  .penalty-row.rank-reveal-move {
     transition: none;
   }
 }
@@ -640,7 +641,7 @@ function resultTitle(row: LeaderboardRow, problemID: number | string) {
 .is-expanded .row-detail {
   grid-template-rows: 1fr;
 }
-[data-row-expanded="true"] .rank-reveal-move {
+[data-row-expanded="true"] .penalty-row.rank-reveal-move {
   transition: none;
 }
 .rank-reveal-enter-active,
@@ -655,7 +656,7 @@ function resultTitle(row: LeaderboardRow, problemID: number | string) {
   transform: translateY(8px);
 }
 [data-spotlight="true"] .penalty-row:not([data-reveal-focus="true"]) {
-  opacity: 0.55;
+  opacity: 1;
 }
 .penalty-row[data-reveal-focus="true"] {
   z-index: 3;
@@ -670,5 +671,16 @@ function resultTitle(row: LeaderboardRow, problemID: number | string) {
   [data-spotlight="true"] .penalty-row {
     opacity: 1;
   }
+}
+</style>
+
+<style scoped>
+.penalty-row.rank-reveal-move {
+  will-change: transform;
+  z-index: 1;
+}
+.penalty-row.rank-reveal-move[data-reveal-focus="true"] {
+  z-index: 3;
+  box-shadow: 0 6px 18px color-mix(in srgb, var(--score-blue) 20%, transparent);
 }
 </style>

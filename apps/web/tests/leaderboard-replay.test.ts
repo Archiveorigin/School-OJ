@@ -173,3 +173,45 @@ it("keeps authoritative freeze and final snapshot ordering, without leaking fina
   const restart = createContestReplay(packet);
   expect(restart.snapshot().rows.map((r) => r.id)).toEqual([2, 1]);
 });
+
+it("puts hidden-only participants ahead of never-submitted users at the freeze, without using hidden verdicts or changing tied ranks", () => {
+  const empty = () => ({ ...cell("", 0, 0), wrong_attempts: 0 });
+  const initial = [
+    { ...row(1, empty()), name: "A", rank: 1 },
+    { ...row(2, empty()), name: "B", rank: 1 },
+    { ...row(3, empty()), name: "C", rank: 1 },
+    { ...row(4, empty(), true), name: "D", rank: 0 },
+  ];
+  const final = [
+    initial[0],
+    { ...row(2, cell("wrong_answer", 1, 100)), name: "B", rank: 1 },
+    { ...row(3, cell("accepted", 2, 100)), name: "C", rank: 1 },
+    initial[3],
+  ];
+  const packet: ReplayPacket = {
+    schema_version: 1,
+    kind: "contest-replay",
+    contest: { scoring_rule: "acm" },
+    problems: [{ problem_id: 1, label: "A" }],
+    initial_rows: initial,
+    final_rows: final,
+    events: [],
+  };
+  const replay = createContestReplay(packet),
+    board = replay.snapshot();
+  expect(board.rows.map((r) => r.id)).toEqual([2, 3, 1, 4]);
+  expect(
+    board.rows.slice(0, 3).map((r) => [r.rank, r.solved, r.metric]),
+  ).toEqual([
+    [1, 0, 0],
+    [1, 0, 0],
+    [1, 0, 0],
+  ]);
+  expect(replay.next().revealUserId).toBe(3);
+  expect(
+    createContestReplay(packet)
+      .snapshot()
+      .rows.map((r) => r.id),
+  ).toEqual([2, 3, 1, 4]);
+  expect(initial.map((r) => r.user_id)).toEqual([1, 2, 3, 4]);
+});

@@ -83,13 +83,11 @@ try {
     fullPage: true,
   });
   await p.setViewportSize({ width: 1440, height: 1100 });
-  await dialog
-    .locator("input[type=file]")
-    .setInputFiles({
-      name: "解释.txt",
-      mimeType: "text/plain",
-      buffer: Buffer.from("边界条件解释"),
-    });
+  await dialog.locator("input[type=file]").setInputFiles({
+    name: "解释.txt",
+    mimeType: "text/plain",
+    buffer: Buffer.from("边界条件解释"),
+  });
   await dialog.getByRole("button", { name: "发布公告", exact: true }).click();
   await dialog.waitFor({ state: "hidden" });
   await board
@@ -249,6 +247,9 @@ try {
   await admin.getByRole("button", { name: "登录", exact: true }).click();
   await admin.waitForURL((u) => u.pathname != "/login");
   await admin.goto(`${base}/contest/${item.id}/scoreboard`);
+  const replayResponse = admin.waitForResponse(
+    (r) => r.url().includes("/ranking/replay") && r.status() === 200,
+  );
   await admin.getByRole("button", { name: "赛后滚榜", exact: true }).click();
   const replay = admin.getByRole("dialog", { name: "赛后滚榜", exact: true });
   await replay.locator(".scoreboard-core").waitFor();
@@ -264,19 +265,26 @@ try {
     await replay.getByText("导出滚榜数据包", { exact: true }).count(),
     0,
   );
-  await replay.getByRole("button", { name: "揭晓下一题", exact: true }).click();
-  await admin.waitForTimeout(1000);
-  while (
-    await replay
-      .getByRole("button", { name: "揭晓下一题", exact: true })
-      .isEnabled()
-  ) {
-    await replay
-      .getByRole("button", { name: "揭晓下一题", exact: true })
-      .click();
-    await admin.waitForTimeout(1000);
+  const replayPacket = await (await replayResponse).json();
+  const countSteps = replayPacket.initial_rows.reduce(
+    (sum, r) =>
+      sum +
+      r.problems.filter(
+        (c) =>
+          JSON.stringify(c) !==
+          JSON.stringify(
+            replayPacket.final_rows
+              .find((f) => f.user_id === r.user_id)
+              .problems.find((f) => f.problem_id === c.problem_id),
+          ),
+      ).length,
+    0,
+  );
+  await replay.locator(".replay-surface").focus();
+  for (let i = 0; i < countSteps; i++) {
+    await admin.keyboard.press("ArrowRight");
+    await admin.waitForTimeout(900);
   }
-  await replay.getByRole("status").filter({ hasText: "滚榜结束" }).waitFor();
   assert.notEqual(
     await replay.locator(".penalty-participant-name").first().innerText(),
     initialLeader,

@@ -17,12 +17,17 @@
           <span v-if="data.frozen" class="scoreboard-freeze" role="status">{{
             freezeLabel
           }}</span>
-          <span v-if="data.subtitle" class="scoreboard-subtitle">{{
-            data.subtitle
-          }}</span>
+          <span
+            v-if="data.subtitle && !data.replaying"
+            class="scoreboard-subtitle"
+            >{{ data.subtitle }}</span
+          >
         </div>
 
-        <div class="controls-time-section">
+        <div v-if="data.replaying" class="replay-heading">
+          <slot name="replay-reload" /><strong>滚榜回放</strong>
+        </div>
+        <div v-else class="controls-time-section">
           <div class="controls-time-container">
             <div class="score-control-field">
               <span class="score-control-label">排名模式</span
@@ -145,7 +150,7 @@
       </header>
 
       <div
-        v-if="filteredRows.length > 300"
+        v-if="filteredRows.length > 300 && !data.replaying"
         class="scoreboard-pagination"
         aria-label="榜单分页"
       >
@@ -921,5 +926,17 @@ async function toggleFullscreen() {
 .scoreboard-pagination button:disabled {
   opacity: 0.5;
   cursor: default;
+}
+</style>
+
+<style scoped>
+.replay-heading {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  padding: 16px 24px;
+  border-top: 1px solid var(--score-border);
+  color: var(--score-text);
+  font-size: 14px;
 }
 </style>

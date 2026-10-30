@@ -50,14 +50,15 @@ const stubs = {
   },
   ElAlert: true,
   LeaderboardBoard: {
+    props: ["data"],
     template:
-      '<div class="fake-board"><button class="cell">cell</button><input/><div class="blank">blank</div></div>',
+      '<div class="fake-board" :data-step="data.replayStep"><slot name="replay-reload"/><strong>滚榜回放</strong><button class="cell">cell</button><input/><div class="blank">blank</div></div>',
   },
 };
 let wrapper: ReturnType<typeof mount>;
 const button = (label: string) =>
   wrapper.findAll("button").find((b) => b.text() === label)!;
-const progress = () => wrapper.get('.replay-tools [role="status"]').text();
+const progress = () => wrapper.get(".fake-board").attributes("data-step");
 beforeEach(async () => {
   vi.useFakeTimers();
   vi.spyOn(document, "hidden", "get").mockReturnValue(false);
@@ -74,44 +75,49 @@ afterEach(() => {
   vi.useRealTimers();
   vi.restoreAllMocks();
 });
-describe("replay input flow", () => {
-  it("starts at the freeze snapshot and accepts arrows even when a toolbar button owns focus", async () => {
-    expect(progress()).toBe("0 / 3");
-    expect(wrapper.get(".replay-announcement").text()).toContain(
-      "封榜初始排序",
-    );
-    await button("揭晓下一题").trigger("keydown", { key: "ArrowRight" });
-    expect(progress()).toBe("1 / 3");
-    await button("揭晓下一题").trigger("keydown", { key: "ArrowRight" });
-    expect(progress()).toBe("1 / 3");
+describe("keyboard-only replay flow", () => {
+  it("shows only reload, starts at zero and advances once for each physical key press", async () => {
+    expect(progress()).toBe("0");
+    expect(wrapper.find(".replay-tools").exists()).toBe(false);
+    expect(wrapper.find("progress").exists()).toBe(false);
+    await button("重新加载").trigger("keydown", { key: "ArrowRight" });
+    expect(progress()).toBe("1");
+    await wrapper.get(".replay-surface").trigger("keydown", { key: "Enter" });
+    expect(progress()).toBe("1");
     await vi.advanceTimersByTimeAsync(900);
-    await button("播放").trigger("keydown", {
-      key: "ArrowRight",
-      repeat: true,
-    });
-    expect(progress()).toBe("1 / 3");
-    await button("播放").trigger("keydown", { key: "ArrowRight" });
-    expect(progress()).toBe("2 / 3");
+    await wrapper
+      .get(".replay-surface")
+      .trigger("keydown", { key: " ", repeat: true });
+    expect(progress()).toBe("1");
+    await wrapper.get(".replay-surface").trigger("keydown", { key: " " });
+    expect(progress()).toBe("2");
+    await vi.advanceTimersByTimeAsync(2000);
+    expect(progress()).toBe("2");
   });
-  it("ignores editing, modified keys and cell clicks; blank clicks reveal one step", async () => {
+  it("ignores mouse clicks, editing, modifiers and native button activation keys", async () => {
     await wrapper.get("input").trigger("keydown", { key: "ArrowRight" });
     await wrapper
       .get(".replay-surface")
       .trigger("keydown", { key: "ArrowRight", ctrlKey: true });
     await wrapper.get(".cell").trigger("click");
-    expect(progress()).toBe("0 / 3");
     await wrapper.get(".blank").trigger("click");
-    await wrapper.get(".blank").trigger("click");
-    expect(progress()).toBe("1 / 3");
+    await button("重新加载").trigger("keydown", { key: " " });
+    expect(progress()).toBe("0");
   });
-  it("Home stops autoplay and returns to step zero with old timers cancelled", async () => {
-    await wrapper.get(".replay-surface").trigger("keydown", { key: " " });
-    expect(progress()).toBe("1 / 3");
-    await button("暂停").trigger("keydown", { key: "Home" });
+  it("Home cancels the current move and reload resets the entire engine", async () => {
+    await wrapper.get(".replay-surface").trigger("keydown", { key: "Enter" });
+    expect(progress()).toBe("1");
+    await wrapper.get(".replay-surface").trigger("keydown", { key: "Home" });
     await flushPromises();
-    expect(progress()).toBe("0 / 3");
+    expect(progress()).toBe("0");
     await vi.advanceTimersByTimeAsync(2500);
-    expect(progress()).toBe("0 / 3");
+    expect(progress()).toBe("0");
+    await wrapper
+      .get(".replay-surface")
+      .trigger("keydown", { key: "ArrowRight" });
+    await button("重新加载").trigger("click");
+    await flushPromises();
+    expect(progress()).toBe("0");
     expect(document.activeElement).toBe(wrapper.get(".replay-surface").element);
   });
 });

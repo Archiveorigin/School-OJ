@@ -70,55 +70,144 @@ const packet = {
 };
 packet.final_rows[1] = { ...packet.final_rows[1], rank: 2 };
 try {
-  const user = {id:1,name:'QA',role:'admin',permissions:['event:review']};
-  if(base.endsWith(':18094')) await page.addInitScript(user=>{
-    localStorage.setItem('school-oj-token','qa-response-only');
-    localStorage.setItem('school-oj-user',JSON.stringify(user));
-  },user);
-  await page.route('**/api/v1/**',route=>{
-    const path=new URL(route.request().url()).pathname;
-    const json=path.includes('/ranking/replay') ? packet : path.endsWith('/me') ? user : path.endsWith('/ranking') ? {contest:packet.contest,problems:packet.problems,rows:packet.final_rows,final_ready:true} : path.endsWith('/contests/99') ? {contest:packet.contest,team:{id:1,name:'隔离响应'},problems:[],can_read_problems:true,lifecycle:'closed'} : [];
-    return route.fulfill({json});
+  const user = {
+    id: 1,
+    name: "QA",
+    role: "admin",
+    permissions: ["event:review"],
+  };
+  if (base.endsWith(":18094"))
+    await page.addInitScript((user) => {
+      localStorage.setItem("school-oj-token", "qa-response-only");
+      localStorage.setItem("school-oj-user", JSON.stringify(user));
+    }, user);
+  await page.route("**/api/v1/**", (route) => {
+    const path = new URL(route.request().url()).pathname;
+    const json = path.includes("/ranking/replay")
+      ? packet
+      : path.endsWith("/me")
+        ? user
+        : path.endsWith("/ranking")
+          ? {
+              contest: packet.contest,
+              problems: packet.problems,
+              rows: packet.final_rows,
+              final_ready: true,
+            }
+          : path.endsWith("/contests/99")
+            ? {
+                contest: packet.contest,
+                team: { id: 1, name: "隔离响应" },
+                problems: [],
+                can_read_problems: true,
+                lifecycle: "closed",
+              }
+            : [];
+    return route.fulfill({ json });
   });
-  await page.goto(base+(base.endsWith(':18094')?'/contest/99/scoreboard':'/tests/e2e/replay-fullscreen.html'));
-  await page.getByRole("button", { name: "赛后滚榜", exact: true }).click();
-  const dialog = page.getByRole("dialog", { name: "赛后滚榜", exact: true }),
-    status = dialog.locator(".replay-tools [role=status]"),
-    surface = dialog.locator(".replay-surface");
-  await dialog.locator(".penalty-row").first().waitFor();
-  assert.equal(await status.innerText(), "0 / 3");
-  assert.deepEqual(
-    await dialog.locator(".penalty-participant-name").allTextContents(),
-    ["选手1", "选手2", "选手3"],
+  await page.goto(
+    base +
+      (base.endsWith(":18094")
+        ? "/contest/99/scoreboard"
+        : "/tests/e2e/replay-fullscreen.html"),
   );
-  await dialog.getByRole("button", { name: "全屏显示", exact: true }).click();
+  await page.getByRole("button", { name: "赛后滚榜", exact: true }).click();
+
+  const dialog = page.getByRole("dialog", { name: "赛后滚榜", exact: true }),
+    surface = dialog.locator(".replay-surface");
+  const ids = () =>
+    dialog
+      .locator(".penalty-row")
+      .evaluateAll((rows) => rows.map((row) => Number(row.dataset.rowId)));
+  await dialog.locator(".penalty-row").first().waitFor();
+  assert.deepEqual(await ids(), [1, 2, 3]);
+  assert.equal(
+    await dialog
+      .locator(
+        ".replay-tools,progress,.replay-announcement,.controls-time-section",
+      )
+      .count(),
+    0,
+  );
+  assert.equal(
+    await dialog.getByRole("button", { name: "重新加载", exact: true }).count(),
+    1,
+  );
+  await surface.focus();
+  await page.keyboard.press("f");
   await page.waitForFunction(() =>
     document.fullscreenElement?.matches("[data-replay-surface]"),
   );
-  for (const name of ["揭晓下一题", "播放", "从封榜开始"])
-    assert(await dialog.getByRole("button", { name, exact: true }).isVisible());
+  assert(
+    await dialog
+      .getByRole("button", { name: "重新加载", exact: true })
+      .isVisible(),
+  );
   await page.keyboard.press("ArrowRight");
   await page.waitForTimeout(900);
-  assert.equal(await status.innerText(), "1 / 3");
   await page.keyboard.down("ArrowRight");
   await page.waitForTimeout(900);
   await page.keyboard.down("ArrowRight");
   await page.waitForTimeout(900);
   await page.keyboard.up("ArrowRight");
+  // The second acceptance is still hidden: repeat keydown must not skip it.
+  assert.deepEqual(await ids(), [1, 2, 3]);
   assert.equal(
-    await status.innerText(),
-    "2 / 3",
-    "holding a key must not advance again",
+    await dialog.locator('[data-row-id="2"] .result-accepted').count(),
+    1,
   );
-  await dialog
-    .getByRole("button", { name: "揭晓下一题", exact: true })
-    .press("Home");
-  assert.equal(await status.innerText(), "0 / 3");
-  await dialog.locator('input[aria-label="筛选姓名"]').fill("选手2");
-  await page.keyboard.press("ArrowRight");
-  assert.equal(await status.innerText(), "0 / 3");
-  await dialog.getByRole("button", { name: "从封榜开始", exact: true }).click();
-  assert.equal(await dialog.locator(".penalty-row").count(), 3);
+  const before = await page.evaluate(() => {
+    const first = document.querySelector(
+        '[data-replay-surface] [data-row-id="1"]',
+      ),
+      second = document.querySelector(
+        '[data-replay-surface] [data-row-id="2"]',
+      );
+    window.qaMovingRow = second;
+    return {
+      first: first.getBoundingClientRect().top,
+      second: second.getBoundingClientRect().top,
+    };
+  });
+  await page.keyboard.press("Enter");
+  await page.waitForTimeout(100);
+  const during = await page.evaluate(() => {
+    const first = document.querySelector(
+        '[data-replay-surface] [data-row-id="1"]',
+      ),
+      second = document.querySelector(
+        '[data-replay-surface] [data-row-id="2"]',
+      );
+    return {
+      same: second === window.qaMovingRow,
+      first: first.getBoundingClientRect().top,
+      second: second.getBoundingClientRect().top,
+      transform: getComputedStyle(second).transform,
+      transition: getComputedStyle(second).transitionProperty,
+    };
+  });
+  assert(
+    during.same,
+    "the moving contestant must retain the same article element",
+  );
+  assert.notEqual(during.transform, "none", "whole row must be moving");
+  assert(during.transition.includes("transform"));
+  assert(
+    during.second < before.second && during.second > before.first,
+    "AC row moves upward between its old and new slots",
+  );
+  assert(
+    during.first > before.first && during.first < before.second,
+    "displaced row moves downward",
+  );
+  await mkdir("../../tmp/replay-row-motion-qa", { recursive: true });
+  await page.screenshot({ path: "../../tmp/replay-row-motion-qa/moving.png" });
+  await page.waitForTimeout(900);
+  assert.deepEqual(await ids(), [2, 1, 3]);
+  await page.screenshot({ path: "../../tmp/replay-row-motion-qa/final.png" });
+  await page.keyboard.press("Home");
+  await page.waitForTimeout(50);
+  assert.deepEqual(await ids(), [1, 2, 3]);
   await dialog
     .locator(".penalty-row")
     .first()
@@ -131,42 +220,114 @@ try {
       .locator(".el-drawer")
       .evaluate((el) => document.fullscreenElement.contains(el)),
   );
-  assert.equal(await status.innerText(), "0 / 3");
   await page.locator(".el-drawer__close-btn").click();
   await page.locator(".el-drawer").waitFor({ state: "hidden" });
-  await surface.focus();
-  await page.keyboard.press(" ");
-  await page.waitForTimeout(50);
-  await page.keyboard.press(" ");
-  await page.waitForTimeout(1000);
-  assert.equal(await status.innerText(), "1 / 3");
-  await dialog.getByRole("button", { name: "从封榜开始", exact: true }).click();
   await dialog.locator(".replay-stage").dispatchEvent("click");
   await page.waitForTimeout(900);
-  assert.equal(await status.innerText(), "1 / 3");
+  assert.equal(
+    await dialog.locator('[data-row-id="3"] .result-wrong').count(),
+    0,
+    "mouse no longer advances replay",
+  );
+  await surface.focus();
+  await page.keyboard.press(" ");
+  await page.waitForTimeout(900);
+  assert.equal(
+    await dialog.locator('[data-row-id="3"] .result-wrong').count(),
+    1,
+  );
+  await dialog.getByRole("button", { name: "重新加载", exact: true }).click();
+  await page.waitForTimeout(100);
+  assert.deepEqual(await ids(), [1, 2, 3]);
+  assert.equal(
+    await dialog.locator('[data-row-id="3"] .result-wrong').count(),
+    0,
+  );
+  await surface.focus();
+  await page.keyboard.press("f");
+  await page.waitForFunction(() => !document.fullscreenElement);
+  await page.emulateMedia({ reducedMotion: "reduce" });
+  await page.waitForTimeout(100);
+  for (let i = 0; i < 3; i++) {
+    await page.keyboard.press("ArrowRight");
+    await page.waitForTimeout(250);
+  }
+  assert.deepEqual(await ids(), [2, 1, 3]);
+  assert.deepEqual(errors, []);
+
+  // The score-table variant must also move an entire row, not just its labels.
+  packet.contest.scoring_rule = "ioi";
+  await dialog.getByRole("button", { name: "重新加载", exact: true }).click();
+  await dialog.locator(".score-row").first().waitFor();
+  await page.emulateMedia({ reducedMotion: "no-preference" });
+  await page.waitForTimeout(100);
+  await surface.focus();
   for (let i = 0; i < 2; i++) {
-    await dialog
-      .getByRole("button", { name: "揭晓下一题", exact: true })
-      .click();
+    await page.keyboard.press("ArrowRight");
     await page.waitForTimeout(900);
   }
-  assert.equal(await status.innerText(), "3 / 3 · 滚榜结束");
-  assert.deepEqual(
-    await dialog.locator(".penalty-participant-name").allTextContents(),
-    ["选手2", "选手1", "选手3"],
+  await page.keyboard.press("ArrowRight");
+  await page.waitForTimeout(80);
+  assert.notEqual(
+    await dialog
+      .locator('.score-row[data-row-id="2"]')
+      .evaluate((el) => getComputedStyle(el).transform),
+    "none",
   );
-  await mkdir("../../tmp/replay-fullscreen-qa", { recursive: true });
-  await page.screenshot({
-    path: "../../tmp/replay-fullscreen-qa/fullscreen-final.png",
-  });
-  await dialog.getByRole("button", { name: "全屏显示", exact: true }).click();
-  await page.waitForFunction(() => !document.fullscreenElement);
-  await dialog.getByRole("button", { name: "从封榜开始", exact: true }).click();
-  assert.equal(await status.innerText(), "0 / 3");
+  await page.waitForTimeout(900);
+  assert.deepEqual(
+    await dialog
+      .locator(".score-row")
+      .evaluateAll((rows) => rows.map((r) => Number(r.dataset.rowId))),
+    [2, 1, 3],
+  );
+  // Bounded 500-person / 60-step manual replay and a zero-step 1000-person board.
+  packet.contest.scoring_rule = "acm";
+  packet.contest.duration_minutes = 240;
+  packet.initial_rows = Array.from({ length: 500 }, (_, i) =>
+    row(10000 + i, 1, [empty(1), empty(2)]),
+  );
+  packet.final_rows = packet.initial_rows.map((r, i) =>
+    i >= 440
+      ? row(r.user_id, 1, [ac(1, 95 + i - 440), empty(2)])
+      : structuredClone(r),
+  );
+  packet.final_rows.sort(
+    (a, b) =>
+      b.solved - a.solved ||
+      a.penalty_minutes - b.penalty_minutes ||
+      a.user_id - b.user_id,
+  );
+  packet.final_rows.forEach((r, i) => (r.rank = r.solved ? i + 1 : 61));
+  await page.emulateMedia({ reducedMotion: "reduce" });
+  await dialog.getByRole("button", { name: "重新加载", exact: true }).click();
+  await dialog.locator(".penalty-row").first().waitFor();
+  assert.equal(await dialog.locator(".penalty-row").count(), 100);
+  await surface.focus();
+  for (let i = 0; i < 60; i++) {
+    await page.keyboard.press("ArrowRight");
+    await page.waitForTimeout(230);
+  }
+  assert.equal(await dialog.locator(".penalty-row").count(), 100);
+  assert.equal(
+    await dialog.locator(".penalty-row").first().getAttribute("data-row-id"),
+    String(packet.final_rows[0].user_id),
+  );
+  packet.initial_rows = Array.from({ length: 1000 }, (_, i) =>
+    row(20000 + i, 1, [empty(1), empty(2)]),
+  );
+  packet.final_rows = structuredClone(packet.initial_rows);
+  await dialog.getByRole("button", { name: "重新加载", exact: true }).click();
+  await page.waitForTimeout(100);
+  assert.equal(await dialog.locator(".penalty-row").count(), 100);
+  await surface.focus();
+  await page.keyboard.press("ArrowRight");
+  assert.equal(await dialog.locator(".result-accepted").count(), 0);
   assert.deepEqual(errors, []);
   console.log(
-    "PASS freeze initial order, native fullscreen controls/drawer, focused-button arrows, repeat guard, text editing, blank clicks, pause/restart and final order",
+    "PASS clean keyboard-only UI, native fullscreen, physical-key guard, whole-row identity and measured upward/downward intermediate geometry, reload/restart, drawer isolation and reduced motion",
   );
+  console.log(JSON.stringify({ before, during }));
 } finally {
   await browser.close();
 }

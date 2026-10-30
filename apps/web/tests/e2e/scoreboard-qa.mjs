@@ -126,13 +126,19 @@ try {
       });
     }
   }
-  await student.setViewportSize({width:1440,height:1100});
-await student.getByRole('button',{name:'全屏显示',exact:true}).click();
-await student.waitForFunction(()=>Boolean(document.fullscreenElement));
-await ownCell.click();await student.locator('.cell-timeline li').first().waitFor();
-assert(await student.locator('.el-drawer').evaluate(el=>document.fullscreenElement.contains(el)));
-await closeDrawer(student);await student.evaluate(()=>document.exitFullscreen());
-await student.emulateMedia({ reducedMotion: "reduce" });
+  await student.setViewportSize({ width: 1440, height: 1100 });
+  await student.getByRole("button", { name: "全屏显示", exact: true }).click();
+  await student.waitForFunction(() => Boolean(document.fullscreenElement));
+  await ownCell.click();
+  await student.locator(".cell-timeline li").first().waitFor();
+  assert(
+    await student
+      .locator(".el-drawer")
+      .evaluate((el) => document.fullscreenElement.contains(el)),
+  );
+  await closeDrawer(student);
+  await student.evaluate(() => document.exitFullscreen());
+  await student.emulateMedia({ reducedMotion: "reduce" });
   await student.waitForFunction(
     () =>
       document
@@ -153,6 +159,9 @@ await student.emulateMedia({ reducedMotion: "reduce" });
     `${fixture}/__qa/rankings/contest/${contest.id}/resolve`,
   );
   await admin.goto(`${base}/contest/${contest.id}/scoreboard`);
+  const replayResponse = admin.waitForResponse(
+    (r) => r.url().includes("/ranking/replay") && r.status() === 200,
+  );
   await admin.getByRole("button", { name: "赛后滚榜", exact: true }).click();
   const replay = admin.getByRole("dialog", { name: "赛后滚榜", exact: true });
   await replay.locator(".penalty-row").first().waitFor();
@@ -160,40 +169,26 @@ await student.emulateMedia({ reducedMotion: "reduce" });
     .locator(".penalty-participant-name")
     .first()
     .innerText();
-  await replay.getByRole("button", { name: "揭晓下一题", exact: true }).click();
-  await admin.waitForTimeout(80);
-  assert.equal(
-    await replay.locator(".is-revealing").count(),
-    1,
-    "only the current cell reveals",
+  const replayPacket = await (await replayResponse).json();
+  const countSteps = replayPacket.initial_rows.reduce(
+    (sum, r) =>
+      sum +
+      r.problems.filter(
+        (c) =>
+          JSON.stringify(c) !==
+          JSON.stringify(
+            replayPacket.final_rows
+              .find((f) => f.user_id === r.user_id)
+              .problems.find((f) => f.problem_id === c.problem_id),
+          ),
+      ).length,
+    0,
   );
-  await replay.locator(".replay-stage").focus();
-  await replay.locator(".replay-stage").press("ArrowRight");
-  await admin.waitForTimeout(900);
-  await replay.getByLabel("播放速度", { exact: true }).selectOption("2");
-  await replay.getByRole("button", { name: "播放", exact: true }).click();
-  await admin.waitForTimeout(50);
-  await replay.getByRole("button", { name: "暂停", exact: true }).click();
-  const stopped = await replay
-    .locator(".replay-tools [role=status]")
-    .innerText();
-  await admin.waitForTimeout(900);
-  assert.equal(
-    await replay.locator(".replay-tools [role=status]").innerText(),
-    stopped,
-    "pause stops progression",
-  );
-  while (
-    await replay
-      .getByRole("button", { name: "揭晓下一题", exact: true })
-      .isEnabled()
-  ) {
-    await replay
-      .getByRole("button", { name: "揭晓下一题", exact: true })
-      .click();
-    await admin.waitForTimeout(500);
+  await replay.locator(".replay-surface").focus();
+  for (let i = 0; i < countSteps; i++) {
+    await admin.keyboard.press("ArrowRight");
+    await admin.waitForTimeout(900);
   }
-  await replay.getByRole("status").filter({ hasText: "滚榜结束" }).waitFor();
   assert.notEqual(
     await replay.locator(".penalty-participant-name").first().innerText(),
     firstLeader,
@@ -205,12 +200,9 @@ await student.emulateMedia({ reducedMotion: "reduce" });
       fullPage: false,
     });
   }
-  await replay.getByRole("button", { name: "从封榜开始", exact: true }).click();
-  await replay.locator(".replay-stage").focus();
-  await replay.locator(".replay-stage").press(" ");
-  await admin.waitForTimeout(50);
-  await replay.locator(".replay-stage").press(" ");
-  await replay.locator(".el-dialog__headerbtn").click();
+  await replay.locator(".replay-surface").focus();
+  await admin.keyboard.press("Home");
+  await admin.keyboard.press("Escape");
   await replay.waitFor({ state: "hidden" });
   // Synthetic response-only performance fixture; no account, score or submission is written.
   const makePacket = (count, steps) => {
@@ -295,12 +287,12 @@ await student.emulateMedia({ reducedMotion: "reduce" });
     );
     window.qaPerfObserver.observe({ entryTypes: ["longtask"] });
   });
-  await replay.getByLabel("播放速度", { exact: true }).selectOption("2");
-  await replay.getByRole("button", { name: "播放", exact: true }).click();
-  await replay
-    .getByRole("status")
-    .filter({ hasText: "滚榜结束" })
-    .waitFor({ timeout: 60000 });
+  await admin.emulateMedia({ reducedMotion: "reduce" });
+  await replay.locator(".replay-surface").focus();
+  for (let i = 0; i < 60; i++) {
+    await admin.keyboard.press("ArrowRight");
+    await admin.waitForTimeout(230);
+  }
   metrics.performance = await admin.evaluate(() => {
     window.qaPerfObserver.disconnect();
     return {
@@ -313,24 +305,21 @@ await student.emulateMedia({ reducedMotion: "reduce" });
   metrics.performance.rows = 500;
   metrics.performance.steps = 60;
   metrics.performance.domRows = await replay.locator(".penalty-row").count();
-  await replay.locator(".el-dialog__headerbtn").click();
+  await replay.locator(".replay-surface").focus();
+  await admin.keyboard.press("Escape");
   await replay.waitFor({ state: "hidden" });
   packet = makePacket(1000, 0);
   await admin.getByRole("button", { name: "赛后滚榜", exact: true }).click();
-  await replay
-    .getByText(
-      "本场没有可揭晓的封榜提交（可能未开启封榜，或封榜后没有提交）。当前显示最终榜单。",
-      { exact: true },
-    )
-    .waitFor();
+  await replay.locator(".penalty-row").first().waitFor();
   assert.equal(await replay.locator(".penalty-row").count(), 100);
-  await replay.locator(".el-dialog__headerbtn").click();
+  await replay.locator(".replay-surface").focus();
+  await admin.keyboard.press("Escape");
   await adminContext.unrouteAll({ behavior: "wait" });
   await adminContext.close();
   assert.deepEqual(failures, []);
   await writeFile(`${output}/metrics.json`, JSON.stringify(metrics, null, 2));
   console.log(
-    "PASS rows, cell timeline/permissions, motion/reduced motion, playback/pause/speed, keyboard, zero-step, 500x60 and 1000-row bounds",
+    "PASS rows, cell timeline/permissions, motion/reduced motion, keyboard-only replay, keyboard, zero-step, 500x60 and 1000-row bounds",
   );
   console.log(JSON.stringify(metrics));
 } finally {
