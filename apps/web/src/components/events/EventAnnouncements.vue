@@ -1,82 +1,48 @@
 <template>
   <section class="panel announcements" aria-label="赛时公告">
-    <div class="heading">
-      <h3>赛时公告</h3>
-      <el-button :loading="loading" @click="load">刷新</el-button>
-    </div>
+    <header class="announcement-heading">
+      <h3>答疑 / 公告</h3>
+      <div class="announcement-actions">
+        <el-button :loading="loading" @click="load">刷新</el-button>
+        <el-button v-if="canAsk" type="primary" @click="$emit('ask')"
+          >提问</el-button
+        >
+      </div>
+    </header>
     <el-alert v-if="error" type="error" :title="error" :closable="false" />
-    <ol v-if="items.length" aria-live="polite">
-      <li v-for="item in items" :key="item.id">
-        <small
-          >{{ formatDateTime(item.created_at) }} ·
-          {{ item.problem_id ? `题目 #${item.problem_id}` : "全场公告" }}</small
-        >
-        <p>{{ item.body }}</p>
-        <el-button
-          v-for="file in item.attachments"
-          :key="file.id"
-          link
-          @click="downloadEventFile(kind, eventId, file)"
-          >{{ file.name }}</el-button
-        >
+    <ol v-if="items.length" class="announcement-list" aria-live="polite">
+      <li v-for="item in items" :key="item.id" class="announcement-item">
+        <div class="announcement-meta">
+          <span>公告 · {{ problemLabel(item.problem_id) }}</span>
+          <time :datetime="item.created_at">{{
+            formatDateTime(item.created_at)
+          }}</time>
+        </div>
+        <MarkdownRenderer :source="item.body" />
+        <div v-if="item.attachments?.length" class="announcement-files">
+          <el-button
+            v-for="file in item.attachments"
+            :key="file.id"
+            link
+            @click="downloadEventFile(kind, eventId, file)"
+            >{{ file.name }}</el-button
+          >
+        </div>
       </li>
     </ol>
-    <p v-else-if="!loading && !error">暂无公告</p>
-    <el-dialog
-      v-model="editorOpen"
-      :close-on-click-modal="!saving"
-      :close-on-press-escape="!saving"
-      :show-close="!saving"
-      title="发布赛时公告"
-      width="min(640px, calc(100vw - 24px))"
-      ><el-alert
-        v-if="error"
-        :title="error"
-        type="error"
-        :closable="false"
-      /><el-form
-        v-if="canPublish"
-        label-position="top"
-        @submit.prevent="publish"
-      >
-        <el-form-item label="关联题目 ID（选填）"
-          ><el-input v-model="problem" inputmode="numeric"
-        /></el-form-item>
-        <el-form-item label="公告正文"
-          ><el-input
-            v-model="body"
-            type="textarea"
-            :rows="3"
-            maxlength="4000"
-            show-word-limit
-        /></el-form-item>
-        <el-button @click="fileInput?.click()">添加图片或文档</el-button
-        ><span>{{ files.map((file) => file.name).join("、") }}</span
-        ><input
-          ref="fileInput"
-          hidden
-          type="file"
-          multiple
-          accept=".png,.jpg,.jpeg,.gif,.webp,.pdf,.doc,.docx,.txt,.xlsx,.csv"
-          @change="selectFiles"
-        />
-        <p>
-          附件每个最多 32
-          MiB。赛后同时归入本场附件。发布后保留历史；更正请另发公告。
-        </p>
-        <el-button
-          type="primary"
-          native-type="submit"
-          :loading="saving"
-          :disabled="!body.trim()"
-          >发布公告</el-button
-        >
-      </el-form></el-dialog
+    <p v-else-if="!loading && !error" class="announcement-empty">暂无公告</p>
+    <p
+      v-else-if="loading && !items.length"
+      class="announcement-empty"
+      role="status"
     >
+      正在加载公告…
+    </p>
   </section>
 </template>
 <script setup lang="ts">
 import { ref, watch, onUnmounted } from "vue";
+import MarkdownRenderer from "../MarkdownRenderer.vue";
 import { generatedApi } from "../../api/client";
 import {
   eventPath,
@@ -86,12 +52,13 @@ import {
 } from "../../api/modules/events";
 import { apiErrorMessage } from "../../api/errors";
 import { formatDateTime } from "../../features/time";
-const fileInput = ref<HTMLInputElement>();
 const props = defineProps<{
   kind: EventKind;
   eventId: number;
-  canPublish?: boolean;
+  canAsk?: boolean;
+  problems?: { problem_id: number; label: string }[];
 }>();
+defineEmits<{ ask: [] }>();
 const items = ref<
   {
     id: number;
@@ -101,16 +68,14 @@ const items = ref<
     attachments?: EventFile[];
   }[]
 >([]);
-const body = ref(""),
-  problem = ref(""),
-  error = ref(""),
-  saving = ref(false),
+const error = ref(""),
   loading = ref(false);
-const files = ref<File[]>([]);
-function selectFiles(e: Event) {
-  files.value = Array.from((e.target as HTMLInputElement).files || []);
+function problemLabel(id?: number) {
+  if (!id) return "全场公告";
+  return (
+    props.problems?.find((p) => p.problem_id === id)?.label || `题目 #${id}`
+  );
 }
-let publishedID: number | undefined;
 let generation = 0;
 async function load() {
   const current = ++generation;
@@ -129,65 +94,7 @@ async function load() {
     if (current === generation) loading.value = false;
   }
 }
-async function publish() {
-  if (problem.value && !/^[1-9]\d*$/.test(problem.value)) {
-    error.value = "请输入有效题目 ID";
-    return;
-  }
-  if (
-    files.value.some((file) => file.size === 0 || file.size > 32 * 1024 * 1024)
-  ) {
-    error.value = "附件必须为非空文件，单个最多 32 MiB";
-    return;
-  }
-  saving.value = true;
-  try {
-    if (!publishedID) {
-      const { data } = await generatedApi.publishEventAnnouncement<{
-        id: number;
-      }>({
-        path: eventPath(props.kind, props.eventId),
-        body: {
-          body: body.value,
-          problem_id: problem.value ? Number(problem.value) : null,
-        },
-      });
-      publishedID = data.id;
-    }
-    while (files.value.length) {
-      const form = new FormData();
-      form.append("file", files.value[0]);
-      form.append("announcement_id", String(publishedID));
-      await generatedApi.uploadEventAttachment({
-        path: eventPath(props.kind, props.eventId),
-        body: form,
-        timeout: 120000,
-      });
-      files.value.shift();
-    }
-    publishedID = undefined;
-    body.value = "";
-    problem.value = "";
-    editorOpen.value = false;
-    await load();
-  } catch (e) {
-    error.value =
-      (publishedID
-        ? "公告正文已发布，附件未全部上传；再次点击将重试剩余附件。"
-        : "") + apiErrorMessage(e);
-  } finally {
-    saving.value = false;
-  }
-}
-onUnmounted(() => {
-  generation++;
-});
-const editorOpen = ref(false);
-defineExpose({
-  openPublisher: () => {
-    editorOpen.value = true;
-  },
-});
+onUnmounted(() => generation++);
 watch(
   () => [props.kind, props.eventId],
   () => {
@@ -196,26 +103,76 @@ watch(
   },
   { immediate: true },
 );
+defineExpose({ reload: load });
 </script>
 <style scoped>
 .announcements {
-  margin: 16px 0;
-  border-left: 4px solid var(--el-color-warning);
+  min-width: 0;
 }
-.heading {
+.announcement-heading,
+.announcement-actions {
   display: flex;
   align-items: center;
-  justify-content: space-between;
   gap: 12px;
 }
-ol {
-  padding-left: 24px;
-  max-height: 320px;
-  overflow: auto;
+.announcement-heading {
+  justify-content: space-between;
+  flex-wrap: wrap;
+  padding-bottom: 16px;
+  border-bottom: 1px solid var(--border);
 }
-li p {
-  white-space: pre-wrap;
+.announcement-heading h3 {
+  margin: 0;
+}
+.announcement-actions :deep(.el-button + .el-button) {
+  margin-left: 0;
+}
+.announcement-list {
+  display: grid;
+  gap: 16px;
+  list-style: none;
+  margin: 20px 0 0;
+  padding: 0;
+}
+.announcement-item {
+  min-width: 0;
+  padding: 16px 20px;
+  border: 1px solid var(--border);
+  border-left: 4px solid var(--el-color-primary);
+  border-radius: 8px;
+}
+.announcement-meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px 16px;
+  margin-bottom: 12px;
+  color: var(--muted);
+  font-size: 13px;
+}
+.announcement-item :deep(.markdown-body > :last-child) {
+  margin-bottom: 0;
+}
+.announcement-files {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px 16px;
+  margin-top: 12px;
+}
+.announcement-files :deep(.el-button) {
+  max-width: 100%;
+  margin-left: 0;
+  white-space: normal;
+  height: auto;
+  text-align: left;
   overflow-wrap: anywhere;
-  margin-top: 6px;
+}
+.announcement-empty {
+  color: var(--muted);
+  margin-bottom: 0;
+}
+@media (max-width: 600px) {
+  .announcement-item {
+    padding: 12px;
+  }
 }
 </style>

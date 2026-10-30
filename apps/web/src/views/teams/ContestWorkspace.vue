@@ -21,13 +21,13 @@
       >
 
       <main class="contest-content">
-<EventAnnouncements ref="announcements" v-if="detail.can_read_problems" kind="contest" :event-id="contestID" :can-publish="detail.can_organize" />
+
         <template v-if="section === 'description'">
           <div class="two-column">
             <section class="panel description-panel">
               <div class="section-heading">
                 <h2>比赛说明</h2>
-                <div class="contest-management-actions"><el-button v-if="detail.can_organize" @click="announcements?.openPublisher()">发布公告</el-button>
+                <div class="contest-management-actions"><el-button v-if="detail.can_organize" @click="announcementPublisher?.openPublisher()">发布公告</el-button>
                   <el-button
                     v-if="detail.can_read_problems"
                     @click="attachmentsVisible = true"
@@ -82,6 +82,7 @@
               </dl>
             </aside>
           </div>
+          <EventAnnouncements ref="announcements" v-if="detail.can_read_problems" kind="contest" :event-id="contestID" :problems="detail.problems" :can-ask="detail.can_submit" @ask="openEventTicket" />
           <el-alert
             v-if="detail.lifecycle === 'closed'"
             :closable="false"
@@ -197,6 +198,7 @@
           :revision="detail.contest.review_revision"
           @changed="loadDetail"
       /></el-dialog>
+      <EventAnnouncementPublisher ref="announcementPublisher" v-if="detail.can_organize" kind="contest" :event-id="contestID" :can-publish="detail.can_organize" @published="announcements?.reload()" />
       <TicketDialog
         v-model="ticketVisible"
         :context="{
@@ -294,6 +296,8 @@
 <script setup lang="ts">
 import ContestReplay from '../../components/events/ContestReplay.vue'
 const announcements = ref<InstanceType<typeof EventAnnouncements>>()
+const announcementPublisher = ref<InstanceType<typeof EventAnnouncementPublisher>>()
+import EventAnnouncementPublisher from '../../components/events/EventAnnouncementPublisher.vue'
 import EventAnnouncements from '../../components/events/EventAnnouncements.vue'
 import { eventLifecycle, lifecycleLabels } from '../../api/modules/events'
 import { useSubmissionStreams } from '../../features/submissions/live'
@@ -711,6 +715,10 @@ onBeforeUnmount(() => {
 }
 .contest-content {
   padding-top: 16px;
+}
+.contest-content > .announcements {
+  margin-top: 16px;
+  margin-bottom: 16px;
 }
 .contest-scoreboard {
   min-width: 0;

@@ -11,9 +11,9 @@
         </template>
       </EventWorkspaceHeader>
       <main class="exam-content">
-<EventAnnouncements ref="announcements" v-if="detail.can_read_problems" kind="exam" :event-id="examID" :can-publish="canManage" />
+
         <div v-if="section === 'description'" class="description-layout">
-          <section class="panel description-panel"><div class="section-heading"><h2>考试说明</h2><div class="event-management-actions"><el-button v-if="detail.can_read_problems" @click="attachmentsVisible = true">附件</el-button><el-button v-if="canManage" @click="announcements?.openPublisher()">发布公告</el-button><el-button v-if="canManage" type="primary" @click="router.push(`/event-papers/exam/${examID}/edit`)">{{editable ? '组题' : '查看试卷与审核'}}</el-button><el-button v-if="editable" @click="router.push({path:`/event-papers/exam/${examID}/edit`,query:{tab:'settings'}})">考试设置</el-button></div></div><MarkdownRenderer :source="detail.exam.description || '暂无说明'" /></section>
+          <section class="panel description-panel"><div class="section-heading"><h2>考试说明</h2><div class="event-management-actions"><el-button v-if="detail.can_read_problems" @click="attachmentsVisible = true">附件</el-button><el-button v-if="canManage" @click="announcementPublisher?.openPublisher()">发布公告</el-button><el-button v-if="canManage" type="primary" @click="router.push(`/event-papers/exam/${examID}/edit`)">{{editable ? '组题' : '查看试卷与审核'}}</el-button><el-button v-if="editable" @click="router.push({path:`/event-papers/exam/${examID}/edit`,query:{tab:'settings'}})">考试设置</el-button></div></div><MarkdownRenderer :source="detail.exam.description || '暂无说明'" /></section>
           <aside class="panel exam-info"><h3>考试信息</h3><dl>
             <div><dt>开始时间</dt><dd>{{ formatDateTime(detail.exam.starts_at) }}</dd></div>
             <div><dt>结束时间</dt><dd>{{ formatDateTime(detail.exam.ends_at) }}</dd></div>
@@ -21,6 +21,7 @@
             <div><dt>评阅方式</dt><dd>{{ detail.manual_review ? '人工评阅' : '自动评测' }}</dd></div>
             <div><dt>封榜</dt><dd>{{ detail.exam.freeze_enabled ? `结束前 ${detail.exam.freeze_duration_minutes} 分钟` : '未启用' }}</dd></div>
           </dl></aside>
+          <EventAnnouncements ref="announcements" v-if="detail.can_read_problems" class="paper-full-width" kind="exam" :event-id="examID" :problems="items" :can-ask="detail.can_submit" @ask="openEventTicket" />
           <el-alert v-if="detail.lifecycle==='closed'" class="paper-full-width" :closable="false" type="info" title="本场已截止，现为只读状态。题目与附件仍可查看，等待管理员确认完结。" />
           <el-alert v-else-if="!detail.can_read_problems" class="paper-full-width" :closable="false" type="info" :title="detail.finished_at?'你已交卷，可查看本人提交记录。':'本场尚未开始，开始后可确认进入考试。'" />
         </div>
@@ -40,6 +41,7 @@
         <SubmissionComposer v-model:language="language" v-model:source="source" :draft-context="draftContext" :status="liveStatus" :submitting="submitting" :disabled="!detail.can_submit" @submit="submitSolution" />
       </el-dialog>
       <el-dialog v-model="attachmentsVisible" title="考试附件" width="min(760px, calc(100vw - 24px))" destroy-on-close><EventAttachments v-if="detail.can_read_problems" kind="exam" :event-id="examID" :editable="editable" :revision="detail.exam.review_revision" @changed="loadDetail" /></el-dialog>
+      <EventAnnouncementPublisher ref="announcementPublisher" v-if="canManage" kind="exam" :event-id="examID" :can-publish="canManage" @published="announcements?.reload()" />
       <TicketDialog v-model="ticketVisible" :context="{ kind: 'exam', id: examID, problemID: ticketProblemID }" />
       <SubmissionDetailDialog v-model="submissionVisible" :detail="submissionDetail" />
     </div>
@@ -54,6 +56,8 @@
 
 <script setup lang="ts">
 const announcements = ref<InstanceType<typeof EventAnnouncements>>()
+const announcementPublisher = ref<InstanceType<typeof EventAnnouncementPublisher>>()
+import EventAnnouncementPublisher from '../components/events/EventAnnouncementPublisher.vue'
 import EventAnnouncements from '../components/events/EventAnnouncements.vue'
 import {eventLifecycle,lifecycleLabels} from "../api/modules/events"
 import { useSubmissionStreams } from "../features/submissions/live"

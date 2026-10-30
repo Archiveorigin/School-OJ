@@ -640,3 +640,14 @@ node tests/e2e/event-http-uuid-qa.mjs
 - 按用户要求，将已有 Dashboard 与 PermissionManagement 页面修改一并纳入；Dashboard 新色值改为共享语义 token，保留其原色值与布局。
 - 验证：API/Worker 普通测试通过；真实隔离 PostgreSQL/Redis 全量 handlers 测试通过（包括赛中禁止导出、封榜/最终快照、源码不外泄、公告文件不改修订与赛后归档）；Web 完整生产构建及 164 项测试通过，最终回放模块专项测试通过。新增 Playwright announcement-replay-qa 验证发布弹窗、真实文档上传、16 秒无轮询、桌面/手机浅暗主题、真实数据导出和回放暂停；截图位于 tmp/replay-qa。
 - 041 迁移兼容 ORM 基线已创建字段及正常升级两种起点；生产副本迁移连续两次通过。独立候选 API/双 Worker 健康后切换同一镜像；生产健康及公开/鉴权接口通过，备份位于服务器 /opt/School-OJ-backups/replay-release，回滚镜像 replay-rollback-cb0ece6；生产数据服务保持原实例。本轮不将 Worker 健康检查记作新的真实代码沙箱判题验收。
+
+
+### 2026-10-30：分离公告发布弹窗与横向答疑公告栏
+
+- 按用户截图拆分为 EventAnnouncementPublisher 独立悬浮弹窗与 EventAnnouncements 只读公告栏；比赛和考试说明页中，公告栏位于说明与信息两列之后，横跨内容区。发布按钮仍与附件并排，公告栏的“提问”接入本场既有工单入口，并沿用可提交权限。
+- 正文复用 MarkdownRenderer，支持 Markdown、公式及 HTTPS 图片链接，并提供发布前预览；关联题目优先显示题号，文档和上传图片继续通过受鉴权的下载入口查看。保留附件失败重试、赛后归档和手动刷新，不增加自动轮询。历史公告不会被覆盖。
+- 本机 Git GUI 原窗口未刷新到新分支且中文差异按系统编码显示乱码；刷新/重启后显示正确分支，本仓库 gui.encoding 设置为 UTF-8，窗口恢复普通状态与合适尺寸。设置仅保存在本机 Git 配置，不进入应用。
+- 整合 GitHub main 的现有合并历史与之前功能分支，不改写已有提交；本次原生 Git GUI 使用 TailingMing 身份创建整合提交，随后快进同步服务器与 GitHub main。
+- 验证：API/Worker 普通测试通过，Web 164 项测试通过、1 项显式跳过，完整生产构建含契约/架构/类型/包体检查通过。真实隔离 PostgreSQL/Redis 公告文件与滚榜导出回归通过；更新 announcement-replay-qa，验证比赛与考试公告位置、独立弹窗、Markdown/公式预览与展示、真实文档上传、选手提问工单、16 秒无轮询、1440/390 浅暗主题及滚榜导出/播放。服务器构建出的候选前端资源也通过同套浏览器验证，API 请求显式路由到隔离夹具，未向生产写入测试数据。
+- 复用测试夹具时出现过旧状态导致的发布失败；重新启动独立 schema 夹具后最终流程通过。候选资源代理测试还修正了关闭浏览器上下文时未等待路由完成的问题；最终浏览器日志为通过，不将中途失败记作验收成功。
+- 无新增数据库迁移，生产备份副本执行现有迁移两次通过。备份 /opt/School-OJ-backups/announcement-layout-release；旧镜像保留 announcement-layout-rollback-9f0aaa3。生产运行同一候选镜像，API/双 Worker 健康，公开目录/登录页与鉴权边界通过，数据库/Redis/MinIO 容器 ID 不变。只清理本轮候选项目容器、卷及测试 Redis，保留正式服务、回滚镜像和备份。本轮没有新增真实代码沙箱判题验收。
