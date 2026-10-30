@@ -4,19 +4,21 @@ import (
 	"github.com/gin-gonic/gin"
 	"gorm.io/gorm"
 	"school-oj/apps/api/internal/middleware"
+	"school-oj/apps/api/internal/models"
 	"school-oj/apps/api/internal/services"
 	"strings"
 	"time"
 )
 
 type eventAnnouncement struct {
-	ID        uint      `json:"id"`
-	EventKind string    `json:"event_kind"`
-	EventID   uint      `json:"event_id"`
-	ProblemID *uint     `json:"problem_id"`
-	Body      string    `json:"body"`
-	CreatedBy uint      `json:"created_by"`
-	CreatedAt time.Time `json:"created_at"`
+	Attachments []models.EventAttachment `json:"attachments" gorm:"-"`
+	ID          uint                     `json:"id"`
+	EventKind   string                   `json:"event_kind"`
+	EventID     uint                     `json:"event_id"`
+	ProblemID   *uint                    `json:"problem_id"`
+	Body        string                   `json:"body"`
+	CreatedBy   uint                     `json:"created_by"`
+	CreatedAt   time.Time                `json:"created_at"`
 }
 
 func (s Server) listEventAnnouncements(c *gin.Context) {
@@ -28,6 +30,12 @@ func (s Server) listEventAnnouncements(c *gin.Context) {
 	if err := s.DB.Where("event_kind=? AND event_id=?", p.kind, p.id).Order("id desc").Find(&items).Error; err != nil {
 		eventError(c, err)
 		return
+	}
+	for i := range items {
+		if err := s.DB.Where("announcement_id=? AND event_kind=? AND event_id=?", items[i].ID, p.kind, p.id).Find(&items[i].Attachments).Error; err != nil {
+			eventError(c, err)
+			return
+		}
 	}
 	c.Header("Cache-Control", "private, no-store")
 	c.JSON(200, items)

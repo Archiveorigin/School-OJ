@@ -66,7 +66,7 @@ func seedRankingBrowserCases(t *testing.T, f *examTestFixture) []rankingBrowserC
 					f.s.DB.Create(&models.ExamProblem{ExamID: p.id, ProblemID: problem.ID, ProblemVersionID: versions[i].ID, Label: defaultProblemLabel(i), Score: 100, SortOrder: i})
 				}
 			} else {
-				p.contest = models.TeamContest{TeamID: team.ID, Title: title, StartsAt: &start, DurationMinutes: 60, ScoringRule: rule, State: models.TeamContestPublished, CreatedBy: f.teacher.ID, EventReview: review}
+				p.contest = models.TeamContest{FreezeEnabled: true, FreezeDurationMinutes: 30, TeamID: team.ID, Title: title, StartsAt: &start, DurationMinutes: 60, ScoringRule: rule, State: models.TeamContestPublished, CreatedBy: f.teacher.ID, EventReview: review}
 				if err := f.s.DB.Create(&p.contest).Error; err != nil {
 					t.Fatal(err)
 				}

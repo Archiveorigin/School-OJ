@@ -72,7 +72,7 @@
       aria-label="罚时榜横向滚动区域"
       @scroll.passive="syncHeader"
     >
-      <div class="penalty-grid" role="rowgroup">
+      <TransitionGroup name="rank-reveal" tag="div" class="penalty-grid" role="rowgroup">
         <article
           v-for="row in rows"
           :key="row.id"
@@ -141,7 +141,7 @@
             </div>
           </div>
         </article>
-      </div>
+      </TransitionGroup>
     </div>
   </div>
 </template>
@@ -178,11 +178,11 @@ function syncHeader(event: Event) {
 }
 
 function displayRank(row: LeaderboardRow) {
-  return props.rankByID[String(row.id)] ?? row.rank;
+  return row.unranked ? '*' : (props.rankByID[String(row.id)] ?? row.rank);
 }
 
 function awardTier(row: LeaderboardRow): AwardTier {
-  return props.awardByID[String(row.id)] ?? "none";
+  return row.unranked ? "none" : (props.awardByID[String(row.id)] ?? "none");
 }
 
 function awardRankClass(row: LeaderboardRow) {
@@ -229,6 +229,9 @@ function resultTitle(row: LeaderboardRow, problemID: number | string) {
 </script>
 
 <style scoped>
+.rank-reveal-move { transition: transform 700ms ease; }
+@media (prefers-reduced-motion: reduce) { .rank-reveal-move { transition: none; } }
+
 .penalty-table {
   --name-width: 180px;
   --rank-width: 64px;

@@ -11,9 +11,9 @@
         </template>
       </EventWorkspaceHeader>
       <main class="exam-content">
-<EventAnnouncements v-if="detail.can_read_problems" kind="exam" :event-id="examID" :can-publish="canManage" />
+<EventAnnouncements ref="announcements" v-if="detail.can_read_problems" kind="exam" :event-id="examID" :can-publish="canManage" />
         <div v-if="section === 'description'" class="description-layout">
-          <section class="panel description-panel"><div class="section-heading"><h2>考试说明</h2><div class="event-management-actions"><el-button v-if="detail.can_read_problems" @click="attachmentsVisible = true">附件</el-button><el-button v-if="canManage" type="primary" @click="router.push(`/event-papers/exam/${examID}/edit`)">{{editable ? '组题' : '查看试卷与审核'}}</el-button><el-button v-if="editable" @click="router.push({path:`/event-papers/exam/${examID}/edit`,query:{tab:'settings'}})">考试设置</el-button></div></div><MarkdownRenderer :source="detail.exam.description || '暂无说明'" /></section>
+          <section class="panel description-panel"><div class="section-heading"><h2>考试说明</h2><div class="event-management-actions"><el-button v-if="detail.can_read_problems" @click="attachmentsVisible = true">附件</el-button><el-button v-if="canManage" @click="announcements?.openPublisher()">发布公告</el-button><el-button v-if="canManage" type="primary" @click="router.push(`/event-papers/exam/${examID}/edit`)">{{editable ? '组题' : '查看试卷与审核'}}</el-button><el-button v-if="editable" @click="router.push({path:`/event-papers/exam/${examID}/edit`,query:{tab:'settings'}})">考试设置</el-button></div></div><MarkdownRenderer :source="detail.exam.description || '暂无说明'" /></section>
           <aside class="panel exam-info"><h3>考试信息</h3><dl>
             <div><dt>开始时间</dt><dd>{{ formatDateTime(detail.exam.starts_at) }}</dd></div>
             <div><dt>结束时间</dt><dd>{{ formatDateTime(detail.exam.ends_at) }}</dd></div>
@@ -53,6 +53,7 @@
 </template>
 
 <script setup lang="ts">
+const announcements = ref<InstanceType<typeof EventAnnouncements>>()
 import EventAnnouncements from '../components/events/EventAnnouncements.vue'
 import {eventLifecycle,lifecycleLabels} from "../api/modules/events"
 import { useSubmissionStreams } from "../features/submissions/live"

@@ -143,3 +143,20 @@
   --el-color-warning: var(--color-warning);
   --el-color-danger: var(--color-danger);
 }
+
+:root {
+  --dashboard-hero-start: rgba(3, 30, 55, 0.96);
+  --dashboard-hero-middle: rgba(7, 73, 122, 0.86);
+  --dashboard-hero-end: rgba(10, 94, 166, 0.62);
+  --dashboard-hero-shadow: rgba(8, 47, 73, 0.25);
+  --dashboard-hero-border: rgba(255, 255, 255, 0.18);
+  --dashboard-hero-decoration: rgba(255, 255, 255, 0.24);
+  --dashboard-hero-inset: rgba(3, 28, 49, 0.44);
+  --dashboard-hero-inset-shadow: rgba(0, 0, 0, 0.16);
+  --dashboard-hero-divider: rgba(255, 255, 255, 0.14);
+  --dashboard-hero-panel: rgba(255, 255, 255, 0.94);
+  --dashboard-hero-rule: rgba(255, 255, 255, 0.12);
+  --dashboard-hero-panel-shadow: rgba(15, 50, 78, 0.07);
+  --dashboard-hero-compact-start: rgba(4, 30, 55, 0.94);
+  --dashboard-hero-compact-end: rgba(4, 62, 94, 0.76);
+}

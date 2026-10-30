@@ -30,7 +30,11 @@ func (s Server) listEventAttachments(c *gin.Context) {
 		return
 	}
 	items := []models.EventAttachment{}
-	if err := s.DB.Where("event_kind=? AND event_id=?", p.kind, p.id).Order("id").Find(&items).Error; err != nil {
+	query := s.DB.Where("event_kind=? AND event_id=?", p.kind, p.id)
+	if p.review().CompletedAt == nil && (p.ends() == nil || time.Now().Before(*p.ends())) {
+		query = query.Where("announcement_id IS NULL")
+	}
+	if err := query.Order("id").Find(&items).Error; err != nil {
 		eventError(c, err)
 		return
 	}
@@ -62,12 +66,13 @@ func (s Server) uploadEventAttachment(c *gin.Context) {
 		c.JSON(400, gin.H{"error": "附件单个不能超过 32 MiB"})
 		return
 	}
+	announcementID, _ := strconv.ParseUint(c.PostForm("announcement_id"), 10, 64)
 	revision, err := strconv.Atoi(c.PostForm("revision"))
-	if err != nil {
+	if err != nil && announcementID == 0 {
 		c.JSON(400, gin.H{"error": "缺少场次修订号"})
 		return
 	}
-	if err = requireEventDraft(p, revision); err != nil {
+	if err = s.requireAttachmentUpload(s.DB, p, revision, uint(announcementID)); err != nil {
 		eventError(c, err)
 		return
 	}
@@ -81,6 +86,13 @@ func (s Server) uploadEventAttachment(c *gin.Context) {
 	if name == "." || strings.TrimSpace(name) == "" || len([]rune(name)) > 200 || strings.ContainsAny(name, "\r\n\x00") {
 		c.JSON(400, gin.H{"error": "附件文件名无效"})
 		return
+	}
+	if announcementID > 0 {
+		allowed := map[string]bool{".png": true, ".jpg": true, ".jpeg": true, ".gif": true, ".webp": true, ".pdf": true, ".doc": true, ".docx": true, ".txt": true, ".xlsx": true, ".csv": true}
+		if !allowed[strings.ToLower(path.Ext(name))] {
+			c.JSON(400, gin.H{"error": "仅支持常用图片、PDF、Word、文本及表格文件"})
+			return
+		}
 	}
 	body, err := services.ReadLimited(f, eventAttachmentLimit, "附件")
 	if err != nil || len(body) == 0 {
@@ -101,6 +113,10 @@ func (s Server) uploadEventAttachment(c *gin.Context) {
 	u, _ := middleware.CurrentUser(c)
 	sum := sha256.Sum256(body)
 	item := models.EventAttachment{EventKind: p.kind, EventID: p.id, Name: name, Object: object, Size: int64(len(body)), Checksum: hex.EncodeToString(sum[:]), CreatedBy: u.ID}
+	if announcementID > 0 {
+		aid := uint(announcementID)
+		item.AnnouncementID = &aid
+	}
 	err = s.DB.WithContext(c.Request.Context()).Transaction(func(tx *gorm.DB) error {
 		locked, e := loadEventPaper(tx, p.kind, p.id, true)
 		if e != nil {
@@ -112,7 +128,7 @@ func (s Server) uploadEventAttachment(c *gin.Context) {
 		if !scoped.canManageEventPaper(u, p) {
 			return eventFail(403, "管理权限已变化")
 		}
-		if e = requireEventDraft(p, revision); e != nil {
+		if e = scoped.requireAttachmentUpload(tx, p, revision, uint(announcementID)); e != nil {
 			return e
 		}
 		var totals struct {
@@ -134,6 +150,9 @@ func (s Server) uploadEventAttachment(c *gin.Context) {
 		}
 		if e = tx.Create(&item).Error; e != nil {
 			return e
+		}
+		if announcementID > 0 {
+			return nil
 		}
 		return bumpEventRevision(tx, p)
 	})
@@ -291,4 +310,21 @@ func (s Server) getEventProblemAsset(c *gin.Context) {
 		}
 	}
 	c.JSON(404, gin.H{"error": "图片不存在"})
+}
+
+func (s Server) requireAttachmentUpload(tx *gorm.DB, p eventPaper, revision int, announcementID uint) error {
+	if announcementID == 0 {
+		return requireEventDraft(p, revision)
+	}
+	if !p.review().Approved() || p.review().CompletedAt != nil {
+		return eventFail(409, "仅未完结的已审核场次支持公告附件")
+	}
+	var count int64
+	if err := tx.Table("event_announcements").Where("id=? AND event_kind=? AND event_id=?", announcementID, p.kind, p.id).Count(&count).Error; err != nil {
+		return err
+	}
+	if count != 1 {
+		return eventFail(400, "公告不属于本场")
+	}
+	return nil
 }

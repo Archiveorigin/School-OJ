@@ -151,7 +151,8 @@ type teamContestRankingCell struct {
 }
 
 type teamContestRankingRow struct {
-	Rank            int `json:"rank"`
+	Unranked        bool `json:"unranked"`
+	Rank            int  `json:"rank"`
 	lastAccepted    *time.Time
 	UserID          uint                     `json:"user_id"`
 	Name            string                   `json:"name"`
@@ -1095,6 +1096,33 @@ func (s Server) teamContestRanking(c *gin.Context) {
 		contestStart = *contest.StartsAt
 	}
 	rows := buildTeamContestRanking(users, links, aggregates, contestStart, contest.ScoringRule)
+	rankedCount := len(rows)
+	selectedIDs, selected, _ := contestRankingIDs(contest.RankingUserIDs)
+	if selected {
+		ranked := map[uint]bool{}
+		for _, id := range selectedIDs {
+			ranked[id] = true
+		}
+		all := contest
+		all.RankingUserIDs = nil
+		_, allUsers, e := s.loadContestRankingParticipants(all)
+		if e != nil {
+			eventError(c, e)
+			return
+		}
+		extras := []models.User{}
+		for _, u := range allUsers {
+			if !ranked[u.ID] {
+				extras = append(extras, u)
+			}
+		}
+		extraRows := buildTeamContestRanking(extras, links, aggregates, contestStart, contest.ScoringRule)
+		for i := range extraRows {
+			extraRows[i].Unranked = true
+			extraRows[i].Rank = 0
+		}
+		rows = append(rows, extraRows...)
+	}
 
 	problems := make([]gin.H, 0, len(links))
 	for _, link := range links {
@@ -1113,7 +1141,7 @@ func (s Server) teamContestRanking(c *gin.Context) {
 		"lifecycle":               (eventPaper{kind: "contest", id: contest.ID, contest: contest}).lifecycle(time.Now()),
 		"now":                     time.Now(),
 		"scoring_rule":            contest.ScoringRule,
-		"participant_count":       len(rows),
+		"participant_count":       rankedCount,
 		"problems":                problems,
 		"rows":                    rows,
 		"frozen":                  frozen,

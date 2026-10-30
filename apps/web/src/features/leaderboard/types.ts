@@ -28,6 +28,7 @@ export interface LeaderboardResult {
 }
 
 export interface LeaderboardRow {
+ unranked?: boolean;
   id: number | string;
   rank: number;
   name: string;
@@ -40,6 +41,7 @@ export interface LeaderboardRow {
 }
 
 export interface LeaderboardData {
+ replaying?: boolean;
   scoringRule: LeaderboardScoringRule;
   title: string;
   subtitle?: string;

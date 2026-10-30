@@ -59,15 +59,16 @@ type EventReviewLog struct {
 }
 
 type EventAttachment struct {
-	ID        uint      `json:"id" gorm:"primaryKey"`
-	EventKind string    `json:"event_kind" gorm:"size:16;not null;index:idx_event_attachment"`
-	EventID   uint      `json:"event_id" gorm:"not null;index:idx_event_attachment"`
-	Name      string    `json:"name" gorm:"size:255;not null"`
-	Object    string    `json:"-" gorm:"size:512;not null"`
-	Size      int64     `json:"size" gorm:"not null"`
-	Checksum  string    `json:"checksum" gorm:"size:64;not null"`
-	CreatedBy uint      `json:"created_by" gorm:"not null"`
-	CreatedAt time.Time `json:"created_at"`
+	AnnouncementID *uint     `json:"announcement_id,omitempty"`
+	ID             uint      `json:"id" gorm:"primaryKey"`
+	EventKind      string    `json:"event_kind" gorm:"size:16;not null;index:idx_event_attachment"`
+	EventID        uint      `json:"event_id" gorm:"not null;index:idx_event_attachment"`
+	Name           string    `json:"name" gorm:"size:255;not null"`
+	Object         string    `json:"-" gorm:"size:512;not null"`
+	Size           int64     `json:"size" gorm:"not null"`
+	Checksum       string    `json:"checksum" gorm:"size:64;not null"`
+	CreatedBy      uint      `json:"created_by" gorm:"not null"`
+	CreatedAt      time.Time `json:"created_at"`
 }
 
 type ExamParticipant struct {

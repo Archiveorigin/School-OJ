@@ -1218,11 +1218,13 @@ export const generatedApi = {
     requestOperation<TResponse, never>("listEventAttachments", options),
   "uploadEventAttachment": <TResponse = components['schemas']["JsonObject"]>(options: ApiRequestOptions<{
     "file": string
-    "revision": number
+    "revision"?: number
+    "announcement_id"?: number
   }> = {}) =>
     requestOperation<TResponse, {
     "file": string
-    "revision": number
+    "revision"?: number
+    "announcement_id"?: number
   }>("uploadEventAttachment", options),
   "downloadEventAttachment": <TResponse = unknown>(options: ApiRequestOptions<never> = {}) =>
     requestOperation<TResponse, never>("downloadEventAttachment", options),

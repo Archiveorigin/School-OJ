@@ -29,11 +29,13 @@ try {
  const teacher=await browser.newContext({viewport:{width:1440,height:1100}})
  const tp=await teacher.newPage(); await login(tp,'exam-teacher-2@example.test')
  await tp.goto(base+'/exams/1/description')
- const panel=tp.getByRole('region',{name:'赛时公告'})
+ await tp.getByRole('button',{name:'发布公告',exact:true}).click()
+ const panel=tp.getByRole('dialog',{name:'发布赛时公告'})
  await panel.getByLabel('公告正文').fill('赛时更正：输入范围为 100，请以本公告为准。')
  await panel.getByLabel('关联题目 ID（选填）').fill('1')
  await panel.getByRole('button',{name:'发布公告',exact:true}).click()
- await panel.getByText('赛时更正：输入范围为 100，请以本公告为准。',{exact:true}).waitFor()
+ await panel.waitFor({state:'hidden'})
+ await tp.getByText('赛时更正：输入范围为 100，请以本公告为准。',{exact:true}).waitFor()
  for(const width of [1440,390]) {
   await tp.setViewportSize({width,height:width===390?844:1100})
   for(const theme of ['light','dark']) {

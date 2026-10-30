@@ -8,15 +8,17 @@ export function sortLeaderboardRows(
   mode: LeaderboardViewMode
 ) {
   const sorted = [...rows]
-  if (mode === 'published') return sorted.sort((left, right) => left.rank - right.rank)
+  if (mode === 'published') return sorted.sort((left, right) => Number(Boolean(left.unranked))-Number(Boolean(right.unranked)) || left.rank - right.rank)
   if (scoringRule === 'score') {
     return sorted.sort((left, right) =>
+      Number(Boolean(left.unranked))-Number(Boolean(right.unranked)) ||
       right.metric - left.metric ||
       right.solved - left.solved ||
       left.rank - right.rank
     )
   }
   return sorted.sort((left, right) =>
+    Number(Boolean(left.unranked))-Number(Boolean(right.unranked)) ||
     right.solved - left.solved ||
     left.metric - right.metric ||
     left.rank - right.rank

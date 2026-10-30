@@ -26,7 +26,7 @@
             <div class="score-control-field">
               <span class="score-control-label">排名模式</span
               ><strong class="rank-mode">{{
-                data.finalReady ? "最终排名" : "实时表现"
+                data.replaying ? "滚榜回放" : data.finalReady ? "最终排名" : "实时表现"
               }}</strong>
             </div>
 
@@ -40,6 +40,8 @@
               <input
                 v-model.number="currentTime"
                 class="time-progress-slider"
+                disabled
+                title="显示当前数据时间；赛后回放请使用滚榜功能"
                 type="range"
                 min="0"
                 :max="Math.max(0, data.durationSeconds)"
@@ -284,7 +286,7 @@ const rankedRows = computed(() =>
   sortLeaderboardRows(props.data.rows, props.data.scoringRule, mode.value),
 );
 const actualParticipantCount = computed(() =>
-  Math.max(props.data.rows.length, Number(props.data.participantCount) || 0),
+  props.data.rows.filter(row=>!row.unranked).length,
 );
 const awardPercents = computed(() =>
   normalizeAwardPercents(props.data.awardPercents),
@@ -298,7 +300,7 @@ const awardByID = computed<Record<string, LeaderboardAwardTier>>(() =>
       const rank = rankByID.value[String(row.id)] ?? row.rank;
       return [
         String(row.id),
-        awardTierForRank(
+        row.unranked ? "none" : awardTierForRank(
           rank,
           actualParticipantCount.value,
           awardPercents.value,

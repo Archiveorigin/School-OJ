@@ -4342,6 +4342,7 @@ func (s Server) deleteExam(c *gin.Context) {
 		c.JSON(http.StatusForbidden, gin.H{"error": "forbidden"})
 		return
 	}
+	var announcementFiles []models.ProblemTicketAttachment
 	now := time.Now()
 	if err := s.DB.Transaction(func(tx *gorm.DB) error {
 		if err := tx.Model(&models.Exam{}).Where("id = ?", item.ID).Update("deleted_at", now).Error; err != nil {
@@ -4350,11 +4351,19 @@ func (s Server) deleteExam(c *gin.Context) {
 		if err := s.cleanupFutureReleaseRows(tx, "exam", item.ID, item.ClassID, item.EndsAt); err != nil {
 			return err
 		}
+		var files []models.EventAttachment
+		if err := tx.Where("event_kind=? AND event_id=? AND announcement_id IS NOT NULL", "exam", item.ID).Find(&files).Error; err != nil {
+			return err
+		}
+		for _, file := range files {
+			announcementFiles = append(announcementFiles, models.ProblemTicketAttachment{Object: file.Object})
+		}
 		return services.DeleteExamRecords(tx, item.ID)
 	}); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 		return
 	}
+	s.cleanupTicketUploads(announcementFiles)
 	services.Audit(c, s.DB, "exam.delete", "exam", item.ID, nil)
 	c.JSON(http.StatusOK, gin.H{"deleted": true})
 }

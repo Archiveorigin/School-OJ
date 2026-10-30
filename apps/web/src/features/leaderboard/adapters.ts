@@ -92,6 +92,7 @@ function problemList(
 }
 
 function penaltyStatus(cell: UnknownRecord | undefined): LeaderboardStatus {
+  if (cell?.status === "frozen") return "frozen";
   if (!cell || !safeNumber(cell.attempts)) return "none";
   if (cell.solved_at || cell.status === "accepted") return "accepted";
   if (cell.pending || cell.status === "queued" || cell.status === "running")
@@ -154,7 +155,7 @@ export function adaptTeamContestRanking(
             status,
             attempts,
             primary:
-              status === "none"
+              status === "frozen" ? "?" : status === "none"
                 ? undefined
                 : `${bestScore}/${problem.maxScore}`,
             secondary:
@@ -172,7 +173,7 @@ export function adaptTeamContestRanking(
             attempts,
             timeSeconds: attempts ? elapsedMinutes * 60 : undefined,
             firstBlood: Boolean(cell?.fastest),
-            primary: attempts ? String(attempts) : undefined,
+            primary: cell?.status === "frozen" ? "?" : attempts ? String(attempts) : undefined,
             secondary: attempts ? `${elapsedMinutes}'` : undefined,
           };
         }
@@ -190,6 +191,7 @@ export function adaptTeamContestRanking(
           : undefined;
       return {
         id: row.user_id ?? index,
+ unranked: row.unranked === true,
         rank: safeNumber(row.rank, index + 1),
         name: String(row.name || `参赛者 ${index + 1}`),
         solved: safeNumber(row.solved),
@@ -284,7 +286,7 @@ export function adaptExamRanking(
             attempts,
             timeSeconds: attempts ? elapsedMinutes * 60 : undefined,
             firstBlood: Boolean(cell?.fastest),
-            primary: attempts ? String(attempts) : undefined,
+            primary: cell?.status === "frozen" ? "?" : attempts ? String(attempts) : undefined,
             secondary: attempts ? `${elapsedMinutes}'` : undefined,
           };
         }
@@ -298,6 +300,7 @@ export function adaptExamRanking(
         rule === "score" ? totalScore : safeNumber(row.penalty_minutes);
       return {
         id: row.user_id ?? index,
+ unranked: row.unranked === true,
         rank: safeNumber(row.rank, index + 1),
         name: String(row.name || `学生 ${index + 1}`),
         solved: safeNumber(row.solved),

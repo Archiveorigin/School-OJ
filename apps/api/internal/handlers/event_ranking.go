@@ -259,6 +259,10 @@ func (s Server) exportEventRanking(c *gin.Context) {
 }
 
 func (s Server) exportEventRankingForPaper(c *gin.Context, p eventPaper, format string) {
+	if format == "json" {
+		s.exportContestReplay(c, p)
+		return
+	}
 	if format != "xlsx" && format != "html" {
 		eventError(c, eventFail(400, "仅支持 Excel 或 HTML 榜单"))
 		return

@@ -55,13 +55,15 @@ func TestContestRankingRosterDoesNotRestrictParticipation(t *testing.T) {
 	assertStatus(t, response, 200)
 	var body struct {
 		Rows []struct {
-			UserID uint `json:"user_id"`
+			UserID   uint `json:"user_id"`
+			Unranked bool `json:"unranked"`
+			Rank     int  `json:"rank"`
 		} `json:"rows"`
 	}
 	if err := json.Unmarshal(response.Body.Bytes(), &body); err != nil {
 		t.Fatal(err)
 	}
-	if len(body.Rows) != 1 || body.Rows[0].UserID != f.teacher.ID {
+	if len(body.Rows) != 2 || body.Rows[0].UserID != f.teacher.ID || body.Rows[0].Unranked || !body.Rows[1].Unranked || body.Rows[1].Rank != 0 {
 		t.Fatalf("excluded submitter ranked: %s", response.Body.String())
 	}
 	p, _ = loadEventPaper(f.s.DB, "contest", id, false)

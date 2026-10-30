@@ -21,13 +21,13 @@
       >
 
       <main class="contest-content">
-<EventAnnouncements v-if="detail.can_read_problems" kind="contest" :event-id="contestID" :can-publish="detail.can_organize" />
+<EventAnnouncements ref="announcements" v-if="detail.can_read_problems" kind="contest" :event-id="contestID" :can-publish="detail.can_organize" />
         <template v-if="section === 'description'">
           <div class="two-column">
             <section class="panel description-panel">
               <div class="section-heading">
                 <h2>比赛说明</h2>
-                <div class="contest-management-actions">
+                <div class="contest-management-actions"><el-button v-if="detail.can_organize" @click="announcements?.openPublisher()">发布公告</el-button>
                   <el-button
                     v-if="detail.can_read_problems"
                     @click="attachmentsVisible = true"
@@ -140,7 +140,8 @@
           "
         >
           <section class="contest-scoreboard">
-            <LeaderboardBoard
+            <ContestReplay kind="contest" :event-id="contestID" :can-export="Boolean(detail.can_organize)" />
+<LeaderboardBoard
               :data="scoreboardData"
               :loading="rankingLoading"
               :error="rankingError"
@@ -291,6 +292,8 @@
 </template>
 
 <script setup lang="ts">
+import ContestReplay from '../../components/events/ContestReplay.vue'
+const announcements = ref<InstanceType<typeof EventAnnouncements>>()
 import EventAnnouncements from '../../components/events/EventAnnouncements.vue'
 import { eventLifecycle, lifecycleLabels } from '../../api/modules/events'
 import { useSubmissionStreams } from '../../features/submissions/live'
