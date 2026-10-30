@@ -1,11 +1,4 @@
-import {
-  ref,
-  shallowRef,
-  computed,
-  onMounted,
-  onBeforeUnmount,
-  type ShallowRef,
-} from "vue";
+import { ref, shallowRef, computed, onMounted, onBeforeUnmount } from "vue";
 import type { LeaderboardData } from "./types";
 import { stepDuration } from "./motion";
 import { useReducedMotion } from "./useReducedMotion";
@@ -87,11 +80,13 @@ export function useRevealPlayback() {
     timer = setTimeout(
       () => {
         moving.value = false;
-        status.value = finished.value
-          ? "finished"
-          : playing.value
-            ? "playing"
-            : "paused";
+        status.value = error.value
+          ? "error"
+          : finished.value
+            ? "finished"
+            : playing.value
+              ? "playing"
+              : "paused";
         if (finished.value) playing.value = false;
         else if (playing.value) advance();
       },

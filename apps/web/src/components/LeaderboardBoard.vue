@@ -337,7 +337,9 @@ const progress = computed(() =>
     : 0,
 );
 const rankedRows = computed(() =>
-  sortLeaderboardRows(props.data.rows, props.data.scoringRule, mode.value),
+  props.data.replaying
+    ? props.data.rows
+    : sortLeaderboardRows(props.data.rows, props.data.scoringRule, mode.value),
 );
 const actualParticipantCount = computed(
   () => props.data.rows.filter((row) => !row.unranked).length,
@@ -488,7 +490,13 @@ function resetTime() {
 async function toggleFullscreen() {
   try {
     if (document.fullscreenElement) await document.exitFullscreen();
-    else await root.value?.requestFullscreen();
+    else {
+      const target = props.data.replaying
+        ? root.value?.closest<HTMLElement>("[data-replay-surface]") ||
+          root.value
+        : root.value;
+      await target?.requestFullscreen();
+    }
   } catch {
     // 浏览器或嵌入策略拒绝全屏时，榜单仍可正常使用。
   }

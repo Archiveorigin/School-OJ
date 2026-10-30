@@ -102,6 +102,7 @@ export function createContestReplay(packet: ReplayPacket) {
     if (consistencyError) board.consistencyError = consistencyError;
     board.revealUserId = focus?.userId;
     board.revealProblemId = focus?.problemId;
+    board.currentTimeSeconds = board.durationSeconds;
     if (step !== total && packet.freeze_at && packet.contest.starts_at)
       board.currentTimeSeconds = Math.max(
         0,
@@ -112,6 +113,12 @@ export function createContestReplay(packet: ReplayPacket) {
             1000,
         ),
       );
+    // These two snapshots are authoritative server standings, including exact
+    // tie ordering and unranked grouping. Only intermediate frames are reranked.
+    if (step === 0 || (step === total && !consistencyError)) {
+      board.participantCount = board.rows.filter((row) => !row.unranked).length;
+      return board;
+    }
     const tieTime = (id: number | string) => {
       const raw = (step === total && !consistencyError ? final : byId).get(
         Number(id),

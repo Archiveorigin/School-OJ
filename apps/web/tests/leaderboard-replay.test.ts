@@ -105,7 +105,10 @@ it("uses exact acceptance times to resolve tied partial penalties", () => {
     kind: "contest-replay",
     contest: { scoring_rule: "acm", duration_minutes: 60 },
     problems: [{ problem_id: 1, label: "A" }],
-    initial_rows: [start, other],
+    initial_rows: [
+      { ...other, rank: 1 },
+      { ...start, rank: 2 },
+    ],
     final_rows: [
       { ...other, rank: 1 },
       { ...start, rank: 2, problems: [{ ...first, submission_count: 3 }] },
@@ -135,4 +138,38 @@ it("reports inconsistent final totals rather than silently replacing the replay"
   expect(end.rows[0].solved).toBe(1);
   expect(warn).toHaveBeenCalledTimes(1);
   warn.mockRestore();
+});
+
+it("keeps authoritative freeze and final snapshot ordering, without leaking final ranks into the first frame", () => {
+  const first = { ...row(2, cell("wrong_answer", 1, 10)), rank: 1, name: "Z" };
+  const second = { ...row(1, cell("wrong_answer", 1, 10)), rank: 1, name: "A" };
+  const packet: ReplayPacket = {
+    schema_version: 1,
+    kind: "contest-replay",
+    contest: {
+      scoring_rule: "acm",
+      duration_minutes: 120,
+      starts_at: "2026-10-31T10:00:00Z",
+    },
+    freeze_at: "2026-10-31T11:30:00Z",
+    problems: [{ problem_id: 1, label: "A" }],
+    initial_rows: [first, second],
+    final_rows: [
+      { ...row(1, cell("accepted", 2, 100)), rank: 1, name: "A" },
+      { ...first, rank: 2 },
+    ],
+    events: [],
+  };
+  const replay = createContestReplay(packet);
+  expect(replay.snapshot().rows.map((r) => [r.id, r.rank, r.solved])).toEqual([
+    [2, 1, 0],
+    [1, 1, 0],
+  ]);
+  expect(replay.snapshot().currentTimeSeconds).toBe(5400);
+  expect(replay.step).toBe(0);
+  const finalFrame = replay.next();
+  expect(finalFrame.rows.map((r) => r.id)).toEqual([1, 2]);
+  expect(finalFrame.currentTimeSeconds).toBe(7200);
+  const restart = createContestReplay(packet);
+  expect(restart.snapshot().rows.map((r) => r.id)).toEqual([2, 1]);
 });
