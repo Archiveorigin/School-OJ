@@ -160,3 +160,33 @@
   --dashboard-hero-compact-start: rgba(4, 30, 55, 0.94);
   --dashboard-hero-compact-end: rgba(4, 62, 94, 0.76);
 }
+
+:root {
+  --score-motion-row: 700ms;
+  --score-motion-cell: 520ms;
+  --score-motion-ease: cubic-bezier(0.2, 0.7, 0.2, 1);
+  --score-rank-up: #08734c;
+  --score-rank-down: #b02a37;
+  --score-first-marker: #f5bf24;
+}
+:root.dark {
+  --score-rank-up: #67d9a2;
+  --score-rank-down: #ff9090;
+}
+
+:root {
+  --score-first-blood: #146c43;
+}
+
+.scoreboard-timeline.theme-dark {
+  --el-bg-color: #151f30;
+  --el-text-color-primary: #edf2f9;
+  --el-text-color-regular: #c8d2e1;
+  --el-border-color: #334155;
+  --surface: #151f30;
+  --text: #edf2f9;
+  --muted: #a8b7cc;
+  --border: #334155;
+  background: var(--surface);
+  color: var(--text);
+}

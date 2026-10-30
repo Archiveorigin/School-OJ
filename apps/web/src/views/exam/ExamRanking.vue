@@ -2,6 +2,7 @@
   <section class="ranking-view">
     <LeaderboardBoard
       :data="scoreboardData"
+      :context="{ kind: 'exam', eventId: Number(route.params.id) }"
       :loading="loading"
       :error="error"
       :empty-text="emptyText"
@@ -49,7 +50,8 @@ async function loadRanking() {
   if (!examID || disposed) return;
   controller?.abort();
   controller = new AbortController();
-  const signal = controller.signal, sequence = ++requestSequence;
+  const signal = controller.signal,
+    sequence = ++requestSequence;
   loading.value = true;
   error.value = "";
   try {
@@ -57,7 +59,12 @@ async function loadRanking() {
       path: { id: examID },
       signal,
     });
-    if (disposed || sequence !== requestSequence || examID !== Number(route.params.id)) return;
+    if (
+      disposed ||
+      sequence !== requestSequence ||
+      examID !== Number(route.params.id)
+    )
+      return;
     ranking.value = data;
     lastLoadedAt.value = new Date();
   } catch (err: any) {

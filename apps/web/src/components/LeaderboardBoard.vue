@@ -5,6 +5,7 @@
     :data-theme="theme"
     :aria-busy="loading"
     :data-scoring-rule="data.scoringRule"
+    :style="motionVars"
   >
     <div class="scoreboard-shell" :data-theme="theme" :data-rank-mode="mode">
       <header class="rank-header">
@@ -13,9 +14,9 @@
             ><Histogram
           /></span>
           <span class="scoreboard-title-text">{{ data.title }}</span>
-          <span v-if="data.frozen" class="scoreboard-freeze" role="status"
-            >排行榜已封榜</span
-          >
+          <span v-if="data.frozen" class="scoreboard-freeze" role="status">{{
+            freezeLabel
+          }}</span>
           <span v-if="data.subtitle" class="scoreboard-subtitle">{{
             data.subtitle
           }}</span>
@@ -26,7 +27,11 @@
             <div class="score-control-field">
               <span class="score-control-label">排名模式</span
               ><strong class="rank-mode">{{
-                data.replaying ? "滚榜回放" : data.finalReady ? "最终排名" : "实时表现"
+                data.replaying
+                  ? "滚榜回放"
+                  : data.finalReady
+                    ? "最终排名"
+                    : "实时表现"
               }}</strong>
             </div>
 
@@ -139,22 +144,42 @@
         </div>
       </header>
 
+      <div
+        v-if="filteredRows.length > 300"
+        class="scoreboard-pagination"
+        aria-label="榜单分页"
+      >
+        <button type="button" :disabled="page === 1" @click="page--">
+          上一页</button
+        ><span
+          >第 {{ page }} / {{ Math.ceil(filteredRows.length / 100) }} 页 · 每页
+          100 位</span
+        ><button
+          type="button"
+          :disabled="page >= Math.ceil(filteredRows.length / 100)"
+          @click="page++"
+        >
+          下一页
+        </button>
+      </div>
       <div class="rank-table-region" v-loading="loading">
         <PenaltyLeaderboardTable
           v-if="data.scoringRule === 'penalty'"
           :data="data"
-          :rows="filteredRows"
+          :rows="visibleRows"
           :mode="mode"
           :rankByID="rankByID"
           :awardByID="awardByID"
+          @cell="openCell"
         />
         <ScoreLeaderboardTable
           v-else
           :data="data"
-          :rows="filteredRows"
+          :rows="visibleRows"
           :mode="mode"
           :rankByID="rankByID"
           :awardByID="awardByID"
+          @cell="openCell"
         />
         <div v-if="error" class="rank-empty">
           <strong>榜单暂不可用</strong><span>{{ error }}</span>
@@ -208,11 +233,36 @@
         </div>
       </section>
     </div>
+    <CellTimelineDrawer
+      v-if="selection"
+      :row="selection.row"
+      :problem="selection.problem"
+      :result="
+        selection.row.results[String(selection.problem.id)] || {
+          status: 'none',
+          attempts: 0,
+        }
+      "
+      :context="context"
+      :replaying="data.replaying"
+      :theme="theme"
+      @close="closeCell"
+    />
   </section>
 </template>
 
 <script setup lang="ts">
-import { computed, ref, watch } from "vue";
+import {
+  computed,
+  ref,
+  watch,
+  onMounted,
+  onBeforeUnmount,
+  nextTick,
+} from "vue";
+import CellTimelineDrawer from "./leaderboard/CellTimelineDrawer.vue";
+import { MOTION, EASE } from "../features/leaderboard/motion";
+import { useReducedMotion } from "../features/leaderboard/useReducedMotion";
 import {
   Histogram,
   Refresh,
@@ -231,6 +281,9 @@ import {
 import type {
   LeaderboardAwardTier,
   LeaderboardData,
+  LeaderboardRow,
+  LeaderboardProblem,
+  LeaderboardContext,
 } from "../features/leaderboard/types";
 import {
   sortLeaderboardRows,
@@ -240,6 +293,7 @@ import {
 const props = withDefaults(
   defineProps<{
     data: LeaderboardData;
+    context?: LeaderboardContext;
     loading?: boolean;
     error?: string;
     emptyText?: string;
@@ -285,8 +339,8 @@ const progress = computed(() =>
 const rankedRows = computed(() =>
   sortLeaderboardRows(props.data.rows, props.data.scoringRule, mode.value),
 );
-const actualParticipantCount = computed(() =>
-  props.data.rows.filter(row=>!row.unranked).length,
+const actualParticipantCount = computed(
+  () => props.data.rows.filter((row) => !row.unranked).length,
 );
 const awardPercents = computed(() =>
   normalizeAwardPercents(props.data.awardPercents),
@@ -300,11 +354,13 @@ const awardByID = computed<Record<string, LeaderboardAwardTier>>(() =>
       const rank = rankByID.value[String(row.id)] ?? row.rank;
       return [
         String(row.id),
-        row.unranked ? "none" : awardTierForRank(
-          rank,
-          actualParticipantCount.value,
-          awardPercents.value,
-        ),
+        row.unranked
+          ? "none"
+          : awardTierForRank(
+              rank,
+              actualParticipantCount.value,
+              awardPercents.value,
+            ),
       ];
     }),
   ),
@@ -318,6 +374,99 @@ const filteredRows = computed(() => {
     return row.name.toLocaleLowerCase().includes(keyword);
   });
 });
+const reduced = useReducedMotion(),
+  page = ref(1),
+  selection = ref<{ row: LeaderboardRow; problem: LeaderboardProblem }>();
+const motionVars = computed(() => {
+  const scale = reduced.value ? 0 : 1 / (props.data.motionSpeed || 1);
+  return {
+    "--score-motion-row": `${props.data.rows.length > 1000 ? 0 : (props.data.rows.length > 300 ? 300 : MOTION.rowMove) * scale}ms`,
+    "--score-motion-cell": `${MOTION.cellReveal * scale}ms`,
+    "--score-motion-ease": EASE,
+  };
+});
+const visibleRows = computed(() =>
+  filteredRows.value.length > 300
+    ? filteredRows.value.slice((page.value - 1) * 100, page.value * 100)
+    : filteredRows.value,
+);
+let restoreFocus: HTMLElement | undefined;
+function openCell(row: LeaderboardRow, problem: LeaderboardProblem) {
+  restoreFocus =
+    document.activeElement instanceof HTMLElement
+      ? document.activeElement
+      : undefined;
+  selection.value = { row, problem };
+}
+function closeCell() {
+  selection.value = undefined;
+  void nextTick(() => {
+    if (restoreFocus?.isConnected) restoreFocus.focus();
+    restoreFocus = undefined;
+  });
+}
+watch(
+  () => [props.context?.kind, props.context?.eventId, props.data.replayRunId],
+  () => {
+    selection.value = undefined;
+    page.value = 1;
+  },
+);
+watch(
+  () => [query.value, attemptedOnly.value, solvedOnly.value],
+  () => {
+    page.value = 1;
+    selection.value = undefined;
+  },
+);
+watch(
+  () => props.data.revealUserId,
+  () => {
+    if (props.data.replaying) {
+      const index = filteredRows.value.findIndex(
+        (row) => String(row.id) === String(props.data.revealUserId),
+      );
+      if (index >= 0 && filteredRows.value.length > 300)
+        page.value = Math.floor(index / 100) + 1;
+    }
+  },
+);
+watch(
+  () => filteredRows.value.length,
+  () => {
+    page.value = Math.min(
+      page.value,
+      Math.max(1, Math.ceil(filteredRows.value.length / 100)),
+    );
+  },
+);
+const clock = ref(Date.now());
+let clockTimer: ReturnType<typeof setInterval> | undefined;
+function clockVisibility() {
+  clearInterval(clockTimer);
+  if (props.data.frozen && !document.hidden)
+    clockTimer = setInterval(() => (clock.value = Date.now()), 1000);
+}
+onMounted(() => {
+  clockVisibility();
+  document.addEventListener("visibilitychange", clockVisibility);
+});
+watch(() => props.data.frozen, clockVisibility);
+onBeforeUnmount(() => {
+  clearInterval(clockTimer);
+  document.removeEventListener("visibilitychange", clockVisibility);
+});
+const freezeLabel = computed(() => {
+  const end = Date.parse(props.data.endsAt || "");
+  if (Number.isFinite(end) && end > clock.value) {
+    const seconds = Math.ceil((end - clock.value) / 1000);
+    return `已封榜 · 距结束 ${Math.floor(seconds / 60)}:${String(seconds % 60).padStart(2, "0")}`;
+  }
+  return props.data.contextKind === "contest"
+    ? "已封榜 · 等待管理员确认完结"
+    : "已截止 · 最终排名待评分完成";
+});
+
 const summary = computed(() => ({
   attempted: filteredRows.value.filter((row) => row.submissions > 0).length,
   solved: filteredRows.value.filter((row) => row.solved > 0).length,
@@ -743,5 +892,26 @@ async function toggleFullscreen() {
   .summary-cards {
     grid-template-columns: repeat(2, 1fr);
   }
+}
+.scoreboard-pagination {
+  display: flex;
+  justify-content: flex-end;
+  align-items: center;
+  gap: 12px;
+  padding: 8px 16px;
+  color: var(--score-text);
+  font-size: 12px;
+}
+.scoreboard-pagination button {
+  border: 1px solid var(--score-border);
+  border-radius: 4px;
+  background: var(--score-surface);
+  color: inherit;
+  padding: 6px 10px;
+  cursor: pointer;
+}
+.scoreboard-pagination button:disabled {
+  opacity: 0.5;
+  cursor: default;
 }
 </style>

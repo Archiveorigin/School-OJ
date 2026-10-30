@@ -104,6 +104,7 @@ function scoreStatus(
   cell: UnknownRecord | undefined,
   maxScore: number,
 ): LeaderboardStatus {
+  if (cell?.status === "frozen") return "frozen";
   if (
     !cell ||
     (!cell.status && !cell.submitted_at && !safeNumber(cell.attempts))
@@ -153,19 +154,24 @@ export function adaptTeamContestRanking(
           const status = scoreStatus(cell, problem.maxScore);
           results[String(problem.id)] = {
             status,
+            firstBlood: status === "accepted" && Boolean(cell?.fastest),
             attempts,
             primary:
-              status === "frozen" ? "?" : status === "none"
-                ? undefined
-                : `${bestScore}/${problem.maxScore}`,
+              status === "frozen"
+                ? "?"
+                : status === "none"
+                  ? undefined
+                  : `${bestScore}/${problem.maxScore}`,
             secondary:
-              status === "pending"
-                ? "待评分"
-                : status === "accepted"
-                  ? "满分"
-                  : status === "wrong"
-                    ? "未满分"
-                    : undefined,
+              status === "frozen"
+                ? "封榜中"
+                : status === "pending"
+                  ? "待评分"
+                  : status === "accepted"
+                    ? "满分"
+                    : status === "wrong"
+                      ? "未满分"
+                      : undefined,
           };
         } else {
           results[String(problem.id)] = {
@@ -173,7 +179,12 @@ export function adaptTeamContestRanking(
             attempts,
             timeSeconds: attempts ? elapsedMinutes * 60 : undefined,
             firstBlood: Boolean(cell?.fastest),
-            primary: cell?.status === "frozen" ? "?" : attempts ? String(attempts) : undefined,
+            primary:
+              cell?.status === "frozen"
+                ? "?"
+                : attempts
+                  ? String(attempts)
+                  : undefined,
             secondary: attempts ? `${elapsedMinutes}'` : undefined,
           };
         }
@@ -191,7 +202,7 @@ export function adaptTeamContestRanking(
           : undefined;
       return {
         id: row.user_id ?? index,
- unranked: row.unranked === true,
+        unranked: row.unranked === true,
         rank: safeNumber(row.rank, index + 1),
         name: String(row.name || `参赛者 ${index + 1}`),
         solved: safeNumber(row.solved),
@@ -213,6 +224,15 @@ export function adaptTeamContestRanking(
   return {
     scoringRule: rule,
     title: String(contest.title || fallback.title || "团队比赛实时榜单"),
+    contextKind: "contest",
+    endsAt:
+      contest.ends_at ||
+      (contest.starts_at && Number.isFinite(Date.parse(contest.starts_at))
+        ? new Date(
+            Date.parse(contest.starts_at) + durationSeconds * 1000,
+          ).toISOString()
+        : undefined),
+    lifecycle: source?.lifecycle,
     frozen: Boolean(source?.frozen),
     finalReady: source?.final_ready === true,
     subtitle:
@@ -267,17 +287,25 @@ export function adaptExamRanking(
           const status = scoreStatus(cell, maxScore);
           results[String(problem.id)] = {
             status,
+            firstBlood: status === "accepted" && Boolean(cell?.fastest),
             attempts,
             timeSeconds: elapsedFromStart(exam.starts_at, cell?.submitted_at),
-            primary: status === "none" ? undefined : `${bestScore}/${maxScore}`,
+            primary:
+              status === "frozen"
+                ? "?"
+                : status === "none"
+                  ? undefined
+                  : `${bestScore}/${maxScore}`,
             secondary:
-              status === "pending"
-                ? "待评分"
-                : status === "accepted"
-                  ? "满分"
-                  : status === "wrong"
-                    ? "未满分"
-                    : undefined,
+              status === "frozen"
+                ? "封榜中"
+                : status === "pending"
+                  ? "待评分"
+                  : status === "accepted"
+                    ? "满分"
+                    : status === "wrong"
+                      ? "未满分"
+                      : undefined,
           };
         } else {
           const elapsedMinutes = safeNumber(cell?.elapsed_minutes);
@@ -286,7 +314,12 @@ export function adaptExamRanking(
             attempts,
             timeSeconds: attempts ? elapsedMinutes * 60 : undefined,
             firstBlood: Boolean(cell?.fastest),
-            primary: cell?.status === "frozen" ? "?" : attempts ? String(attempts) : undefined,
+            primary:
+              cell?.status === "frozen"
+                ? "?"
+                : attempts
+                  ? String(attempts)
+                  : undefined,
             secondary: attempts ? `${elapsedMinutes}'` : undefined,
           };
         }
@@ -300,7 +333,7 @@ export function adaptExamRanking(
         rule === "score" ? totalScore : safeNumber(row.penalty_minutes);
       return {
         id: row.user_id ?? index,
- unranked: row.unranked === true,
+        unranked: row.unranked === true,
         rank: safeNumber(row.rank, index + 1),
         name: String(row.name || `学生 ${index + 1}`),
         solved: safeNumber(row.solved),
@@ -319,6 +352,9 @@ export function adaptExamRanking(
     subtitle:
       [exam.course_name, exam.class_name].filter(Boolean).join(" · ") ||
       (source?.kind === "contest" ? "团队比赛" : "课程考试"),
+    contextKind: "exam",
+    endsAt: exam.ends_at,
+    lifecycle: source?.lifecycle,
     frozen: Boolean(source?.frozen),
     finalReady: source?.final_ready === true,
     durationSeconds,

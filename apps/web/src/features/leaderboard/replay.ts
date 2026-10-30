@@ -20,11 +20,16 @@ export function parseReplay(text: string): ReplayPacket {
     !Array.isArray(data.problems) ||
     !Array.isArray(data.initial_rows) ||
     !Array.isArray(data.final_rows) ||
-    data.final_rows.length > 100000
+    data.final_rows.length > 100000 ||
+    data.initial_rows.length > 100000
   )
     throw new Error("不支持的滚榜数据包");
   const initial = new Set(data.initial_rows.map((r: any) => r.user_id));
   if (
+    initial.size !== data.initial_rows.length ||
+    initial.size !== data.final_rows.length ||
+    new Set(data.final_rows.map((r: any) => r.user_id)).size !== initial.size ||
+    data.initial_rows.some((r: any) => !Array.isArray(r.problems)) ||
     data.final_rows.some(
       (r: any) => !initial.has(r.user_id) || !Array.isArray(r.problems),
     )
@@ -55,8 +60,28 @@ export function createContestReplay(packet: ReplayPacket) {
     0,
   );
   let step = 0;
+  let consistencyError = "",
+    checked = false;
   let focus: { userId: number; problemId: number } | undefined;
   const snapshot = (): LeaderboardData => {
+    if (step === total && !checked) {
+      checked = true;
+      for (const row of rows) {
+        const expected = final.get(row.user_id);
+        if (
+          !expected ||
+          row.solved !== expected.solved ||
+          row.total_score !== expected.total_score ||
+          (packet.contest.scoring_rule === "acm" &&
+            row.penalty_minutes !== expected.penalty_minutes) ||
+          JSON.stringify(row.problems) !== JSON.stringify(expected.problems)
+        ) {
+          consistencyError = "回放结果与最终榜单不一致，请重新加载核对。";
+          break;
+        }
+      }
+      if (consistencyError) console.warn(consistencyError);
+    }
     const visible = rows.map((row) => ({
       ...row,
       problems: row.problems.map((cell: any) =>
@@ -70,10 +95,11 @@ export function createContestReplay(packet: ReplayPacket) {
     const board = adaptTeamContestRanking({
       contest: packet.contest,
       problems: packet.problems,
-      rows: step === total ? packet.final_rows : visible,
+      rows: step === total && !consistencyError ? packet.final_rows : visible,
       final_ready: true,
     });
     board.replaying = true;
+    if (consistencyError) board.consistencyError = consistencyError;
     board.revealUserId = focus?.userId;
     board.revealProblemId = focus?.problemId;
     if (step !== total && packet.freeze_at && packet.contest.starts_at)
@@ -87,20 +113,40 @@ export function createContestReplay(packet: ReplayPacket) {
         ),
       );
     const tieTime = (id: number | string) => {
-      const raw = (step === total ? final : byId).get(Number(id));
-      const key = board.scoringRule === 'penalty' ? 'solved_at' : 'ranking_time';
-      const times = raw.problems.map((c: any) => Date.parse(c[key] || '')).filter(Number.isFinite);
+      const raw = (step === total && !consistencyError ? final : byId).get(
+        Number(id),
+      );
+      const key =
+        board.scoringRule === "penalty" ? "solved_at" : "ranking_time";
+      const times = raw.problems
+        .map((c: any) => Date.parse(c[key] || ""))
+        .filter(Number.isFinite);
       return times.length ? Math.max(...times) : Infinity;
     };
-    const compare = (a: typeof board.rows[number],b: typeof board.rows[number]) => {
-      const grouped = Number(Boolean(a.unranked))-Number(Boolean(b.unranked));
-      const performance = board.scoringRule === 'penalty' ? b.solved-a.solved || a.metric-b.metric : b.metric-a.metric || b.solved-a.solved;
+    const compare = (
+      a: (typeof board.rows)[number],
+      b: (typeof board.rows)[number],
+    ) => {
+      const grouped = Number(Boolean(a.unranked)) - Number(Boolean(b.unranked));
+      const performance =
+        board.scoringRule === "penalty"
+          ? b.solved - a.solved || a.metric - b.metric
+          : b.metric - a.metric || b.solved - a.solved;
       if (grouped || performance) return grouped || performance;
-      if (packet.contest.scoring_rule === 'oi') return 0;
-      const left=tieTime(a.id),right=tieTime(b.id);
-      return left===right ? 0 : left<right ? -1 : 1;
+      if (packet.contest.scoring_rule === "oi") return 0;
+      const left = tieTime(a.id),
+        right = tieTime(b.id);
+      return left === right ? 0 : left < right ? -1 : 1;
     };
-    board.rows.sort((a,b)=>compare(a,b) || (a.name===b.name ? Number(a.id)-Number(b.id) : a.name<b.name ? -1 : 1));
+    board.rows.sort(
+      (a, b) =>
+        compare(a, b) ||
+        (a.name === b.name
+          ? Number(a.id) - Number(b.id)
+          : a.name < b.name
+            ? -1
+            : 1),
+    );
     let count = 0,
       rank = 0;
     let prior: (typeof board.rows)[number] | undefined;
@@ -110,8 +156,7 @@ export function createContestReplay(packet: ReplayPacket) {
         continue;
       }
       count++;
-      if (!prior || compare(prior,row) !== 0)
-        rank = count;
+      if (!prior || compare(prior, row) !== 0) rank = count;
       if (step !== total) row.rank = rank;
       prior = row;
     }

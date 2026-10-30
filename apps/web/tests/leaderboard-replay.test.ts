@@ -1,4 +1,4 @@
-import { describe, it, expect } from "vitest";
+import { describe, it, expect, vi } from "vitest";
 import {
   createContestReplay,
   parseReplay,
@@ -64,25 +64,75 @@ describe("offline replay", () => {
   });
 });
 
-it('loads large contests without precomputing all board frames and reveals the currently lowest row',()=>{
- const initial=Array.from({length:1000},(_,i)=>row(i+1,cell('wrong_answer',1,10)))
- const final=initial.map((r,i)=>row(r.user_id,cell('accepted',2,1000-i)))
- const packet:ReplayPacket={schema_version:1,kind:'contest-replay',contest:{scoring_rule:'acm',duration_minutes:1200},problems:[{problem_id:1,label:'A'}],initial_rows:initial,final_rows:final,events:[]}
- const replay=createContestReplay(packet)
- expect(replay.total).toBe(1000)
- const lowest=replay.snapshot().rows.at(-1)!.id
- const next=replay.next()
- expect(next.revealUserId).toBe(lowest)
- expect(next.rows.find(r=>r.id===lowest)?.solved).toBe(1)
- expect(initial.find(r=>r.user_id===lowest)!.solved).toBe(0)
-})
+it("loads large contests without precomputing all board frames and reveals the currently lowest row", () => {
+  const initial = Array.from({ length: 1000 }, (_, i) =>
+    row(i + 1, cell("wrong_answer", 1, 10)),
+  );
+  const final = initial.map((r, i) =>
+    row(r.user_id, cell("accepted", 2, 1000 - i)),
+  );
+  const packet: ReplayPacket = {
+    schema_version: 1,
+    kind: "contest-replay",
+    contest: { scoring_rule: "acm", duration_minutes: 1200 },
+    problems: [{ problem_id: 1, label: "A" }],
+    initial_rows: initial,
+    final_rows: final,
+    events: [],
+  };
+  const replay = createContestReplay(packet);
+  expect(replay.total).toBe(1000);
+  const lowest = replay.snapshot().rows.at(-1)!.id;
+  const next = replay.next();
+  expect(next.revealUserId).toBe(lowest);
+  expect(next.rows.find((r) => r.id === lowest)?.solved).toBe(1);
+  expect(initial.find((r) => r.user_id === lowest)!.solved).toBe(0);
+});
 
-it('uses exact acceptance times to resolve tied partial penalties',()=>{
- const first={...cell('accepted',1,10),solved_at:'2026-10-30T10:10:40Z'}
- const earlier={...cell('accepted',1,10),solved_at:'2026-10-30T10:10:10Z'}
- const start=row(1,first), other=row(2,earlier)
- const packet:ReplayPacket={schema_version:1,kind:'contest-replay',contest:{scoring_rule:'acm',duration_minutes:60},problems:[{problem_id:1,label:'A'}],initial_rows:[start,other],final_rows:[{...other,rank:1},{...start,rank:2,problems:[{...first,submission_count:3}]}],events:[]}
- const replay=createContestReplay(packet), initial=replay.snapshot()
- expect(initial.rows.map(r=>r.id)).toEqual([2,1])
- expect(initial.rows.map(r=>r.rank)).toEqual([1,2])
-})
+it("uses exact acceptance times to resolve tied partial penalties", () => {
+  const first = {
+    ...cell("accepted", 1, 10),
+    solved_at: "2026-10-30T10:10:40Z",
+  };
+  const earlier = {
+    ...cell("accepted", 1, 10),
+    solved_at: "2026-10-30T10:10:10Z",
+  };
+  const start = row(1, first),
+    other = row(2, earlier);
+  const packet: ReplayPacket = {
+    schema_version: 1,
+    kind: "contest-replay",
+    contest: { scoring_rule: "acm", duration_minutes: 60 },
+    problems: [{ problem_id: 1, label: "A" }],
+    initial_rows: [start, other],
+    final_rows: [
+      { ...other, rank: 1 },
+      { ...start, rank: 2, problems: [{ ...first, submission_count: 3 }] },
+    ],
+    events: [],
+  };
+  const replay = createContestReplay(packet),
+    initial = replay.snapshot();
+  expect(initial.rows.map((r) => r.id)).toEqual([2, 1]);
+  expect(initial.rows.map((r) => r.rank)).toEqual([1, 2]);
+});
+
+it("reports inconsistent final totals rather than silently replacing the replay", () => {
+  const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+  const packet: ReplayPacket = {
+    schema_version: 1,
+    kind: "contest-replay",
+    contest: { scoring_rule: "acm" },
+    problems: [{ problem_id: 1, label: "A" }],
+    initial_rows: [row(1, cell("wrong_answer", 1, 10))],
+    final_rows: [{ ...row(1, cell("accepted", 2, 30)), solved: 9 }],
+    events: [],
+  };
+  const replay = createContestReplay(packet);
+  const end = replay.next();
+  expect(end.consistencyError).toContain("不一致");
+  expect(end.rows[0].solved).toBe(1);
+  expect(warn).toHaveBeenCalledTimes(1);
+  warn.mockRestore();
+});

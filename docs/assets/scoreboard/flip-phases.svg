@@ -1,0 +1,99 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="660" viewBox="0 0 1200 660" font-family="Microsoft YaHei, Segoe UI, sans-serif">
+  <rect width="1200" height="660" fill="#f4f7fb"/>
+  <text x="48" y="58" font-size="28" font-weight="700" fill="#172033">行位移的 FLIP 四步</text>
+  <text x="48" y="88" font-size="14" fill="#667085">First → Last → Invert → Play：先量旧位置，再改 DOM，再用 transform 把行“拉回”旧位置，最后归零。</text>
+
+  <!-- step 1 -->
+  <g transform="translate(48,120)">
+    <text x="0" y="0" font-size="14" font-weight="700" fill="#0a5ea6">① First · 记录旧位置</text>
+    <rect x="0" y="16" width="220" height="230" rx="8" fill="#ffffff" stroke="#d9e2ef"/>
+    <rect x="18" y="34" width="184" height="54" rx="5" fill="#eaf2ff" stroke="#9ec5fe"/>
+    <text x="32" y="66" font-size="14" font-weight="700" fill="#173765">A 队 · #1</text>
+    <rect x="18" y="100" width="184" height="54" rx="5" fill="#eaf7f0" stroke="#a7e3c8"/>
+    <text x="32" y="132" font-size="14" font-weight="700" fill="#08734c">B 队 · #2</text>
+    <rect x="18" y="166" width="184" height="54" rx="5" fill="#fff3dd" stroke="#f0c987"/>
+    <text x="32" y="198" font-size="14" font-weight="700" fill="#a85b00">C 队 · #3</text>
+    <text x="18" y="240" font-size="10" fill="#667085">getBoundingClientRect() 结果缓存</text>
+  </g>
+
+  <path d="M276 250 L300 250" stroke="#0a5ea6" stroke-width="2" marker-end="url(#arrow)"/>
+  <defs>
+    <marker id="arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path d="M0,0 L10,5 L0,10 z" fill="#0a5ea6"/>
+    </marker>
+  </defs>
+
+  <!-- step 2 -->
+  <g transform="translate(312,120)">
+    <text x="0" y="0" font-size="14" font-weight="700" fill="#0a5ea6">② Last · 更新 DOM</text>
+    <rect x="0" y="16" width="220" height="230" rx="8" fill="#ffffff" stroke="#d9e2ef"/>
+    <rect x="18" y="34" width="184" height="54" rx="5" fill="#fff3dd" stroke="#f0c987"/>
+    <text x="32" y="66" font-size="14" font-weight="700" fill="#a85b00">C 队 · #1</text>
+    <rect x="18" y="100" width="184" height="54" rx="5" fill="#eaf2ff" stroke="#9ec5fe"/>
+    <text x="32" y="132" font-size="14" font-weight="700" fill="#173765">A 队 · #2</text>
+    <rect x="18" y="166" width="184" height="54" rx="5" fill="#eaf7f0" stroke="#a7e3c8"/>
+    <text x="32" y="198" font-size="14" font-weight="700" fill="#08734c">B 队 · #3</text>
+    <text x="18" y="240" font-size="10" fill="#667085">key 不变，Vue 只移动节点</text>
+  </g>
+
+  <path d="M540 250 L564 250" stroke="#0a5ea6" stroke-width="2" marker-end="url(#arrow)"/>
+
+  <!-- step 3 -->
+  <g transform="translate(576,120)">
+    <text x="0" y="0" font-size="14" font-weight="700" fill="#0a5ea6">③ Invert · 算出位移差</text>
+    <rect x="0" y="16" width="220" height="230" rx="8" fill="#ffffff" stroke="#d9e2ef"/>
+    <rect x="18" y="34" width="184" height="54" rx="5" fill="#fff3dd" stroke="#f0c987" opacity="0.35"/>
+    <text x="32" y="66" font-size="13" fill="#a85b00" opacity="0.5">目标 · #1</text>
+    <rect x="18" y="100" width="184" height="54" rx="5" fill="#fff3dd" stroke="#f0c987" stroke-dasharray="5 4"/>
+    <text x="32" y="132" font-size="14" font-weight="700" fill="#a85b00">C 队（旧 #3）</text>
+    <path d="M210 166 L210 100" stroke="#dc3545" stroke-width="2" marker-end="url(#arrowRed)"/>
+    <text x="116" y="150" font-size="11" fill="#dc3545">translateY(-66px)</text>
+    <text x="18" y="240" font-size="10" fill="#667085">first.top - last.top = -66px</text>
+  </g>
+  <defs>
+    <marker id="arrowRed" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path d="M0,0 L10,5 L0,10 z" fill="#dc3545"/>
+    </marker>
+  </defs>
+
+  <path d="M804 250 L828 250" stroke="#0a5ea6" stroke-width="2" marker-end="url(#arrow)"/>
+
+  <!-- step 4 -->
+  <g transform="translate(840,120)">
+    <text x="0" y="0" font-size="14" font-weight="700" fill="#0a5ea6">④ Play · 归零</text>
+    <rect x="0" y="16" width="220" height="230" rx="8" fill="#ffffff" stroke="#d9e2ef"/>
+    <rect x="18" y="34" width="184" height="54" rx="5" fill="#fff3dd" stroke="#f0c987"/>
+    <text x="32" y="66" font-size="14" font-weight="700" fill="#a85b00">C 队 · #1</text>
+    <rect x="18" y="100" width="184" height="54" rx="5" fill="#eaf2ff" stroke="#9ec5fe"/>
+    <text x="32" y="132" font-size="14" font-weight="700" fill="#173765">A 队 · #2</text>
+    <rect x="18" y="166" width="184" height="54" rx="5" fill="#eaf7f0" stroke="#a7e3c8"/>
+    <text x="32" y="198" font-size="14" font-weight="700" fill="#08734c">B 队 · #3</text>
+    <text x="18" y="240" font-size="10" fill="#667085">transform: none，布局已就位</text>
+  </g>
+
+  <!-- timeline -->
+  <g transform="translate(48,400)">
+    <text x="0" y="0" font-size="13" font-weight="700" fill="#172033">时间轴</text>
+    <rect x="0" y="14" width="1004" height="6" rx="3" fill="#dbe5f1"/>
+    <rect x="0" y="14" width="130" height="6" rx="3" fill="#9ec5fe"/>
+    <circle cx="0" cy="17" r="5" fill="#0a5ea6"/>
+    <text x="0" y="44" font-size="11" fill="#667085">0ms 记录</text>
+    <circle cx="130" cy="17" r="5" fill="#0a5ea6"/>
+    <text x="98" y="44" font-size="11" fill="#667085">+80ms 更新</text>
+    <circle cx="310" cy="17" r="5" fill="#0a5ea6"/>
+    <text x="250" y="44" font-size="11" fill="#667085">+120ms 开始</text>
+    <circle cx="820" cy="17" r="5" fill="#0a5ea6"/>
+    <text x="778" y="44" font-size="11" fill="#667085">+700ms 落位</text>
+    <text x="600" y="44" font-size="11" fill="#667085">520ms 逐行位移</text>
+  </g>
+
+  <!-- code/notes -->
+  <g transform="translate(48,484)">
+    <rect x="0" y="0" width="1104" height="144" rx="8" fill="#ffffff" stroke="#d9e2ef"/>
+    <text x="20" y="28" font-size="13" font-weight="700" fill="#172033">在 Vue 里不需要手写：TransitionGroup 会按 key 做 FLIP</text>
+    <text x="20" y="54" font-size="12" fill="#475467">保留 key=row.id 与 .rank-reveal-move 的 transform 过渡；只改变行的顺序，不要把 transform 写到 top/left/height。</text>
+    <text x="20" y="78" font-size="12" fill="#475467">行高固定 64px、列宽固定；transform 不触发布局，滚动容器里也能保持 60fps。</text>
+    <text x="20" y="102" font-size="12" fill="#475467">减少动态效果时把 transition 设为 none；动画结束再显示 ↑/↓ 名次标记，避免标记跟着行一起漂移。</text>
+    <text x="20" y="126" font-size="12" fill="#475467">注意：进入/离开动画缺失时，筛选会让行硬切；补 -enter-active/-leave-active 再配合 -move。</text>
+  </g>
+</svg>

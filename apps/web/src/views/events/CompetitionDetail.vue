@@ -52,9 +52,13 @@
           /></section
       ></template>
       <template v-if="tab === 'ranking'"
-        ><ContestReplay v-if="kind==='contest' && auth.can('event:review')" :kind="kind" :event-id="eventID" /><LeaderboardBoard
+        ><ContestReplay
+          v-if="kind === 'contest' && auth.can('event:review')"
+          :kind="kind"
+          :event-id="eventID" /><LeaderboardBoard
           v-if="paper.can_view_ranking"
           :data="rankingData"
+          :context="{ kind, eventId: eventID }"
           :loading="rankingLoading"
           :error="rankingError"
           empty-text="暂无成绩记录"

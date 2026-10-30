@@ -1,0 +1,135 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1280" height="820" viewBox="0 0 1280 820" font-family="Microsoft YaHei, Segoe UI, sans-serif">
+  <defs>
+    <pattern id="frozenStripes" width="12" height="12" patternUnits="userSpaceOnUse" patternTransform="rotate(135)">
+      <rect width="12" height="12" fill="#0d6efd"/>
+      <rect width="5" height="12" fill="#ffffff" opacity="0.18"/>
+    </pattern>
+    <filter id="cellShadow" x="-20%" y="-20%" width="140%" height="160%">
+      <feDropShadow dx="0" dy="3" stdDeviation="4" flood-color="#0f172a" flood-opacity="0.18"/>
+    </filter>
+    <marker id="arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path d="M0,0 L10,5 L0,10 z" fill="#0a5ea6"/>
+    </marker>
+  </defs>
+
+  <rect width="1280" height="820" fill="#f4f7fb"/>
+  <text x="56" y="64" font-size="30" font-weight="700" fill="#172033">题格状态与视觉语义</text>
+  <text x="56" y="98" font-size="15" fill="#667085">对照 apps/web/src/components/PenaltyLeaderboardTable.vue 与 types.ts；颜色、尺寸、状态名均按现有实现整理。</text>
+
+  <!-- state cards -->
+  <g transform="translate(56,128)">
+    <g>
+      <text x="0" y="0" font-size="14" font-weight="700" fill="#667085">未提交 none</text>
+      <rect x="0" y="16" width="150" height="92" rx="6" fill="#f7f8fa" stroke="#d9e2ef"/>
+      <rect x="30" y="38" width="90" height="48" rx="4" fill="#f7f8fa" stroke="#d9e2ef"/>
+      <text x="75" y="69" font-size="22" font-weight="700" fill="#9aa8ba" text-anchor="middle">—</text>
+      <text x="75" y="100" font-size="11" fill="#667085" text-anchor="middle">不占格，无提交</text>
+    </g>
+    <g transform="translate(180,0)">
+      <text x="0" y="0" font-size="14" font-weight="700" fill="#667085">封榜中 frozen</text>
+      <rect x="0" y="16" width="150" height="92" rx="6" fill="#f7f8fa" stroke="#d9e2ef"/>
+      <rect x="30" y="38" width="90" height="48" rx="4" fill="url(#frozenStripes)" stroke="#0a58ca"/>
+      <text x="75" y="64" font-size="18" font-weight="700" fill="#ffffff" text-anchor="middle">?</text>
+      <text x="75" y="80" font-size="11" font-weight="700" fill="#ffffff" text-anchor="middle">3</text>
+      <text x="75" y="100" font-size="11" fill="#667085" text-anchor="middle">只显示封榜前尝试数</text>
+    </g>
+    <g transform="translate(360,0)">
+      <text x="0" y="0" font-size="14" font-weight="700" fill="#667085">评测中 pending</text>
+      <rect x="0" y="16" width="150" height="92" rx="6" fill="#f7f8fa" stroke="#d9e2ef"/>
+      <rect x="30" y="38" width="90" height="48" rx="4" fill="#0d6efd" stroke="#0a58ca"/>
+      <text x="75" y="64" font-size="18" font-weight="700" fill="#ffffff" text-anchor="middle">…</text>
+      <text x="75" y="80" font-size="11" font-weight="700" fill="#ffffff" text-anchor="middle">判题中</text>
+      <text x="75" y="100" font-size="11" fill="#667085" text-anchor="middle">可动画，但不得先算分</text>
+    </g>
+    <g transform="translate(540,0)">
+      <text x="0" y="0" font-size="14" font-weight="700" fill="#667085">未通过 wrong</text>
+      <rect x="0" y="16" width="150" height="92" rx="6" fill="#f7f8fa" stroke="#d9e2ef"/>
+      <rect x="30" y="38" width="90" height="48" rx="4" fill="#dc3545" stroke="#b02a37"/>
+      <text x="75" y="61" font-size="15" font-weight="700" fill="#ffffff" text-anchor="middle">−</text>
+      <text x="75" y="79" font-size="13" font-weight="700" fill="#ffffff" text-anchor="middle">4/299</text>
+      <text x="75" y="100" font-size="11" fill="#667085" text-anchor="middle">尝试数/最后一次分钟</text>
+    </g>
+    <g transform="translate(720,0)">
+      <text x="0" y="0" font-size="14" font-weight="700" fill="#667085">通过 accepted</text>
+      <rect x="0" y="16" width="150" height="92" rx="6" fill="#f7f8fa" stroke="#d9e2ef"/>
+      <rect x="30" y="38" width="90" height="48" rx="4" fill="#198754" stroke="#146c43"/>
+      <text x="75" y="61" font-size="15" font-weight="700" fill="#ffffff" text-anchor="middle">+</text>
+      <text x="75" y="79" font-size="13" font-weight="700" fill="#ffffff" text-anchor="middle">1/47</text>
+      <text x="75" y="100" font-size="11" fill="#667085" text-anchor="middle">尝试数/首次通过分钟</text>
+    </g>
+    <g transform="translate(900,0)">
+      <text x="0" y="0" font-size="14" font-weight="700" fill="#667085">一血 first blood</text>
+      <rect x="0" y="16" width="150" height="92" rx="6" fill="#f7f8fa" stroke="#d9e2ef"/>
+      <rect x="30" y="38" width="90" height="48" rx="4" fill="#146c43" stroke="#0b4f30" filter="url(#cellShadow)"/>
+      <text x="64" y="64" font-size="17" font-weight="700" fill="#ffd43b" text-anchor="middle">★</text>
+      <text x="86" y="64" font-size="13" font-weight="700" fill="#ffffff" text-anchor="middle">1/7</text>
+      <text x="75" y="100" font-size="11" fill="#667085" text-anchor="middle">最快通过，星标不依赖颜色</text>
+    </g>
+    <g transform="translate(1080,0)">
+      <text x="0" y="0" font-size="14" font-weight="700" fill="#667085">整行 unranked</text>
+      <rect x="0" y="16" width="144" height="92" rx="6" fill="#f7f8fa" stroke="#d9e2ef"/>
+      <text x="18" y="55" font-size="26" font-weight="700" fill="#9aa8ba">*</text>
+      <rect x="48" y="34" width="78" height="40" rx="4" fill="#eef1f5" stroke="#d9e2ef"/>
+      <text x="87" y="59" font-size="12" font-weight="700" fill="#667085" text-anchor="middle">打星 / 不参与</text>
+      <text x="72" y="100" font-size="11" fill="#667085" text-anchor="middle">名次列显示 *</text>
+    </g>
+  </g>
+
+  <!-- anatomy -->
+  <g transform="translate(56,300)">
+    <text x="0" y="0" font-size="20" font-weight="700" fill="#172033">单格解剖（放大）</text>
+    <rect x="0" y="20" width="420" height="180" rx="8" fill="#ffffff" stroke="#d9e2ef"/>
+    <rect x="130" y="58" width="160" height="80" rx="8" fill="#198754" stroke="#146c43" stroke-width="2"/>
+    <text x="210" y="94" font-size="15" font-weight="700" fill="#ffffff" text-anchor="middle">+</text>
+    <text x="210" y="120" font-size="22" font-weight="700" fill="#ffffff" text-anchor="middle">1/47</text>
+    <circle cx="130" cy="58" r="4" fill="#0a5ea6"/>
+    <text x="122" y="50" font-size="12" fill="#0a5ea6" text-anchor="end">① 判定符号</text>
+    <line x1="120" y1="54" x2="130" y2="58" stroke="#0a5ea6" stroke-width="1"/>
+    <circle cx="210" cy="150" r="4" fill="#0a5ea6"/>
+    <text x="220" y="158" font-size="11" fill="#0a5ea6">② 尝试次数 / 首次通过分钟</text>
+    <line x1="210" y1="150" x2="210" y2="142" stroke="#0a5ea6" stroke-width="1"/>
+    <circle cx="290" cy="58" r="4" fill="#0a5ea6"/>
+    <text x="300" y="50" font-size="11" fill="#0a5ea6">③ 40px 高 / 4px 圆角</text>
+    <line x1="290" y1="58" x2="300" y2="54" stroke="#0a5ea6" stroke-width="1"/>
+    <text x="0" y="228" font-size="13" fill="#667085">表格列宽 80px，格间距 5px；整行高 64px。数字使用 tabular-nums，动画时不得改变列宽。</text>
+    <text x="0" y="252" font-size="13" fill="#667085">aria-label 例：“C 题，2 次提交，47 分钟通过”。颜色不是唯一信息载体：+/−、数字、★、锁图标必须保留。</text>
+  </g>
+
+  <!-- motion anatomy -->
+  <g transform="translate(540,300)">
+    <text x="0" y="0" font-size="20" font-weight="700" fill="#172033">交互反馈（同一格）</text>
+    <g transform="translate(0,24)">
+      <rect x="0" y="0" width="300" height="58" rx="6" fill="#ffffff" stroke="#d9e2ef"/>
+      <text x="16" y="24" font-size="13" font-weight="700" fill="#172033">hover</text>
+      <text x="16" y="44" font-size="12" fill="#667085">translateY(-1px) + 阴影，150ms</text>
+      <rect x="216" y="12" width="34" height="34" rx="4" fill="#198754"/>
+      <path d="M219,33 L250,29" stroke="#0a5ea6" stroke-width="2" marker-end="url(#arrow)"/>
+      <text x="256" y="35" font-size="11" fill="#0a5ea6">-1px</text>
+    </g>
+    <g transform="translate(0,86)">
+      <rect x="0" y="0" width="300" height="58" rx="6" fill="#ffffff" stroke="#d9e2ef"/>
+      <text x="16" y="24" font-size="13" font-weight="700" fill="#172033">press</text>
+      <text x="16" y="44" font-size="12" fill="#667085">scale(0.94)，90ms，松开回弹</text>
+      <rect x="218" y="14" width="30" height="30" rx="4" fill="#198754"/>
+      <path d="M233,10 L233,46" stroke="#0a5ea6" stroke-width="1.5" stroke-dasharray="3 3"/>
+      <text x="252" y="35" font-size="11" fill="#0a5ea6">0.94×</text>
+    </g>
+    <g transform="translate(0,148)">
+      <rect x="0" y="0" width="300" height="58" rx="6" fill="#ffffff" stroke="#d9e2ef"/>
+      <text x="16" y="24" font-size="13" font-weight="700" fill="#172033">reveal</text>
+      <text x="16" y="44" font-size="12" fill="#667085">描边脉冲 + 数字翻牌，520ms</text>
+      <rect x="210" y="12" width="42" height="34" rx="4" fill="#198754" stroke="#4ade80" stroke-width="2"/>
+      <circle cx="231" cy="29" r="24" fill="none" stroke="#4ade80" stroke-width="2" opacity="0.55"/>
+      <text x="258" y="35" font-size="11" fill="#0a5ea6">ring</text>
+    </g>
+  </g>
+
+  <g transform="translate(56,620)">
+    <rect x="0" y="0" width="1168" height="150" rx="8" fill="#ffffff" stroke="#d9e2ef"/>
+    <text x="24" y="32" font-size="14" font-weight="700" fill="#172033">注意</text>
+    <text x="24" y="58" font-size="13" fill="#475467">① 颜色值取自现有 CSS，深色主题下沿用同一组状态色；新增颜色必须先加语义 Token，架构检查会按文件统计颜色字面量。</text>
+    <text x="24" y="82" font-size="13" fill="#475467">② 封榜格不能同时出现“已通过”绿底；解冻时先播翻牌（frozen → accepted），再更新题数与罚时，顺序不能反。</text>
+    <text x="24" y="106" font-size="13" fill="#475467">③ 减少动态效果时取消 transform 与数字滚动，但保留文字与描边变化，确保信息不只靠动画传达。</text>
+    <text x="24" y="130" font-size="13" fill="#475467">④ 一血 ★ 来自服务端 fastest 字段；前端不得根据 AC 时间自行推断，避免时区与并列误判。</text>
+  </g>
+</svg>

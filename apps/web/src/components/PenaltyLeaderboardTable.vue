@@ -1,6 +1,15 @@
 <template>
   <div
+    ref="root"
     class="penalty-table"
+    :data-spotlight="
+      Boolean(
+        data.replaying &&
+        data.revealUserId !== undefined &&
+        data.rows.length <= 300,
+      )
+    "
+    :data-row-expanded="expandedId !== undefined"
     data-scoreboard-branch="penalty"
     role="table"
     :style="{ '--problem-columns-width': `${data.problems.length * 85}px` }"
@@ -72,14 +81,22 @@
       aria-label="罚时榜横向滚动区域"
       @scroll.passive="syncHeader"
     >
-      <TransitionGroup name="rank-reveal" tag="div" class="penalty-grid" role="rowgroup">
+      <TransitionGroup
+        name="rank-reveal"
+        tag="div"
+        class="penalty-grid"
+        role="rowgroup"
+      >
         <article
           v-for="row in rows"
           :key="row.id"
           class="penalty-row native-stripe-row"
           :data-award="awardTier(row)"
           :data-reveal-focus="data.revealUserId === row.id"
+          :class="{ 'is-expanded': expandedId === row.id }"
+          :data-expanded="expandedId === row.id"
           role="row"
+          @click="toggleRow(row)"
         >
           <div class="penalty-metrics penalty-row-metrics">
             <div class="penalty-col penalty-rank-col">
@@ -89,6 +106,7 @@
               >
                 {{ displayRank(row) }}
               </div>
+              <RankDeltaBadge :change="deltas[String(row.id)]" />
             </div>
             <div class="penalty-col penalty-name-col">
               <div
@@ -97,18 +115,34 @@
                 :class="awardRankClass(row)"
                 :title="row.name"
               >
-                {{ row.name }}
+                <button
+                  type="button"
+                  class="row-summary-toggle"
+                  :aria-label="`${row.name} 排名详情`"
+                  :aria-expanded="expandedId === row.id"
+                  :aria-controls="`${instanceId}-${row.id}`"
+                  :disabled="data.replaying"
+                  @click.stop="toggleRow(row)"
+                >
+                  {{ row.name }}
+                </button>
               </div>
             </div>
             <div class="penalty-col penalty-solved-col">
-              <div class="penalty-stat penalty-solved-stat">
-                {{ row.solved }}
-              </div>
+              <AnimatedNumber
+                class="penalty-stat penalty-solved-stat"
+                :value="row.solved"
+                :enabled="data.rows.length <= 300"
+                :speed="data.motionSpeed"
+              />
             </div>
             <div class="penalty-col penalty-total-col">
-              <div class="penalty-stat penalty-time-stat">
-                {{ row.metricDisplay ?? row.metric }}
-              </div>
+              <AnimatedNumber
+                class="penalty-stat penalty-time-stat"
+                :value="row.metric"
+                :enabled="data.rows.length <= 300"
+                :speed="data.motionSpeed"
+              />
             </div>
             <div class="penalty-problems">
               <div
@@ -116,29 +150,35 @@
                 :key="problem.id"
                 class="penalty-col penalty-problem-col"
               >
-                <div
-                  class="penalty-result"
-                  :class="[
-                    `result-${resultFor(row, problem.id).status}`,
-                    { 'is-first': resultFor(row, problem.id).firstBlood },
-                  ]"
-                  :title="resultTitle(row, problem.id)"
-                >
-                  <span
-                    v-if="resultFor(row, problem.id).firstBlood"
-                    class="first-blood"
-                    aria-label="最快通过"
-                    >★</span
-                  >
-                  <span>{{
-                    resultFor(row, problem.id).primary || problem.label
-                  }}</span>
-                  <template v-if="resultFor(row, problem.id).secondary">
-                    <span class="result-separator">|</span>
-                    <small>{{ resultFor(row, problem.id).secondary }}</small>
-                  </template>
-                </div>
+                <LeaderboardCell
+                  :variant="'penalty'"
+                  :row-id="row.id"
+                  :row-name="row.name"
+                  :problem="problem"
+                  :result="resultFor(row, problem.id)"
+                  :reveal="
+                    String(data.revealUserId) === String(row.id) &&
+                    String(data.revealProblemId) === String(problem.id)
+                  "
+                  :animate="
+                    data.rows.length <= 300 &&
+                    (!data.replaying || (data.replayStep || 0) > 0)
+                  "
+                  :speed="data.motionSpeed"
+                  :replay-step="data.replayStep"
+                  @open="emit('cell', row, problem)"
+                />
               </div>
+            </div>
+          </div>
+          <div :id="`${instanceId}-${row.id}`" class="row-detail">
+            <div>
+              <RowDetail
+                v-if="expandedId === row.id"
+                :row="row"
+                :data="data"
+                @open="(problem) => emit('cell', row, problem)"
+              />
             </div>
           </div>
         </article>
@@ -149,8 +189,14 @@
 
 <script setup lang="ts">
 import { computed, ref } from "vue";
+import AnimatedNumber from "./leaderboard/AnimatedNumber.vue";
+import RankDeltaBadge from "./leaderboard/RankDeltaBadge.vue";
+import LeaderboardCell from "./leaderboard/LeaderboardCell.vue";
+import RowDetail from "./leaderboard/RowDetail.vue";
+import { useTableInteraction } from "../features/leaderboard/useTableInteraction";
 import type {
   LeaderboardData,
+  LeaderboardProblem,
   LeaderboardResult,
   LeaderboardRow,
 } from "../features/leaderboard/types";
@@ -171,6 +217,13 @@ const props = withDefaults(
     awardByID: () => ({}),
   },
 );
+const emit = defineEmits<{
+  cell: [row: LeaderboardRow, problem: LeaderboardProblem];
+}>();
+const { root, expandedId, instanceId, deltas, toggleRow } = useTableInteraction(
+  () => props.data,
+  () => props.rows,
+);
 const headerTrack = ref<HTMLElement | null>(null);
 function syncHeader(event: Event) {
   // Scroll only changes this DOM transform, not the whole results grid.
@@ -179,7 +232,7 @@ function syncHeader(event: Event) {
 }
 
 function displayRank(row: LeaderboardRow) {
-  return row.unranked ? '*' : (props.rankByID[String(row.id)] ?? row.rank);
+  return row.unranked ? "*" : (props.rankByID[String(row.id)] ?? row.rank);
 }
 
 function awardTier(row: LeaderboardRow): AwardTier {
@@ -230,8 +283,14 @@ function resultTitle(row: LeaderboardRow, problemID: number | string) {
 </script>
 
 <style scoped>
-.rank-reveal-move { transition: transform 700ms ease; }
-@media (prefers-reduced-motion: reduce) { .rank-reveal-move { transition: none; } }
+.rank-reveal-move {
+  transition: transform var(--score-motion-row, 700ms) var(--score-motion-ease);
+}
+@media (prefers-reduced-motion: reduce) {
+  .rank-reveal-move {
+    transition: none;
+  }
+}
 
 .penalty-table {
   --name-width: 180px;
@@ -539,6 +598,77 @@ function resultTitle(row: LeaderboardRow, problemID: number | string) {
   .penalty-result,
   .penalty-row {
     transition: none;
+  }
+}
+
+.penalty-rank-col {
+  position: relative;
+}
+.row-summary-toggle {
+  font: inherit;
+  color: inherit;
+  border: 0;
+  background: transparent;
+  padding: 0;
+  width: 100%;
+  height: 100%;
+  cursor: pointer;
+  text-align: inherit;
+}
+.row-summary-toggle:disabled {
+  cursor: default;
+}
+.row-summary-toggle:focus-visible {
+  outline: 2px solid var(--score-blue);
+}
+.penalty-row {
+  display: block;
+  scroll-margin-top: 88px;
+}
+.penalty-row.is-expanded {
+  height: auto;
+}
+.row-detail {
+  display: grid;
+  grid-template-rows: 0fr;
+  transition: grid-template-rows 320ms var(--score-motion-ease);
+}
+.row-detail > div {
+  overflow: hidden;
+  min-height: 0;
+}
+.is-expanded .row-detail {
+  grid-template-rows: 1fr;
+}
+[data-row-expanded="true"] .rank-reveal-move {
+  transition: none;
+}
+.rank-reveal-enter-active,
+.rank-reveal-leave-active {
+  transition:
+    opacity 180ms ease,
+    transform 180ms ease;
+}
+.rank-reveal-enter-from,
+.rank-reveal-leave-to {
+  opacity: 0;
+  transform: translateY(8px);
+}
+[data-spotlight="true"] .penalty-row:not([data-reveal-focus="true"]) {
+  opacity: 0.55;
+}
+.penalty-row[data-reveal-focus="true"] {
+  z-index: 3;
+  box-shadow: inset 0 0 0 2px var(--score-blue);
+}
+@media (prefers-reduced-motion: reduce) {
+  .rank-reveal-enter-active,
+  .rank-reveal-leave-active,
+  .row-detail {
+    transition: none;
+  }
+  [data-spotlight="true"] .penalty-row {
+    opacity: 1;
   }
 }
 </style>

@@ -28,7 +28,7 @@ export interface LeaderboardResult {
 }
 
 export interface LeaderboardRow {
- unranked?: boolean;
+  unranked?: boolean;
   id: number | string;
   rank: number;
   name: string;
@@ -40,10 +40,22 @@ export interface LeaderboardRow {
   results: Record<string, LeaderboardResult>;
 }
 
+export interface LeaderboardContext {
+  kind: "contest" | "exam";
+  eventId: number;
+}
+
 export interface LeaderboardData {
- revealUserId?: number;
- revealProblemId?: number;
- replaying?: boolean;
+  contextKind?: "contest" | "exam";
+  endsAt?: string;
+  lifecycle?: string;
+  motionSpeed?: number;
+  replayStep?: number;
+  replayRunId?: number;
+  revealUserId?: number;
+  revealProblemId?: number;
+  consistencyError?: string;
+  replaying?: boolean;
   scoringRule: LeaderboardScoringRule;
   title: string;
   subtitle?: string;

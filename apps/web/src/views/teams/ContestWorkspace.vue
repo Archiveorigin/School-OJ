@@ -21,13 +21,17 @@
       >
 
       <main class="contest-content">
-
         <template v-if="section === 'description'">
           <div class="two-column">
             <section class="panel description-panel">
               <div class="section-heading">
                 <h2>比赛说明</h2>
-                <div class="contest-management-actions"><el-button v-if="detail.can_organize" @click="announcementPublisher?.openPublisher()">发布公告</el-button>
+                <div class="contest-management-actions">
+                  <el-button
+                    v-if="detail.can_organize"
+                    @click="announcementPublisher?.openPublisher()"
+                    >发布公告</el-button
+                  >
                   <el-button
                     v-if="detail.can_read_problems"
                     @click="attachmentsVisible = true"
@@ -39,7 +43,7 @@
                       router.push(`/event-papers/contest/${contestID}/edit`)
                     "
                     >{{
-                      detail.can_edit ? '组题' : '查看试卷与审核'
+                      detail.can_edit ? "组题" : "查看试卷与审核"
                     }}</el-button
                   ><el-button v-if="detail.can_edit" @click="editVisible = true"
                     >比赛设置</el-button
@@ -47,7 +51,7 @@
                 </div>
               </div>
               <div class="description-copy">
-                {{ detail.contest.description || '本场比赛暂未填写说明。' }}
+                {{ detail.contest.description || "本场比赛暂未填写说明。" }}
               </div>
             </section>
             <aside class="panel meta-panel">
@@ -75,14 +79,22 @@
                     {{
                       detail.contest.freeze_enabled
                         ? `结束前 ${detail.contest.freeze_duration_minutes} 分钟`
-                        : '未启用'
+                        : "未启用"
                     }}
                   </dd>
                 </div>
               </dl>
             </aside>
           </div>
-          <EventAnnouncements ref="announcements" v-if="detail.can_read_problems" kind="contest" :event-id="contestID" :problems="detail.problems" :can-ask="detail.can_submit" @ask="openEventTicket" />
+          <EventAnnouncements
+            ref="announcements"
+            v-if="detail.can_read_problems"
+            kind="contest"
+            :event-id="contestID"
+            :problems="detail.problems"
+            :can-ask="detail.can_submit"
+            @ask="openEventTicket"
+          />
           <el-alert
             v-if="detail.lifecycle === 'closed'"
             :closable="false"
@@ -141,9 +153,17 @@
           "
         >
           <section class="contest-scoreboard">
-            <ContestReplay v-if="auth.can('event:review') && ['closed', 'completed'].includes(detail.lifecycle)" kind="contest" :event-id="contestID" />
-<LeaderboardBoard
+            <ContestReplay
+              v-if="
+                auth.can('event:review') &&
+                ['closed', 'completed'].includes(detail.lifecycle)
+              "
+              kind="contest"
+              :event-id="contestID"
+            />
+            <LeaderboardBoard
               :data="scoreboardData"
+              :context="{ kind: 'contest', eventId: contestID }"
               :loading="rankingLoading"
               :error="rankingError"
               empty-text="暂无比赛记录"
@@ -161,7 +181,11 @@
             :data="records.filter((r: any) => r.user_id === auth.user?.id)"
             ><el-table-column prop="id" label="提交编号" /><el-table-column
               label="状态"
-            ><template #default="{row}"><SubmissionStatusMark :status="row.status" compact /></template></el-table-column><el-table-column label="时间"
+              ><template #default="{ row }"
+                ><SubmissionStatusMark
+                  :status="row.status"
+                  compact /></template></el-table-column
+            ><el-table-column label="时间"
               ><template #default="{ row }">{{
                 dateText(row.created_at)
               }}</template></el-table-column
@@ -197,13 +221,20 @@
           :revision="detail.contest.review_revision"
           @changed="loadDetail"
       /></el-dialog>
-      <EventAnnouncementPublisher ref="announcementPublisher" v-if="detail.can_organize" kind="contest" :event-id="contestID" :can-publish="detail.can_organize" @published="announcements?.reload()" />
+      <EventAnnouncementPublisher
+        ref="announcementPublisher"
+        v-if="detail.can_organize"
+        kind="contest"
+        :event-id="contestID"
+        :can-publish="detail.can_organize"
+        @published="announcements?.reload()"
+      />
       <TicketDialog
         v-model="ticketVisible"
         :context="{
           kind: 'contest',
           id: contestID,
-          problemID: ticketProblemID
+          problemID: ticketProblemID,
         }"
       />
       <SubmissionDetailDialog
@@ -259,8 +290,8 @@
               :max="Math.max(1, editForm.duration_minutes - 1)" /></el-form-item
           ><el-form-item label="奖项设置"
             ><TeamContestAwardFields
-            :team-id="detail.team.id"
-            v-model:ranking-user-ids="editForm.ranking_user_ids"
+              :team-id="detail.team.id"
+              v-model:ranking-user-ids="editForm.ranking_user_ids"
               v-if="editVisible"
               v-model:gold-award-percent="editForm.gold_award_percent"
               v-model:silver-award-percent="editForm.silver_award_percent"
@@ -293,292 +324,300 @@
 </template>
 
 <script setup lang="ts">
-import SubmissionStatusMark from '../../components/SubmissionStatusMark.vue'
-import ContestReplay from '../../components/events/ContestReplay.vue'
-const announcements = ref<InstanceType<typeof EventAnnouncements>>()
-const announcementPublisher = ref<InstanceType<typeof EventAnnouncementPublisher>>()
-import EventAnnouncementPublisher from '../../components/events/EventAnnouncementPublisher.vue'
-import EventAnnouncements from '../../components/events/EventAnnouncements.vue'
-import { eventLifecycle, lifecycleLabels } from '../../api/modules/events'
-import { useSubmissionStreams } from '../../features/submissions/live'
-import { apiErrorMessage } from '../../api/errors'
-import EventAttachments from '../../components/events/EventAttachments.vue'
-import TicketDialog from '../../components/tickets/TicketDialog.vue'
+import SubmissionStatusMark from "../../components/SubmissionStatusMark.vue";
+import ContestReplay from "../../components/events/ContestReplay.vue";
+const announcements = ref<InstanceType<typeof EventAnnouncements>>();
+const announcementPublisher =
+  ref<InstanceType<typeof EventAnnouncementPublisher>>();
+import EventAnnouncementPublisher from "../../components/events/EventAnnouncementPublisher.vue";
+import EventAnnouncements from "../../components/events/EventAnnouncements.vue";
+import { eventLifecycle, lifecycleLabels } from "../../api/modules/events";
+import { useSubmissionStreams } from "../../features/submissions/live";
+import { apiErrorMessage } from "../../api/errors";
+import EventAttachments from "../../components/events/EventAttachments.vue";
+import TicketDialog from "../../components/tickets/TicketDialog.vue";
 
-import { submissionLanguage } from '../../features/submissions/presentation'
-import { ElMessage, ElMessageBox } from 'element-plus'
-import TeamContestAwardFields from '../../components/TeamContestAwardFields.vue'
-import { contestAwardValidationError } from '../../features/teams/contestAwards'
-import { useEditSnapshot } from '../../features/events/editSnapshot'
-import { computed, onBeforeUnmount, onMounted, reactive, ref, watch } from 'vue'
+import { submissionLanguage } from "../../features/submissions/presentation";
+import { ElMessage, ElMessageBox } from "element-plus";
+import TeamContestAwardFields from "../../components/TeamContestAwardFields.vue";
+import { contestAwardValidationError } from "../../features/teams/contestAwards";
+import { useEditSnapshot } from "../../features/events/editSnapshot";
+import {
+  computed,
+  onBeforeUnmount,
+  onMounted,
+  reactive,
+  ref,
+  watch,
+} from "vue";
 import {
   onBeforeRouteLeave,
   onBeforeRouteUpdate,
   useRoute,
-  useRouter
-} from 'vue-router'
+  useRouter,
+} from "vue-router";
 import {
   generatedApi,
   getLatestSubmissions,
   type AuthenticatedEventSource,
   type ScoringRule,
-  type Submission
-} from '../../api/client'
-import LeaderboardBoard from '../../components/LeaderboardBoard.vue'
-import EventWorkspaceHeader from '../../components/EventWorkspaceHeader.vue'
-import EventProblemList from '../../components/EventProblemList.vue'
-import EventProblemPanel from '../../components/EventProblemPanel.vue'
-import SubmissionDetailDialog from '../../components/SubmissionDetailDialog.vue'
-import { scoringDescription } from '../../features/events/workspace'
-import SubmissionComposer from '../../components/SubmissionComposer.vue'
-import { adaptTeamContestRanking } from '../../features/leaderboard/adapters'
-import { loadSubmissionDraft } from '../../features/submissions/drafts'
-import { formatDateTime } from '../../features/time'
-import { useAuthStore } from '../../stores/auth'
-const submissionStreams = useSubmissionStreams()
+  type Submission,
+} from "../../api/client";
+import LeaderboardBoard from "../../components/LeaderboardBoard.vue";
+import EventWorkspaceHeader from "../../components/EventWorkspaceHeader.vue";
+import EventProblemList from "../../components/EventProblemList.vue";
+import EventProblemPanel from "../../components/EventProblemPanel.vue";
+import SubmissionDetailDialog from "../../components/SubmissionDetailDialog.vue";
+import { scoringDescription } from "../../features/events/workspace";
+import SubmissionComposer from "../../components/SubmissionComposer.vue";
+import { adaptTeamContestRanking } from "../../features/leaderboard/adapters";
+import { loadSubmissionDraft } from "../../features/submissions/drafts";
+import { formatDateTime } from "../../features/time";
+import { useAuthStore } from "../../stores/auth";
+const submissionStreams = useSubmissionStreams();
 const route = useRoute(),
   router = useRouter(),
-  auth = useAuthStore()
+  auth = useAuthStore();
 const detail = ref<any>(null),
   ranking = ref<any>({ rows: [], problems: [] }),
   records = ref<Submission[]>([]),
   rankingLoading = ref(false),
-  rankingError = ref(''),
+  rankingError = ref(""),
   rankingLoadedAt = ref<Date | null>(null),
   submitVisible = ref(false),
   submitting = ref(false),
-  language = ref('cpp'),
-  source = ref(''),
+  language = ref("cpp"),
+  source = ref(""),
   liveStatus = ref<any>(null),
   composer = ref<any>(null),
   editVisible = ref(false),
-  editing = ref(false)
-let stream: AuthenticatedEventSource | null = null
-let rankingDisposed = false
-let detailTimer: number | undefined, deadlineTimer: number | undefined
-let detailLoading = false
+  editing = ref(false);
+let stream: AuthenticatedEventSource | null = null;
+let rankingDisposed = false;
+let detailTimer: number | undefined, deadlineTimer: number | undefined;
+let detailLoading = false;
 const ticketVisible = ref(false),
-  ticketProblemID = ref<number | undefined>()
+  ticketProblemID = ref<number | undefined>();
 function openEventTicket() {
-  ticketProblemID.value = undefined
-  ticketVisible.value = true
+  ticketProblemID.value = undefined;
+  ticketVisible.value = true;
 }
 function openProblemTicket() {
   if (selectedLink.value) {
-    ticketProblemID.value = selectedLink.value.problem_id
-    ticketVisible.value = true
+    ticketProblemID.value = selectedLink.value.problem_id;
+    ticketVisible.value = true;
   }
 }
 const scoringOptions = [
-  { label: 'OI', value: 'oi' },
-  { label: 'IOI', value: 'ioi' },
-  { label: 'ACM', value: 'acm' }
-]
+  { label: "OI", value: "oi" },
+  { label: "IOI", value: "ioi" },
+  { label: "ACM", value: "acm" },
+];
 const settingsDraft = useEditSnapshot({
-  title: '',
-  description: '',
-  starts_at: '',
+  title: "",
+  description: "",
+  starts_at: "",
   duration_minutes: 120,
-  scoring_rule: 'acm' as ScoringRule,
+  scoring_rule: "acm" as ScoringRule,
   freeze_enabled: false,
   freeze_duration_minutes: 60,
   ranking_user_ids: null as number[] | null,
   gold_award_percent: 10,
   silver_award_percent: 10,
-  bronze_award_percent: 10
-})
-const editForm = settingsDraft.form
-const awardInputValid = ref(true)
-const contestID = computed(() => Number(route.params.contestId))
+  bronze_award_percent: 10,
+});
+const editForm = settingsDraft.form;
+const awardInputValid = ref(true);
+const contestID = computed(() => Number(route.params.contestId));
 const section = computed(() =>
-  route.name === 'contest-description'
-    ? 'description'
-    : route.name === 'contest-problems'
-      ? 'problems'
-      : route.name === 'contest-problem'
-        ? 'problem'
-        : route.name === 'contest-records'
-          ? 'records'
-          : 'scoreboard'
-)
+  route.name === "contest-description"
+    ? "description"
+    : route.name === "contest-problems"
+      ? "problems"
+      : route.name === "contest-problem"
+        ? "problem"
+        : route.name === "contest-records"
+          ? "records"
+          : "scoreboard",
+);
 const selectedLink = computed(
   () =>
     detail.value?.problems?.find(
       (i: any) =>
         String(i.label).toLowerCase() ===
-        String(route.params.label || '').toLowerCase()
-    ) || null
-)
+        String(route.params.label || "").toLowerCase(),
+    ) || null,
+);
 const problemItems = computed(() =>
-  (detail.value?.problems || []).map((link: any) => ({ ...link, score: 100 }))
-)
+  (detail.value?.problems || []).map((link: any) => ({ ...link, score: 100 })),
+);
 const submissionVisible = ref(false),
-  submissionDetail = ref<any>(null)
+  submissionDetail = ref<any>(null);
 async function viewSubmission(id: number) {
   try {
     submissionDetail.value = (
       await generatedApi.getSubmission<any>({ path: { id: id } })
-    ).data
-    submissionVisible.value = true
+    ).data;
+    submissionVisible.value = true;
   } catch (err: any) {
-    ElMessage.error(apiErrorMessage(err, '提交加载失败'))
+    ElMessage.error(apiErrorMessage(err, "提交加载失败"));
   }
 }
 const problemRecords = computed(() =>
-  records.value.filter((i) => i.problem_id === selectedLink.value?.problem_id)
-)
+  records.value.filter((i) => i.problem_id === selectedLink.value?.problem_id),
+);
 const draftContext = computed(() => ({
   userId: auth.user?.id || 0,
-  resourceType: 'contest' as const,
+  resourceType: "contest" as const,
   resourceId: contestID.value,
-  problemId: selectedLink.value?.problem_id || 0
-}))
-const attachmentsVisible = ref(false)
-const canViewRecords = computed(() => Boolean(detail.value?.can_read_problems))
+  problemId: selectedLink.value?.problem_id || 0,
+}));
+const attachmentsVisible = ref(false);
+const canViewRecords = computed(() => Boolean(detail.value?.can_read_problems));
 const scoreboardData = computed(() => {
   const data = adaptTeamContestRanking(ranking.value, {
-    contest: detail.value?.contest
-  })
-  return data
-})
+    contest: detail.value?.contest,
+  });
+  return data;
+});
 const rankingUpdatedAt = computed(() =>
-  rankingLoadedAt.value ? formatDateTime(rankingLoadedAt.value) : ''
-)
+  rankingLoadedAt.value ? formatDateTime(rankingLoadedAt.value) : "",
+);
 async function loadDetail() {
-  if (detailLoading) return
-  detailLoading = true
+  if (detailLoading) return;
+  detailLoading = true;
   try {
     detail.value = (
       await generatedApi.getTeamContestViaContestsContestId<any>({
-        path: { contest_id: contestID.value }
+        path: { contest_id: contestID.value },
       })
-    ).data
+    ).data;
     if (editVisible.value)
       settingsDraft.sync(
         detail.value.contest,
-        detail.value.contest.review_revision
-      )
-    if (deadlineTimer) window.clearTimeout(deadlineTimer)
-    if (detail.value.lifecycle === 'running' && detail.value.contest.ends_at) {
+        detail.value.contest.review_revision,
+      );
+    if (deadlineTimer) window.clearTimeout(deadlineTimer);
+    if (detail.value.lifecycle === "running" && detail.value.contest.ends_at) {
       const delay =
-        Date.parse(detail.value.contest.ends_at) - Date.parse(detail.value.now)
+        Date.parse(detail.value.contest.ends_at) - Date.parse(detail.value.now);
       deadlineTimer = window.setTimeout(
         () => {
           if (detail.value) {
-            detail.value.can_submit = false
-            submitVisible.value = false
+            detail.value.can_submit = false;
+            submitVisible.value = false;
           }
-          void loadDetail()
+          void loadDetail();
         },
-        Math.min(Math.max(100, delay + 100), 2147483647)
-      )
+        Math.min(Math.max(100, delay + 100), 2147483647),
+      );
     }
     if (!detail.value.can_read_problems) {
-      ranking.value = { rows: [], problems: [] }
-      submitVisible.value = false
+      ranking.value = { rows: [], problems: [] };
+      submitVisible.value = false;
       if (
-        section.value !== 'description' &&
-        !(section.value === 'records' && canViewRecords.value)
+        section.value !== "description" &&
+        !(section.value === "records" && canViewRecords.value)
       )
-        await router.replace(`/contest/${contestID.value}/description`)
+        await router.replace(`/contest/${contestID.value}/description`);
     }
     if (
-      detail.value.contest.scoring_rule === 'oi' &&
-      section.value === 'scoreboard'
+      detail.value.contest.scoring_rule === "oi" &&
+      section.value === "scoreboard"
     )
-      await router.replace(`/contest/${contestID.value}/problems`)
-    if (route.query.manage === 'edit' && detail.value.can_edit) {
-      editVisible.value = true
-      await router.replace({ path: route.path, query: {} })
+      await router.replace(`/contest/${contestID.value}/problems`);
+    if (route.query.manage === "edit" && detail.value.can_edit) {
+      editVisible.value = true;
+      await router.replace({ path: route.path, query: {} });
     }
-    await loadRecords()
+    await loadRecords();
   } catch (e: any) {
-    if (e.response?.data?.code === 'EVENT_COMPLETED') {
-      await router.replace(`/competitions/contest/${contestID.value}`)
-      return
+    if (e.response?.data?.code === "EVENT_COMPLETED") {
+      await router.replace(`/competitions/contest/${contestID.value}`);
+      return;
     }
-    ElMessage.error(apiErrorMessage(e))
+    ElMessage.error(apiErrorMessage(e));
     // A transient background refresh failure must not unmount an edited form.
     if (!detail.value || [401, 403, 404].includes(e.response?.status)) {
-      if (editVisible.value && settingsDraft.dirty.value) return
-      detail.value = null
-      attachmentsVisible.value = false
-      submitVisible.value = false
-      await router.replace('/teams')
+      if (editVisible.value && settingsDraft.dirty.value) return;
+      detail.value = null;
+      attachmentsVisible.value = false;
+      submitVisible.value = false;
+      await router.replace("/teams");
     }
   } finally {
-    detailLoading = false
+    detailLoading = false;
   }
 }
 async function loadRecords() {
   if (!contestID.value || !canViewRecords.value) {
-    records.value = []
-    return
+    records.value = [];
+    return;
   }
   try {
     records.value =
       (
         await generatedApi.listTeamContestSubmissionsViaContestsContestIdSubmissions<any>(
-          { path: { contest_id: contestID.value } }
+          { path: { contest_id: contestID.value } },
         )
-      ).data || []
+      ).data || [];
   } catch {
-    records.value = []
+    records.value = [];
   }
 }
 async function loadRanking() {
-  if (rankingDisposed || !detail.value?.can_read_problems) return
-  if (detail.value?.contest.scoring_rule === 'oi' || rankingLoading.value)
-    return
-  rankingLoading.value = true
-  rankingError.value = ''
+  if (rankingDisposed || !detail.value?.can_read_problems) return;
+  if (detail.value?.contest.scoring_rule === "oi" || rankingLoading.value)
+    return;
+  rankingLoading.value = true;
+  rankingError.value = "";
   try {
     ranking.value = (
       await generatedApi.teamContestRankingViaContestsContestIdRanking<any>({
-        path: { contest_id: contestID.value }
+        path: { contest_id: contestID.value },
       })
     ).data || {
       rows: [],
-      problems: []
-    }
-    rankingLoadedAt.value = new Date()
+      problems: [],
+    };
+    rankingLoadedAt.value = new Date();
   } catch (e: any) {
-    ranking.value = { rows: [], problems: [] }
-    rankingError.value = apiErrorMessage(e)
+    ranking.value = { rows: [], problems: [] };
+    rankingError.value = apiErrorMessage(e);
   } finally {
-    rankingLoading.value = false
+    rankingLoading.value = false;
   }
 }
 function goBack() {
   void router.push(
     detail.value?.team?.slug
       ? `/teams/${detail.value.team.slug}/contests`
-      : '/teams'
-  )
+      : "/teams",
+  );
 }
 function dateText(v?: string) {
-  return v ? formatDateTime(v) : '待定'
+  return v ? formatDateTime(v) : "待定";
 }
 async function openSubmit() {
-  if (!selectedLink.value) return
+  if (!selectedLink.value) return;
   const latest = (
     await getLatestSubmissions(
       { team_contest_id: contestID.value },
-      selectedLink.value.problem_id
+      selectedLink.value.problem_id,
     )
-  )[0]
-  language.value = latest?.language || 'cpp'
+  )[0];
+  language.value = latest?.language || "cpp";
   source.value =
     loadSubmissionDraft(draftContext.value, language.value) ??
     latest?.source_code ??
-    ''
-  liveStatus.value = latest || null
-  submitVisible.value = true
+    "";
+  liveStatus.value = latest || null;
+  submitVisible.value = true;
 }
 async function submitSolution() {
-  if (submitting.value) return
-  if (!source.value.trim()) return ElMessage.warning('请输入代码')
-  submitting.value = true
+  if (submitting.value) return;
+  if (!source.value.trim()) return ElMessage.warning("请输入代码");
+  submitting.value = true;
   try {
     const { data } =
       await generatedApi.createTeamContestSubmissionViaContestsContestIdSubmissions<any>(
@@ -587,53 +626,53 @@ async function submitSolution() {
           body: {
             problem_id: selectedLink.value.problem_id,
             language: submissionLanguage(language.value),
-            source_code: source.value
-          }
-        }
-      )
-    submitVisible.value = false
-    composer.value?.clearDraft()
-    liveStatus.value = data
-    stream?.close()
+            source_code: source.value,
+          },
+        },
+      );
+    submitVisible.value = false;
+    composer.value?.clearDraft();
+    liveStatus.value = data;
+    stream?.close();
     stream = submissionStreams.watch(
       data.id,
       (state) => {
-        liveStatus.value = state
+        liveStatus.value = state;
       },
       async () => {
-        await Promise.all([loadDetail(), loadRanking()])
-      }
-    )
-    ElMessage.success('代码已提交')
+        await Promise.all([loadDetail(), loadRanking()]);
+      },
+    );
+    ElMessage.success("代码已提交");
   } catch (e: any) {
-    ElMessage.error(apiErrorMessage(e))
+    ElMessage.error(apiErrorMessage(e));
   } finally {
-    submitting.value = false
+    submitting.value = false;
   }
 }
 async function saveContest() {
   const awardError = !awardInputValid.value
-    ? '请检查奖项设置和排名名单'
-    : contestAwardValidationError(editForm)
+    ? "请检查奖项设置和排名名单"
+    : contestAwardValidationError(editForm);
   if (awardError) {
-    ElMessage.warning(awardError)
-    return
+    ElMessage.warning(awardError);
+    return;
   }
-  if (editForm.scoring_rule === 'oi') editForm.freeze_enabled = false
-  editing.value = true
+  if (editForm.scoring_rule === "oi") editForm.freeze_enabled = false;
+  editing.value = true;
   try {
     await generatedApi.updateTeamContestViaContestsContestId<any>({
       path: { contest_id: contestID.value },
-      body: { ...editForm, revision: settingsDraft.revision.value }
-    })
-    settingsDraft.markSaved()
-    editVisible.value = false
-    await loadDetail()
-    ElMessage.success('设置已保存')
+      body: { ...editForm, revision: settingsDraft.revision.value },
+    });
+    settingsDraft.markSaved();
+    editVisible.value = false;
+    await loadDetail();
+    ElMessage.success("设置已保存");
   } catch (e: any) {
-    ElMessage.error(apiErrorMessage(e))
+    ElMessage.error(apiErrorMessage(e));
   } finally {
-    editing.value = false
+    editing.value = false;
   }
 }
 watch(
@@ -642,45 +681,45 @@ watch(
     if (open && detail.value)
       settingsDraft.begin(
         detail.value.contest,
-        detail.value.contest.review_revision
-      )
+        detail.value.contest.review_revision,
+      );
   },
-  { flush: 'sync' }
-)
+  { flush: "sync" },
+);
 async function confirmSettingsLeave() {
-  if (!editVisible.value || !settingsDraft.dirty.value) return true
+  if (!editVisible.value || !settingsDraft.dirty.value) return true;
   try {
     await ElMessageBox.confirm(
-      '比赛设置有尚未保存的修改，离开将丢弃这些修改。',
-      '未保存的比赛设置',
-      { confirmButtonText: '丢弃并离开', cancelButtonText: '继续编辑' }
-    )
-    return true
+      "比赛设置有尚未保存的修改，离开将丢弃这些修改。",
+      "未保存的比赛设置",
+      { confirmButtonText: "丢弃并离开", cancelButtonText: "继续编辑" },
+    );
+    return true;
   } catch {
-    return false
+    return false;
   }
 }
 async function closeSettings(done?: () => void) {
-  if (editing.value || !(await confirmSettingsLeave())) return
-  if (done) done()
-  else editVisible.value = false
+  if (editing.value || !(await confirmSettingsLeave())) return;
+  if (done) done();
+  else editVisible.value = false;
 }
 function protectSettings(event: BeforeUnloadEvent) {
   if (editVisible.value && settingsDraft.dirty.value) {
-    event.preventDefault()
-    event.returnValue = ''
+    event.preventDefault();
+    event.returnValue = "";
   }
 }
-onBeforeRouteLeave(confirmSettingsLeave)
+onBeforeRouteLeave(confirmSettingsLeave);
 onBeforeRouteUpdate(async (to, from) => {
-  if (to.path === from.path) return
-  if (!(await confirmSettingsLeave())) return false
-  editVisible.value = false
-})
-onMounted(() => window.addEventListener('beforeunload', protectSettings))
+  if (to.path === from.path) return;
+  if (!(await confirmSettingsLeave())) return false;
+  editVisible.value = false;
+});
+onMounted(() => window.addEventListener("beforeunload", protectSettings));
 onBeforeUnmount(() =>
-  window.removeEventListener('beforeunload', protectSettings)
-)
+  window.removeEventListener("beforeunload", protectSettings),
+);
 watch(
   () => route.fullPath,
   async () => {
@@ -688,21 +727,21 @@ watch(
       !detail.value ||
       Number(route.params.contestId) !== detail.value.contest.id
     )
-      await loadDetail()
-    if (section.value === 'scoreboard') await loadRanking()
-  }
-)
+      await loadDetail();
+    if (section.value === "scoreboard") await loadRanking();
+  },
+);
 onMounted(async () => {
-  await loadDetail()
-  detailTimer = window.setInterval(() => void loadDetail(), 15000)
-  if (section.value === 'scoreboard') await loadRanking()
-})
+  await loadDetail();
+  detailTimer = window.setInterval(() => void loadDetail(), 15000);
+  if (section.value === "scoreboard") await loadRanking();
+});
 onBeforeUnmount(() => {
-  rankingDisposed = true
-  if (detailTimer) window.clearInterval(detailTimer)
-  if (deadlineTimer) window.clearTimeout(deadlineTimer)
-  stream?.close()
-})
+  rankingDisposed = true;
+  if (detailTimer) window.clearInterval(detailTimer);
+  if (deadlineTimer) window.clearTimeout(deadlineTimer);
+  stream?.close();
+});
 </script>
 
 <style scoped>

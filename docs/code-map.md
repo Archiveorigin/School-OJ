@@ -505,3 +505,13 @@
 | `styles/tokens.css`、`features/uuid.ts` | 全局语义主题及普通 HTTP 上传 UUID |
 
 表内 Web 路径相对 `apps/web/src/`，Handler 路径相对 `apps/api/internal/`。模块规则分别见 [场次](events.md)、[前端](frontend.md)、[权限](authorization.md)。新增路由以 OpenAPI 和 authz 注册表为完整来源，不把这份人工索引当作机器契约。
+
+## 13. ICPC 榜单交互与动效（2026-10-31）
+
+- `features/leaderboard/motion.ts`、`useReducedMotion.ts`：统一动效时序、设备设置和大榜降级。
+- `useAnimatedNumber.ts`、`useRankDelta.ts`、`useTableInteraction.ts`：共享帧循环、名次提示与行交互。
+- `useRevealPlayback.ts`：唯一播放计时器、暂停、倍速、可见性与销毁清理。
+- `components/leaderboard/`：数字、名次提示、题格、摘要、按需详情抽屉。
+- `tests/e2e/scoreboard-qa.mjs`：隔离 API 交互、权限、响应布局与大榜验收。
+
+路径相对 `apps/web/src/`（测试路径相对 `apps/web/`）。本轮无新增路由，沿用现有排名、滚榜与提交接口。
