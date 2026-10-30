@@ -31,6 +31,11 @@ func (s Server) shouldRedactSubmission(user models.User, submission models.Submi
 		if err := s.DB.First(&contest, *submission.TeamContestID).Error; err != nil {
 			return true
 		}
+		// Scoreboard freezing hides results from other viewers, not their author.
+		// OI's separate pre-deadline result embargo still applies to the author.
+		if user.ID == submission.UserID && contest.ScoringRule != "oi" {
+			return false
+		}
 		if contestFreezeHeld(contest, user, now) {
 			return teamContestSubmissionHidden(contest, submission.CreatedAt, now)
 		}

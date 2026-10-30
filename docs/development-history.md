@@ -666,3 +666,11 @@ node tests/e2e/event-http-uuid-qa.mjs
 - 真实 Docker 沙箱验证 AC 资源计量、TLE/MLE/RE、C/C++/Python/Java 和整体任务时限全部通过；首次原生宿主运行缺少容器内置 seccomp 文件，改用候选 Worker 镜像的隔离测试容器后通过。未执行新的比赛高峰容量基准，不将单用户限流次数当作可持续判题吞吐量。
 - 服务器使用独立候选项目和生产备份副本构建与验收，现有迁移连续执行两次通过，无新增迁移。上线复用已测试镜像，API/双 Worker 健康、公开目录/登录与鉴权边界正常，生产 PostgreSQL/Redis/MinIO 容器 ID 不变。备份 /opt/School-OJ-backups/admin-replay-release，回滚标签 admin-replay-rollback-97788bc。
 - 构建时磁盘曾降至约 821 MB；检查无容器引用及镜像内 School-OJ 模块标识后清理 19 个无标签构建中间镜像，未使用全局 prune，保留所有标签镜像、生产卷、备份和回滚。最后清理本轮候选容器/卷、测试 Redis 与临时沙箱容器。按用户要求，生产验收后通过本机 Git GUI、TailingMing 身份提交，再推送服务器及 GitHub。
+
+
+### 2026-10-30：封榜期间本人提交反馈可见
+
+- 修正上一版将提交者本人一并脱敏的问题：ACM/IOI 比赛封榜时，本人可查看真实提交状态、成绩与运行资源；其他非管理员仍受封榜限制，公共榜单继续等待管理员确认完结再解封。OI 赛中结果保密规则维持原权限判断。
+- 在统一 shouldRedactSubmission 中处理所有者例外，覆盖提交响应、记录列表、最新提交、详情、题目个人状态与 SSE；不放宽既有访问授权。回归覆盖赛中封榜和自然截止后待完结两阶段、AC/WA、两个 API 前缀，并确认其他用户反馈脱敏和公共榜单冻结。
+- API 常规测试及真实隔离 PostgreSQL/Redis 全量 handlers 回归通过。首次测试遇到临时 PostgreSQL 启动阶段连接与 tmpfs 空间不足，改为等待 TCP 就绪并扩大临时存储后完整重跑通过；未将环境失败计作验收通过。
+- 仅构建与替换 API 镜像，无数据库迁移；生产 API 与双 Worker 健康，健康/公开目录/鉴权边界通过。确认 Web、Worker、PostgreSQL、Redis、MinIO 均保留原容器。备份 /opt/School-OJ-backups/own-result-release，旧 API 标签 own-result-rollback-7334b1b；隔离测试容器已清理，生产数据未改写。通过本机 Git GUI 使用 TailingMing 提交并同步远端。

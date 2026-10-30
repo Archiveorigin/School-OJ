@@ -13,8 +13,8 @@ func TestAdminReplayAndCompletionFreeze(t *testing.T) {
 	f, base, p, start := rankingFixture(t, "contest", "acm")
 	f.s.DB.Model(p.model()).Updates(map[string]any{"freeze_enabled": true, "freeze_duration_minutes": 30})
 	sub := rankingSubmission(t, f, p, f.student, models.StatusAccepted, 100, start.Add(45*time.Minute))
-	if !f.s.shouldRedactSubmission(f.student, sub, time.Now()) || !f.s.shouldRedactSubmission(f.teacher, sub, time.Now()) {
-		t.Fatal("post-freeze results disclosed before completion")
+	if f.s.shouldRedactSubmission(f.student, sub, time.Now()) || !f.s.shouldRedactSubmission(f.teacher, sub, time.Now()) {
+		t.Fatal("frozen result must be visible to its author and hidden from other non-admin viewers")
 	}
 	endpoint := fmt.Sprintf("/api/contests/%d/ranking", p.id)
 	for _, user := range []models.User{f.student, f.teacher, f.admin} {
