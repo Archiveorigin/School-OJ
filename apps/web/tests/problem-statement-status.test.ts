@@ -36,7 +36,7 @@ describe('ProblemStatementView status icon', () => {
     expect(wrapper.find('img').exists()).toBe(false)
     expect(wrapper.find('svg.status-icon').exists()).toBe(true)
     expect(wrapper.find('[role="img"]').attributes('aria-label')).toBe('通过')
-    expect(wrapper.text()).toContain('Accepted')
+    expect(wrapper.text()).toContain('AC')
     expect(wrapper.html()).toContain('#22c55e')
   })
 
@@ -87,6 +87,6 @@ describe('ProblemStatementView status icon', () => {
     expect(wrapper.find('svg.status-icon').exists()).toBe(true)
     expect(wrapper.get('svg.status-icon').attributes('role')).toBe('img')
     expect(wrapper.get('svg.status-icon').attributes('aria-label')).toBe('通过')
-    expect(wrapper.text()).toContain('Accepted')
+    expect(wrapper.text()).toContain('AC')
   })
 })

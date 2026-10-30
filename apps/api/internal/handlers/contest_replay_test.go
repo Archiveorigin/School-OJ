@@ -49,7 +49,7 @@ func TestAnnouncementFilesAndReplayExport(t *testing.T) {
 	if len(files) != 0 {
 		t.Fatal("live announcement file leaked into paper attachments")
 	}
-	assertStatus(t, f.request("GET", base+"/ranking/export?format=json", &f.teacher, nil), 409)
+	assertStatus(t, f.request("GET", base+"/ranking/export?format=json", &f.admin, nil), 409)
 	assertStatus(t, f.request("GET", base+"/ranking/export?format=json", &f.student, nil), 403)
 	if err := f.s.DB.Model(p.model()).Update("starts_at", time.Now().Add(-2*time.Hour)).Error; err != nil {
 		t.Fatal(err)
@@ -66,7 +66,7 @@ func TestAnnouncementFilesAndReplayExport(t *testing.T) {
 	if err := f.s.DB.Create(&sub).Error; err != nil {
 		t.Fatal(err)
 	}
-	response = f.request("GET", base+"/ranking/export?format=json", &f.teacher, nil)
+	response = f.request("GET", base+"/ranking/replay", &f.admin, nil)
 	assertStatus(t, response, 200)
 	if bytes.Contains(response.Body.Bytes(), []byte("secret-must-not-export")) {
 		t.Fatal("source code leaked")

@@ -7,9 +7,9 @@
     :height="compact ? 28 : 48"
     fill="none"
     role="img"
-    :aria-label="visual.ariaLabel"
+    :aria-label="ariaLabel"
   >
-    <title>{{ visual.ariaLabel }}</title>
+    <title>{{ ariaLabel }}</title>
     <rect :width="compact ? 64 : 156" :height="compact ? 28 : 48" :rx="compact ? 6 : 14" :fill="visual.fill" />
     <text
       :x="compact ? 32 : 78"
@@ -20,7 +20,7 @@
       font-weight="800"
       font-family="Inter, Microsoft YaHei, Arial, sans-serif"
     >
-      {{ compact ? shortVerdicts[status] || visual.label : visual.label }}
+      {{ shortVerdicts[status.trim().toLowerCase()] || visual.label }}
     </text>
   </svg>
 </template>
@@ -31,6 +31,8 @@ import { shortVerdicts } from '../features/submissions/presentation'
 
 const props = defineProps<{ status: string; compact?: boolean }>()
 
+const failureLabels: Record<string,string> = {wrong_answer:'答案错误',compile_error:'编译错误',runtime_error:'运行错误',time_limit:'超时',memory_limit:'超内存',output_limit:'输出超限',system_error:'系统错误'}
+const ariaLabel = computed(() => failureLabels[props.status.trim().toLowerCase()] || visual.value.ariaLabel)
 const terminalFailures = new Set([
   'wrong_answer',
   'compile_error',

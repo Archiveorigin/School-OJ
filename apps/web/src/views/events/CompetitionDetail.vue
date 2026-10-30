@@ -52,7 +52,7 @@
           /></section
       ></template>
       <template v-if="tab === 'ranking'"
-        ><LeaderboardBoard
+        ><ContestReplay v-if="kind==='contest' && auth.can('event:review')" :kind="kind" :event-id="eventID" /><LeaderboardBoard
           v-if="paper.can_view_ranking"
           :data="rankingData"
           :loading="rankingLoading"
@@ -70,6 +70,8 @@
   </section>
 </template>
 <script setup lang="ts">
+import ContestReplay from "../../components/events/ContestReplay.vue";
+import { useAuthStore } from "../../stores/auth";
 import { computed, ref, watch } from "vue";
 import { useRoute, useRouter } from "vue-router";
 import { generatedApi } from "../../api/client";
@@ -90,6 +92,7 @@ import EventAttachments from "../../components/events/EventAttachments.vue";
 import MarkdownRenderer from "../../components/MarkdownRenderer.vue";
 import ProblemStatementView from "../../components/ProblemStatementView.vue";
 import LeaderboardBoard from "../../components/LeaderboardBoard.vue";
+const auth = useAuthStore();
 const props = defineProps<{ reviewMode?: boolean }>(),
   route = useRoute(),
   router = useRouter();

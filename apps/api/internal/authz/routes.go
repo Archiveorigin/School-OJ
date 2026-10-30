@@ -27,6 +27,7 @@ var Routes = []RoutePolicy{
 	{"GET", "/event-papers/:kind/:event_id", "event-papers:get-event-paper", "authenticated"},
 	{"GET", "/event-papers/:kind/:event_id/ranking", "event-papers:get-event-ranking", "authenticated"},
 	{"GET", "/event-papers/:kind/:event_id/ranking/export", "event-papers:export-event-ranking", "authenticated"},
+	{"GET", "/event-papers/:kind/:event_id/ranking/replay", "event-papers:get-contest-replay", "event:review"},
 	{"GET", "/event-papers/:kind/:event_id/choices", "event-papers:list-event-problem-choices", "authenticated"},
 	{"PUT", "/event-papers/:kind/:event_id/settings", "event-papers:update-event-settings", "authenticated"},
 	{"POST", "/event-papers/:kind/:event_id/review", "event-papers:review-event-paper", "authenticated"},

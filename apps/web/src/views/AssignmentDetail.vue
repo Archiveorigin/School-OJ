@@ -165,6 +165,7 @@ function selectDetailProblem(entry: DetailProblem) {
 }
 
 async function submitSolution() {
+  if (submitting.value) return
   if (!activeProblem.value || !detail.value || !activeState.value) return
   if (!activeState.value.source.trim()) {
     ElMessage.warning('请输入代码')

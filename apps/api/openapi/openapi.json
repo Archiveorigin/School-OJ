@@ -13550,6 +13550,56 @@
         "x-policy": "event-papers:publish-event-announcement",
         "x-access": "authenticated"
       }
+    },
+    "/event-papers/{kind}/{event_id}/ranking/replay": {
+      "get": {
+        "operationId": "getContestReplay",
+        "tags": [
+          "整场审核与归档"
+        ],
+        "summary": "管理员直接加载赛后滚榜快照",
+        "x-handler": "exportEventRanking",
+        "x-auth": "bearer",
+        "parameters": [
+          {
+            "name": "kind",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "event_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "最终评测就绪后的封榜与最终快照，仅系统管理员可读",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "additionalProperties": true
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "仅本场管理人员可访问"
+          },
+          "409": {
+            "description": "场次未截止或仍有评分未完成"
+          }
+        },
+        "x-policy": "event-papers:get-contest-replay",
+        "x-access": "event:review"
+      }
     }
   },
   "components": {

@@ -40,7 +40,11 @@ func standingsPresentation(data eventStandings) standingsDisplay {
 		view.Headers = append(view.Headers, problem.Label+" · "+problem.Title)
 	}
 	for _, row := range data.Rows {
-		cells := []standingsDisplayCell{{fmt.Sprint(row.Rank), "rank"}, {row.Name, "name"}, {fmt.Sprint(row.UserID), ""}}
+		rank := fmt.Sprint(row.Rank)
+		if row.Unranked {
+			rank = "*"
+		}
+		cells := []standingsDisplayCell{{rank, "rank"}, {row.Name, "name"}, {fmt.Sprint(row.UserID), ""}}
 		if data.Kind == "exam" {
 			cells = append(cells, standingsDisplayCell{row.studentNo, ""})
 		}

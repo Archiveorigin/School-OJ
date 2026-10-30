@@ -702,6 +702,7 @@ export const apiOperations = {
   "authorizationPolicies": { method: "GET", path: "/authorization/policies", segments: [] },
   "listEventAnnouncements": { method: "GET", path: "/event-papers/{kind}/{event_id}/announcements", segments: [] },
   "publishEventAnnouncement": { method: "POST", path: "/event-papers/{kind}/{event_id}/announcements", segments: [] },
+  "getContestReplay": { method: "GET", path: "/event-papers/{kind}/{event_id}/ranking/replay", segments: [] },
 } as const
 
 export type ApiOperationId = keyof typeof apiOperations
@@ -1256,6 +1257,10 @@ export const generatedApi = {
     "body": string
     "problem_id"?: (number) | null
   }>("publishEventAnnouncement", options),
+  "getContestReplay": <TResponse = {
+    [key: string]: unknown
+  }>(options: ApiRequestOptions<never> = {}) =>
+    requestOperation<TResponse, never>("getContestReplay", options),
 }
 
 // 兼容现有页面的 Axios 调用；新代码优先使用 generatedApi 的 operationId 方法。

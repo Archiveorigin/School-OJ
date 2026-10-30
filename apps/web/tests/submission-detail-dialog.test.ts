@@ -48,7 +48,7 @@ describe('SubmissionDetailDialog', () => {
     expect(wrapper.text()).not.toContain('2026001')
     expect(wrapper.text()).toContain('Python 3')
     expect(wrapper.text()).toContain('RE')
-    expect(wrapper.get('svg').attributes('aria-label')).toBe('未通过')
+    expect(wrapper.get('svg').attributes('aria-label')).toBe('运行错误')
     expect(wrapper.get('.source-code').text()).toContain('print("hello")')
     expect(wrapper.get('.source-lines').text()).toBe('1')
     expect(wrapper.text()).not.toContain('some test cases failed')

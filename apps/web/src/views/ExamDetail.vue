@@ -34,7 +34,7 @@
           </template>
         </EventProblemPanel>
         <ExamRanking v-else-if="section === 'scoreboard' && showRanking" :detail="detail" />
-        <section v-else-if="section==='records' && canViewRecords" class="panel own-records"><h2>本人提交</h2><el-table :data="history.filter(row=>row.user_id===auth.user?.id)"><el-table-column prop="id" label="提交编号"/><el-table-column prop="status" label="状态"/><el-table-column label="时间"><template #default="{row}">{{ formatDateTime(row.created_at) }}</template></el-table-column><el-table-column label="操作"><template #default="{row}"><el-button link @click="viewSubmission(row.id)">查看提交</el-button></template></el-table-column></el-table><el-button @click="loadHistory">刷新提交</el-button></section>
+        <section v-else-if="section==='records' && canViewRecords" class="panel own-records"><h2>本人提交</h2><el-table :data="history.filter(row=>row.user_id===auth.user?.id)"><el-table-column prop="id" label="提交编号"/><el-table-column label="状态"><template #default="{row}"><SubmissionStatusMark :status="row.status" compact /></template></el-table-column><el-table-column label="时间"><template #default="{row}">{{ formatDateTime(row.created_at) }}</template></el-table-column><el-table-column label="操作"><template #default="{row}"><el-button link @click="viewSubmission(row.id)">查看提交</el-button></template></el-table-column></el-table><el-button @click="loadHistory">刷新提交</el-button></section>
         <el-result v-else title="此页面暂未开放"><template #extra><el-button @click="router.replace(`${base}/description`)">返回考试说明</el-button></template></el-result>
       </main>
       <el-dialog v-model="submitVisible" :title="`提交 ${selected?.label || ''}.${selected?.problem.title || ''}`" width="min(940px, calc(100vw - 24px))" destroy-on-close>
@@ -58,6 +58,7 @@
 const announcements = ref<InstanceType<typeof EventAnnouncements>>()
 const announcementPublisher = ref<InstanceType<typeof EventAnnouncementPublisher>>()
 import EventAnnouncementPublisher from '../components/events/EventAnnouncementPublisher.vue'
+import SubmissionStatusMark from '../components/SubmissionStatusMark.vue'
 import EventAnnouncements from '../components/events/EventAnnouncements.vue'
 import {eventLifecycle,lifecycleLabels} from "../api/modules/events"
 import { useSubmissionStreams } from "../features/submissions/live"
@@ -200,10 +201,12 @@ function openSubmit() {
   submitVisible.value = true
 }
 async function submitSolution() {
+  if (submitting.value) return
   if (!selected.value || !source.value.trim()) { ElMessage.warning('请输入代码'); return }
   submitting.value = true
   try {
     const { data } = await generatedApi.createSubmission<any>({ body: { problem_id: selected.value.problem_id, exam_id: examID.value, language: submissionLanguage(language.value), source_code: source.value } })
+    submitVisible.value = false
     clearSubmissionDraft(draftContext.value, language.value)
     liveStatus.value = data.status
     stream?.close()

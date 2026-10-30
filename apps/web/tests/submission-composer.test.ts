@@ -45,3 +45,14 @@ describe('submission drafts on the typing path', () => {
     wrapper.unmount()
   })
 })
+
+ it('blocks submission events while disabled or already submitting', async () => {
+  const wrapper=create()
+  await wrapper.setProps({submitting:true})
+  await wrapper.findAll('button').at(-1)!.trigger('click')
+  expect(wrapper.emitted('submit')).toBeUndefined()
+  await wrapper.setProps({submitting:false,disabled:true})
+  await wrapper.findAll('button').at(-1)!.trigger('click')
+  expect(wrapper.emitted('submit')).toBeUndefined()
+  wrapper.unmount()
+ })

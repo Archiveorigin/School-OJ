@@ -31,6 +31,9 @@ func (s Server) shouldRedactSubmission(user models.User, submission models.Submi
 		if err := s.DB.First(&contest, *submission.TeamContestID).Error; err != nil {
 			return true
 		}
+		if contestFreezeHeld(contest, user, now) {
+			return teamContestSubmissionHidden(contest, submission.CreatedAt, now)
+		}
 		var team models.Team
 		if err := s.DB.First(&team, contest.TeamID).Error; err != nil {
 			return true
@@ -61,7 +64,7 @@ func teamContestSubmissionHidden(contest models.TeamContest, submittedAt, now ti
 	if contest.ScoringRule == "oi" && !ended {
 		return true
 	}
-	if !contest.FreezeEnabled || endsAt == nil || ended {
+	if !contest.FreezeEnabled || endsAt == nil || contest.CompletedAt != nil {
 		return false
 	}
 	freezeAt := endsAt.Add(-time.Duration(contest.FreezeDurationMinutes) * time.Minute)

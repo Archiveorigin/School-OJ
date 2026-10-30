@@ -6,6 +6,7 @@
         <p>完整后台榜单 · 不受参赛者封榜和页面筛选影响</p>
       </div>
       <div class="ranking-exports">
+ <ContestReplay v-if="kind==='contest' && auth.can('event:review') && snapshot && ['closed','completed'].includes(snapshot.lifecycle)" :kind="kind" :event-id="eventId" />
         <el-button
           :loading="exporting === 'xlsx'"
           :disabled="!canExport || !!exporting"
@@ -35,6 +36,8 @@
 </template>
 
 <script setup lang="ts">
+import ContestReplay from "./ContestReplay.vue";
+import { useAuthStore } from "../../stores/auth";
 import { computed, onBeforeUnmount, ref, watch } from "vue";
 import { generatedApi } from "../../api/client";
 import { apiErrorMessage } from "../../api/errors";
@@ -59,6 +62,7 @@ type Snapshot = {
   problems: any[];
   rows: any[];
 };
+const auth = useAuthStore();
 const props = defineProps<{ kind: EventKind; eventId: number }>();
 const emit = defineEmits<{ updated: [snapshot: Snapshot] }>();
 const snapshot = ref<Snapshot>(),

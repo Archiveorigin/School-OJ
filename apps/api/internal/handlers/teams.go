@@ -138,16 +138,18 @@ func (err *teamContentMutationError) Error() string {
 }
 
 type teamContestRankingCell struct {
-	Pending        bool       `json:"pending"`
-	ProblemID      uint       `json:"problem_id"`
-	Status         string     `json:"status"`
-	Attempts       int        `json:"attempts"`
-	WrongAttempts  int        `json:"wrong_attempts"`
-	BestScore      int        `json:"best_score"`
-	MaxScore       int        `json:"max_score"`
-	ElapsedMinutes int        `json:"elapsed_minutes"`
-	SolvedAt       *time.Time `json:"solved_at,omitempty"`
-	Fastest        bool       `json:"fastest"`
+	SubmissionCount int        `json:"submission_count"`
+	RankingTime     *time.Time `json:"ranking_time,omitempty"`
+	Pending         bool       `json:"pending"`
+	ProblemID       uint       `json:"problem_id"`
+	Status          string     `json:"status"`
+	Attempts        int        `json:"attempts"`
+	WrongAttempts   int        `json:"wrong_attempts"`
+	BestScore       int        `json:"best_score"`
+	MaxScore        int        `json:"max_score"`
+	ElapsedMinutes  int        `json:"elapsed_minutes"`
+	SolvedAt        *time.Time `json:"solved_at,omitempty"`
+	Fastest         bool       `json:"fastest"`
 }
 
 type teamContestRankingRow struct {
@@ -1060,7 +1062,7 @@ func (s Server) teamContestRanking(c *gin.Context) {
 	if !ok || !s.requireTeamMember(c, user, team) {
 		return
 	}
-	_, contestStatus := teamContestWindow(contest, time.Now())
+
 	canOrganize := s.canManageEventPaper(user, eventPaper{kind: "contest", id: contest.ID, contest: contest})
 	canManage := s.canManageTeam(user, team)
 	if contest.ScoringRule == "oi" && !canOrganize && !canManage {
@@ -1079,7 +1081,7 @@ func (s Server) teamContestRanking(c *gin.Context) {
 	endsAt, _ := teamContestWindow(contest, time.Now())
 	cutoff := time.Date(9999, 12, 31, 23, 59, 59, 0, time.UTC)
 	frozen := false
-	if !canOrganize && !canManage && contest.FreezeEnabled && endsAt != nil && contestStatus == models.TeamContestRunning {
+	if contestFreezeHeld(contest, user, time.Now()) && endsAt != nil {
 		freezeAt := endsAt.Add(-time.Duration(contest.FreezeDurationMinutes) * time.Minute)
 		if !time.Now().Before(freezeAt) {
 			cutoff = freezeAt
@@ -1136,7 +1138,7 @@ func (s Server) teamContestRanking(c *gin.Context) {
 	}
 	c.Header("Cache-Control", "private, no-store")
 	c.JSON(http.StatusOK, gin.H{
-		"final_ready":             rankingIsFinal(paper.lifecycle(time.Now()), checks),
+		"final_ready":             !frozen && rankingIsFinal(paper.lifecycle(time.Now()), checks),
 		"contest":                 contest,
 		"lifecycle":               (eventPaper{kind: "contest", id: contest.ID, contest: contest}).lifecycle(time.Now()),
 		"now":                     time.Now(),
@@ -1235,6 +1237,7 @@ func buildTeamContestRanking(users []models.User, links []models.TeamContestProb
 			if aggregate, ok := byUserProblem[[2]uint{member.ID, link.ProblemID}]; ok {
 				cell.Status = aggregate.LatestStatus
 				cell.Attempts = aggregate.Attempts
+				cell.SubmissionCount = aggregate.SubmissionCount
 				cell.WrongAttempts = aggregate.WrongAttempts
 				cell.BestScore = aggregate.BestScore
 				if scoringRule == "oi" {
@@ -1258,6 +1261,7 @@ func buildTeamContestRanking(users []models.User, links []models.TeamContestProb
 				if scoringRule == "ioi" && !aggregate.EffectiveAt.IsZero() {
 					last = aggregate.EffectiveAt
 				}
+				cell.RankingTime = &last
 				if row.LastSubmission == nil || last.After(*row.LastSubmission) {
 					row.LastSubmission = &last
 				}

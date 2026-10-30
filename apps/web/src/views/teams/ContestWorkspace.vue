@@ -141,7 +141,7 @@
           "
         >
           <section class="contest-scoreboard">
-            <ContestReplay kind="contest" :event-id="contestID" :can-export="Boolean(detail.can_organize)" />
+            <ContestReplay v-if="auth.can('event:review') && ['closed', 'completed'].includes(detail.lifecycle)" kind="contest" :event-id="contestID" />
 <LeaderboardBoard
               :data="scoreboardData"
               :loading="rankingLoading"
@@ -160,9 +160,8 @@
           <el-table
             :data="records.filter((r: any) => r.user_id === auth.user?.id)"
             ><el-table-column prop="id" label="提交编号" /><el-table-column
-              prop="status"
               label="状态"
-            /><el-table-column label="时间"
+            ><template #default="{row}"><SubmissionStatusMark :status="row.status" compact /></template></el-table-column><el-table-column label="时间"
               ><template #default="{ row }">{{
                 dateText(row.created_at)
               }}</template></el-table-column
@@ -294,6 +293,7 @@
 </template>
 
 <script setup lang="ts">
+import SubmissionStatusMark from '../../components/SubmissionStatusMark.vue'
 import ContestReplay from '../../components/events/ContestReplay.vue'
 const announcements = ref<InstanceType<typeof EventAnnouncements>>()
 const announcementPublisher = ref<InstanceType<typeof EventAnnouncementPublisher>>()
@@ -576,6 +576,7 @@ async function openSubmit() {
   submitVisible.value = true
 }
 async function submitSolution() {
+  if (submitting.value) return
   if (!source.value.trim()) return ElMessage.warning('请输入代码')
   submitting.value = true
   try {
@@ -590,6 +591,7 @@ async function submitSolution() {
           }
         }
       )
+    submitVisible.value = false
     composer.value?.clearDraft()
     liveStatus.value = data
     stream?.close()

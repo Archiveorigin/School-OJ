@@ -86,6 +86,10 @@ func seedRankingBrowserCases(t *testing.T, f *examTestFixture) []rankingBrowserC
 			queued := rankingSubmission(t, f, p, f.peer, models.StatusQueued, 0, start.Add(55*time.Minute))
 			second := rankingSubmission(t, f, p, f.peer, models.StatusWrongAnswer, 50, start.Add(20*time.Minute))
 			f.s.DB.Model(&second).Updates(map[string]any{"problem_id": problems[1].ID, "problem_version_id": versions[1].ID})
+			if kind == "contest" && rule == "acm" {
+				late := rankingSubmission(t, f, p, f.peer, models.StatusAccepted, 100, start.Add(56*time.Minute))
+				f.s.DB.Model(&late).Updates(map[string]any{"problem_id": problems[1].ID, "problem_version_id": versions[1].ID})
+			}
 			result = append(result, rankingBrowserCase{kind, p.id, rule, queued.ID})
 		}
 	}

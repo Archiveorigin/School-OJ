@@ -1,3 +1,4 @@
+import { createPinia, setActivePinia } from 'pinia'
 import { flushPromises, mount } from '@vue/test-utils'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import ExamRanking from '../src/views/exam/ExamRanking.vue'
@@ -10,7 +11,7 @@ vi.mock('../src/api/client', () => ({ generatedApi: { examRanking: vi.fn(), getE
 vi.mock('../src/components/LeaderboardBoard.vue', () => ({ default: { name: 'LeaderboardBoard', emits: ['refresh'], template: '<button class="manual-refresh" @click="$emit(\'refresh\')">刷新榜单</button>' } }))
 vi.mock('../src/api/modules/events', async importOriginal => ({ ...await importOriginal<any>(), saveDownload: vi.fn() }))
 
-beforeEach(() => vi.useFakeTimers())
+beforeEach(() => { vi.useFakeTimers();setActivePinia(createPinia()) })
 afterEach(() => { vi.useRealTimers(); vi.clearAllMocks() })
 const snapshot = (judging: number) => ({
   title: '截止后的成绩', lifecycle: 'closed', scoring_rule: 'acm', generated_at: new Date().toISOString(),

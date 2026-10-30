@@ -372,6 +372,7 @@ async function openSubmit(link: any) {
 }
 
 async function submitSolution() {
+  if (submitting.value) return
   if (!selectedLink.value || !source.value.trim()) {
     ElMessage.warning('请输入代码')
     return
@@ -383,6 +384,7 @@ async function submitSolution() {
       language: submissionLanguage(language.value),
       source_code: source.value
     } })
+    submitVisible.value = false
     composerRef.value?.clearDraft()
     liveStatus.value = data
     submissionStreams.watch(data.id, state => { liveStatus.value = state }, async () => {

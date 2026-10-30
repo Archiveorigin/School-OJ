@@ -10,6 +10,8 @@ import (
 
 	"github.com/gin-gonic/gin"
 	"gorm.io/gorm"
+	"school-oj/apps/api/internal/authz"
+	"school-oj/apps/api/internal/middleware"
 	"school-oj/apps/api/internal/models"
 )
 
@@ -187,7 +189,9 @@ func (s Server) buildEventStandings(p eventPaper, now time.Time) (eventStandings
 		result.Rows, _, _, err = s.examRankingRows(item, students, result.ScoringRule, nil)
 		return result, err
 	}
-	links, users, err := s.loadContestRankingParticipants(p.contest)
+	all := p.contest
+	all.RankingUserIDs = nil
+	links, users, err := s.loadContestRankingParticipants(all)
 	if err != nil {
 		return result, err
 	}
@@ -207,12 +211,15 @@ func (s Server) buildEventStandings(p eventPaper, now time.Time) (eventStandings
 	result.Title = p.contest.Title
 	result.ScoringRule, _ = parseScoringRule(p.contest.ScoringRule)
 	rows := buildTeamContestRanking(users, links, aggregates, start, result.ScoringRule)
+	if err := markContestRankingRows(rows, p.contest); err != nil {
+		return result, err
+	}
 	for _, link := range links {
 		result.Problems = append(result.Problems, examRankingProblem{link.ProblemID, link.Label, link.Problem.DisplayCode, link.Problem.Title, 100})
 	}
 	for _, row := range rows {
 		converted := examRankingRow{
-			Rank: row.Rank, UserID: row.UserID, Name: row.Name, TotalScore: row.TotalScore, MaxScore: row.MaxScore,
+			Unranked: row.Unranked, Rank: row.Rank, UserID: row.UserID, Name: row.Name, TotalScore: row.TotalScore, MaxScore: row.MaxScore,
 			Solved: row.Solved, PenaltyMinutes: row.PenaltyMinutes, SubmissionCount: row.SubmissionCount,
 			LastSubmission: row.LastSubmission, Problems: []examRankingCell{},
 		}
@@ -241,6 +248,9 @@ func (s Server) getEventRanking(c *gin.Context) {
 	if !ok {
 		return
 	}
+	if rejectHeldContestStandings(c, p) {
+		return
+	}
 	data, err := s.eventStandingsSnapshot(p, false)
 	if err != nil {
 		eventError(c, err)
@@ -259,6 +269,9 @@ func (s Server) exportEventRanking(c *gin.Context) {
 }
 
 func (s Server) exportEventRankingForPaper(c *gin.Context, p eventPaper, format string) {
+	if rejectHeldContestStandings(c, p) {
+		return
+	}
 	if format == "json" {
 		s.exportContestReplay(c, p)
 		return
@@ -287,4 +300,21 @@ func (s Server) exportEventRankingForPaper(c *gin.Context, p eventPaper, format 
 	c.Header("Cache-Control", "private, no-store")
 	c.Header("Content-Disposition", fmt.Sprintf("attachment; filename=\"standings-%d.%s\"", p.id, format))
 	c.Data(http.StatusOK, contentType, body)
+}
+
+// Frozen final standings are released to non-admin viewers only by completion.
+func contestFreezeHeld(contest models.TeamContest, user models.User, now time.Time) bool {
+	if !contest.FreezeEnabled || contest.CompletedAt != nil || authz.Has(user, authz.EventReview) {
+		return false
+	}
+	end := contestEndAt(contest)
+	return end != nil && !now.Before(end.Add(-time.Duration(contest.FreezeDurationMinutes)*time.Minute))
+}
+func rejectHeldContestStandings(c *gin.Context, p eventPaper) bool {
+	user, _ := middleware.CurrentUser(c)
+	if p.kind == "contest" && contestFreezeHeld(p.contest, user, time.Now()) {
+		eventError(c, eventFail(403, "本场最终榜单由系统管理员确认完结后公开"))
+		return true
+	}
+	return false
 }

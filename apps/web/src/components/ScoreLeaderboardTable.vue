@@ -69,6 +69,7 @@
           :key="row.id"
           class="score-row native-stripe-row"
           :data-award="awardTier(row)"
+          :data-reveal-focus="data.revealUserId === row.id"
           role="row"
         >
           <div class="score-metrics score-row-metrics">

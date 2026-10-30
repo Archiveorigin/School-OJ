@@ -1,5 +1,4 @@
 import { adaptTeamContestRanking } from "./adapters";
-import { sortLeaderboardRows } from "./sorting";
 import type { LeaderboardData } from "./types";
 export type ReplayPacket = {
   schema_version: 1;
@@ -33,27 +32,37 @@ export function parseReplay(text: string): ReplayPacket {
     throw new Error("滚榜参赛者或题目数据不完整");
   return data;
 }
-export function replayFrames(packet: ReplayPacket): LeaderboardData[] {
+// Materialize only the displayed standings; memory stays proportional to one board.
+export function createContestReplay(packet: ReplayPacket) {
   const rows = structuredClone(packet.initial_rows);
-  const hidden = new Set<string>();
-  for (const row of rows)
+  const final = new Map(packet.final_rows.map((row) => [row.user_id, row]));
+  const byId = new Map(rows.map((row) => [row.user_id, row]));
+  const pending = new Map<number, Map<number, any>>();
+  for (const row of rows) {
+    const target = final.get(row.user_id);
+    const changes = new Map<number, any>();
     for (const cell of row.problems) {
-      const target = packet.final_rows
-        .find((r) => r.user_id === row.user_id)
-        ?.problems.find((c: any) => c.problem_id === cell.problem_id);
-      if (
-        target &&
-        cell.status !== "accepted" &&
-        (cell.best_score || 0) < 100 &&
-        JSON.stringify(cell) !== JSON.stringify(target)
-      )
-        hidden.add(`${row.user_id}:${cell.problem_id}`);
+      const end = target.problems.find(
+        (c: any) => c.problem_id === cell.problem_id,
+      );
+      if (end && JSON.stringify(cell) !== JSON.stringify(end))
+        changes.set(cell.problem_id, end);
     }
-  const build = () => {
+    if (changes.size) pending.set(row.user_id, changes);
+  }
+  const total = [...pending.values()].reduce(
+    (sum, cells) => sum + cells.size,
+    0,
+  );
+  let step = 0;
+  let focus: { userId: number; problemId: number } | undefined;
+  const snapshot = (): LeaderboardData => {
     const visible = rows.map((row) => ({
       ...row,
       problems: row.problems.map((cell: any) =>
-        hidden.has(`${row.user_id}:${cell.problem_id}`)
+        pending.get(row.user_id)?.has(cell.problem_id) &&
+        cell.status !== "accepted" &&
+        (cell.best_score || 0) < 100
           ? { ...cell, status: "frozen" }
           : cell,
       ),
@@ -61,10 +70,13 @@ export function replayFrames(packet: ReplayPacket): LeaderboardData[] {
     const board = adaptTeamContestRanking({
       contest: packet.contest,
       problems: packet.problems,
-      rows: visible,
+      rows: step === total ? packet.final_rows : visible,
       final_ready: true,
     });
-    if (packet.freeze_at && packet.contest.starts_at)
+    board.replaying = true;
+    board.revealUserId = focus?.userId;
+    board.revealProblemId = focus?.problemId;
+    if (step !== total && packet.freeze_at && packet.contest.starts_at)
       board.currentTimeSeconds = Math.max(
         0,
         Math.min(
@@ -74,72 +86,89 @@ export function replayFrames(packet: ReplayPacket): LeaderboardData[] {
             1000,
         ),
       );
-    board.replaying = true;
-    board.rows = sortLeaderboardRows(
-      board.rows,
-      board.scoringRule,
-      "performance",
-    );
-    let rank = 0;
+    const tieTime = (id: number | string) => {
+      const raw = (step === total ? final : byId).get(Number(id));
+      const key = board.scoringRule === 'penalty' ? 'solved_at' : 'ranking_time';
+      const times = raw.problems.map((c: any) => Date.parse(c[key] || '')).filter(Number.isFinite);
+      return times.length ? Math.max(...times) : Infinity;
+    };
+    const compare = (a: typeof board.rows[number],b: typeof board.rows[number]) => {
+      const grouped = Number(Boolean(a.unranked))-Number(Boolean(b.unranked));
+      const performance = board.scoringRule === 'penalty' ? b.solved-a.solved || a.metric-b.metric : b.metric-a.metric || b.solved-a.solved;
+      if (grouped || performance) return grouped || performance;
+      if (packet.contest.scoring_rule === 'oi') return 0;
+      const left=tieTime(a.id),right=tieTime(b.id);
+      return left===right ? 0 : left<right ? -1 : 1;
+    };
+    board.rows.sort((a,b)=>compare(a,b) || (a.name===b.name ? Number(a.id)-Number(b.id) : a.name<b.name ? -1 : 1));
+    let count = 0,
+      rank = 0;
+    let prior: (typeof board.rows)[number] | undefined;
     for (const row of board.rows) {
-      if (!row.unranked) row.rank = ++rank;
-      else row.rank = 0;
+      if (row.unranked) {
+        row.rank = 0;
+        continue;
+      }
+      count++;
+      if (!prior || compare(prior,row) !== 0)
+        rank = count;
+      if (step !== total) row.rank = rank;
+      prior = row;
     }
-    board.participantCount = rank;
+    board.participantCount = count;
     return board;
   };
-  if (
-    rows.length *
-      (1 +
-        packet.final_rows.reduce(
-          (sum: number, r: any) => sum + r.problems.length,
-          0,
-        )) >
-    500000
-  )
-    throw new Error("数据包过大，请按分组导出滚榜");
-  const frames = [build()];
-  for (const target of [...packet.final_rows].reverse()) {
-    const row = rows.find((r) => r.user_id === target.user_id);
-    for (const finalCell of target.problems) {
-      const index = row.problems.findIndex(
-        (c: any) => c.problem_id === finalCell.problem_id,
-      );
-      if (
-        index < 0 ||
-        JSON.stringify(row.problems[index]) === JSON.stringify(finalCell)
-      )
-        continue;
-      hidden.delete(`${row.user_id}:${finalCell.problem_id}`);
-      row.problems[index] = structuredClone(finalCell);
+  return {
+    total,
+    get step() {
+      return step;
+    },
+    snapshot,
+    next(): LeaderboardData {
+      const current = snapshot();
+      // Start from the currently lowest remaining contestant, then recalculate
+      // their position after every cell, rather than using the final order.
+      const target = [...current.rows]
+        .reverse()
+        .find((row) => pending.has(Number(row.id)));
+      if (!target) return current;
+      const changes = pending.get(Number(target.id))!;
+      const [problemId, cell] = changes.entries().next().value!;
+      const row = byId.get(Number(target.id));
+      row.problems[
+        row.problems.findIndex((c: any) => c.problem_id === problemId)
+      ] = structuredClone(cell);
+      changes.delete(problemId);
+      if (!changes.size) pending.delete(Number(target.id));
       row.solved = row.problems.filter(
         (c: any) => c.solved || c.status === "accepted" || c.best_score >= 100,
       ).length;
       row.total_score = row.problems.reduce(
-        (s: number, c: any) => s + (c.best_score || 0),
+        (sum: number, c: any) => sum + (c.best_score || 0),
         0,
       );
       row.penalty_minutes = row.problems.reduce(
-        (s: number, c: any) =>
-          s +
+        (sum: number, c: any) =>
+          sum +
           (c.solved || c.status === "accepted"
             ? (c.elapsed_minutes || 0) + (c.wrong_attempts || 0) * 20
             : 0),
         0,
       );
       row.submission_count = row.problems.reduce(
-        (s: number, c: any) => s + (c.attempts || 0),
+        (sum: number, c: any) => sum + (c.submission_count ?? c.attempts ?? 0),
         0,
       );
-      frames.push(build());
-    }
-  }
-  frames[frames.length - 1] = adaptTeamContestRanking({
-    contest: packet.contest,
-    problems: packet.problems,
-    rows: packet.final_rows,
-    final_ready: true,
-  });
-  frames[frames.length - 1].replaying = true;
+      focus = { userId: Number(target.id), problemId };
+      step++;
+      return snapshot();
+    },
+  };
+}
+// Small fixture helper. The interactive screen uses the bounded engine above.
+export function replayFrames(packet: ReplayPacket): LeaderboardData[] {
+  const replay = createContestReplay(packet);
+  const frames = [replay.snapshot()];
+  while (replay.step < replay.total) frames.push(replay.next());
   return frames;
 }

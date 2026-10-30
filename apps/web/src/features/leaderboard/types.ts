@@ -41,6 +41,8 @@ export interface LeaderboardRow {
 }
 
 export interface LeaderboardData {
+ revealUserId?: number;
+ revealProblemId?: number;
  replaying?: boolean;
   scoringRule: LeaderboardScoringRule;
   title: string;

@@ -17,7 +17,7 @@
       <slot name="options" />
       <div class="composer-actions">
         <el-button @click="editorRef?.format()">自动格式化</el-button>
-        <el-button type="primary" :loading="submitting" :disabled="disabled" @click="submit">{{ submitLabel }}</el-button>
+        <el-button type="primary" :loading="submitting" :disabled="disabled || submitting" @click="submit">{{ submitLabel }}</el-button>
       </div>
     </div>
     <CodeEditor
@@ -104,6 +104,7 @@ function clearDraft() {
 }
 
 function submit() {
+  if (props.submitting || props.disabled) return
   flushDraft()
   emit('submit')
 }

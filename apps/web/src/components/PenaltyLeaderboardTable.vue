@@ -78,6 +78,7 @@
           :key="row.id"
           class="penalty-row native-stripe-row"
           :data-award="awardTier(row)"
+          :data-reveal-focus="data.revealUserId === row.id"
           role="row"
         >
           <div class="penalty-metrics penalty-row-metrics">

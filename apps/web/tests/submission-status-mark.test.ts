@@ -1,5 +1,6 @@
 import { mount } from '@vue/test-utils'
 import { describe, expect, it } from 'vitest'
+import { shortVerdicts } from '../src/features/submissions/presentation'
 import SubmissionStatusMark from '../src/components/SubmissionStatusMark.vue'
 
 describe('SubmissionStatusMark', () => {
@@ -11,7 +12,7 @@ describe('SubmissionStatusMark', () => {
 
     expect(svg.attributes('role')).toBe('img')
     expect(svg.attributes('aria-label')).toBe('通过')
-    expect(wrapper.text()).toContain('Accepted')
+    expect(wrapper.text()).toContain('AC')
     expect(wrapper.get('rect').attributes('fill')).toBe('#22c55e')
   })
 
@@ -26,8 +27,8 @@ describe('SubmissionStatusMark', () => {
   ])('renders the terminal failure %s as Unaccepted', (status) => {
     const wrapper = mount(SubmissionStatusMark, { props: { status } })
 
-    expect(wrapper.get('svg').attributes('aria-label')).toBe('未通过')
-    expect(wrapper.text()).toContain('Unaccepted')
+    expect(wrapper.get('svg').attributes('aria-label')).not.toBe('评测中')
+    expect(wrapper.get('text').text()).toBe(shortVerdicts[status])
     expect(wrapper.get('rect').attributes('fill')).toBe('#ef4444')
   })
 
@@ -52,4 +53,10 @@ describe('SubmissionStatusMark', () => {
     expect(wrapper.text()).not.toContain('Unaccepted')
     expect(wrapper.get('rect').attributes('fill')).toBe('#d97706')
   })
+})
+
+it.each([['accepted','AC'],['wrong_answer','WA'],['compile_error','CE'],['time_limit','TLE'],['memory_limit','MLE'],['runtime_error','RE']])('shares compact SVG result %s', (status,code)=>{
+ const wrapper=mount(SubmissionStatusMark,{props:{status,compact:true}})
+ expect(wrapper.get('text').text()).toBe(code)
+ expect(wrapper.get('title').text().length).toBeGreaterThan(0)
 })

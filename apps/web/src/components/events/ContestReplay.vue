@@ -1,136 +1,169 @@
 <template>
-  <el-button @click="open = true">赛后滚榜</el-button>
+  <el-button @click="start">赛后滚榜</el-button>
   <el-dialog
     v-model="open"
     title="赛后滚榜"
-    width="min(1500px, calc(100vw - 24px))"
-    @closed="stop"
+    fullscreen
+    append-to-body
+    @closed="reset"
   >
     <div class="replay-tools">
-      <el-button v-if="canExport" :loading="busy" @click="download"
-        >导出滚榜数据包</el-button
-      ><el-button @click="fileInput?.click()">导入离线数据包</el-button
-      ><input
-        ref="fileInput"
-        hidden
-        type="file"
-        accept="application/json,.json"
-        @change="importFile"
-      /><el-button
-        :disabled="!frames.length"
-        @click="
-          step = 0;
-          stop();
-        "
+      <el-button :loading="busy" @click="load">重新加载</el-button>
+      <el-button :disabled="!engine || busy" @click="restart"
         >从封榜开始</el-button
-      ><el-button :disabled="step >= frames.length - 1" @click="next"
+      >
+      <el-button
+        type="primary"
+        :disabled="!board || step >= total || moving || busy"
+        @click="next"
         >揭晓下一题</el-button
-      ><el-button
-        :disabled="!frames.length"
-        @click="playing ? stop() : play()"
-        >{{ playing ? "暂停" : "自动滚榜" }}</el-button
-      ><span>{{ step }} / {{ Math.max(0, frames.length - 1) }}</span>
+      >
+      <span role="status"
+        >{{ step }} / {{ total
+        }}{{ board && step === total ? " · 滚榜结束" : "" }}</span
+      >
     </div>
     <el-alert v-if="error" :title="error" type="error" :closable="false" />
     <p>
-      导出须等待比赛结束且所有评测完成。数据包包含封榜快照、最终过题情况与封榜后的提交事件，不包含源代码；导入后可离线逐题揭晓。
+      点击榜单或“揭晓下一题”逐题揭晓；比赛结束且评测完成后可用。选手最终榜单在管理员确认完结后公开。
     </p>
-    <LeaderboardBoard v-if="frames[step]" :data="frames[step]" />
+    <div class="replay-stage" :aria-busy="moving || busy" @click="clickBoard">
+      <LeaderboardBoard v-if="board" :data="board" @refresh="load" />
+      <el-skeleton v-else-if="busy" :rows="10" animated />
+    </div>
   </el-dialog>
 </template>
 <script setup lang="ts">
-import { ref, onUnmounted } from "vue";
+import { ref, shallowRef, onUnmounted, watch, nextTick } from "vue";
 import LeaderboardBoard from "../LeaderboardBoard.vue";
+import { useAuthStore } from "../../stores/auth";
 import { generatedApi } from "../../api/client";
-import {
-  eventPath,
-  saveDownload,
-  type EventKind,
-} from "../../api/modules/events";
+import { eventPath, type EventKind } from "../../api/modules/events";
 import { apiErrorMessage } from "../../api/errors";
-import { parseReplay, replayFrames } from "../../features/leaderboard/replay";
+import {
+  createContestReplay,
+  parseReplay,
+  type ReplayPacket,
+} from "../../features/leaderboard/replay";
 import type { LeaderboardData } from "../../features/leaderboard/types";
-const props = defineProps<{
-  kind: EventKind;
-  eventId: number;
-  canExport: boolean;
-}>();
-const fileInput = ref<HTMLInputElement>();
+const props = defineProps<{ kind: EventKind; eventId: number }>();
+const auth = useAuthStore();
 const open = ref(false),
   busy = ref(false),
   error = ref(""),
-  frames = ref<LeaderboardData[]>([]),
+  moving = ref(false),
   step = ref(0),
-  playing = ref(false);
-let timer: ReturnType<typeof setInterval> | undefined;
-function stop() {
-  clearInterval(timer);
-  playing.value = false;
+  total = ref(0);
+const board = shallowRef<LeaderboardData>();
+const engine = shallowRef<ReturnType<typeof createContestReplay>>();
+let packet: ReplayPacket | undefined,
+  generation = 0;
+let animationTimer: ReturnType<typeof setTimeout> | undefined;
+function reset() {
+  generation++;
+  clearTimeout(animationTimer);
+  moving.value = false;
+  busy.value = false;
+  board.value = undefined;
+  engine.value = undefined;
+  packet = undefined;
 }
-function next() {
-  if (step.value < frames.value.length - 1) step.value++;
-  else stop();
+function restart() {
+  if (!packet) return;
+  clearTimeout(animationTimer);
+  moving.value = false;
+  engine.value = createContestReplay(packet);
+  step.value = 0;
+  total.value = engine.value.total;
+  board.value = engine.value.snapshot();
 }
-function play() {
-  stop();
-  playing.value = true;
-  timer = setInterval(next, 1500);
+async function start() {
+  if (!auth.can("event:review")) return;
+  open.value = true;
+  await load();
 }
-onUnmounted(stop);
-async function download() {
-  stop();
+async function load() {
+  if (!auth.can("event:review") || busy.value) return;
+  const request = ++generation;
   busy.value = true;
   error.value = "";
+  board.value = undefined;
+  engine.value = undefined;
+  packet = undefined;
   try {
-    const { data } = await generatedApi.exportEventRanking<Blob>({
+    const { data } = await generatedApi.getContestReplay({
       path: eventPath(props.kind, props.eventId),
-      query: { format: "json" },
-      responseType: "blob",
     });
-    saveDownload(data, `contest-${props.eventId}-replay.json`);
-    frames.value = replayFrames(parseReplay(await data.text()));
-    step.value = 0;
-  } catch (e: any) {
-    if (e.response?.data instanceof Blob) {
-      try {
-        e.response.data = JSON.parse(await e.response.data.text());
-      } catch {
-        /* retain the transport error */
-      }
-    }
-    error.value = apiErrorMessage(e);
-  } finally {
-    busy.value = false;
-  }
-}
-async function importFile(e: Event) {
-  stop();
-  error.value = "";
-  try {
-    const file = (e.target as HTMLInputElement).files?.[0];
-    if (!file) return;
-    if (file.size > 32 * 1024 * 1024) throw new Error("数据包超过 32 MiB");
-    frames.value = replayFrames(parseReplay(await file.text()));
-    step.value = 0;
+    if (request !== generation) return;
+    packet = parseReplay(JSON.stringify(data));
+    restart();
   } catch (e) {
-    error.value = apiErrorMessage(e);
+    if (request === generation) error.value = apiErrorMessage(e);
+  } finally {
+    if (request === generation) busy.value = false;
   }
 }
+async function next() {
+  if (
+    !auth.can("event:review") ||
+    !engine.value ||
+    busy.value ||
+    moving.value ||
+    step.value >= total.value
+  )
+    return;
+  moving.value = true;
+  board.value = engine.value.next();
+  step.value = engine.value.step;
+  await nextTick();
+  document
+    .querySelector('.replay-stage [data-reveal-focus="true"]')
+    ?.scrollIntoView({
+      block: "nearest",
+      behavior: matchMedia("(prefers-reduced-motion: reduce)").matches
+        ? "instant"
+        : "smooth",
+    });
+  animationTimer = setTimeout(() => (moving.value = false), 750);
+}
+function clickBoard(event: MouseEvent) {
+  if (
+    !(event.target as HTMLElement).closest(
+      "button,input,select,label,a,.summary-overlay",
+    )
+  )
+    void next();
+}
+watch(
+  () => [props.kind, props.eventId],
+  () => {
+    open.value = false;
+    reset();
+  },
+);
+watch(
+  () => auth.can("event:review"),
+  (allowed) => {
+    if (!allowed) {
+      open.value = false;
+      reset();
+    }
+  },
+);
+onUnmounted(reset);
 </script>
 <style scoped>
 .replay-tools {
   display: flex;
-  align-items: center;
   gap: 12px;
   flex-wrap: wrap;
-}
-.replay-tools label {
-  display: flex;
-  gap: 8px;
   align-items: center;
-  max-width: 100%;
 }
-input {
-  max-width: 220px;
+.replay-stage {
+  cursor: pointer;
+}
+.replay-stage :deep([data-reveal-focus="true"]) {
+  outline: 2px solid var(--el-color-primary);
+  outline-offset: -2px;
 }
 </style>

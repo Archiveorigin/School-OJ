@@ -229,6 +229,7 @@ type examRankingCell struct {
 }
 
 type examRankingRow struct {
+	Unranked        bool              `json:"unranked,omitempty"`
 	Rank            int               `json:"rank"`
 	UserID          uint              `json:"user_id"`
 	Name            string            `json:"name"`

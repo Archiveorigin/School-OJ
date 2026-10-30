@@ -158,7 +158,8 @@ async function openSubmissionRecords() {
 }
 
 async function submit() {
-  if (!(await requireLogin())) return
+  if (submitting.value) return
+  if (!(await requireLogin()) || submitting.value) return
   if (!problem.value) return
   if (!source.value.trim()) {
     ElMessage.error('请输入或导入代码')
@@ -172,6 +173,7 @@ async function submit() {
       source_code: source.value,
       is_public: isPublic.value
     } })
+    submitVisible.value = false
     composerRef.value?.clearDraft()
     live.value = data
     ElMessage.success('提交已进入评测队列')

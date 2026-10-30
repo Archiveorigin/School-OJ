@@ -68,7 +68,7 @@ func TestContestRankingRosterDoesNotRestrictParticipation(t *testing.T) {
 	}
 	p, _ = loadEventPaper(f.s.DB, "contest", id, false)
 	standings, err := f.s.buildEventStandings(p, time.Now())
-	if err != nil || len(standings.Rows) != 1 || standings.Rows[0].UserID != f.teacher.ID {
+	if err != nil || len(standings.Rows) != 2 || standings.Rows[0].UserID != f.teacher.ID || !standings.Rows[1].Unranked || standings.Rows[1].Rank != 0 {
 		t.Fatalf("export roster differs: %v", err)
 	}
 	payload["revision"] = p.review().ReviewRevision

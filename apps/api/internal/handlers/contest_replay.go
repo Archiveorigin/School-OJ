@@ -3,11 +3,27 @@ package handlers
 import (
 	"github.com/gin-gonic/gin"
 	"gorm.io/datatypes"
+	"school-oj/apps/api/internal/authz"
+	"school-oj/apps/api/internal/middleware"
 	"school-oj/apps/api/internal/models"
+	"sort"
 	"time"
 )
 
+func (s Server) getContestReplay(c *gin.Context) {
+	p, ok := s.eventPaperByParams(c, true)
+	if !ok {
+		return
+	}
+	s.exportContestReplay(c, p)
+}
+
 func (s Server) exportContestReplay(c *gin.Context, p eventPaper) {
+	user, _ := middleware.CurrentUser(c)
+	if !authz.Has(user, authz.EventReview) {
+		eventError(c, eventFail(403, "仅系统管理员可进行赛后滚榜"))
+		return
+	}
 	if p.kind != "contest" {
 		eventError(c, eventFail(400, "滚榜数据包仅支持比赛"))
 		return
@@ -63,35 +79,14 @@ func (s Server) exportContestReplay(c *gin.Context, p eventPaper) {
 	}
 	initial := buildTeamContestRanking(users, links, before, start, contest.ScoringRule)
 	final := buildTeamContestRanking(users, links, after, start, contest.ScoringRule)
-	ids, selected, err := contestRankingIDs(contest.RankingUserIDs)
-	if err != nil {
+	if err := markContestRankingRows(initial, contest); err != nil {
 		eventError(c, err)
 		return
 	}
-	eligible := map[uint]bool{}
-	for _, id := range ids {
-		eligible[id] = true
+	if err := markContestRankingRows(final, contest); err != nil {
+		eventError(c, err)
+		return
 	}
-
-	mark := func(rows []teamContestRankingRow) {
-		count, priorRank, lastRank := 0, -1, 0
-		for i := range rows {
-			rows[i].Unranked = selected && !eligible[rows[i].UserID]
-			if rows[i].Unranked {
-				rows[i].Rank = 0
-				continue
-			}
-			count++
-			original := rows[i].Rank
-			if original != priorRank {
-				lastRank = count
-				priorRank = original
-			}
-			rows[i].Rank = lastRank
-		}
-	}
-	mark(initial)
-	mark(final)
 	problems := []gin.H{}
 	for _, link := range links {
 		problems = append(problems, gin.H{"problem_id": link.ProblemID, "label": link.Label, "title": link.Problem.Title, "score": 100})
@@ -109,6 +104,34 @@ func (s Server) exportContestReplay(c *gin.Context, p eventPaper) {
 		return
 	}
 	c.Header("Cache-Control", "private, no-store")
-	c.Header("Content-Disposition", "attachment; filename=contest-replay.json")
+
 	c.JSON(200, gin.H{"schema_version": 1, "kind": "contest-replay", "contest": contest, "problems": problems, "initial_rows": initial, "final_rows": final, "events": events, "freeze_at": freeze, "generated_at": time.Now()})
+}
+
+func markContestRankingRows(rows []teamContestRankingRow, contest models.TeamContest) error {
+	ids, selected, err := contestRankingIDs(contest.RankingUserIDs)
+	if err != nil {
+		return err
+	}
+	eligible := map[uint]bool{}
+	for _, id := range ids {
+		eligible[id] = true
+	}
+	count, priorRank, lastRank := 0, -1, 0
+	for i := range rows {
+		rows[i].Unranked = selected && !eligible[rows[i].UserID]
+		if rows[i].Unranked {
+			rows[i].Rank = 0
+			continue
+		}
+		count++
+		original := rows[i].Rank
+		if original != priorRank {
+			lastRank = count
+			priorRank = original
+		}
+		rows[i].Rank = lastRank
+	}
+	sort.SliceStable(rows, func(i, j int) bool { return !rows[i].Unranked && rows[j].Unranked })
+	return nil
 }
