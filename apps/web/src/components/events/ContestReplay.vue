@@ -132,7 +132,6 @@ async function focusSurface() {
   await nextTick();
   if (!open.value) return;
   surface.value?.focus({ preventScroll: true });
-  if (surface.value) surface.value.scrollTop = 0;
 }
 function hotkey(e: KeyboardEvent) {
   const target = e.target as HTMLElement;
@@ -181,7 +180,13 @@ onBeforeUnmount(reset);
 }
 </style>
 <style scoped>
+.replay-stage {
+  padding-bottom: 50dvh;
+}
 .replay-surface {
+  box-sizing: border-box;
+  height: calc(100dvh - 32px);
+  overflow: auto;
   outline: none;
 }
 .replay-surface:fullscreen {

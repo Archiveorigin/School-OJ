@@ -1314,6 +1314,9 @@ func buildTeamContestRanking(users []models.User, links []models.TeamContestProb
 		}
 	}
 	sort.SliceStable(rows, func(i, j int) bool {
+		if (rows[i].SubmissionCount > 0) != (rows[j].SubmissionCount > 0) {
+			return rows[i].SubmissionCount > 0
+		}
 		if cmp := compareRankingKeys(rows[i].rankingKey(), rows[j].rankingKey(), scoringRule); cmp != 0 {
 			return cmp < 0
 		}

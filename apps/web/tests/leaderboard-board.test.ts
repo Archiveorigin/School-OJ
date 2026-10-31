@@ -132,3 +132,20 @@ describe('LeaderboardBoard variants', () => {
     wrapper.unmount()
   })
 })
+
+
+it('places every submitter above non-submitters regardless of starred status', () => {
+  const rows = [
+    row({ id: 1, submissions: 0, unranked: false, metric: 0, solved: 0 }),
+    row({ id: 2, submissions: 1, unranked: true, metric: 0, solved: 0 }),
+    row({ id: 3, submissions: 0, unranked: true, metric: 0, solved: 0 }),
+    row({ id: 4, submissions: 1, unranked: false, metric: 0, solved: 0 }),
+  ];
+  for (const mode of ['published', 'performance'] as const) {
+    for (const rule of ['penalty', 'score'] as const) {
+      const sorted = sortLeaderboardRows(rows, rule, mode);
+      expect(sorted.slice(0, 2).map((r) => r.id)).toEqual([2, 4]);
+      expect(sorted.slice(2).map((r) => r.id)).toEqual([1, 3]);
+    }
+  }
+});

@@ -1,4 +1,4 @@
-import { ref, watch, nextTick, onBeforeUnmount, type Ref } from "vue";
+import { ref, watch, nextTick, onBeforeUnmount, onMounted } from "vue";
 import type { LeaderboardData, LeaderboardRow } from "./types";
 import { useRankDelta } from "./useRankDelta";
 import { useReducedMotion } from "./useReducedMotion";
@@ -23,20 +23,43 @@ export function useTableInteraction(
     [rows, () => data().replaying, () => data().replayRunId],
     () => (expandedId.value = undefined),
   );
+  function centerCurrentRow() {
+    if (!data().replaying) return;
+    const row = root.value?.querySelector<HTMLElement>(
+      '[data-reveal-focus="true"]',
+    );
+    const viewport = root.value?.closest<HTMLElement>("[data-replay-surface]");
+    if (!row || !viewport) return;
+    const bounds = row.getBoundingClientRect();
+    const view = viewport.getBoundingClientRect();
+    viewport.scrollTo({
+      top: Math.max(
+        0,
+        viewport.scrollTop +
+          bounds.top -
+          view.top -
+          viewport.clientTop +
+          bounds.height / 2 -
+          viewport.clientHeight / 2,
+      ),
+      behavior: reduced.value ? "instant" : "smooth",
+    });
+  }
   watch(
     () => [data().revealUserId, data().revealProblemId, data().replayStep],
     async () => {
-      if (!data().replaying || data().revealUserId === undefined) return;
       await nextTick();
-      root.value
-        ?.querySelector<HTMLElement>('[data-reveal-focus="true"]')
-        ?.scrollIntoView?.({
-          block: "nearest",
-          inline: "nearest",
-          behavior: reduced.value ? "instant" : "smooth",
-        });
+      centerCurrentRow();
     },
     { immediate: true, flush: "post" },
   );
+  onMounted(() => {
+    window.addEventListener("resize", centerCurrentRow);
+    root.value?.addEventListener("transitionend", centerCurrentRow);
+  });
+  onBeforeUnmount(() => {
+    window.removeEventListener("resize", centerCurrentRow);
+    root.value?.removeEventListener("transitionend", centerCurrentRow);
+  });
   return { root, expandedId, instanceId, deltas, toggleRow };
 }

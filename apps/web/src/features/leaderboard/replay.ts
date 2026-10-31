@@ -130,6 +130,7 @@ export function createContestReplay(packet: ReplayPacket) {
       if (step === 0 && step !== total)
         board.rows.sort(
           (a, b) =>
+            Number(participated(b.id)) - Number(participated(a.id)) ||
             (board.scoringRule === "penalty"
               ? b.solved - a.solved || a.metric - b.metric
               : b.metric - a.metric || b.solved - a.solved) ||
@@ -169,8 +170,8 @@ export function createContestReplay(packet: ReplayPacket) {
     };
     board.rows.sort(
       (a, b) =>
-        compare(a, b) ||
         Number(participated(b.id)) - Number(participated(a.id)) ||
+        compare(a, b) ||
         (a.name === b.name
           ? Number(a.id) - Number(b.id)
           : a.name < b.name

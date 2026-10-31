@@ -115,3 +115,26 @@ func TestStarredRankingPreservesPerformanceOrder(t *testing.T) {
 		t.Fatalf("incorrect official ranks: %+v", rows)
 	}
 }
+
+func TestRankingSubmittersBeforeNonSubmittersIncludingStarred(t *testing.T) {
+	start := time.Date(2026, 10, 31, 9, 0, 0, 0, time.UTC)
+	users := []models.User{{ID: 1, Name: "A"}, {ID: 2, Name: "B"}, {ID: 3, Name: "C"}, {ID: 4, Name: "D"}}
+	links := []models.TeamContestProblem{{ProblemID: 11}}
+	aggregates := []teamContestCellAggregate{
+		{UserID: 2, ProblemID: 11, SubmissionCount: 1, Attempts: 1, LatestStatus: string(models.StatusWrongAnswer), LastSubmission: start.Add(time.Minute)},
+		{UserID: 4, ProblemID: 11, SubmissionCount: 1, Attempts: 1, LatestStatus: string(models.StatusWrongAnswer), LastSubmission: start.Add(time.Minute)},
+	}
+	for _, rule := range []string{"acm", "oi", "ioi"} {
+		rows := buildTeamContestRanking(users, links, aggregates, start, rule)
+		contest := models.TeamContest{}
+		contest.RankingUserIDs = []byte(`[1,4]`)
+		if err := markContestRankingRows(rows, contest); err != nil {
+			t.Fatal(err)
+		}
+		for i, id := range []uint{2, 4, 1, 3} {
+			if rows[i].UserID != id {
+				t.Fatalf("%s order: %+v", rule, rows)
+			}
+		}
+	}
+}

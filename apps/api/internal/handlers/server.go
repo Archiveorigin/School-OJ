@@ -3922,6 +3922,9 @@ func sortExamRankingRows(rows []examRankingRow, scoringRule string) {
 		scoringRule = "acm"
 	}
 	sort.SliceStable(rows, func(i, j int) bool {
+		if (rows[i].SubmissionCount > 0) != (rows[j].SubmissionCount > 0) {
+			return rows[i].SubmissionCount > 0
+		}
 		left, right := rows[i], rows[j]
 		if cmp := compareRankingKeys(left.rankingKey(), right.rankingKey(), scoringRule); cmp != 0 {
 			return cmp < 0
