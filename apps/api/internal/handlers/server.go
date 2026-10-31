@@ -3894,25 +3894,25 @@ func isCompletedPenaltyFailure(status models.SubmissionStatus) bool {
 }
 
 func markExamFastestCells(rows []examRankingRow) {
-	fastestByProblem := make(map[uint]time.Time)
-	for _, row := range rows {
-		for _, cell := range row.Problems {
+	winners := map[uint]struct{ row, cell int }{}
+	for i := range rows {
+		for j := range rows[i].Problems {
+			cell := &rows[i].Problems[j]
+			cell.Fastest = false
 			if cell.firstAccepted == nil {
 				continue
 			}
-			if fastest, exists := fastestByProblem[cell.ProblemID]; !exists || cell.firstAccepted.Before(fastest) {
-				fastestByProblem[cell.ProblemID] = *cell.firstAccepted
+			prior, ok := winners[cell.ProblemID]
+			if !ok || cell.firstAccepted.Before(*rows[prior.row].Problems[prior.cell].firstAccepted) ||
+				(cell.firstAccepted.Equal(*rows[prior.row].Problems[prior.cell].firstAccepted) && rows[i].UserID < rows[prior.row].UserID) {
+				winners[cell.ProblemID] = struct{ row, cell int }{i, j}
 			}
 		}
 	}
-	for rowIndex := range rows {
-		for cellIndex := range rows[rowIndex].Problems {
-			cell := &rows[rowIndex].Problems[cellIndex]
-			if cell.firstAccepted != nil && cell.firstAccepted.Equal(fastestByProblem[cell.ProblemID]) {
-				cell.Fastest = true
-			}
-		}
+	for _, winner := range winners {
+		rows[winner.row].Problems[winner.cell].Fastest = true
 	}
+
 }
 
 func sortExamRankingRows(rows []examRankingRow, scoringRule string) {

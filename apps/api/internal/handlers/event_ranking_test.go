@@ -6,6 +6,8 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 	"time"
@@ -72,6 +74,7 @@ func readStandings(t *testing.T, f *examTestFixture, base string) eventStandings
 }
 
 func TestEventStandingsScoringAndExports(t *testing.T) {
+	requireOfflineRanking(t)
 	for _, kind := range []string{"exam", "contest"} {
 		for _, rule := range []string{"acm", "oi", "ioi"} {
 			t.Run(kind+"/"+rule, func(t *testing.T) {
@@ -119,12 +122,12 @@ func TestEventStandingsScoringAndExports(t *testing.T) {
 						t.Fatal("export must not be cached")
 					}
 					if format == "html" {
-						if !strings.Contains(response.Body.String(), "待审核") {
+						if !strings.Contains(response.Body.String(), `"lifecycle":"closed"`) {
 							t.Fatal("missing state/scoring metadata")
 						}
 					} else {
 						files := unzipRanking(t, response.Body.Bytes())
-						if !strings.Contains(files["xl/worksheets/sheet1.xml"], "待审核") || files["xl/styles.xml"] == "" {
+						if !strings.Contains(files["xl/worksheets/sheet1.xml"], "通过题数") || files["xl/styles.xml"] == "" {
 							t.Fatal("missing styled ranking sheet")
 						}
 					}
@@ -165,7 +168,7 @@ func TestEventStandingsScoringAndExports(t *testing.T) {
 				assertStatus(t, eventReviewRequest(t, f, base, kind, p.id, &f.admin, "complete"), 200)
 				final := f.request("GET", base+"/ranking/export?format=html", &f.admin, nil)
 				assertStatus(t, final, 200)
-				if !strings.Contains(final.Body.String(), "已确认") {
+				if !strings.Contains(final.Body.String(), `"lifecycle":"completed"`) {
 					t.Fatal("final export not distinguished from review copy")
 				}
 				f.s.DB.Model(p.model()).Update("deleted_at", time.Now())
@@ -218,7 +221,8 @@ func unzipRanking(t *testing.T, body []byte) map[string]string {
 	return files
 }
 
-func TestRankingExportEscapesNamesAndPreservesIDs(t *testing.T) {
+func TestRankingExportEscapesNamesAndKeepsOnlySummaryColumns(t *testing.T) {
+	requireOfflineRanking(t)
 	data := eventStandings{
 		Kind: "exam", Title: `<img src=x onerror=alert(1)>`, ScoringRule: "acm", Lifecycle: "closed",
 		Rows: []examRankingRow{{Rank: 1, UserID: 7, Name: "=HYPERLINK(\"http://bad\")", studentNo: "000123"}},
@@ -232,7 +236,112 @@ func TestRankingExportEscapesNamesAndPreservesIDs(t *testing.T) {
 		t.Fatal(err)
 	}
 	sheet := unzipRanking(t, body)["xl/worksheets/sheet1.xml"]
-	if strings.Contains(sheet, "<f>") || !strings.Contains(sheet, "000123") || !strings.Contains(sheet, `state="frozen"`) {
-		t.Fatal("unsafe names, lost ID formatting, or missing frozen headers")
+	if strings.Contains(sheet, "<f>") || strings.Contains(sheet, "000123") || strings.Contains(sheet, "E1") || !strings.Contains(sheet, `state="frozen"`) {
+		t.Fatal("unsafe names, unexpected columns, or missing frozen headers")
+	}
+}
+
+func TestRankingExportTitleAndFinalTimeline(t *testing.T) {
+	requireOfflineRanking(t)
+	start := time.Date(2026, 10, 31, 9, 0, 0, 0, time.UTC)
+	end := start.Add(2 * time.Hour)
+	data := eventStandings{Title: "秋季程序设计赛", Kind: "contest", ScoringRule: "acm", Lifecycle: "completed", StartsAt: &start, EndsAt: &end}
+	body, err := renderStandingsHTML(data)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, text := range []string{`"title":"秋季程序设计赛"`, `"starts_at":"2026-10-31T09:00:00Z"`, `"ends_at":"2026-10-31T11:00:00Z"`, "scoreboard-core", `"lifecycle":"completed"`} {
+		if !strings.Contains(string(body), text) {
+			t.Fatalf("missing %s", text)
+		}
+	}
+	if rankingExportName("秋季程序设计赛", "xlsx") != "秋季程序设计赛.xlsx" {
+		t.Fatal("title filename lost")
+	}
+	if strings.ContainsAny(rankingExportDisposition("坏\r\n标题/测试", "html"), "\r\n") {
+		t.Fatal("unsafe disposition")
+	}
+}
+
+func TestRankingExportOfflineFixture(t *testing.T) {
+	requireOfflineRanking(t)
+	start := time.Date(2026, 10, 31, 9, 0, 0, 0, time.UTC)
+	end := start.Add(2 * time.Hour)
+	data := eventStandings{Kind: "contest", Title: "秋季程序设计赛", ScoringRule: "acm", Lifecycle: "completed", StartsAt: &start, EndsAt: &end,
+		Problems: []examRankingProblem{{ProblemID: 1, Label: "A", Title: "求和", Score: 100}},
+		Rows: []examRankingRow{
+			{UserID: 1, Rank: 0, Unranked: true, Name: "打星选手", Solved: 1, PenaltyMinutes: 12, SubmissionCount: 1, Problems: []examRankingCell{{ProblemID: 1, Status: "accepted", Attempts: 1, ElapsedMinutes: 12, Fastest: true}}},
+			{UserID: 2, Rank: 1, Name: "=公式安全", Solved: 1, PenaltyMinutes: 40, SubmissionCount: 2, Problems: []examRankingCell{{ProblemID: 1, Status: "accepted", Attempts: 2, ElapsedMinutes: 20, WrongAttempts: 1}}},
+			{UserID: 3, Rank: 2, Name: "普通选手", SubmissionCount: 1, Problems: []examRankingCell{{ProblemID: 1, Status: "wrong_answer", Attempts: 1}}},
+			{UserID: 4, Rank: 2, Name: "未提交", Problems: []examRankingCell{{ProblemID: 1}}},
+		}}
+	html, err := renderStandingsHTML(data)
+	if err != nil {
+		t.Fatal(err)
+	}
+	xlsx, err := renderStandingsXLSX(data)
+	if err != nil {
+		t.Fatal(err)
+	}
+	sheet := unzipRanking(t, xlsx)["xl/worksheets/sheet1.xml"]
+	for _, text := range []string{"名次", "参赛者", "通过题数", "罚时 / 分钟"} {
+		if !strings.Contains(sheet, text) {
+			t.Fatal(text)
+		}
+	}
+	if strings.Contains(sheet, `r="E`) || strings.Contains(sheet, "<f>") {
+		t.Fatal("unexpected extra data or formula")
+	}
+	if dir := os.Getenv("OJ_EXPORT_QA_DIR"); dir != "" {
+		if err := os.MkdirAll(dir, 0755); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(filepath.Join(dir, "standings.html"), html, 0644); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(filepath.Join(dir, "standings.xlsx"), xlsx, 0644); err != nil {
+			t.Fatal(err)
+		}
+	}
+}
+
+func requireOfflineRanking(t *testing.T) {
+	t.Helper()
+	if _, err := offlineRankingTemplate(); err != nil {
+		t.Skip("build offline runtime first: cd apps/web && npm run build:ranking-export")
+	}
+}
+
+func TestFirstBloodHasOneWinnerAcrossStarredAndOfficial(t *testing.T) {
+	start := time.Date(2026, 10, 31, 9, 0, 0, 0, time.UTC)
+	at := start.Add(time.Minute)
+	users := []models.User{{ID: 2, Name: "官方"}, {ID: 1, Name: "打星"}}
+	links := []models.TeamContestProblem{{ProblemID: 11}}
+	aggregates := []teamContestCellAggregate{
+		{UserID: 2, ProblemID: 11, SubmissionCount: 1, Attempts: 1, SolvedAt: &at, LatestStatus: "accepted", BestScore: 100, LastSubmission: at},
+		{UserID: 1, ProblemID: 11, SubmissionCount: 1, Attempts: 1, SolvedAt: &at, LatestStatus: "accepted", BestScore: 100, LastSubmission: at},
+	}
+	rows := buildTeamContestRanking(users, links, aggregates, start, "acm")
+	contest := models.TeamContest{}
+	contest.RankingUserIDs = []byte(`[2]`)
+	if err := markContestRankingRows(rows, contest); err != nil {
+		t.Fatal(err)
+	}
+	count := 0
+	for _, row := range rows {
+		if row.Problems[0].Fastest {
+			count++
+			if row.UserID != 1 || !row.Unranked {
+				t.Fatal("wrong winner")
+			}
+		}
+	}
+	if count != 1 {
+		t.Fatalf("expected one winner, got %d", count)
+	}
+	examRows := []examRankingRow{{UserID: 2, Problems: []examRankingCell{{ProblemID: 11, firstAccepted: &at, Fastest: true}}}, {UserID: 1, Problems: []examRankingCell{{ProblemID: 11, firstAccepted: &at}}}}
+	markExamFastestCells(examRows)
+	if examRows[0].Problems[0].Fastest || !examRows[1].Problems[0].Fastest {
+		t.Fatal("exam tie has multiple winners")
 	}
 }

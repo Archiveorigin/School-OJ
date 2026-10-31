@@ -5,7 +5,7 @@
   "type": "module",
   "scripts": {
     "dev": "vite --host 0.0.0.0",
-    "build": "npm run api:check && vue-tsc --noEmit && vite build && node scripts/check-initial-bundle.mjs",
+    "build": "npm run api:check && vue-tsc --noEmit && vite build && node scripts/check-initial-bundle.mjs && npm run build:ranking-export",
     "preview": "vite preview --host 0.0.0.0",
     "test": "vitest",
     "api:generate": "node scripts/generate-openapi-client.mjs",
@@ -14,7 +14,8 @@
     "qa:design": "node tests/e2e/plan-qa.mjs",
     "format": "prettier --write src",
     "qa:ticket-import": "node tests/e2e/ticket-import-team-qa.mjs",
-    "qa:ticket-workflow": "node tests/e2e/ticket-workflow-qa.mjs"
+    "qa:ticket-workflow": "node tests/e2e/ticket-workflow-qa.mjs",
+    "build:ranking-export": "node scripts/build-ranking-export.mjs"
   },
   "dependencies": {
     "@element-plus/icons-vue": "^2.3.2",

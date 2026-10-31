@@ -3,7 +3,6 @@ package handlers
 import (
 	"context"
 	"database/sql"
-	"fmt"
 	"net/http"
 	"strings"
 	"time"
@@ -298,7 +297,7 @@ func (s Server) exportEventRankingForPaper(c *gin.Context, p eventPaper, format 
 		return
 	}
 	c.Header("Cache-Control", "private, no-store")
-	c.Header("Content-Disposition", fmt.Sprintf("attachment; filename=\"standings-%d.%s\"", p.id, format))
+	c.Header("Content-Disposition", rankingExportDisposition(data.Title, format))
 	c.Data(http.StatusOK, contentType, body)
 }
 

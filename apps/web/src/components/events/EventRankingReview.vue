@@ -26,7 +26,7 @@
           :loading="exporting === 'html'"
           :disabled="!canExport || !!exporting"
           @click="download('html')"
-          >导出打印榜单</el-button
+          >导出网页榜单</el-button
         >
       </div>
     </header>
@@ -137,7 +137,12 @@ async function download(format: "xlsx" | "html") {
       query: { format },
       responseType: "blob",
     });
-    saveDownload(response.data, `排名表-${props.eventId}.${format}`);
+    const title =
+      (snapshot.value?.title || "排行榜")
+        .replace(/[<>:"/\\|?*\x00-\x1f\x7f]/g, "_")
+        .trim()
+        .replace(/[. ]+$/, "") || "排行榜";
+    saveDownload(response.data, `${title}.${format}`);
   } catch (err: any) {
     if (err.response?.data instanceof Blob) {
       try {

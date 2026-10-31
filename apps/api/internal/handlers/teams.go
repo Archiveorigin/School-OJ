@@ -1099,31 +1099,26 @@ func (s Server) teamContestRanking(c *gin.Context) {
 	}
 	rows := buildTeamContestRanking(users, links, aggregates, contestStart, contest.ScoringRule)
 	rankedCount := len(rows)
-	selectedIDs, selected, _ := contestRankingIDs(contest.RankingUserIDs)
+	_, selected, _ := contestRankingIDs(contest.RankingUserIDs)
 	if selected {
-		ranked := map[uint]bool{}
-		for _, id := range selectedIDs {
-			ranked[id] = true
-		}
 		all := contest
 		all.RankingUserIDs = nil
-		_, allUsers, e := s.loadContestRankingParticipants(all)
-		if e != nil {
-			eventError(c, e)
+		_, allUsers, err := s.loadContestRankingParticipants(all)
+		if err != nil {
+			eventError(c, err)
 			return
 		}
-		extras := []models.User{}
-		for _, u := range allUsers {
-			if !ranked[u.ID] {
-				extras = append(extras, u)
+		rows = buildTeamContestRanking(allUsers, links, aggregates, contestStart, contest.ScoringRule)
+		if err := markContestRankingRows(rows, contest); err != nil {
+			eventError(c, err)
+			return
+		}
+		rankedCount = 0
+		for _, row := range rows {
+			if !row.Unranked {
+				rankedCount++
 			}
 		}
-		extraRows := buildTeamContestRanking(extras, links, aggregates, contestStart, contest.ScoringRule)
-		for i := range extraRows {
-			extraRows[i].Unranked = true
-			extraRows[i].Rank = 0
-		}
-		rows = append(rows, extraRows...)
 	}
 
 	problems := make([]gin.H, 0, len(links))
@@ -1294,24 +1289,23 @@ func buildTeamContestRanking(users []models.User, links []models.TeamContestProb
 		}
 		rows = append(rows, row)
 	}
-	fastestByProblem := map[uint]time.Time{}
-	for _, row := range rows {
-		for _, cell := range row.Problems {
+	winners := map[uint]struct{ row, cell int }{}
+	for i := range rows {
+		for j := range rows[i].Problems {
+			cell := &rows[i].Problems[j]
+			cell.Fastest = false
 			if cell.SolvedAt == nil {
 				continue
 			}
-			if fastest, ok := fastestByProblem[cell.ProblemID]; !ok || cell.SolvedAt.Before(fastest) {
-				fastestByProblem[cell.ProblemID] = *cell.SolvedAt
+			prior, ok := winners[cell.ProblemID]
+			if !ok || cell.SolvedAt.Before(*rows[prior.row].Problems[prior.cell].SolvedAt) ||
+				(cell.SolvedAt.Equal(*rows[prior.row].Problems[prior.cell].SolvedAt) && rows[i].UserID < rows[prior.row].UserID) {
+				winners[cell.ProblemID] = struct{ row, cell int }{i, j}
 			}
 		}
 	}
-	for rowIndex := range rows {
-		for cellIndex := range rows[rowIndex].Problems {
-			cell := &rows[rowIndex].Problems[cellIndex]
-			if cell.SolvedAt != nil && cell.SolvedAt.Equal(fastestByProblem[cell.ProblemID]) {
-				cell.Fastest = true
-			}
-		}
+	for _, winner := range winners {
+		rows[winner.row].Problems[winner.cell].Fastest = true
 	}
 	sort.SliceStable(rows, func(i, j int) bool {
 		if (rows[i].SubmissionCount > 0) != (rows[j].SubmissionCount > 0) {

@@ -62,7 +62,7 @@ describe('ranking refresh across the deadline', () => {
     expect(generatedApi.exportEventRanking).toHaveBeenCalledWith({
       path: { kind: 'contest', event_id: 7 }, query: { format: 'xlsx' }, responseType: 'blob',
     })
-    expect(saveDownload).toHaveBeenCalledWith(blob, '排名表-7.xlsx')
+    expect(saveDownload).toHaveBeenCalledWith(blob, '截止后的成绩.xlsx')
     wrapper.unmount()
   })
 

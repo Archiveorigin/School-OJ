@@ -67,7 +67,8 @@ services:
     restart: unless-stopped
     logging: *service-logging
     build:
-      context: ./apps/api
+      context: .
+      dockerfile: apps/api/Dockerfile
     environment:
       APP_ADDR: ":8080"
       GIN_MODE: "release"
