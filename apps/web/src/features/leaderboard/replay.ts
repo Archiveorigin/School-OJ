@@ -66,14 +66,14 @@ export function createContestReplay(packet: ReplayPacket) {
     }
     if (changes.size) pending.set(row.user_id, changes);
   }
-  const total = [...pending.values()].reduce(
-    (sum, cells) => sum + cells.size,
-    0,
-  );
+  const total =
+    rows.filter((row) => !pending.has(row.user_id)).length +
+    [...pending.values()].reduce((sum, cells) => sum + cells.size, 0);
+  const settled = new Set<number>();
   let step = 0;
   let consistencyError = "",
     checked = false;
-  let focus: { userId: number; problemId: number } | undefined;
+  let focus: { userId: number; problemId?: number } | undefined;
   const snapshot = (): LeaderboardData => {
     if (step === total && !checked) {
       checked = true;
@@ -125,16 +125,20 @@ export function createContestReplay(packet: ReplayPacket) {
         ),
       );
     // These two snapshots are authoritative server standings, including exact
-    // tie ordering and unranked grouping. Only intermediate frames are reranked.
+    // tie ordering. Only intermediate frames are reranked.
     if (step === 0 || (step === total && !consistencyError)) {
       if (step === 0 && step !== total)
         board.rows.sort(
           (a, b) =>
-            Number(Boolean(a.unranked)) - Number(Boolean(b.unranked)) ||
-            a.rank - b.rank ||
+            (board.scoringRule === "penalty"
+              ? b.solved - a.solved || a.metric - b.metric
+              : b.metric - a.metric || b.solved - a.solved) ||
+            (a.unranked || b.unranked ? 0 : a.rank - b.rank) ||
             Number(participated(b.id)) - Number(participated(a.id)),
         );
 
+      if (!focus)
+        board.revealUserId = Number(board.rows.at(-1)?.id) || undefined;
       board.participantCount = board.rows.filter((row) => !row.unranked).length;
       return board;
     }
@@ -153,12 +157,11 @@ export function createContestReplay(packet: ReplayPacket) {
       a: (typeof board.rows)[number],
       b: (typeof board.rows)[number],
     ) => {
-      const grouped = Number(Boolean(a.unranked)) - Number(Boolean(b.unranked));
       const performance =
         board.scoringRule === "penalty"
           ? b.solved - a.solved || a.metric - b.metric
           : b.metric - a.metric || b.solved - a.solved;
-      if (grouped || performance) return grouped || performance;
+      if (performance) return performance;
       if (packet.contest.scoring_rule === "oi") return 0;
       const left = tieTime(a.id),
         right = tieTime(b.id);
@@ -199,19 +202,31 @@ export function createContestReplay(packet: ReplayPacket) {
     next(): LeaderboardData {
       const current = snapshot();
       // Start from the currently lowest remaining contestant, then recalculate
-      // their position after every cell, rather than using the final order.
+      // their position after every cell. Visit unchanged rows on the way up too.
       const target = [...current.rows]
         .reverse()
-        .find((row) => pending.has(Number(row.id)));
+        .find((row) => !settled.has(Number(row.id)));
       if (!target) return current;
-      const changes = pending.get(Number(target.id))!;
+      const changes = pending.get(Number(target.id));
+      if (!changes) {
+        settled.add(Number(target.id));
+        step++;
+        const next = [...current.rows]
+          .reverse()
+          .find((r) => !settled.has(Number(r.id)));
+        focus = { userId: Number(next?.id ?? target.id) };
+        return snapshot();
+      }
       const [problemId, cell] = changes.entries().next().value!;
       const row = byId.get(Number(target.id));
       row.problems[
         row.problems.findIndex((c: any) => c.problem_id === problemId)
       ] = structuredClone(cell);
       changes.delete(problemId);
-      if (!changes.size) pending.delete(Number(target.id));
+      if (!changes.size) {
+        pending.delete(Number(target.id));
+        settled.add(Number(target.id));
+      }
       row.solved = row.problems.filter(
         (c: any) => c.solved || c.status === "accepted" || c.best_score >= 100,
       ).length;
@@ -233,7 +248,15 @@ export function createContestReplay(packet: ReplayPacket) {
       );
       focus = { userId: Number(target.id), problemId };
       step++;
-      return snapshot();
+      const updated = snapshot();
+      const next = [...updated.rows]
+        .reverse()
+        .find((r) => !settled.has(Number(r.id)));
+      if (next) {
+        focus = { userId: Number(next.id) };
+        return snapshot();
+      }
+      return updated;
     },
   };
 }

@@ -95,3 +95,23 @@ func TestContestRankingRosterAllAndEmpty(t *testing.T) {
 		}
 	}
 }
+
+func TestStarredRankingPreservesPerformanceOrder(t *testing.T) {
+	rows := []teamContestRankingRow{
+		{UserID: 1, Rank: 1}, {UserID: 2, Rank: 2},
+		{UserID: 3, Rank: 2}, {UserID: 4, Rank: 4},
+	}
+	contest := models.TeamContest{}
+	contest.RankingUserIDs = []byte(`[2,3,4]`)
+	if err := markContestRankingRows(rows, contest); err != nil {
+		t.Fatal(err)
+	}
+	for i, row := range rows {
+		if row.UserID != uint(i+1) {
+			t.Fatalf("performance order changed: %+v", rows)
+		}
+	}
+	if !rows[0].Unranked || rows[0].Rank != 0 || rows[1].Rank != 1 || rows[2].Rank != 1 || rows[3].Rank != 3 {
+		t.Fatalf("incorrect official ranks: %+v", rows)
+	}
+}

@@ -36,6 +36,7 @@ export function useTableInteraction(
           behavior: reduced.value ? "instant" : "smooth",
         });
     },
+    { immediate: true, flush: "post" },
   );
   return { root, expandedId, instanceId, deltas, toggleRow };
 }

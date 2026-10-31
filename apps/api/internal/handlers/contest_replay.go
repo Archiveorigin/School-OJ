@@ -6,7 +6,6 @@ import (
 	"school-oj/apps/api/internal/authz"
 	"school-oj/apps/api/internal/middleware"
 	"school-oj/apps/api/internal/models"
-	"sort"
 	"time"
 )
 
@@ -132,6 +131,5 @@ func markContestRankingRows(rows []teamContestRankingRow, contest models.TeamCon
 		}
 		rows[i].Rank = lastRank
 	}
-	sort.SliceStable(rows, func(i, j int) bool { return !rows[i].Unranked && rows[j].Unranked })
 	return nil
 }

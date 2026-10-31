@@ -84,7 +84,7 @@ it("loads large contests without precomputing all board frames and reveals the c
   expect(replay.total).toBe(1000);
   const lowest = replay.snapshot().rows.at(-1)!.id;
   const next = replay.next();
-  expect(next.revealUserId).toBe(lowest);
+  expect(replay.snapshot().revealUserId).toBe(999);
   expect(next.rows.find((r) => r.id === lowest)?.solved).toBe(1);
   expect(initial.find((r) => r.user_id === lowest)!.solved).toBe(0);
 });
@@ -167,6 +167,7 @@ it("keeps authoritative freeze and final snapshot ordering, without leaking fina
   ]);
   expect(replay.snapshot().currentTimeSeconds).toBe(5400);
   expect(replay.step).toBe(0);
+  replay.next();
   const finalFrame = replay.next();
   expect(finalFrame.rows.map((r) => r.id)).toEqual([1, 2]);
   expect(finalFrame.currentTimeSeconds).toBe(7200);
@@ -207,6 +208,8 @@ it("puts hidden-only participants ahead of never-submitted users at the freeze, 
     [1, 0, 0],
     [1, 0, 0],
   ]);
+  expect(board.revealUserId).toBe(4);
+  expect(replay.next().revealUserId).toBe(1);
   expect(replay.next().revealUserId).toBe(3);
   expect(
     createContestReplay(packet)
@@ -214,4 +217,35 @@ it("puts hidden-only participants ahead of never-submitted users at the freeze, 
       .rows.map((r) => r.id),
   ).toEqual([2, 3, 1, 4]);
   expect(initial.map((r) => r.user_id)).toEqual([1, 2, 3, 4]);
+});
+
+it("keeps starred contestants in performance order and skips them in official ranks", () => {
+  const packet: ReplayPacket = {
+    schema_version: 1,
+    kind: "contest-replay",
+    contest: { scoring_rule: "acm" },
+    problems: [{ problem_id: 1, label: "A" }],
+    initial_rows: [
+      { ...row(1, cell("accepted", 2, 10), true), rank: 0 },
+      { ...row(2, cell("accepted", 2, 20)), rank: 1 },
+      { ...row(3, cell("wrong_answer", 1, 10)), rank: 2 },
+    ],
+    final_rows: [
+      { ...row(1, cell("accepted", 2, 10), true), rank: 0 },
+      { ...row(2, cell("accepted", 2, 20)), rank: 1 },
+      { ...row(3, cell("accepted", 2, 30)), rank: 2 },
+    ],
+    events: [],
+  };
+  const replay = createContestReplay(packet);
+  expect(replay.snapshot().rows.map((r) => r.id)).toEqual([1, 2, 3]);
+  expect(replay.snapshot().revealUserId).toBe(3);
+  const frame = replay.next();
+  expect(frame.rows.map((r) => [r.id, r.rank])).toEqual([
+    [1, 0],
+    [2, 1],
+    [3, 2],
+  ]);
+  expect(frame.revealUserId).toBe(2);
+  expect(replay.next().revealUserId).toBe(1);
 });
