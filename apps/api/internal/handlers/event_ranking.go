@@ -5,6 +5,7 @@ import (
 	"database/sql"
 	"net/http"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/gin-gonic/gin"
@@ -30,7 +31,10 @@ func (s Server) rankingReadSnapshot(ctx context.Context) (Server, func(), error)
 		return s, nil, tx.Error
 	}
 	s.DB = tx
-	return s, func() { tx.Rollback() }, nil
+	var once sync.Once
+	// Callers release the snapshot before writing the response, so a slow client
+	// never pins a pooled connection; the deferred call covers early returns.
+	return s, func() { once.Do(func() { tx.Rollback() }) }, nil
 }
 
 type eventStandings struct {
@@ -51,7 +55,7 @@ type eventStandings struct {
 
 func (s Server) loadExamRankingStudents(item models.Exam) ([]models.User, error) {
 	users := []models.User{}
-	q := s.DB.Model(&models.User{}).Where("users.account_deleted = false")
+	q := s.DB.Model(&models.User{}).Omit("avatar_url").Where("users.account_deleted = false")
 	if item.ParticipantsFrozen {
 		q = q.Where("id IN (?)", s.DB.Model(&models.ExamParticipant{}).Select("user_id").Where("exam_id=?", item.ID))
 	} else if item.ClassID != nil {
@@ -72,7 +76,7 @@ func (s Server) loadContestRankingParticipants(contest models.TeamContest) ([]mo
 	links = filterActiveTeamContestProblemLinks(links)
 	normalizeTeamContestProblemLabels(links)
 	users := []models.User{}
-	q := s.DB.Model(&models.User{}).Where("account_deleted = false")
+	q := s.DB.Model(&models.User{}).Omit("avatar_url").Where("account_deleted = false")
 	if contest.State == models.TeamContestDraft {
 		q = q.Where("id IN (?)", s.DB.Model(&models.TeamMembership{}).Select("user_id").Where("team_id=?", contest.TeamID))
 	} else {

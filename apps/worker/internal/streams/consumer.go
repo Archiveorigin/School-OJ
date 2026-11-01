@@ -286,6 +286,7 @@ func (c *Consumer) handle(ctx context.Context, msg redis.XMessage) error {
 	c.publishSubmission(sub.ID)
 
 	judgeProblem := problemSnapshotForSubmission(sub)
+	downloadStarted := time.Now()
 	obj, err := c.MinIO.GetObject(ctx, c.Cfg.MinIOBucket, judgeProblem.PackageObject, minio.GetObjectOptions{})
 	if err != nil {
 		_ = c.DB.Model(&sub).Where("status = ?", models.StatusRunning).Updates(map[string]any{"status": models.StatusQueued, "message": "waiting for problem package"}).Error
@@ -299,7 +300,10 @@ func (c *Consumer) handle(ctx context.Context, msg redis.XMessage) error {
 		c.publishSubmission(sub.ID)
 		return retryable(err)
 	}
+	downloaded := time.Since(downloadStarted)
+	parseStarted := time.Now()
 	pkg, err := runner.ParsePackage(body)
+	parsed := time.Since(parseStarted)
 	if err != nil {
 		if persistErr := c.markSystemError(&sub, err); persistErr != nil {
 			return retryable(persistErr)
@@ -325,6 +329,7 @@ func (c *Consumer) handle(ctx context.Context, msg redis.XMessage) error {
 		Package:      pkg,
 	})
 	c.observeJudge(result, time.Since(started))
+	c.observePhases(downloaded, parsed, result.Timing)
 	if ctx.Err() != nil {
 		return ctx.Err()
 	}

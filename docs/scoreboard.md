@@ -22,7 +22,7 @@
 2. 管理员打开滚榜后，按“当前最低名次的待揭晓队伍”逐题解冻，题格翻牌、行平滑移动、题数/罚时数字补间、名次变化标记依次出现。
 3. 点击行展开队伍摘要，点击题格打开该题的提交时间线；桌面与手机都可操作，键盘可用。
 4. 所有动画尊重 `prefers-reduced-motion`，关闭动画后信息仍然完整可读。
-5. 不引入动画库、不增加榜单轮询、不改变服务端排名与脱敏规则。
+5. 不引入动画库、不改变服务端排名与脱敏规则。（榜单定时刷新后来按需求加入，现行规则见 [场次文档](events.md)。）
 
 ### 1.2 视觉参考
 
@@ -50,7 +50,7 @@
 | 不做 | 原因 |
 | --- | --- |
 | 重写服务端排名/罚时算法 | 服务端是唯一事实源，前端重算只用于回放展示，且必须与 `final_rows` 对账。 |
-| 榜单自动轮询或 WebSocket | 项目明确选择“手动刷新/重新进入页面更新”，[`ranking-refresh.test.ts`](../apps/web/tests/ranking-refresh.test.ts) 已断言不存在定时刷新；加轮询会同时违反文档与测试。 |
+| 榜单 WebSocket 推送 | 60 秒静默刷新已满足需求，规则见 [`ranking-refresh.test.ts`](../apps/web/tests/ranking-refresh.test.ts)；推送需要额外的连接与扇出设计。 |
 | 新开一套榜单表格 | 现有两张表、四个宿主、单测与 e2e 都绑定在现有 DOM/类名上；动画只能加类、加属性、加内联 CSS 变量。 |
 | 引入 GSAP/Framer/动画库 | 入口包体预算 250 KiB gzip，新增依赖会触碰预算与评审；现有 `TransitionGroup` + CSS + 少量 rAF 足够。 |
 | 让非管理员在封榜期拿到真实结果 | 封榜脱敏在服务端完成；前端任何“猜结果”的实现都视为缺陷。 |
@@ -76,7 +76,7 @@ ContestReplay.vue ─> createContestReplay() ─> LeaderboardBoard.vue（同一�
 - 罚时榜与分数榜是两张独立组件，行都用 `key=row.id`，外层是 `TransitionGroup`，已有 `.rank-reveal-move { transition: transform 700ms ease; }`。
 - 回放弹窗 [`ContestReplay.vue`](../apps/web/src/components/events/ContestReplay.vue) 复用同一块 `LeaderboardBoard`，用 750ms `setTimeout` 与 700ms 行位移手工对齐。
 - 数据适配在 [`adapters.ts`](../apps/web/src/features/leaderboard/adapters.ts)，把两套后端结构统一成 `LeaderboardData`；回放引擎在 [`replay.ts`](../apps/web/src/features/leaderboard/replay.ts)。
-- 页面没有榜单轮询；[`ContestWorkspace.vue`](../apps/web/src/views/teams/ContestWorkspace.vue) 的 15s 定时器只刷比赛详情，不刷榜单；考试榜只有进入与路由变化时加载。
+- [`ContestWorkspace.vue`](../apps/web/src/views/teams/ContestWorkspace.vue) 每 15 秒刷新比赛详情；比赛榜和考试榜在进行中或等待评测时每 60 秒静默刷新，隐藏标签页时都暂停。
 
 ### 2.2 已经具备的能力
 
@@ -104,7 +104,7 @@ ContestReplay.vue ─> createContestReplay() ─> LeaderboardBoard.vue（同一�
 | G9 | 未开封榜时滚榜为空 | `freeze == end` → `events=[]`、`initial==final` | 打开弹窗一步也走不了，需要空态文案或全量模式。 |
 | G10 | 封榜期“没做”与“被封”同形 | 服务端按 cutoff 排除整行提交，cell 全零 | 无法显示“被封住 N 次”，回放只能前端合成 `frozen`。 |
 | G11 | 回放与实时榜的排名口径可能不同 | 回放客户端重排，实时榜用服务端 `rank` | 同一队伍在两个视图里名次可能差一位，需对账与提示。 |
-| G12 | 回放/榜单无实时推送 | 只有提交级 SSE | 不做自动刷新；动画只在手动刷新/回放步进时发生。 |
+| G12 | 回放/榜单无实时推送 | 只有提交级 SSE | 榜单靠 60 秒静默刷新；动画在数据刷新或回放步进时发生。 |
 
 ### 2.4 工程硬约束
 

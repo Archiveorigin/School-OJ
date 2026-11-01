@@ -44,6 +44,31 @@ func (c *Consumer) observeJudge(result runner.JudgeResult, duration time.Duratio
 	}
 }
 
+// observePhases records where judging time goes, including the package download
+// and parse that happen before oj_judge_duration_seconds starts counting.
+func (c *Consumer) observePhases(download, parse time.Duration, timing runner.JudgeTiming) {
+	ctx, cancel := context.WithTimeout(context.Background(), time.Second)
+	defer cancel()
+	_, err := c.Redis.TxPipelined(ctx, func(p redis.Pipeliner) error {
+		key := "oj:metrics:worker"
+		for phase, spent := range map[string]time.Duration{
+			"download":  download,
+			"parse":     parse,
+			"compile":   timing.Compile,
+			"case_wall": timing.CaseWall,
+			"program":   timing.Program,
+		} {
+			p.HIncrBy(ctx, key, "phase_ms:"+phase, spent.Milliseconds())
+		}
+		p.HIncrBy(ctx, key, "phase_judges", 1)
+		p.HIncrBy(ctx, key, "phase_cases", int64(timing.Cases))
+		return nil
+	})
+	if err != nil {
+		log.Printf("judge phase metric persistence: %v", err)
+	}
+}
+
 func (c *Consumer) Monitor() http.Handler {
 	mux := http.NewServeMux()
 	mux.HandleFunc("/healthz", func(w http.ResponseWriter, r *http.Request) {
@@ -92,6 +117,12 @@ func (c *Consumer) Monitor() http.Handler {
 				fmt.Fprintf(w, "oj_judge_duration_seconds_sum %.3f\n", float64(n)/1000)
 			case key == "duration_count":
 				fmt.Fprintf(w, "oj_judge_duration_seconds_count %d\noj_judge_duration_seconds_bucket{le=\"+Inf\"} %d\n", n, n)
+			case strings.HasPrefix(key, "phase_ms:"):
+				fmt.Fprintf(w, "oj_judge_phase_seconds_sum{phase=%q} %.3f\n", strings.TrimPrefix(key, "phase_ms:"), float64(n)/1000)
+			case key == "phase_judges":
+				fmt.Fprintf(w, "oj_judge_phase_judges_total %d\n", n)
+			case key == "phase_cases":
+				fmt.Fprintf(w, "oj_judge_phase_cases_total %d\n", n)
 			case key == "reclaimed" || key == "lease_lost" || key == "retries":
 				fmt.Fprintf(w, "oj_worker_%s_total %d\n", key, n)
 			}

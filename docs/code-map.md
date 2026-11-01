@@ -85,7 +85,8 @@
 | [`repositories/team_access.go`](../apps/api/internal/repositories/team_access.go) | GORM 事务、团队行锁、活动账号、申请和成员的幂等持久化。 |
 | [`handlers/team_submission_access.go`](../apps/api/internal/handlers/team_submission_access.go) | 按团队比赛/题单归属检查提交详情、结果及 SSE 权限。 |
 | [`middleware/api_version.go`](../apps/api/internal/middleware/api_version.go) | 两套 API 入口的版本响应头与去敏路由用量观察。 |
-| [`handlers/submission_visibility.go`](../apps/api/internal/handlers/submission_visibility.go) | OI 与封榜期的统一服务端脱敏，隐藏状态、分数、测试点、资源消耗等结果。 |
+| [`handlers/submission_visibility.go`](../apps/api/internal/handlers/submission_visibility.go) | OI 与封榜期的统一服务端脱敏，隐藏状态、分数、测试点、资源消耗等结果；`submissionRedactor` 在单次请求内复用场次和权限判定。 |
+| [`handlers/work_summaries.go`](../apps/api/internal/handlers/work_summaries.go) | 作业、考试成绩汇总和本人逐题提交状态的批量查询，查询次数不随学生数或题目数增长。 |
 | [`handlers/teams.go`](../apps/api/internal/handlers/teams.go) | 团队、成员申请、比赛、赛题、三赛制排行榜、团队题单、讨论与团队范围提交。 |
 
 ### 4.3 认证、账号与个人资料接口
@@ -418,6 +419,7 @@
 | [`features/teams/rankingRoster.ts`](../apps/web/src/features/teams/rankingRoster.ts) | 用户名名单解析与匹配：BOM/CRLF/逗号分隔、表头、去重、未知与重名报告。 |
 | [`features/clipboard.ts`](../apps/web/src/features/clipboard.ts) | 现代 Clipboard API 与兼容复制回退。 |
 | [`features/time.ts`](../apps/web/src/features/time.ts) | 统一日期时间格式化。 |
+| [`features/visibleInterval.ts`](../apps/web/src/features/visibleInterval.ts) | 只在页面可见时运行的定时任务，用于比赛详情和榜单自动刷新。 |
 
 新增前端逻辑：[`features/submissions/detail.ts`](../apps/web/src/features/submissions/detail.ts) 封装详情获取、错误和旧请求丢弃；[`api/modules/assets.ts`](../apps/web/src/api/modules/assets.ts) 按题库/考试范围调用生成的图片接口。
 

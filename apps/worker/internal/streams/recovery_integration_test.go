@@ -3,7 +3,9 @@ package streams
 import (
 	"context"
 	"fmt"
+	"net/http/httptest"
 	"os"
+	"strings"
 	"testing"
 	"time"
 
@@ -14,6 +16,7 @@ import (
 	"gorm.io/gorm/logger"
 	"school-oj/apps/worker/internal/config"
 	"school-oj/apps/worker/internal/models"
+	"school-oj/apps/worker/internal/runner"
 )
 
 func recoveryRedis(t *testing.T) *redis.Client {
@@ -197,5 +200,40 @@ func TestCrashedWorkerPendingMessageRecoveryPostgresRedis(t *testing.T) {
 	c.processMessage(ctx, items[0].Messages[0])
 	if pending := rdb.XPending(ctx, c.Cfg.Stream, c.Cfg.Group).Val(); pending.Count != 0 {
 		t.Fatal("database recovery did not acknowledge the committed result")
+	}
+}
+
+func TestJudgePhaseMetricsExportedRedis(t *testing.T) {
+	rdb := recoveryRedis(t)
+	ctx := context.Background()
+	if err := rdb.Del(ctx, "oj:metrics:worker").Err(); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { rdb.Del(context.Background(), "oj:metrics:worker") })
+	stream := fmt.Sprintf("oj.test.phase.%d", time.Now().UnixNano())
+	c := Consumer{Redis: rdb, Cfg: config.Config{Stream: stream, Group: "phase-test"}}
+	if err := c.EnsureGroup(ctx); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { rdb.Del(context.Background(), stream) })
+	timing := runner.JudgeTiming{Compile: 2 * time.Second, CaseWall: 3 * time.Second, Program: time.Second, Cases: 4}
+	c.observePhases(100*time.Millisecond, 200*time.Millisecond, timing)
+	c.observePhases(100*time.Millisecond, 200*time.Millisecond, timing)
+
+	response := httptest.NewRecorder()
+	c.Monitor().ServeHTTP(response, httptest.NewRequest("GET", "/metrics", nil))
+	body := response.Body.String()
+	for _, want := range []string{
+		`oj_judge_phase_seconds_sum{phase="download"} 0.200`,
+		`oj_judge_phase_seconds_sum{phase="parse"} 0.400`,
+		`oj_judge_phase_seconds_sum{phase="compile"} 4.000`,
+		`oj_judge_phase_seconds_sum{phase="case_wall"} 6.000`,
+		`oj_judge_phase_seconds_sum{phase="program"} 2.000`,
+		"oj_judge_phase_judges_total 2",
+		"oj_judge_phase_cases_total 8",
+	} {
+		if !strings.Contains(body, want) {
+			t.Fatalf("missing %q in:\n%s", want, body)
+		}
 	}
 }

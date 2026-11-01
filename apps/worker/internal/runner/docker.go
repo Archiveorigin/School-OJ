@@ -27,7 +27,17 @@ type JudgeRequest struct {
 	Package      ProblemPackage
 }
 
+// JudgeTiming splits a judge's wall clock. CaseWall minus Program approximates the
+// per-container overhead (docker run, inspect and removal around each test case).
+type JudgeTiming struct {
+	Compile  time.Duration
+	CaseWall time.Duration
+	Program  time.Duration
+	Cases    int
+}
+
 type JudgeResult struct {
+	Timing   JudgeTiming
 	Status   models.SubmissionStatus
 	Score    int
 	TimeMS   int
@@ -53,7 +63,9 @@ type DockerRunner struct {
 
 const bundledSeccompProfile = "/etc/oj-seccomp.json"
 
-func (r *DockerRunner) Judge(ctx context.Context, req JudgeRequest) JudgeResult {
+func (r *DockerRunner) Judge(ctx context.Context, req JudgeRequest) (result JudgeResult) {
+	var timing JudgeTiming
+	defer func() { result.Timing = timing }()
 	if err := r.Prepare(); err != nil {
 		return systemError(err)
 	}
@@ -91,7 +103,9 @@ func (r *DockerRunner) Judge(ctx context.Context, req JudgeRequest) JudgeResult 
 	limit := r.applyLimits(limits(req))
 	if spec.Compile != "" {
 		compileLimit := r.applyLimits(compileLimits(req, r.Cfg))
+		compileStarted := time.Now()
 		out, status, ms, memoryKB := r.runContainer(ctx, workDir, spec.Image, spec.Compile, "", compileLimit)
+		timing.Compile = time.Since(compileStarted)
 		if status != models.StatusAccepted {
 			if ctx.Err() == context.DeadlineExceeded {
 				return JudgeResult{Status: models.StatusTimeLimit, TimeMS: ms, MemoryKB: memoryKB, Message: "submission total time budget exceeded"}
@@ -105,7 +119,12 @@ func (r *DockerRunner) Judge(ctx context.Context, req JudgeRequest) JudgeResult 
 		req.Package.CaseInput,
 		req.Package.CaseOutput,
 		func(input string) (string, models.SubmissionStatus, int, int) {
-			return r.runContainer(ctx, workDir, spec.Image, runtimeCommand(spec.Run, limit), input, limit)
+			caseStarted := time.Now()
+			output, status, ms, memoryKB := r.runContainer(ctx, workDir, spec.Image, runtimeCommand(spec.Run, limit), input, limit)
+			timing.CaseWall += time.Since(caseStarted)
+			timing.Program += time.Duration(ms) * time.Millisecond
+			timing.Cases++
+			return output, status, ms, memoryKB
 		},
 	)
 	if ctx.Err() == context.DeadlineExceeded {

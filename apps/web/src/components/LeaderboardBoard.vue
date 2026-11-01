@@ -22,6 +22,12 @@
             class="scoreboard-subtitle"
             >{{ data.subtitle }}</span
           >
+          <span
+            v-if="autoRefreshSeconds > 0 && !data.replaying"
+            class="scoreboard-refresh-note"
+            :title="updatedAt ? `最近更新：${updatedAt}` : undefined"
+            >每 {{ autoRefreshSeconds }} 秒自动更新</span
+          >
         </div>
 
         <div v-if="data.replaying" class="replay-heading">
@@ -303,12 +309,14 @@ const props = withDefaults(
     error?: string;
     emptyText?: string;
     updatedAt?: string;
+    autoRefreshSeconds?: number;
   }>(),
   {
     loading: false,
     error: "",
     emptyText: "暂无参赛记录",
     updatedAt: "",
+    autoRefreshSeconds: 0,
   },
 );
 
@@ -604,6 +612,12 @@ async function toggleFullscreen() {
   white-space: nowrap;
   font-size: clamp(17px, 2vw, 24px);
   font-weight: 800;
+}
+.scoreboard-refresh-note {
+  color: var(--score-muted);
+  font-size: 12px;
+  font-weight: 400;
+  white-space: nowrap;
 }
 .scoreboard-subtitle {
   margin-left: auto;

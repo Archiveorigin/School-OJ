@@ -88,7 +88,9 @@ func authenticate(db *gorm.DB, secret string, required bool) gin.HandlerFunc {
 		}
 		var user models.User
 		identityContext, cancel := context.WithTimeout(c.Request.Context(), 2*time.Second)
-		err = db.WithContext(identityContext).Where("account_deleted = false").First(&user, claims.UserID).Error
+		// avatar_url can hold a data URL of up to 2 MiB; handlers that return it
+		// load it explicitly.
+		err = db.WithContext(identityContext).Omit("avatar_url").Where("account_deleted = false").First(&user, claims.UserID).Error
 		cancel()
 		if err != nil {
 			if errors.Is(err, gorm.ErrRecordNotFound) {

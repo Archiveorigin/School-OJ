@@ -120,7 +120,7 @@ SQL 校验依赖原始字节，`.gitattributes` 固定迁移 LF。保留生产�
 
 ## 7. 监控、旧接口与其他部署
 
-API `/metrics`、Worker `:9091/healthz` 和 `/metrics` 仅内部可见，外部 `/metrics` 返回 404。Prometheus 告警规则文件需接入实际监控才能通知，不把文件存在当作已配置告警。`make legacy-report` 检查前 30 个完整 UTC 日覆盖和旧 `/api` 用量；缺日、Redis 数据丢失或仍有调用均不能宣告下线。
+API `/metrics`、Worker `:9091/healthz` 和 `/metrics` 仅内部可见，外部 `/metrics` 返回 404。Worker 的 `oj_judge_phase_seconds_sum{phase=...}` 按 `download`、`parse`、`compile`、`case_wall`、`program` 拆分判题耗时，`case_wall` 减 `program` 约等于容器开销；除以 `oj_judge_phase_judges_total` 或 `oj_judge_phase_cases_total` 得到平均值。Prometheus 告警规则文件需接入实际监控才能通知，不把文件存在当作已配置告警。`make legacy-report` 检查前 30 个完整 UTC 日覆盖和旧 `/api` 用量；缺日、Redis 数据丢失或仍有调用均不能宣告下线。
 
 Kubernetes 清单要求专用 Docker 节点，不承诺纯 containerd 可用；先执行同配置的迁移 Job，再更新 Deployment。Worker 扩容需要独立节点与工作根。JPlag 由受控版本 JAR 配置；未配置时轻量后备报告仅保证业务可测试，不等同正式查重引擎。
 

@@ -31,10 +31,25 @@ func (s Server) listEventAnnouncements(c *gin.Context) {
 		eventError(c, err)
 		return
 	}
+	ids := make([]uint, len(items))
 	for i := range items {
-		if err := s.DB.Where("announcement_id=? AND event_kind=? AND event_id=?", items[i].ID, p.kind, p.id).Find(&items[i].Attachments).Error; err != nil {
+		ids[i] = items[i].ID
+		items[i].Attachments = []models.EventAttachment{}
+	}
+	if len(ids) > 0 {
+		var attachments []models.EventAttachment
+		if err := s.DB.Where("announcement_id IN ? AND event_kind=? AND event_id=?", ids, p.kind, p.id).Order("id").Find(&attachments).Error; err != nil {
 			eventError(c, err)
 			return
+		}
+		byAnnouncement := make(map[uint][]models.EventAttachment, len(ids))
+		for _, attachment := range attachments {
+			byAnnouncement[*attachment.AnnouncementID] = append(byAnnouncement[*attachment.AnnouncementID], attachment)
+		}
+		for i := range items {
+			if found := byAnnouncement[items[i].ID]; found != nil {
+				items[i].Attachments = found
+			}
 		}
 	}
 	c.Header("Cache-Control", "private, no-store")

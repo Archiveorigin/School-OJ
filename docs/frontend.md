@@ -16,7 +16,7 @@ Vue scoped 样式中全局主题与局部组件组合使用 `.dark .component` �
 
 设置表单使用 `features/events/editSnapshot.ts` 管理已保存基线、脏状态和内部 revision。只在真正打开新资源或成功保存后重置基线；后台刷新不能覆盖脏字段。并发服务器修改返回冲突，保留原输入。textarea 按内容自动增高并允许手动调整。
 
-切换路由／资源时取消旧请求，并用请求序号拒绝迟到响应；关闭或卸载时释放定时器、监听、Blob URL 与编辑器模型。排行榜只在进入或手动刷新时加载；考试生命周期检查和判题 SSE 各自保留职责。
+切换路由／资源时取消旧请求，并用请求序号拒绝迟到响应；关闭或卸载时释放定时器、监听、Blob URL 与编辑器模型。排行榜在进入、手动刷新时加载，进行中或截止后等待评测时再由 `features/visibleInterval.ts` 每 60 秒静默刷新。比赛详情同样用它每 15 秒刷新，提交记录只在相关页面加载。隐藏标签页不发请求；考试锁定同步是安全功能，不受此限制。考试生命周期检查和判题 SSE 各自保留职责。
 
 HTTP 来源上的上传 ID 统一使用 `features/uuid.ts`：优先原生 `crypto.randomUUID()`，不可用时用 `crypto.getRandomValues()` 生成正确版本及 variant 位的 UUID v4，不使用 Math.random。验证必须包含真实非安全 HTTP 来源，不能只用被浏览器视为可信的 localhost。
 
@@ -52,7 +52,7 @@ HTTP 来源上的上传 ID 统一使用 `features/uuid.ts`：优先原生 `crypt
 
 ## 编辑器格式化边界
 
-Monaco 仅加载现有 C/C++、Java、Python 语法定义，并通过 Vite `?worker` 提供编辑器 Worker。不引入新的语言服务或自动诊断承诺。关闭缺少专用 provider 的符号出现位置高亮，避免跨模型扫描及 Monaco 0.52 快速卸载时延迟高亮任务的未捕获取消异常；语法着色、文本选中、查找、补全等功能保留。
+Monaco 仅加载现有 C/C++、Java、Python 语法定义，并通过 Vite `?worker` 提供编辑器 Worker。`features/editor/monaco.ts` 显式列出纯文本编辑需要的功能，不再引入 `edcore.main`；依赖语言服务的代码操作、跳转、重命名、内联补全等因没有 provider 从不生效，已移除。新增功能前先确认是否要补回对应模块。不引入新的语言服务或自动诊断承诺。关闭缺少专用 provider 的符号出现位置高亮，避免跨模型扫描及 Monaco 0.52 快速卸载时延迟高亮任务的未捕获取消异常；语法着色、文本选中、查找、补全等功能保留。
 
 优先检查格式化 action 的 `isSupported()`。已安装的 formatter 即使没有改动文本，也不会再次执行降级逻辑。当前未配置这些语言的专业 formatter：C/C++/Java 降级仅调整已有行的缩进，不重写运算符、注释、字符串，不拆分单行程序；原始字符串、Java 文本块、转义续行等复杂文档保留原文。Python 缩进具有语义，缺少真实 formatter 时保留原文并提示。格式化编辑通过 executeEdits 与撤销边界执行，保留视图状态；不再使用 setValue 清空撤销栈。
 

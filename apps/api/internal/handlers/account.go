@@ -220,6 +220,10 @@ func (s Server) rebindEmail(c *gin.Context) {
 
 func (s Server) getProfile(c *gin.Context) {
 	user, _ := middleware.CurrentUser(c)
+	if err := s.loadUserAvatar(c.Request.Context(), &user); err != nil {
+		c.JSON(http.StatusServiceUnavailable, gin.H{"error": "用户信息暂不可用"})
+		return
+	}
 	type statusRow struct {
 		Status string `json:"status"`
 		Count  int    `json:"count"`
@@ -284,7 +288,7 @@ func (s Server) getProfile(c *gin.Context) {
 		activity = append(activity, activityRow{Date: key, Count: len(problems), Problems: problems})
 	}
 	var recent []models.Submission
-	s.DB.Where("user_id = ?", user.ID).Order("id desc").Limit(10).Find(&recent)
+	s.DB.Omit("source_code").Where("user_id = ?", user.ID).Order("id desc").Limit(10).Find(&recent)
 	var solved int64
 	s.DB.Model(&models.Submission{}).Where("user_id = ? AND status = ?", user.ID, models.StatusAccepted).Distinct("problem_id").Count(&solved)
 	var submissions int64

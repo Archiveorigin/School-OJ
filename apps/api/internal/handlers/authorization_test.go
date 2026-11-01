@@ -125,7 +125,7 @@ func TestAuthorizationIsolationPostgres(t *testing.T) {
 		for _, prefix := range []string{"/api", "/api/v1"} {
 			response := f.request("GET", prefix+fmt.Sprintf("/submissions?problem_id=%d", f.problem.ID), &f.teacher, nil)
 			assertStatus(t, response, 200)
-			if strings.Contains(response.Body.String(), "private-team-secret") {
+			if strings.Contains(response.Body.String(), "private-team-secret") || listsSubmission(t, response.Body.Bytes(), sub.ID) {
 				t.Fatal("cross-team submission leaked")
 			}
 			assertStatus(t, f.request("GET", prefix+fmt.Sprintf("/submissions/%d", sub.ID), &f.teacher, nil), 403)
@@ -138,8 +138,11 @@ func TestAuthorizationIsolationPostgres(t *testing.T) {
 		f.s.DB.Create(&models.TeamMembership{TeamID: team.ID, UserID: f.student.ID, Role: models.TeamRoleAdmin})
 		response := f.request("GET", "/api/submissions", &f.student, nil)
 		assertStatus(t, response, 200)
-		if !strings.Contains(response.Body.String(), "private-team-secret") {
+		if !listsSubmission(t, response.Body.Bytes(), sub.ID) {
 			t.Fatal("scoped student team administrator denied")
+		}
+		if strings.Contains(response.Body.String(), "private-team-secret") {
+			t.Fatal("submission list carried source code")
 		}
 	})
 	t.Run("course filter cannot cross class boundary", func(t *testing.T) {

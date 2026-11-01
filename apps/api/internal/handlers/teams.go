@@ -849,22 +849,24 @@ func (s Server) getTeamContest(c *gin.Context) {
 	views := make([]teamContestProblemView, 0, len(links))
 	var participantCount int64
 	s.DB.Model(&models.TeamContestParticipant{}).Where("contest_id = ? AND user_id = ?", contest.ID, user.ID).Count(&participantCount)
+	states, err := s.userProblemSubmissionStates("team_contest_id", contest.ID, user.ID)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		return
+	}
+	redactor := s.newSubmissionRedactor(user, time.Now())
+	redactor.contests[contest.ID] = &contest
+	redactor.teams[team.ID] = &team
 	for _, link := range links {
-		var latest models.Submission
 		view := teamContestProblemView{TeamContestProblem: link}
-		if err := s.DB.Where("user_id = ? AND team_contest_id = ? AND problem_id = ?", user.ID, contest.ID, link.ProblemID).Order("created_at desc").First(&latest).Error; err == nil {
-			hidden := s.shouldRedactSubmission(user, latest, time.Now())
-			view.SubmissionStatus = string(latest.Status)
-			value := latest.CreatedAt
+		if state, found := states[link.ProblemID]; found {
+			value := state.CreatedAt
 			view.SubmittedAt = &value
-			if hidden {
+			view.SubmissionStatus = string(state.Status)
+			if redactor.hidden(models.Submission{UserID: user.ID, TeamContestID: &contest.ID, Status: state.Status, CreatedAt: state.CreatedAt}) {
 				view.SubmissionStatus = "recorded"
-			} else {
-				var accepted int64
-				s.DB.Model(&models.Submission{}).Where("user_id = ? AND team_contest_id = ? AND problem_id = ? AND status = ?", user.ID, contest.ID, link.ProblemID, models.StatusAccepted).Count(&accepted)
-				if accepted > 0 {
-					view.SubmissionStatus = string(models.StatusAccepted)
-				}
+			} else if state.Accepted {
+				view.SubmissionStatus = string(models.StatusAccepted)
 			}
 		}
 		views = append(views, view)
@@ -1011,7 +1013,7 @@ func (s Server) listTeamContestSubmissions(c *gin.Context) {
 		return
 	}
 	var items []models.Submission
-	s.DB.Where("user_id = ? AND team_contest_id = ?", user.ID, contest.ID).Order("id desc").Limit(200).Find(&items)
+	s.DB.Omit("source_code").Where("user_id = ? AND team_contest_id = ?", user.ID, contest.ID).Order("id desc").Limit(200).Find(&items)
 	c.JSON(http.StatusOK, s.redactSubmissionViews(user, s.submissionListViews(items)))
 }
 
@@ -1131,6 +1133,7 @@ func (s Server) teamContestRanking(c *gin.Context) {
 		eventError(c, err)
 		return
 	}
+	closeSnapshot()
 	c.Header("Cache-Control", "private, no-store")
 	c.JSON(http.StatusOK, gin.H{
 		"final_ready":             !frozen && rankingIsFinal(paper.lifecycle(time.Now()), checks),
@@ -1480,21 +1483,36 @@ func (s Server) getTeamProblemSet(c *gin.Context) {
 	canManage := s.canManageTeam(user, team)
 	canOrganize := s.canTeamContentPermission(user, team)
 	views := make([]teamProblemLinkView, 0, len(links))
+	states, err := s.userProblemSubmissionStates("problem_set_id", set.ID, user.ID)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		return
+	}
+	var countRows []struct {
+		ProblemID       uint
+		SubmissionCount int64
+		AcceptedCount   int64
+	}
+	if err := s.DB.Model(&models.Submission{}).
+		Select("problem_id, COUNT(*) AS submission_count, COUNT(*) FILTER (WHERE status = ?) AS accepted_count", models.StatusAccepted).
+		Where("problem_set_id = ?", set.ID).Group("problem_id").Scan(&countRows).Error; err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		return
+	}
+	submissionCounts := make(map[uint]int64, len(countRows))
+	acceptedCounts := make(map[uint]int64, len(countRows))
+	for _, row := range countRows {
+		submissionCounts[row.ProblemID] = row.SubmissionCount
+		acceptedCounts[row.ProblemID] = row.AcceptedCount
+	}
 	for _, link := range links {
-		var latest models.Submission
 		status := ""
 		var submittedAt *time.Time
-		var submissionCount int64
-		var acceptedCount int64
-		s.DB.Model(&models.Submission{}).Where("problem_set_id = ? AND problem_id = ?", set.ID, link.ProblemID).Count(&submissionCount)
-		s.DB.Model(&models.Submission{}).Where("problem_set_id = ? AND problem_id = ? AND status = ?", set.ID, link.ProblemID, models.StatusAccepted).Count(&acceptedCount)
-		if err := s.DB.Where("user_id = ? AND problem_set_id = ? AND problem_id = ?", user.ID, set.ID, link.ProblemID).Order("created_at desc").First(&latest).Error; err == nil {
-			status = string(latest.Status)
-			value := latest.CreatedAt
+		if state, found := states[link.ProblemID]; found {
+			status = string(state.Status)
+			value := state.CreatedAt
 			submittedAt = &value
-			var accepted int64
-			s.DB.Model(&models.Submission{}).Where("user_id = ? AND problem_set_id = ? AND problem_id = ? AND status = ?", user.ID, set.ID, link.ProblemID, models.StatusAccepted).Count(&accepted)
-			if accepted > 0 {
+			if state.Accepted {
 				status = string(models.StatusAccepted)
 			}
 		}
@@ -1502,8 +1520,8 @@ func (s Server) getTeamProblemSet(c *gin.Context) {
 			TeamProblemSetProblem: link,
 			SubmissionStatus:      status,
 			SubmittedAt:           submittedAt,
-			SubmissionCount:       submissionCount,
-			AcceptedCount:         acceptedCount,
+			SubmissionCount:       submissionCounts[link.ProblemID],
+			AcceptedCount:         acceptedCounts[link.ProblemID],
 		})
 	}
 	c.JSON(http.StatusOK, gin.H{
@@ -1624,14 +1642,8 @@ func (s Server) listTeamProblemSetSubmissions(c *gin.Context) {
 		return
 	}
 	var items []models.Submission
-	s.DB.Where("problem_set_id = ?", set.ID).Order("id desc").Limit(500).Find(&items)
-	views := s.submissionListViews(items)
-	for index := range views {
-		if views[index].UserID != user.ID {
-			views[index].SourceCode = ""
-		}
-	}
-	c.JSON(http.StatusOK, views)
+	s.DB.Omit("source_code").Where("problem_set_id = ?", set.ID).Order("id desc").Limit(500).Find(&items)
+	c.JSON(http.StatusOK, s.submissionListViews(items))
 }
 
 func (s Server) createTeamProblemSetSubmission(c *gin.Context) {
@@ -1722,6 +1734,7 @@ func (s Server) createTeamDiscussion(c *gin.Context) {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 		return
 	}
+	_ = s.loadUserAvatar(c.Request.Context(), &user)
 	c.JSON(http.StatusCreated, teamDiscussionView{TeamDiscussion: item, AuthorName: user.Name, AuthorAvatar: user.AvatarURL})
 }
 

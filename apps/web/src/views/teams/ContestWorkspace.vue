@@ -168,7 +168,10 @@
               :error="rankingError"
               empty-text="暂无比赛记录"
               :updated-at="rankingUpdatedAt"
-              @refresh="loadRanking"
+              :auto-refresh-seconds="
+                rankingAutoRefresh ? RANKING_REFRESH_SECONDS : 0
+              "
+              @refresh="loadRanking()"
             />
           </section>
         </template>
@@ -364,6 +367,7 @@ import {
   type Submission,
 } from "../../api/client";
 import LeaderboardBoard from "../../components/LeaderboardBoard.vue";
+import { useVisibleInterval } from "../../features/visibleInterval";
 import EventWorkspaceHeader from "../../components/EventWorkspaceHeader.vue";
 import EventProblemList from "../../components/EventProblemList.vue";
 import EventProblemPanel from "../../components/EventProblemPanel.vue";
@@ -393,8 +397,10 @@ const detail = ref<any>(null),
   editVisible = ref(false),
   editing = ref(false);
 let stream: AuthenticatedEventSource | null = null;
+const DETAIL_REFRESH_MS = 15000;
+const RANKING_REFRESH_SECONDS = 60;
 let rankingDisposed = false;
-let detailTimer: number | undefined, deadlineTimer: number | undefined;
+let deadlineTimer: number | undefined;
 let detailLoading = false;
 const ticketVisible = ref(false),
   ticketProblemID = ref<number | undefined>();
@@ -480,6 +486,19 @@ const scoreboardData = computed(() => {
   });
   return data;
 });
+const recordsNeeded = computed(() =>
+  ["records", "problem"].includes(section.value),
+);
+// Standings change while the contest runs and until the last judgement after it.
+const rankingAutoRefresh = computed(
+  () =>
+    section.value === "scoreboard" &&
+    Boolean(detail.value?.can_read_problems) &&
+    detail.value?.contest.scoring_rule !== "oi" &&
+    (detail.value?.lifecycle === "running" ||
+      (detail.value?.lifecycle === "closed" &&
+        ranking.value?.final_ready === false)),
+);
 const rankingUpdatedAt = computed(() =>
   rankingLoadedAt.value ? formatDateTime(rankingLoadedAt.value) : "",
 );
@@ -530,7 +549,7 @@ async function loadDetail() {
       editVisible.value = true;
       await router.replace({ path: route.path, query: {} });
     }
-    await loadRecords();
+    if (recordsNeeded.value) await loadRecords();
   } catch (e: any) {
     if (e.response?.data?.code === "EVENT_COMPLETED") {
       await router.replace(`/competitions/contest/${contestID.value}`);
@@ -565,27 +584,36 @@ async function loadRecords() {
     records.value = [];
   }
 }
-async function loadRanking() {
+// A silent refresh leaves the board and its controls untouched: no loading mask,
+// and a transient failure keeps the last standings until the next attempt.
+async function loadRanking(silent = false) {
   if (rankingDisposed || !detail.value?.can_read_problems) return;
   if (detail.value?.contest.scoring_rule === "oi" || rankingLoading.value)
     return;
-  rankingLoading.value = true;
-  rankingError.value = "";
+  const requestedContest = contestID.value;
+  if (!silent) {
+    rankingLoading.value = true;
+    rankingError.value = "";
+  }
   try {
-    ranking.value = (
+    const data = (
       await generatedApi.teamContestRankingViaContestsContestIdRanking<any>({
-        path: { contest_id: contestID.value },
+        path: { contest_id: requestedContest },
       })
     ).data || {
       rows: [],
       problems: [],
     };
+    if (rankingDisposed || requestedContest !== contestID.value) return;
+    ranking.value = data;
+    rankingError.value = "";
     rankingLoadedAt.value = new Date();
   } catch (e: any) {
+    if (silent) return;
     ranking.value = { rows: [], problems: [] };
     rankingError.value = apiErrorMessage(e);
   } finally {
-    rankingLoading.value = false;
+    if (!silent) rankingLoading.value = false;
   }
 }
 function goBack() {
@@ -728,17 +756,22 @@ watch(
       Number(route.params.contestId) !== detail.value.contest.id
     )
       await loadDetail();
+    else if (recordsNeeded.value) await loadRecords();
     if (section.value === "scoreboard") await loadRanking();
   },
 );
+useVisibleInterval(loadDetail, DETAIL_REFRESH_MS, () => Boolean(detail.value));
+useVisibleInterval(
+  () => loadRanking(true),
+  RANKING_REFRESH_SECONDS * 1000,
+  () => rankingAutoRefresh.value,
+);
 onMounted(async () => {
   await loadDetail();
-  detailTimer = window.setInterval(() => void loadDetail(), 15000);
   if (section.value === "scoreboard") await loadRanking();
 });
 onBeforeUnmount(() => {
   rankingDisposed = true;
-  if (detailTimer) window.clearInterval(detailTimer);
   if (deadlineTimer) window.clearTimeout(deadlineTimer);
   stream?.close();
 });

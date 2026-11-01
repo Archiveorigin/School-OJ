@@ -353,6 +353,10 @@ func (s Server) clearFailedLogin(email string) {
 
 func (s Server) me(c *gin.Context) {
 	user, _ := middleware.CurrentUser(c)
+	if err := s.loadUserAvatar(c.Request.Context(), &user); err != nil {
+		c.JSON(http.StatusServiceUnavailable, gin.H{"error": "用户信息暂不可用"})
+		return
+	}
 	c.JSON(http.StatusOK, authenticatedUser(user))
 }
 
@@ -3005,8 +3009,9 @@ func (s Server) listAssignments(c *gin.Context) {
 		c.JSON(http.StatusOK, views)
 		return
 	}
+	summaries := s.assignmentSummaries(assignmentIDs(items), []uint{user.ID}, false)
 	for _, item := range items {
-		summary := s.assignmentSummary(item.ID, user.ID, false)
+		summary := summaries[item.ID][user.ID]
 		for i := range views {
 			if views[i].ID != item.ID {
 				continue
@@ -3143,8 +3148,9 @@ func (s Server) assignmentReport(c *gin.Context) {
 	}
 	students := s.classStudents(item.ClassID)
 	rows := make([]gin.H, 0, len(students))
+	summaries := s.assignmentSummaries([]uint{item.ID}, userIDs(students), true)[item.ID]
 	for _, student := range students {
-		summary := s.assignmentSummary(item.ID, student.ID, true)
+		summary := summaries[student.ID]
 		rows = append(rows, gin.H{"user": student, "work_status": summary.WorkStatus, "total_score": summary.TotalScore, "max_score": summary.MaxScore, "score_ready": summary.ScoreReady, "problem_scores": summary.Problems})
 	}
 	c.JSON(http.StatusOK, gin.H{"assignment": item, "problems": assignmentProblemViews(item), "rows": rows})
@@ -3208,8 +3214,9 @@ func (s Server) listExams(c *gin.Context) {
 		return
 	}
 	finished := s.examFinishedAtMap(user.ID, modelIDs(items))
+	summaries := s.examSummaries(items, []uint{user.ID}, false)
 	for _, item := range items {
-		summary := s.examSummary(item.ID, user.ID, false)
+		summary := summaries[item.ID][user.ID]
 		for i := range views {
 			if views[i].ID != item.ID {
 				continue
@@ -3485,8 +3492,9 @@ func (s Server) examReport(c *gin.Context) {
 	}
 	students := s.examStudents(item)
 	rows := make([]gin.H, 0, len(students))
+	summaries := s.examSummaries([]models.Exam{item}, userIDs(students), true)[item.ID]
 	for _, student := range students {
-		summary := s.examSummary(item.ID, student.ID, true)
+		summary := summaries[student.ID]
 		rows = append(rows, gin.H{"user": student, "work_status": summary.WorkStatus, "total_score": summary.TotalScore, "max_score": summary.MaxScore, "score_ready": summary.ScoreReady, "problem_scores": summary.Problems})
 	}
 	c.JSON(http.StatusOK, gin.H{"exam": item, "manual_review": examManualReview(item), "problems": examProblemViews(item), "rows": rows})
@@ -3583,6 +3591,7 @@ func (s Server) examRanking(c *gin.Context) {
 		eventError(c, err)
 		return
 	}
+	closeSnapshot()
 	c.Header("Cache-Control", "private, no-store")
 	c.JSON(http.StatusOK, gin.H{
 		"final_ready": rankingIsFinal(paper.lifecycle(time.Now()), checks),
@@ -3752,32 +3761,11 @@ func isExamFullScore(bestScore int, maxScore int) bool {
 }
 
 func workSummaryForExamLinksFromSubmissions(examLinks []models.ExamProblem, userProblemSubmissions map[uint][]models.Submission, manualReview bool, attempted bool, includeProblems bool, scoringRule string) workSummary {
-	summary := workSummary{WorkStatus: "unattempted", ScoreReady: false}
-	if attempted {
-		summary.WorkStatus = "unsubmitted"
-	}
-	hasSubmission := false
-	hasPending := false
+	links := make([]workSummaryLink, 0, len(examLinks))
 	for _, link := range examLinks {
-		summary.MaxScore += link.Score
-		view, submitted, pending := problemScoreFromSubmissionsForRule(link.Problem, link.Score, manualReview, userProblemSubmissions[link.ProblemID], scoringRule)
-		view.Label = link.Label
-		if submitted {
-			hasSubmission = true
-		}
-		if pending {
-			hasPending = true
-		}
-		summary.TotalScore += view.BestScore
-		if includeProblems {
-			summary.Problems = append(summary.Problems, view)
-		}
+		links = append(links, workSummaryLink{Problem: link.Problem, ProblemID: link.ProblemID, Label: link.Label, Score: link.Score})
 	}
-	if hasSubmission {
-		summary.WorkStatus = "submitted"
-		summary.ScoreReady = !hasPending
-	}
-	return summary
+	return summarizeWork(links, userProblemSubmissions, manualReview, attempted, includeProblems, scoringRule)
 }
 
 func (s Server) examSubmissionsLookup(item models.Exam, studentIDs []uint, problemIDs []uint, includeSource bool, cutoff *time.Time) (examSubmissionLookup, error) {
@@ -4727,7 +4715,7 @@ func (s Server) listSubmissions(c *gin.Context) {
 			q = q.Where("(exam_id IS NULL OR exam_id NOT IN ?)", hiddenExamIDs)
 		}
 	}
-	q.Find(&items)
+	q.Omit("source_code").Find(&items)
 	views := s.submissionListViews(items)
 	if publicProblemView {
 		for i := range views {
@@ -4804,7 +4792,8 @@ func (s Server) submissionListViews(items []models.Submission) []submissionListV
 		ids = append(ids, item.ID)
 	}
 	var results []models.SubmissionResult
-	s.DB.Where("submission_id IN ?", ids).Order("submission_id asc, id asc").Find(&results)
+	s.DB.Select("submission_id", "status").Where("submission_id IN ?", ids).Order("submission_id asc, id asc").Find(&results)
+	codeLengths := s.submissionCodeLengths(items)
 	firstFailure := map[uint]string{}
 	caseIndex := map[uint]int{}
 	for _, result := range results {
@@ -4815,13 +4804,39 @@ func (s Server) submissionListViews(items []models.Submission) []submissionListV
 		firstFailure[result.SubmissionID] = verdictCode(result.Status) + strconv.Itoa(caseIndex[result.SubmissionID])
 	}
 	for _, item := range items {
-		view := submissionListView{Submission: item, ErrorPoint: firstFailure[item.ID], CodeLength: len([]rune(item.SourceCode))}
+		view := submissionListView{Submission: item, ErrorPoint: firstFailure[item.ID], CodeLength: codeLengths[item.ID]}
 		if view.ErrorPoint == "" && item.Status != models.StatusAccepted && item.Status != models.StatusQueued && item.Status != models.StatusRunning && item.Status != models.StatusPendingReview {
 			view.ErrorPoint = verdictCode(item.Status)
 		}
 		views = append(views, view)
 	}
 	return s.enrichSubmissionViews(views)
+}
+
+// submissionCodeLengths measures source in the database for rows loaded without
+// it. Only /submissions/latest still carries source, to restore the editor.
+func (s Server) submissionCodeLengths(items []models.Submission) map[uint]int {
+	lengths := make(map[uint]int, len(items))
+	missing := make([]uint, 0, len(items))
+	for _, item := range items {
+		if item.SourceCode == "" {
+			missing = append(missing, item.ID)
+			continue
+		}
+		lengths[item.ID] = len([]rune(item.SourceCode))
+	}
+	if len(missing) == 0 {
+		return lengths
+	}
+	var rows []struct {
+		ID         uint
+		CodeLength int
+	}
+	s.DB.Model(&models.Submission{}).Select("id, char_length(source_code) AS code_length").Where("id IN ?", missing).Scan(&rows)
+	for _, row := range rows {
+		lengths[row.ID] = row.CodeLength
+	}
+	return lengths
 }
 
 func (s Server) enrichSubmissionViews(views []submissionListView) []submissionListView {
@@ -5673,32 +5688,6 @@ func (s Server) examFinishedAtMap(userID uint, examIDs []uint) map[uint]*time.Ti
 	return out
 }
 
-func (s Server) assignmentSummary(assignmentID uint, userID uint, includeProblems bool) workSummary {
-	var links []models.AssignmentProblem
-	q := s.DB.Where("assignment_id = ?", assignmentID).Order("sort_order asc")
-	if includeProblems {
-		q = q.Preload("Problem")
-	}
-	q.Find(&links)
-	var attempts int64
-	s.DB.Model(&models.AssignmentAttempt{}).Where("assignment_id = ? AND user_id = ?", assignmentID, userID).Count(&attempts)
-	return s.workSummaryForLinks(userID, links, nil, &assignmentID, nil, false, attempts > 0, includeProblems)
-}
-
-func (s Server) examSummary(examID uint, userID uint, includeProblems bool) workSummary {
-	var exam models.Exam
-	_ = s.DB.First(&exam, examID).Error
-	var links []models.ExamProblem
-	q := s.DB.Where("exam_id = ?", examID).Order("sort_order asc")
-	if includeProblems {
-		q = q.Preload("Problem")
-	}
-	q.Find(&links)
-	var attempts int64
-	s.DB.Model(&models.ExamAttempt{}).Where("exam_id = ? AND user_id = ?", examID, userID).Count(&attempts)
-	return s.workSummaryForLinks(userID, nil, links, nil, &examID, examManualReview(exam), attempts > 0, includeProblems)
-}
-
 func (s Server) examAllSubmitted(examID uint, userID uint) bool {
 	var problemIDs []uint
 	if err := s.DB.Model(&models.ExamProblem{}).Where("exam_id = ?", examID).Pluck("problem_id", &problemIDs).Error; err != nil || len(problemIDs) == 0 {
@@ -5710,72 +5699,6 @@ func (s Server) examAllSubmitted(examID uint, userID uint) bool {
 		Distinct("problem_id").
 		Count(&submitted)
 	return submitted >= int64(len(problemIDs))
-}
-
-func (s Server) workSummaryForLinks(userID uint, assignmentLinks []models.AssignmentProblem, examLinks []models.ExamProblem, assignmentID *uint, examID *uint, manualReview bool, attempted bool, includeProblems bool) workSummary {
-	summary := workSummary{WorkStatus: "unattempted", ScoreReady: false}
-	if attempted {
-		summary.WorkStatus = "unsubmitted"
-	}
-	type linkInfo struct {
-		Problem   models.Problem
-		ProblemID uint
-		Label     string
-		Score     int
-	}
-	links := []linkInfo{}
-	scoringRule := "ioi"
-	if examID != nil {
-		var exam models.Exam
-		if err := s.DB.Select("scoring_rule").First(&exam, *examID).Error; err == nil {
-			scoringRule = examScoringRule(exam)
-		}
-	}
-	for _, link := range assignmentLinks {
-		links = append(links, linkInfo{Problem: link.Problem, ProblemID: link.ProblemID, Score: link.Score})
-	}
-	for _, link := range examLinks {
-		links = append(links, linkInfo{Problem: link.Problem, ProblemID: link.ProblemID, Label: link.Label, Score: link.Score})
-	}
-	hasSubmission := false
-	hasPending := false
-	for _, link := range links {
-		summary.MaxScore += link.Score
-		view, submitted, pending := s.problemScore(userID, link.ProblemID, link.Problem, link.Score, assignmentID, examID, manualReview, scoringRule)
-		view.Label = link.Label
-		if submitted {
-			hasSubmission = true
-		}
-		if pending {
-			hasPending = true
-		}
-		summary.TotalScore += view.BestScore
-		if includeProblems {
-			summary.Problems = append(summary.Problems, view)
-		}
-	}
-	if hasSubmission {
-		summary.WorkStatus = "submitted"
-		summary.ScoreReady = !hasPending
-	}
-	return summary
-}
-
-func (s Server) problemScore(userID uint, problemID uint, problem models.Problem, maxScore int, assignmentID *uint, examID *uint, manualReview bool, scoringRule string) (problemScoreView, bool, bool) {
-	q := s.DB.Where("user_id = ? AND problem_id = ?", userID, problemID).Order("id desc")
-	if assignmentID != nil {
-		q = q.Where("assignment_id = ?", *assignmentID)
-	} else {
-		q = q.Where("assignment_id IS NULL")
-	}
-	if examID != nil {
-		q = q.Where("exam_id = ?", *examID)
-	} else {
-		q = q.Where("exam_id IS NULL")
-	}
-	var subs []models.Submission
-	q.Find(&subs)
-	return problemScoreFromSubmissionsForRule(problem, maxScore, manualReview, subs, scoringRule)
 }
 
 func problemScoreFromSubmissionsForRule(problem models.Problem, maxScore int, manualReview bool, subs []models.Submission, scoringRule string) (problemScoreView, bool, bool) {
@@ -5996,6 +5919,7 @@ func (s Server) classStudents(classID *uint) []models.User {
 	}
 	var students []models.User
 	s.DB.Model(&models.User{}).
+		Omit("avatar_url").
 		Joins("join class_memberships on class_memberships.user_id = users.id").
 		Where("class_memberships.class_id = ? AND users.role = ? AND users.account_deleted = false", *classID, models.RoleStudent).
 		Order("users.id asc").
@@ -6006,6 +5930,7 @@ func (s Server) classStudents(classID *uint) []models.User {
 func (s Server) courseStudents(courseID uint) []models.User {
 	var students []models.User
 	s.DB.Model(&models.User{}).
+		Omit("avatar_url").
 		Joins("join course_memberships on course_memberships.user_id = users.id").
 		Where("course_memberships.course_id = ? AND course_memberships.role = ? AND users.role = ? AND users.account_deleted = false", courseID, models.RoleStudent, models.RoleStudent).
 		Order("users.id asc").
@@ -6016,7 +5941,7 @@ func (s Server) courseStudents(courseID uint) []models.User {
 func (s Server) examStudents(item models.Exam) []models.User {
 	if item.ParticipantsFrozen {
 		students := []models.User{}
-		s.DB.Where("id IN (?) AND account_deleted = false", s.DB.Model(&models.ExamParticipant{}).Select("user_id").Where("exam_id=?", item.ID)).Order("id").Find(&students)
+		s.DB.Omit("avatar_url").Where("id IN (?) AND account_deleted = false", s.DB.Model(&models.ExamParticipant{}).Select("user_id").Where("exam_id=?", item.ID)).Order("id").Find(&students)
 		return students
 	}
 	if item.ClassID != nil {

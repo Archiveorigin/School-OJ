@@ -46,6 +46,19 @@ function mountBoard(boardData: LeaderboardData) {
   })
 }
 
+describe('LeaderboardBoard live refresh', () => {
+  it('states the refresh interval only while one is active', async () => {
+    const wrapper = mountBoard(data('penalty'))
+    expect(wrapper.find('.scoreboard-refresh-note').exists()).toBe(false)
+    await wrapper.setProps({ autoRefreshSeconds: 60, updatedAt: '2026-11-01 12:00' })
+    const note = wrapper.get('.scoreboard-refresh-note')
+    expect(note.text()).toBe('每 60 秒自动更新')
+    expect(note.attributes('title')).toContain('2026-11-01 12:00')
+    await wrapper.setProps({ data: { ...data('penalty'), replaying: true } })
+    expect(wrapper.find('.scoreboard-refresh-note').exists()).toBe(false)
+  })
+})
+
 describe('LeaderboardBoard variants', () => {
   it('renders the penalty table with name-only participant identity', () => {
     const wrapper = mountBoard(data('penalty'))

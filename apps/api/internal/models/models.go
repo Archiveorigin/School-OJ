@@ -481,7 +481,7 @@ type AuditLog struct {
 	IP           string            `json:"ip" gorm:"size:80"`
 	UserAgent    string            `json:"user_agent" gorm:"size:512"`
 	Meta         datatypes.JSONMap `json:"meta" gorm:"type:jsonb"`
-	CreatedAt    time.Time         `json:"created_at"`
+	CreatedAt    time.Time         `json:"created_at" gorm:"index"`
 }
 
 type EmailVerification struct {

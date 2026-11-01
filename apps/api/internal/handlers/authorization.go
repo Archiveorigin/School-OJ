@@ -42,7 +42,10 @@ func (s Server) authorizationAudit() gin.HandlerFunc {
 		route, registered := authz.Route(c.Request.Method, c.FullPath())
 		user, authenticated := middleware.CurrentUser(c)
 		denied := status == 401 || status == 403 || status == 404 && registered && authenticated
-		sensitive := authenticated && (authz.Has(user, authz.AuditView) || c.Request.Method != "GET" || strings.Contains(route.Path, "export") || strings.Contains(route.Path, "/tests") || strings.Contains(route.Path, "/package") || strings.Contains(route.Path, "/attachment") || strings.HasPrefix(route.Path, "/submissions/"))
+		// Reads are audited by what they expose, not by who performs them: routine
+		// pages polled by an administrator are not sensitive, capability-gated ones are.
+		privilegedRoute := registered && route.Access != "public" && route.Access != "authenticated"
+		sensitive := authenticated && (privilegedRoute || c.Request.Method != "GET" || strings.Contains(route.Path, "export") || strings.Contains(route.Path, "/tests") || strings.Contains(route.Path, "/package") || strings.Contains(route.Path, "/attachment") || strings.HasPrefix(route.Path, "/submissions/"))
 		if !denied && !(registered && sensitive && status < 400) {
 			return
 		}

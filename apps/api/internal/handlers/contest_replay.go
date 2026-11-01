@@ -102,6 +102,7 @@ func (s Server) exportContestReplay(c *gin.Context, p eventPaper) {
 		eventError(c, err)
 		return
 	}
+	closeSnapshot()
 	c.Header("Cache-Control", "private, no-store")
 
 	c.JSON(200, gin.H{"schema_version": 1, "kind": "contest-replay", "contest": contest, "problems": problems, "initial_rows": initial, "final_rows": final, "events": events, "freeze_at": freeze, "generated_at": time.Now()})

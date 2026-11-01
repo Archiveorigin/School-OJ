@@ -19,14 +19,48 @@ const snapshot = (judging: number) => ({
 })
 
 describe('ranking refresh across the deadline', () => {
-  it('fetches on entry and manual refresh without a periodic timer', async () => {
+  it('refreshes silently every minute while the exam runs and stops once final', async () => {
+    const running = { data: { lifecycle: 'running', exam: { ends_at: '2999-01-01T00:00:00Z' }, rows: [] } }
+    vi.mocked(generatedApi.examRanking).mockResolvedValue(running as any)
+    const wrapper = mount(ExamRanking)
+    await flushPromises()
+    expect(generatedApi.examRanking).toHaveBeenCalledTimes(1)
+    await vi.advanceTimersByTimeAsync(59000)
+    expect(generatedApi.examRanking).toHaveBeenCalledTimes(1)
+    await vi.advanceTimersByTimeAsync(1000)
+    await flushPromises()
+    expect(generatedApi.examRanking).toHaveBeenCalledTimes(2)
+
+    // A failed background refresh keeps the board and tries again.
+    vi.mocked(generatedApi.examRanking).mockRejectedValueOnce(new Error('offline'))
+    await vi.advanceTimersByTimeAsync(60000)
+    await flushPromises()
+    expect(wrapper.findComponent({ name: 'LeaderboardBoard' }).props('error') ?? '').toBe('')
+    expect(generatedApi.examRanking).toHaveBeenCalledTimes(3)
+
+    // Judging still pending after the deadline keeps refreshing; final standings do not.
+    vi.mocked(generatedApi.examRanking).mockResolvedValue({ data: { lifecycle: 'closed', final_ready: false, rows: [] } } as any)
+    await vi.advanceTimersByTimeAsync(60000)
+    await flushPromises()
+    expect(generatedApi.examRanking).toHaveBeenCalledTimes(4)
+    vi.mocked(generatedApi.examRanking).mockResolvedValue({ data: { lifecycle: 'closed', final_ready: true, rows: [] } } as any)
+    await vi.advanceTimersByTimeAsync(60000)
+    await flushPromises()
+    expect(generatedApi.examRanking).toHaveBeenCalledTimes(5)
+    await vi.advanceTimersByTimeAsync(300000)
+    await flushPromises()
+    expect(generatedApi.examRanking).toHaveBeenCalledTimes(5)
+    wrapper.unmount()
+  })
+
+  it('fetches a finished event on entry and manual refresh without a periodic timer', async () => {
     vi.mocked(generatedApi.examRanking).mockResolvedValue({
-      data: { lifecycle: 'closed', exam: { ends_at: '2000-01-01T00:00:00Z' }, rows: [] },
+      data: { lifecycle: 'closed', final_ready: true, exam: { ends_at: '2000-01-01T00:00:00Z' }, rows: [] },
     } as any)
     const wrapper = mount(ExamRanking)
     await flushPromises()
     expect(generatedApi.examRanking).toHaveBeenCalledTimes(1)
-    await vi.advanceTimersByTimeAsync(5000)
+    await vi.advanceTimersByTimeAsync(300000)
     await flushPromises()
     expect(generatedApi.examRanking).toHaveBeenCalledTimes(1)
     await wrapper.get('.manual-refresh').trigger('click')

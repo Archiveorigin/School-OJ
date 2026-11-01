@@ -13,42 +13,127 @@ import (
 // detail and SSE responses. It deliberately returns less information when the
 // event context cannot be loaded.
 func (s Server) shouldRedactSubmission(user models.User, submission models.Submission, now time.Time) bool {
-	if authz.Has(user, authz.SubmissionResultsAny) {
+	return s.newSubmissionRedactor(user, now).hidden(submission)
+}
+
+// submissionRedactor applies the policy to many submissions of one request, so a
+// 200-row list asks for each event and its permissions once instead of per row.
+// It lives no longer than the request: revocations still apply to the next one.
+type submissionRedactor struct {
+	s             Server
+	user          models.User
+	now           time.Time
+	exams         map[uint]*models.Exam
+	contests      map[uint]*models.TeamContest
+	teams         map[uint]*models.Team
+	courseManager map[uint]bool
+	teamManager   map[uint]bool
+}
+
+func (s Server) newSubmissionRedactor(user models.User, now time.Time) *submissionRedactor {
+	return &submissionRedactor{
+		s:             s,
+		user:          user,
+		now:           now,
+		exams:         map[uint]*models.Exam{},
+		contests:      map[uint]*models.TeamContest{},
+		teams:         map[uint]*models.Team{},
+		courseManager: map[uint]bool{},
+		teamManager:   map[uint]bool{},
+	}
+}
+
+func (r *submissionRedactor) hidden(submission models.Submission) bool {
+	if authz.Has(r.user, authz.SubmissionResultsAny) {
 		return false
 	}
 	if submission.ExamID != nil {
-		var exam models.Exam
-		if err := s.DB.First(&exam, *submission.ExamID).Error; err != nil {
+		exam := r.exam(*submission.ExamID)
+		if exam == nil {
 			return true
 		}
-		if s.canManageCourse(user, exam.CourseID) {
+		if r.managesCourse(exam.CourseID) {
 			return false
 		}
-		return examSubmissionHidden(exam, submission.CreatedAt, now)
+		return examSubmissionHidden(*exam, submission.CreatedAt, r.now)
 	}
 	if submission.TeamContestID != nil {
-		var contest models.TeamContest
-		if err := s.DB.First(&contest, *submission.TeamContestID).Error; err != nil {
+		contest := r.contest(*submission.TeamContestID)
+		if contest == nil {
 			return true
 		}
 		// Scoreboard freezing hides results from other viewers, not their author.
 		// OI's separate pre-deadline result embargo still applies to the author.
-		if user.ID == submission.UserID && contest.ScoringRule != "oi" {
+		if r.user.ID == submission.UserID && contest.ScoringRule != "oi" {
 			return false
 		}
-		if contestFreezeHeld(contest, user, now) {
-			return teamContestSubmissionHidden(contest, submission.CreatedAt, now)
+		if contestFreezeHeld(*contest, r.user, r.now) {
+			return teamContestSubmissionHidden(*contest, submission.CreatedAt, r.now)
 		}
-		var team models.Team
-		if err := s.DB.First(&team, contest.TeamID).Error; err != nil {
+		team := r.team(contest.TeamID)
+		if team == nil {
 			return true
 		}
-		if s.canManageTeam(user, team) || s.canTeamContentPermission(user, team) {
+		if r.managesTeam(*team) {
 			return false
 		}
-		return teamContestSubmissionHidden(contest, submission.CreatedAt, now)
+		return teamContestSubmissionHidden(*contest, submission.CreatedAt, r.now)
 	}
 	return false
+}
+
+func (r *submissionRedactor) exam(id uint) *models.Exam {
+	item, known := r.exams[id]
+	if !known {
+		loaded := models.Exam{}
+		if r.s.DB.First(&loaded, id).Error == nil {
+			item = &loaded
+		}
+		r.exams[id] = item
+	}
+	return item
+}
+
+func (r *submissionRedactor) contest(id uint) *models.TeamContest {
+	item, known := r.contests[id]
+	if !known {
+		loaded := models.TeamContest{}
+		if r.s.DB.First(&loaded, id).Error == nil {
+			item = &loaded
+		}
+		r.contests[id] = item
+	}
+	return item
+}
+
+func (r *submissionRedactor) team(id uint) *models.Team {
+	item, known := r.teams[id]
+	if !known {
+		loaded := models.Team{}
+		if r.s.DB.First(&loaded, id).Error == nil {
+			item = &loaded
+		}
+		r.teams[id] = item
+	}
+	return item
+}
+
+func (r *submissionRedactor) managesCourse(id uint) bool {
+	allowed, known := r.courseManager[id]
+	if !known {
+		allowed = r.s.canManageCourse(r.user, id)
+		r.courseManager[id] = allowed
+	}
+	return allowed
+}
+
+func (r *submissionRedactor) managesTeam(team models.Team) bool {
+	allowed, known := r.teamManager[team.ID]
+	if !known {
+		allowed = r.s.canManageTeam(r.user, team) || r.s.canTeamContentPermission(r.user, team)
+		r.teamManager[team.ID] = allowed
+	}
+	return allowed
 }
 
 func examSubmissionHidden(exam models.Exam, submittedAt, now time.Time) bool {
@@ -77,9 +162,9 @@ func teamContestSubmissionHidden(contest models.TeamContest, submittedAt, now ti
 }
 
 func (s Server) redactSubmissionViews(user models.User, views []submissionListView) []submissionListView {
-	now := time.Now()
+	redactor := s.newSubmissionRedactor(user, time.Now())
 	for index := range views {
-		if s.shouldRedactSubmission(user, views[index].Submission, now) {
+		if redactor.hidden(views[index].Submission) {
 			redactSubmission(&views[index].Submission)
 			views[index].ErrorPoint = ""
 		}
